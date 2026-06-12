@@ -1,6 +1,19 @@
 # OS files
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100/
+.Trashes/
+.fseventsd/
+Icon?
 Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
 
 # IDEs and editors
 .vscode/
@@ -39,4 +52,3 @@ vite.config.*.mtime-*
 .env.*
 !.env.example
 !.env.*.example
-
