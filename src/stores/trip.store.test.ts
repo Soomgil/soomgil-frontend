@@ -10,6 +10,10 @@ vi.mock('@/api/trip.api', () => ({
     getTrip: vi.fn(),
     createTrip: vi.fn(),
     getMembers: vi.fn(),
+    getInvites: vi.fn(),
+    createInvite: vi.fn(),
+    revokeInvite: vi.fn(),
+    removeMember: vi.fn(),
   },
 }))
 
@@ -79,5 +83,64 @@ describe('trip store', () => {
     expect(created).toEqual(trip)
     expect(store.trips).toEqual([trip])
     expect(store.creating).toBe(false)
+  })
+
+  it('다음 페이지를 기존 여행 목록 뒤에 추가한다', async () => {
+    const nextTrip = { ...trip, id: 'trip-2', title: '제주 여행' }
+    vi.mocked(tripApi.getTrips)
+      .mockResolvedValueOnce({
+        items: [trip],
+        page: { ...page.page, totalElements: 2, totalPages: 2 },
+      })
+      .mockResolvedValueOnce({
+        items: [nextTrip],
+        page: { ...page.page, page: 1, totalElements: 2, totalPages: 2 },
+      })
+    const store = useTripStore()
+
+    await store.fetchTrips({ size: 1, status: 'ACTIVE' })
+    await store.fetchNextPage()
+
+    expect(tripApi.getTrips).toHaveBeenLastCalledWith({ page: 1, size: 1, status: 'ACTIVE' })
+    expect(store.trips).toEqual([trip, nextTrip])
+    expect(store.hasMoreTrips).toBe(false)
+  })
+
+  it('다음 페이지 조회 실패를 현재 목록을 유지한 채 표시한다', async () => {
+    vi.mocked(tripApi.getTrips)
+      .mockResolvedValueOnce({
+        items: [trip],
+        page: { ...page.page, totalElements: 2, totalPages: 2 },
+      })
+      .mockRejectedValueOnce(new Error('network error'))
+    const store = useTripStore()
+
+    await store.fetchTrips({ size: 1 })
+    await store.fetchNextPage()
+
+    expect(store.trips).toEqual([trip])
+    expect(store.loadMoreError).toBe('다음 여행을 불러오지 못했습니다.')
+    expect(store.loadingMore).toBe(false)
+  })
+
+  it('멤버와 초대 목록을 함께 불러온다', async () => {
+    const member = {
+      id: 'member-1',
+      tripId: trip.id,
+      user: { id: 'user-1', displayName: '김지훈', profileImageUrl: null },
+      role: 'MEMBER' as const,
+      accessRole: 'OWNER' as const,
+      status: 'ACTIVE' as const,
+      joinedAt: '2026-06-19T10:00:00Z',
+    }
+    vi.mocked(tripApi.getMembers).mockResolvedValue([member])
+    vi.mocked(tripApi.getInvites).mockResolvedValue([])
+    const store = useTripStore()
+
+    await store.fetchTripAccess(trip.id, true)
+
+    expect(store.members).toEqual([member])
+    expect(store.invites).toEqual([])
+    expect(store.accessError).toBeNull()
   })
 })

@@ -97,6 +97,13 @@ export interface TripCreateRequest {
   legalRegionCodes?: string[]
 }
 
+export interface TripUpdateRequest {
+  title?: string
+  displayDestination?: string | null
+  legalRegionCodes?: string[]
+  status?: TripStatus
+}
+
 /* ── Trip Member ── */
 export interface TripMember {
   id: string
@@ -115,14 +122,17 @@ export interface TripMember {
 export interface TripInvite {
   id: string
   tripId: string
-  createdByUserId: string
-  inviteeUserId: string | null
   inviteCode: string
+  inviteUrl: string | null
+  inviteeUserId: string | null
   status: TripInviteStatus
   expiresAt: string | null
-  acceptedByUserId: string | null
-  acceptedAt: string | null
   createdAt: string
+}
+
+export interface CreateTripInviteRequest {
+  inviteeUserId?: string
+  expiresAt?: string
 }
 
 /* ── Filters ── */

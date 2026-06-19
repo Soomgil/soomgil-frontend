@@ -7,6 +7,7 @@ vi.mock('./http', () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
+    delete: vi.fn(),
   },
 }))
 
@@ -45,6 +46,7 @@ describe('tripApi', () => {
 
     expect(http.get).toHaveBeenCalledWith('/trips', {
       params: { page: 0, size: 20, status: 'ACTIVE' },
+      paramsSerializer: { indexes: null },
     })
     expect(result).toEqual(page)
   })
@@ -62,5 +64,46 @@ describe('tripApi', () => {
       displayDestination: '부산광역시',
     })
     expect(result).toEqual(trip)
+  })
+
+  it('여행 멤버와 초대 목록을 실제 하위 리소스에서 조회한다', async () => {
+    vi.mocked(http.get)
+      .mockResolvedValueOnce({ data: trip.members })
+      .mockResolvedValueOnce({ data: [] })
+
+    await expect(tripApi.getMembers(trip.id)).resolves.toEqual(trip.members)
+    await expect(tripApi.getInvites(trip.id)).resolves.toEqual([])
+
+    expect(http.get).toHaveBeenNthCalledWith(1, `/trips/${trip.id}/members`)
+    expect(http.get).toHaveBeenNthCalledWith(2, `/trips/${trip.id}/invites`)
+  })
+
+  it('초대 생성과 취소를 백엔드 계약 경로로 요청한다', async () => {
+    const invite = {
+      id: 'invite-1',
+      tripId: trip.id,
+      inviteCode: 'JOIN-ME',
+      inviteUrl: null,
+      inviteeUserId: null,
+      status: 'PENDING' as const,
+      expiresAt: null,
+      createdAt: '2026-06-20T00:00:00Z',
+    }
+    vi.mocked(http.post).mockResolvedValue({ data: invite })
+    vi.mocked(http.delete).mockResolvedValue({ data: undefined })
+
+    await expect(tripApi.createInvite(trip.id)).resolves.toEqual(invite)
+    await expect(tripApi.revokeInvite(trip.id, invite.id)).resolves.toBeUndefined()
+
+    expect(http.post).toHaveBeenCalledWith(`/trips/${trip.id}/invites`, {})
+    expect(http.delete).toHaveBeenCalledWith(`/trips/${trip.id}/invites/${invite.id}`)
+  })
+
+  it('초대 수락은 전용 trip-invites 경로를 사용한다', async () => {
+    vi.mocked(http.post).mockResolvedValue({ data: trip })
+
+    await expect(tripApi.acceptInvite('JOIN-ME')).resolves.toEqual(trip)
+
+    expect(http.post).toHaveBeenCalledWith('/trip-invites/JOIN-ME/accept', {})
   })
 })

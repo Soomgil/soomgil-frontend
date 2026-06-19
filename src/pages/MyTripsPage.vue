@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
+import TripAccessModal from '@/components/trip/TripAccessModal.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
@@ -17,6 +18,7 @@ const searchQuery = ref('')
 const newTitle = ref('')
 const newDestination = ref('')
 const createError = ref('')
+const accessTrip = ref<TripSummary | null>(null)
 
 const filters: { label: string; value: TripFilter }[] = [
   { label: '전체', value: 'all' },
@@ -56,7 +58,20 @@ function goTripDetail(tripId: string) {
 }
 
 async function loadTrips() {
-  await tripStore.fetchTrips({ page: 0, size: 20, sort: ['createdAt,desc'] }).catch(() => undefined)
+  const status = activeFilter.value === 'upcoming'
+    ? 'ACTIVE'
+    : activeFilter.value === 'past'
+      ? 'ARCHIVED'
+      : undefined
+  await tripStore.fetchTrips({ page: 0, size: 20, status, sort: ['createdAt,desc'] }).catch(() => undefined)
+}
+
+function openTripAccess(trip: TripSummary) {
+  accessTrip.value = trip
+}
+
+function closeTripAccess() {
+  accessTrip.value = null
 }
 
 async function handleCreateTrip() {
@@ -91,6 +106,7 @@ function closeCreateModal() {
 }
 
 onMounted(loadTrips)
+watch(activeFilter, loadTrips)
 </script>
 
 <template>
@@ -148,26 +164,38 @@ onMounted(loadTrips)
           :message="tripStore.trips.length === 0 ? '아직 만든 여행이 없습니다.' : '조건에 맞는 여행이 없습니다.'"
         />
         <div v-else class="trip-card-grid">
-          <button
+          <article
             v-for="trip in filteredTrips"
             :key="trip.id"
             class="travel-card"
-            type="button"
-            @click="goTripDetail(trip.id)"
           >
-            <div class="travel-card__body">
-              <div class="travel-card__header">
-                <span class="timeline-card-status-badge" :class="{ 'is-past': trip.status === 'ARCHIVED' }">
-                  {{ statusLabel(trip) }}
-                </span>
-                <span class="travel-card__role">{{ trip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
+            <button class="travel-card__main" type="button" @click="goTripDetail(trip.id)">
+              <div class="travel-card__body">
+                <div class="travel-card__header">
+                  <span class="timeline-card-status-badge" :class="{ 'is-past': trip.status === 'ARCHIVED' }">
+                    {{ statusLabel(trip) }}
+                  </span>
+                  <span class="travel-card__role">{{ trip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
+                </div>
+                <h2>{{ trip.title }}</h2>
+                <p>{{ trip.displayDestination || '목적지 미정' }}</p>
+                <span class="travel-card__date">{{ formatCreatedAt(trip.createdAt) }} 생성</span>
               </div>
-              <h2>{{ trip.title }}</h2>
-              <p>{{ trip.displayDestination || '목적지 미정' }}</p>
-              <span class="travel-card__date">{{ formatCreatedAt(trip.createdAt) }} 생성</span>
-            </div>
-            <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-          </button>
+              <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
+            </button>
+            <button class="travel-card__access" type="button" @click="openTripAccess(trip)">
+              <span class="material-symbols-rounded" aria-hidden="true">group</span>
+              {{ trip.myRole === 'OWNER' ? '멤버 및 초대 관리' : '멤버 보기' }}
+            </button>
+          </article>
+        </div>
+        <div v-if="tripStore.hasMoreTrips && !tripStore.loading" class="load-more-row">
+          <div>
+            <p v-if="tripStore.loadMoreError" class="load-more-error" aria-live="polite">{{ tripStore.loadMoreError }}</p>
+            <button class="btn ghost" type="button" :disabled="tripStore.loadingMore" @click="tripStore.fetchNextPage">
+              {{ tripStore.loadingMore ? '불러오는 중...' : tripStore.loadMoreError ? '다시 시도' : '여행 더 보기' }}
+            </button>
+          </div>
         </div>
       </section>
     </main>
@@ -190,11 +218,11 @@ onMounted(loadTrips)
         <form class="trip-create-form" @submit.prevent="handleCreateTrip">
           <label class="form-label">
             <span class="form-label-text">여행 이름</span>
-            <input v-model="newTitle" class="field" type="text" name="title" maxlength="100" required>
+            <input v-model="newTitle" class="field" type="text" name="title" maxlength="160" required>
           </label>
           <label class="form-label">
             <span class="form-label-text">표시 목적지</span>
-            <input v-model="newDestination" class="field" type="text" name="displayDestination" maxlength="100" placeholder="예: 부산광역시">
+            <input v-model="newDestination" class="field" type="text" name="displayDestination" maxlength="160" placeholder="예: 부산광역시">
           </label>
 
           <p v-if="createError" class="trip-create-error" aria-live="polite">{{ createError }}</p>
@@ -208,6 +236,8 @@ onMounted(loadTrips)
         </form>
       </div>
     </div>
+
+    <TripAccessModal :open="Boolean(accessTrip)" :trip="accessTrip" @close="closeTripAccess" />
   </div>
 </template>
 
@@ -227,18 +257,14 @@ onMounted(loadTrips)
 }
 
 .travel-card {
-  align-items: center;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   color: #111827;
-  cursor: pointer;
   display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  min-height: 180px;
-  padding: 24px;
-  text-align: left;
+  flex-direction: column;
+  min-height: 210px;
+  overflow: hidden;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
   width: 100%;
 }
@@ -249,6 +275,42 @@ onMounted(loadTrips)
   box-shadow: 0 8px 24px rgb(17 24 39 / 10%);
   outline: none;
   transform: translateY(-2px);
+}
+
+.travel-card__main {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 24px;
+  text-align: left;
+  width: 100%;
+}
+
+.travel-card__main:focus-visible,
+.travel-card__access:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: -2px;
+}
+
+.travel-card__access {
+  align-items: center;
+  background: #f9fafb;
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  color: #4b5563;
+  cursor: pointer;
+  display: flex;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  padding: 12px 16px;
+  width: 100%;
 }
 
 .travel-card__body {
@@ -286,6 +348,22 @@ onMounted(loadTrips)
   font-size: 13px;
 }
 
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.load-more-row > div {
+  text-align: center;
+}
+
+.load-more-error {
+  color: #be123c;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
 @media (max-width: 960px) {
   .trip-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -303,7 +381,10 @@ onMounted(loadTrips)
   }
 
   .travel-card {
-    min-height: 156px;
+    min-height: 184px;
+  }
+
+  .travel-card__main {
     padding: 20px;
   }
 }
