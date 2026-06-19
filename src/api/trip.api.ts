@@ -1,23 +1,29 @@
 import http from './http'
-import type { ApiResponse, PaginatedResponse, PaginationParams } from '@/types/api'
-import type { Trip, TripCreateRequest, TripMember, TripInvite } from '@/types/trip'
-import { mockTrips } from '@/mocks/mockTrips'
+import type { ApiResponse } from '@/types/api'
+import type {
+  PagedTripSummary,
+  Trip,
+  TripCreateRequest,
+  TripDetail,
+  TripInvite,
+  TripListParams,
+  TripMember,
+} from '@/types/trip'
 
 export const tripApi = {
-  getTrips: async (params?: PaginationParams): Promise<ApiResponse<PaginatedResponse<Trip>>> => {
-    // TODO: return http.get('/trips', { params })
-    return { status: 200, message: 'ok', data: { content: mockTrips, totalPages: 1, totalElements: mockTrips.length, page: 0, size: 20 } }
+  getTrips: async (params?: TripListParams): Promise<PagedTripSummary> => {
+    const response = await http.get<PagedTripSummary>('/trips', { params })
+    return response.data
   },
 
-  getTrip: async (tripId: string): Promise<ApiResponse<Trip>> => {
-    // TODO: return http.get(`/trips/${tripId}`)
-    const trip = mockTrips.find((t) => t.id === tripId) ?? mockTrips[0]
-    return { status: 200, message: 'ok', data: trip }
+  getTrip: async (tripId: string): Promise<TripDetail> => {
+    const response = await http.get<TripDetail>(`/trips/${tripId}`)
+    return response.data
   },
 
-  createTrip: async (data: TripCreateRequest): Promise<ApiResponse<Trip>> => {
-    // TODO: return http.post('/trips', data)
-    return { status: 201, message: 'ok', data: { ...mockTrips[0], id: `trip_${Date.now()}`, ...data } }
+  createTrip: async (data: TripCreateRequest): Promise<TripDetail> => {
+    const response = await http.post<TripDetail>('/trips', data)
+    return response.data
   },
 
   updateTrip: async (tripId: string, data: Partial<Trip>): Promise<ApiResponse<Trip>> => {

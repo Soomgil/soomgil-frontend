@@ -3,6 +3,68 @@ export type TripStatus = 'ACTIVE' | 'ARCHIVED' | 'DELETED'
 export type TripMemberRole = 'OWNER' | 'MEMBER'
 export type TripMemberStatus = 'ACTIVE' | 'LEFT' | 'REMOVED'
 export type TripInviteStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED'
+export type TripAccessRole = 'OWNER' | 'MEMBER'
+
+export interface PageMeta {
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  sort: string[]
+}
+
+export interface TripSummary {
+  id: string
+  title: string
+  displayDestination: string | null
+  status: TripStatus
+  myRole: TripAccessRole
+  itineraryVersion: number
+  createdAt: string
+}
+
+export interface LegalRegion {
+  code: string
+  name: string
+  fullName: string
+  level: string
+  parentCode: string | null
+  isActive: boolean
+}
+
+export interface TripDetail extends TripSummary {
+  ownerUserId: string | null
+  regions: LegalRegion[]
+  members: TripDetailMember[]
+  retrippedFromPostId: string | null
+}
+
+export interface TripDetailMember {
+  id: string
+  tripId: string
+  user: {
+    id: string
+    displayName: string
+    profileImageUrl: string | null
+  }
+  role: TripMemberRole
+  accessRole: TripAccessRole
+  status: TripMemberStatus
+  joinedAt: string
+}
+
+export interface PagedTripSummary {
+  items: TripSummary[]
+  page: PageMeta
+}
+
+export interface TripListParams {
+  status?: TripStatus
+  role?: TripAccessRole
+  page?: number
+  size?: number
+  sort?: string[]
+}
 
 /* ── Trip ── */
 export interface Trip {
@@ -32,8 +94,7 @@ export interface Trip {
 export interface TripCreateRequest {
   title: string
   displayDestination?: string
-  startDate?: string
-  endDate?: string
+  legalRegionCodes?: string[]
 }
 
 /* ── Trip Member ── */
