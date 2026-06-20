@@ -7,6 +7,7 @@ import type {
   ItineraryItem,
   ItineraryMutationResponse,
   MapDrawing,
+  ReorderItineraryInput,
   TripRoute,
   UpdateItineraryDayInput,
   UpdateItineraryItemInput,
@@ -177,6 +178,41 @@ export function useItinerary(tripId: string) {
     })
   }
 
+  async function reorder(input: ReorderItineraryInput) {
+    return runMutation(async () => {
+      const daysById = new Map(days.value.map((day) => [day.id, day]))
+      const itemsById = new Map(days.value.flatMap((day) => day.items).map((item) => [item.id, item]))
+      const reorderedDays = [...input.days]
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((dayOrder) => {
+          const day = daysById.get(dayOrder.dayId)
+          if (!day) throw new Error('Itinerary day not found for reorder.')
+          return {
+            ...day,
+            sortOrder: dayOrder.sortOrder,
+            items: [...dayOrder.itemOrders]
+              .sort((left, right) => left.sortOrder - right.sortOrder)
+              .map((itemOrder) => {
+                const item = itemsById.get(itemOrder.itemId)
+                if (!item) throw new Error('Itinerary item not found for reorder.')
+                return {
+                  ...item,
+                  itineraryDayId: dayOrder.dayId,
+                  sortOrder: itemOrder.sortOrder,
+                }
+            }),
+          }
+        })
+
+      const response = await itineraryApi.reorder(tripId, {
+        ...input,
+        baseVersion: itineraryVersion.value,
+      })
+      days.value = reorderedDays
+      applyMutation(response)
+    })
+  }
+
   return {
     itineraryVersion,
     days,
@@ -196,5 +232,6 @@ export function useItinerary(tripId: string) {
     createItem,
     updateItem,
     deleteItem,
+    reorder,
   }
 }

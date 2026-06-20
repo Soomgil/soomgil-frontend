@@ -4,6 +4,7 @@ import type {
   CreateItineraryItemRequest,
   Itinerary,
   ItineraryMutationResponse,
+  ReorderItineraryRequest,
   UpdateItineraryDayRequest,
   UpdateItineraryItemRequest,
 } from '@/types/itinerary'
@@ -45,6 +46,11 @@ export const itineraryApi = {
     const response = await http.delete<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/items/${itemId}`, {
       data: { baseVersion },
     })
+    return response.data
+  },
+
+  reorder: async (tripId: string, request: ReorderItineraryRequest): Promise<ItineraryMutationResponse> => {
+    const response = await http.put<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/order`, request)
     return response.data
   },
 }

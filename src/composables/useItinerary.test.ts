@@ -12,6 +12,7 @@ vi.mock('@/api/itinerary.api', () => ({
     createItem: vi.fn(),
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
+    reorder: vi.fn(),
   },
 }))
 
@@ -236,5 +237,39 @@ describe('useItinerary', () => {
     expect(state.allItems.value).toEqual([])
     expect(state.routes.value).toEqual([])
     expect(itineraryApi.deleteItem).toHaveBeenCalledWith('trip-1', 'item-1', 3)
+  })
+
+  it('전체 순서 snapshot을 저장하고 일차 이동을 로컬 상태에 반영한다', async () => {
+    const scheduledItem = { ...item, itineraryDayId: 'day-1' }
+    vi.mocked(itineraryApi.getItinerary).mockResolvedValue({
+      ...itinerary,
+      days: [
+        { ...scheduledDay, items: [scheduledItem] },
+        { ...unscheduledDay, items: [] },
+      ],
+    })
+    vi.mocked(itineraryApi.reorder).mockResolvedValue({
+      tripId: 'trip-1', itineraryVersion: 4, day: null, item: null,
+      route: null, drawing: null, affectedRouteIds: [],
+    })
+    const state = useItinerary('trip-1')
+    await state.fetchItinerary()
+    const order = {
+      days: [
+        { dayId: 'day-unscheduled', sortOrder: 0, itemOrders: [{ itemId: 'item-1', sortOrder: 0 }] },
+        { dayId: 'day-1', sortOrder: 1, itemOrders: [] },
+      ],
+    }
+
+    await state.reorder(order)
+
+    expect(itineraryApi.reorder).toHaveBeenCalledWith('trip-1', { ...order, baseVersion: 3 })
+    expect(state.days.value.map((day) => day.id)).toEqual(['day-unscheduled', 'day-1'])
+    expect(state.days.value[0].items).toEqual([{
+      ...scheduledItem,
+      itineraryDayId: 'day-unscheduled',
+      sortOrder: 0,
+    }])
+    expect(state.itineraryVersion.value).toBe(4)
   })
 })

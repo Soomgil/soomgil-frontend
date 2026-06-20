@@ -125,7 +125,24 @@ export interface UpdateItineraryItemRequest {
   thumbnailUrl?: string | null
 }
 
+export interface ItineraryItemOrderRequest {
+  itemId: string
+  sortOrder: number
+}
+
+export interface ItineraryDayOrderRequest {
+  dayId: string
+  sortOrder: number
+  itemOrders: ItineraryItemOrderRequest[]
+}
+
+export interface ReorderItineraryRequest {
+  baseVersion: number
+  days: ItineraryDayOrderRequest[]
+}
+
 export type CreateItineraryDayInput = Omit<CreateItineraryDayRequest, 'baseVersion'>
 export type UpdateItineraryDayInput = Omit<UpdateItineraryDayRequest, 'baseVersion'>
 export type CreateItineraryItemInput = Omit<CreateItineraryItemRequest, 'baseVersion'>
 export type UpdateItineraryItemInput = Omit<UpdateItineraryItemRequest, 'baseVersion'>
+export type ReorderItineraryInput = Omit<ReorderItineraryRequest, 'baseVersion'>

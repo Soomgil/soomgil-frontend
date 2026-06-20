@@ -7,6 +7,7 @@ vi.mock('./http', () => ({
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
+    put: vi.fn(),
     delete: vi.fn(),
   },
 }))
@@ -68,5 +69,17 @@ describe('itinerary API', () => {
     expect(http.delete).toHaveBeenCalledWith('/trips/trip-1/itinerary/items/item-1', {
       data: { baseVersion: 5 },
     })
+  })
+
+  it('전체 일정 순서 snapshot을 저장한다', async () => {
+    const request = {
+      baseVersion: 8,
+      days: [{ dayId: 'day-1', sortOrder: 0, itemOrders: [{ itemId: 'item-1', sortOrder: 0 }] }],
+    }
+    vi.mocked(http.put).mockResolvedValue({ data: { itineraryVersion: 9 } })
+
+    await itineraryApi.reorder('trip-1', request)
+
+    expect(http.put).toHaveBeenCalledWith('/trips/trip-1/itinerary/order', request)
   })
 })
