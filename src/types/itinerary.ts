@@ -1,22 +1,34 @@
-/* ── Geometry helpers (GeoJSON互換) ── */
-export interface LineStringGeometry {
-  type: 'LineString'
-  coordinates: [number, number][]
-}
-
-export interface GenericGeometry {
-  type: string
-  coordinates: unknown
-}
-
-/* ── Enums ── */
 export type DayGroupType = 'DAY' | 'UNSCHEDULED'
 export type ItemType = 'PLACE' | 'CUSTOM_PLACE'
 export type SourceStatus = 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
 export type RouteMode = 'DRIVING' | 'WALKING'
 export type DrawingType = 'FREEHAND' | 'LINE' | 'POLYGON' | 'MARKER' | 'TEXT'
+export type GeometryFormat = 'GEOJSON'
 
-/* ── Itinerary Day ── */
+export interface LineStringGeometry extends Record<string, unknown> {
+  type: 'LineString'
+  coordinates: [number, number][]
+}
+
+export interface PlaceRef {
+  provider: 'KTO'
+  externalPlaceId: string
+}
+
+export interface ItineraryItem {
+  id: string
+  itineraryDayId: string
+  sortOrder: number
+  itemType: ItemType
+  place: PlaceRef | null
+  placeName: string
+  address: string | null
+  lat: number | null
+  lng: number | null
+  thumbnailUrl: string | null
+  sourceStatus: SourceStatus
+}
+
 export interface ItineraryDay {
   id: string
   tripId: string
@@ -25,90 +37,95 @@ export interface ItineraryDay {
   date: string | null
   title: string | null
   sortOrder: number
-  createdAt: string
-  updatedAt: string
-
-  /** API에서 join해서 줄 수 있는 items */
-  items?: ItineraryItem[]
+  items: ItineraryItem[]
 }
 
-/* ── Itinerary Item ── */
-export interface ItineraryItem {
-  id: string
-  tripId: string
-  itineraryDayId: string
-  sortOrder: number
-  itemType: ItemType
-  placeProvider: string | null
-  externalPlaceId: string | null
-  placeName: string
-  address: string | null
-  lat: number | null
-  lng: number | null
-  thumbnailUrl: string | null
-  sourceStatus: SourceStatus
-  createdByUserId: string | null
-  updatedByUserId: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-/* ── Trip Route (item-to-item segment) ── */
 export interface TripRoute {
   id: string
-  tripId: string
   originItineraryItemId: string
   destinationItineraryItemId: string
   mode: RouteMode
   provider: string
-  geometry: LineStringGeometry | null
+  providerProfile: string | null
+  geometryFormat: GeometryFormat
+  geometry: Record<string, unknown>
   distanceMeters: number | null
   durationSeconds: number | null
-  createdByUserId: string | null
-  createdAt: string
-  updatedAt: string
+  confidence: number | null
 }
 
-/* ── Map Drawing ── */
 export interface MapDrawing {
   id: string
-  tripId: string
   itineraryDayId: string | null
   drawingType: DrawingType
-  geometry: GenericGeometry
+  geometryFormat: GeometryFormat
+  geometry: Record<string, unknown>
   style: Record<string, unknown> | null
   label: string | null
-  sortOrder: number
+  sortOrder: number | null
   version: number
-  createdByUserId: string
-  createdAt: string
-  updatedAt: string
 }
 
-/* ── Request Types ── */
-export interface ItineraryPutRequest {
-  days: {
-    id?: string
-    groupType: DayGroupType
-    dayNumber?: number | null
-    date?: string | null
-    title?: string | null
-    sortOrder: number
-    items: {
-      id?: string
-      itemType: ItemType
-      placeProvider?: string | null
-      externalPlaceId?: string | null
-      placeName: string
-      address?: string | null
-      lat?: number | null
-      lng?: number | null
-      sortOrder: number
-    }[]
-  }[]
-  routes: {
-    originItineraryItemId: string
-    destinationItineraryItemId: string
-    mode: RouteMode
-  }[]
+export interface Itinerary {
+  tripId: string
+  itineraryVersion: number
+  days: ItineraryDay[]
+  routes: TripRoute[]
+  mapDrawings: MapDrawing[]
 }
+
+export interface ItineraryMutationResponse {
+  tripId: string
+  itineraryVersion: number
+  day: ItineraryDay | null
+  item: ItineraryItem | null
+  route: TripRoute | null
+  drawing: MapDrawing | null
+  affectedRouteIds: string[]
+}
+
+export interface CreateItineraryDayRequest {
+  baseVersion: number
+  groupType: DayGroupType
+  dayNumber?: number | null
+  date?: string | null
+  title?: string | null
+  sortOrder?: number | null
+}
+
+export interface UpdateItineraryDayRequest {
+  baseVersion: number
+  dayNumber?: number | null
+  date?: string | null
+  title?: string | null
+  sortOrder?: number | null
+}
+
+export interface CreateItineraryItemRequest {
+  baseVersion: number
+  itineraryDayId: string
+  sortOrder: number
+  itemType: ItemType
+  place?: PlaceRef | null
+  placeName: string
+  address?: string | null
+  lat?: number | null
+  lng?: number | null
+  thumbnailUrl?: string | null
+}
+
+export interface UpdateItineraryItemRequest {
+  baseVersion: number
+  itineraryDayId?: string
+  sortOrder?: number
+  placeName?: string
+  address?: string | null
+  lat?: number | null
+  lng?: number | null
+  thumbnailUrl?: string | null
+}
+
+export type CreateItineraryDayInput = Omit<CreateItineraryDayRequest, 'baseVersion'>
+export type UpdateItineraryDayInput = Omit<UpdateItineraryDayRequest, 'baseVersion'>
+export type CreateItineraryItemInput = Omit<CreateItineraryItemRequest, 'baseVersion'>
+export type UpdateItineraryItemInput = Omit<UpdateItineraryItemRequest, 'baseVersion'>
