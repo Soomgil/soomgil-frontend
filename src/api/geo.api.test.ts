@@ -23,13 +23,15 @@ describe('geoApi', () => {
 
   it('viewport를 bbox 순서로 직렬화한다', async () => {
     const viewport = { minLng: 126.9, minLat: 37.4, maxLng: 127.2, maxLat: 37.7 }
+    const controller = new AbortController()
     vi.mocked(http.get).mockResolvedValue({ data: { viewport } })
 
-    await geoApi.summarizeViewport(viewport)
+    await geoApi.summarizeViewport(viewport, controller.signal)
 
     expect(formatViewportBbox(viewport)).toBe('126.9,37.4,127.2,37.7')
     expect(http.get).toHaveBeenCalledWith('/viewport', {
       params: { bbox: '126.9,37.4,127.2,37.7' },
+      signal: controller.signal,
     })
   })
 

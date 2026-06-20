@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import RoutePage from './RoutePage.vue'
 
-const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any }))
+const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { tripId: 'trip-1' } }),
@@ -36,6 +36,20 @@ vi.mock('@/stores/trip.store', () => ({
   useTripStore: () => holder.tripStore,
 }))
 
+vi.mock('@/composables/useMapViewport', async () => {
+  const { computed, ref } = await import('vue')
+  holder.viewportState = {
+    viewport: ref(null),
+    summary: ref(null),
+    center: computed(() => null),
+    loading: ref(false),
+    error: ref(null),
+    updateViewport: vi.fn(),
+    retry: vi.fn(),
+  }
+  return { useMapViewport: () => holder.viewportState }
+})
+
 describe('RoutePage itinerary integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -55,6 +69,8 @@ describe('RoutePage itinerary integration', () => {
     })
     holder.state.days.value = []
     holder.state.error.value = null
+    holder.viewportState.loading.value = false
+    holder.viewportState.error.value = null
     holder.state.fetchItinerary.mockImplementation(async () => {
       holder.state.days.value = [
         {
@@ -137,5 +153,24 @@ describe('RoutePage itinerary integration', () => {
     const addButton = wrapper.get('.search-result-add-btn')
     expect(addButton.attributes('disabled')).toBeDefined()
     expect(holder.state.createItem).not.toHaveBeenCalled()
+  })
+
+  it('지도 범위 동기화 실패를 표시하고 재시도한다', async () => {
+    holder.viewportState.error.value = '지도 범위를 동기화하지 못했습니다.'
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.map-viewport-status[role="alert"]').text()).toContain('지도 범위를 동기화하지 못했습니다.')
+    await wrapper.get('.map-viewport-retry').trigger('click')
+    expect(holder.viewportState.retry).toHaveBeenCalledOnce()
   })
 })

@@ -1187,6 +1187,22 @@ function textAvatarStyle(index: unknown) {
               @viewport-change="mapViewport.updateViewport"
             />
 
+            <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
+              지도 범위를 동기화하는 중
+            </div>
+            <div v-else-if="mapViewport.error.value" class="map-viewport-status is-error" role="alert">
+              <span>{{ mapViewport.error.value }}</span>
+              <button
+                class="map-viewport-retry"
+                type="button"
+                aria-label="지도 범위 동기화 다시 시도"
+                title="다시 시도"
+                @click="mapViewport.retry"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+              </button>
+            </div>
+
             <!-- ===== Pen popover ===== -->
             <div :class="['tool-popover', { 'is-open': isPenPopoverOpen }]" id="pen-popover" :aria-hidden="!isPenPopoverOpen">
               <div class="popover-section">
@@ -1823,6 +1839,48 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .map-canvas {
   height: 100%;
   min-height: 0;
+}
+
+.map-viewport-status {
+  align-items: center;
+  background: rgb(255 255 255 / 94%);
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 12%);
+  color: #374151;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  left: 50%;
+  line-height: 1.4;
+  max-width: calc(100% - 32px);
+  padding: 7px 10px;
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 8;
+}
+
+.map-viewport-status.is-error {
+  border-color: #fecdd3;
+  color: #be123c;
+}
+
+.map-viewport-retry {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.map-viewport-retry .material-symbols-rounded {
+  font-size: 18px;
 }
 
 .itinerary-day-actions {

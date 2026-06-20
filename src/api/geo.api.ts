@@ -21,9 +21,10 @@ export const geoApi = {
     return response.data
   },
 
-  summarizeViewport: async (viewport: Viewport): Promise<ViewportSummary> => {
+  summarizeViewport: async (viewport: Viewport, signal?: AbortSignal): Promise<ViewportSummary> => {
     const response = await http.get<ViewportSummary>('/viewport', {
       params: { bbox: formatViewportBbox(viewport) },
+      ...(signal ? { signal } : {}),
     })
     return response.data
   },
