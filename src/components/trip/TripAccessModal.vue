@@ -66,7 +66,8 @@ async function createInvite() {
 async function copyInviteCode(invite: TripInvite) {
   actionError.value = ''
   try {
-    await navigator.clipboard.writeText(invite.inviteCode)
+    const inviteLink = new URL(`/trip-invites/${encodeURIComponent(invite.inviteCode)}`, window.location.origin)
+    await navigator.clipboard.writeText(inviteLink.toString())
     copiedInviteId.value = invite.id
   } catch {
     actionError.value = '초대 코드를 복사하지 못했습니다.'

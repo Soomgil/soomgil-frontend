@@ -48,7 +48,13 @@ const trip: TripSummary = {
 }
 
 describe('TripAccessModal', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    })
+  })
 
   it('방장에게 멤버와 초대 코드를 표시하고 새 코드를 생성한다', async () => {
     const wrapper = mount(TripAccessModal, {
@@ -72,5 +78,16 @@ describe('TripAccessModal', () => {
     await wrapper.get('button[aria-label="닫기"]').trigger('click')
 
     expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
+  it('초대 코드를 로그인 복귀가 가능한 딥링크로 복사한다', async () => {
+    const wrapper = mount(TripAccessModal, {
+      props: { open: true, trip },
+    })
+
+    await wrapper.get('button[aria-label="JOIN-ME 복사"]').trigger('click')
+
+    const copiedValue = vi.mocked(navigator.clipboard.writeText).mock.calls[0][0]
+    expect(copiedValue).toMatch(/\/trip-invites\/JOIN-ME$/)
   })
 })

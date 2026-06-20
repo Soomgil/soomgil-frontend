@@ -16,6 +16,7 @@ vi.mock('@/api/trip.api', () => ({
     createInvite: vi.fn(),
     revokeInvite: vi.fn(),
     removeMember: vi.fn(),
+    acceptInvite: vi.fn(),
   },
 }))
 
@@ -193,6 +194,18 @@ describe('trip store', () => {
     expect(store.members).toEqual([member])
     expect(store.invites).toEqual([])
     expect(store.accessError).toBeNull()
+  })
+
+  it('초대 수락 결과를 여행 목록과 현재 여행에 반영한다', async () => {
+    vi.mocked(tripApi.acceptInvite).mockResolvedValue(trip)
+    const store = useTripStore()
+
+    const accepted = await store.acceptInvite('JOIN-ME')
+
+    expect(accepted).toEqual(trip)
+    expect(store.trips).toEqual([trip])
+    expect(store.currentTrip).toEqual(trip)
+    expect(store.acceptingInvite).toBe(false)
   })
 
   it('수정된 여행을 목록과 현재 여행에 반영한다', async () => {

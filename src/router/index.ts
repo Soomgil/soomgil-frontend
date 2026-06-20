@@ -34,6 +34,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/trip-invites/:inviteCode',
+      name: 'TripInviteAccept',
+      component: () => import('@/pages/TripInviteAcceptPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/trips/:tripId/swipe',
       name: 'Swipe',
       component: () => import('@/pages/SwipePage.vue'),

@@ -25,6 +25,7 @@ export const useTripStore = defineStore('trip', () => {
   const loadingMore = ref(false)
   const creating = ref(false)
   const mutating = ref(false)
+  const acceptingInvite = ref(false)
   const accessLoading = ref(false)
   const error = ref<string | null>(null)
   const loadMoreError = ref<string | null>(null)
@@ -179,6 +180,20 @@ export const useTripStore = defineStore('trip', () => {
     members.value = members.value.filter((member) => member.user.id !== userId)
   }
 
+  async function acceptInvite(inviteCode: string) {
+    acceptingInvite.value = true
+    try {
+      const acceptedTrip = await tripApi.acceptInvite(inviteCode)
+      currentTrip.value = acceptedTrip
+      const index = trips.value.findIndex((trip) => trip.id === acceptedTrip.id)
+      if (index >= 0) trips.value[index] = acceptedTrip
+      else trips.value.unshift(acceptedTrip)
+      return acceptedTrip
+    } finally {
+      acceptingInvite.value = false
+    }
+  }
+
   return {
     currentTrip,
     trips,
@@ -189,6 +204,7 @@ export const useTripStore = defineStore('trip', () => {
     loadingMore,
     creating,
     mutating,
+    acceptingInvite,
     accessLoading,
     error,
     loadMoreError,
@@ -206,5 +222,6 @@ export const useTripStore = defineStore('trip', () => {
     createInvite,
     revokeInvite,
     removeMember,
+    acceptInvite,
   }
 })
