@@ -59,6 +59,7 @@ describe('LegalRegionCombobox', () => {
     })
 
     await wrapper.get('input').setValue('부산')
+    await wrapper.setProps({ modelValue: '부산' })
     await vi.advanceTimersByTimeAsync(300)
     const firstSignal = vi.mocked(geoApi.searchLegalRegions).mock.calls[0]?.[1]
 
@@ -66,5 +67,23 @@ describe('LegalRegionCombobox', () => {
 
     expect(firstSignal?.aborted).toBe(true)
     expect(wrapper.emitted('select')?.at(-1)).toEqual([null])
+  })
+
+  it('부모가 입력을 초기화하면 진행 중 검색과 결과 목록을 정리한다', async () => {
+    vi.mocked(geoApi.searchLegalRegions).mockReturnValue(new Promise(() => undefined))
+    const wrapper = mount(LegalRegionCombobox, {
+      props: { id: 'destination', modelValue: '' },
+    })
+
+    await wrapper.get('input').setValue('부산')
+    await wrapper.setProps({ modelValue: '부산' })
+    await vi.advanceTimersByTimeAsync(300)
+    const signal = vi.mocked(geoApi.searchLegalRegions).mock.calls[0]?.[1]
+
+    await wrapper.setProps({ modelValue: '' })
+
+    expect(signal?.aborted).toBe(true)
+    expect(wrapper.get('input').element.value).toBe('')
+    expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
   })
 })

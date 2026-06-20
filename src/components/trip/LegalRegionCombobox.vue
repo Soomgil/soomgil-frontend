@@ -37,7 +37,11 @@ const activeOptionId = computed(() => open.value && activeIndex.value >= 0
   : undefined)
 
 watch(() => props.modelValue, (value) => {
+  if (inputValue.value === value) return
   inputValue.value = value
+  clearSearchTimer()
+  cancelRequest()
+  resetResults()
 })
 
 function clearSearchTimer() {
