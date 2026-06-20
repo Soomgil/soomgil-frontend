@@ -9,6 +9,7 @@ import type {
   TripInvite,
   TripListParams,
   TripSummary,
+  TripUpdateRequest,
 } from '@/types/trip'
 import { tripApi } from '@/api/trip.api'
 
@@ -22,6 +23,7 @@ export const useTripStore = defineStore('trip', () => {
   const loading = ref(false)
   const loadingMore = ref(false)
   const creating = ref(false)
+  const mutating = ref(false)
   const accessLoading = ref(false)
   const error = ref<string | null>(null)
   const loadMoreError = ref<string | null>(null)
@@ -102,6 +104,47 @@ export const useTripStore = defineStore('trip', () => {
     }
   }
 
+  async function updateTrip(tripId: string, data: TripUpdateRequest) {
+    mutating.value = true
+    try {
+      const updated = await tripApi.updateTrip(tripId, data)
+      const index = trips.value.findIndex((trip) => trip.id === tripId)
+      const matchesCurrentStatus = !listParams.value.status || listParams.value.status === updated.status
+      if (index >= 0 && matchesCurrentStatus) {
+        trips.value[index] = updated
+      } else if (index >= 0) {
+        trips.value.splice(index, 1)
+        decrementPageTotal()
+      }
+      if (currentTrip.value?.id === tripId) currentTrip.value = updated
+      return updated
+    } finally {
+      mutating.value = false
+    }
+  }
+
+  async function deleteTrip(tripId: string) {
+    mutating.value = true
+    try {
+      await tripApi.deleteTrip(tripId)
+      trips.value = trips.value.filter((trip) => trip.id !== tripId)
+      if (currentTrip.value?.id === tripId) currentTrip.value = null
+      decrementPageTotal()
+    } finally {
+      mutating.value = false
+    }
+  }
+
+  function decrementPageTotal() {
+    if (!page.value) return
+    const totalElements = Math.max(0, page.value.totalElements - 1)
+    page.value = {
+      ...page.value,
+      totalElements,
+      totalPages: Math.ceil(totalElements / page.value.size),
+    }
+  }
+
   async function createInvite(tripId: string) {
     const invite = await tripApi.createInvite(tripId)
     invites.value.unshift(invite)
@@ -127,6 +170,7 @@ export const useTripStore = defineStore('trip', () => {
     loading,
     loadingMore,
     creating,
+    mutating,
     accessLoading,
     error,
     loadMoreError,
@@ -138,6 +182,8 @@ export const useTripStore = defineStore('trip', () => {
     setCurrentTrip,
     fetchTrip,
     createTrip,
+    updateTrip,
+    deleteTrip,
     fetchTripAccess,
     createInvite,
     revokeInvite,

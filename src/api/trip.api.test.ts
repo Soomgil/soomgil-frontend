@@ -7,6 +7,7 @@ vi.mock('./http', () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
+    patch: vi.fn(),
     delete: vi.fn(),
   },
 }))
@@ -105,5 +106,23 @@ describe('tripApi', () => {
     await expect(tripApi.acceptInvite('JOIN-ME')).resolves.toEqual(trip)
 
     expect(http.post).toHaveBeenCalledWith('/trip-invites/JOIN-ME/accept', {})
+  })
+
+  it('여행 수정과 삭제를 실제 여행 리소스로 요청한다', async () => {
+    const updated = { ...trip, title: '수정된 부산 여행', status: 'ARCHIVED' as const }
+    vi.mocked(http.patch).mockResolvedValue({ data: updated })
+    vi.mocked(http.delete).mockResolvedValue({ data: undefined })
+
+    await expect(tripApi.updateTrip(trip.id, {
+      title: updated.title,
+      status: updated.status,
+    })).resolves.toEqual(updated)
+    await expect(tripApi.deleteTrip(trip.id)).resolves.toBeUndefined()
+
+    expect(http.patch).toHaveBeenCalledWith(`/trips/${trip.id}`, {
+      title: updated.title,
+      status: updated.status,
+    })
+    expect(http.delete).toHaveBeenCalledWith(`/trips/${trip.id}`)
   })
 })

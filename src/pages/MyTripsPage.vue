@@ -6,6 +6,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import TripAccessModal from '@/components/trip/TripAccessModal.vue'
+import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
@@ -19,6 +20,7 @@ const newTitle = ref('')
 const newDestination = ref('')
 const createError = ref('')
 const accessTrip = ref<TripSummary | null>(null)
+const settingsTrip = ref<TripSummary | null>(null)
 
 const filters: { label: string; value: TripFilter }[] = [
   { label: '전체', value: 'all' },
@@ -72,6 +74,14 @@ function openTripAccess(trip: TripSummary) {
 
 function closeTripAccess() {
   accessTrip.value = null
+}
+
+function openTripSettings(trip: TripSummary) {
+  settingsTrip.value = trip
+}
+
+function closeTripSettings() {
+  settingsTrip.value = null
 }
 
 async function handleCreateTrip() {
@@ -183,10 +193,16 @@ watch(activeFilter, loadTrips)
               </div>
               <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
             </button>
-            <button class="travel-card__access" type="button" @click="openTripAccess(trip)">
-              <span class="material-symbols-rounded" aria-hidden="true">group</span>
-              {{ trip.myRole === 'OWNER' ? '멤버 및 초대 관리' : '멤버 보기' }}
-            </button>
+            <div class="travel-card__actions">
+              <button class="travel-card__access" type="button" @click="openTripAccess(trip)">
+                <span class="material-symbols-rounded" aria-hidden="true">group</span>
+                {{ trip.myRole === 'OWNER' ? '멤버 및 초대' : '멤버 보기' }}
+              </button>
+              <button v-if="trip.myRole === 'OWNER'" class="travel-card__settings" type="button" @click="openTripSettings(trip)">
+                <span class="material-symbols-rounded" aria-hidden="true">settings</span>
+                설정
+              </button>
+            </div>
           </article>
         </div>
         <div v-if="tripStore.hasMoreTrips && !tripStore.loading" class="load-more-row">
@@ -238,6 +254,12 @@ watch(activeFilter, loadTrips)
     </div>
 
     <TripAccessModal :open="Boolean(accessTrip)" :trip="accessTrip" @close="closeTripAccess" />
+    <TripSettingsModal
+      :open="Boolean(settingsTrip)"
+      :trip="settingsTrip"
+      @close="closeTripSettings"
+      @deleted="closeTripSettings"
+    />
   </div>
 </template>
 
@@ -293,16 +315,24 @@ watch(activeFilter, loadTrips)
 }
 
 .travel-card__main:focus-visible,
-.travel-card__access:focus-visible {
+.travel-card__access:focus-visible,
+.travel-card__settings:focus-visible {
   outline: 2px solid #7c3aed;
   outline-offset: -2px;
 }
 
-.travel-card__access {
+.travel-card__actions {
+  border-top: 1px solid #e5e7eb;
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+}
+
+.travel-card__access,
+.travel-card__settings {
   align-items: center;
   background: #f9fafb;
   border: 0;
-  border-top: 1px solid #e5e7eb;
   color: #4b5563;
   cursor: pointer;
   display: flex;
@@ -311,6 +341,10 @@ watch(activeFilter, loadTrips)
   justify-content: center;
   padding: 12px 16px;
   width: 100%;
+}
+
+.travel-card__settings {
+  border-left: 1px solid #e5e7eb;
 }
 
 .travel-card__body {

@@ -99,7 +99,7 @@ export interface TripCreateRequest {
 
 export interface TripUpdateRequest {
   title?: string
-  displayDestination?: string | null
+  displayDestination?: string
   legalRegionCodes?: string[]
   status?: TripStatus
 }

@@ -9,6 +9,8 @@ vi.mock('@/api/trip.api', () => ({
     getTrips: vi.fn(),
     getTrip: vi.fn(),
     createTrip: vi.fn(),
+    updateTrip: vi.fn(),
+    deleteTrip: vi.fn(),
     getMembers: vi.fn(),
     getInvites: vi.fn(),
     createInvite: vi.fn(),
@@ -142,5 +144,49 @@ describe('trip store', () => {
     expect(store.members).toEqual([member])
     expect(store.invites).toEqual([])
     expect(store.accessError).toBeNull()
+  })
+
+  it('수정된 여행을 목록과 현재 여행에 반영한다', async () => {
+    const updated = { ...trip, title: '수정된 부산 여행', status: 'ARCHIVED' as const }
+    vi.mocked(tripApi.getTrips).mockResolvedValue(page)
+    vi.mocked(tripApi.updateTrip).mockResolvedValue(updated)
+    const store = useTripStore()
+    await store.fetchTrips()
+    store.setCurrentTrip(trip)
+
+    await store.updateTrip(trip.id, { title: updated.title, status: updated.status })
+
+    expect(store.trips).toEqual([updated])
+    expect(store.currentTrip).toEqual(updated)
+    expect(store.mutating).toBe(false)
+  })
+
+  it('상태 변경으로 현재 필터에서 벗어난 여행을 목록에서 제거한다', async () => {
+    const activePage = { ...page, page: { ...page.page, totalElements: 1, totalPages: 1 } }
+    const archived = { ...trip, status: 'ARCHIVED' as const }
+    vi.mocked(tripApi.getTrips).mockResolvedValue(activePage)
+    vi.mocked(tripApi.updateTrip).mockResolvedValue(archived)
+    const store = useTripStore()
+    await store.fetchTrips({ status: 'ACTIVE' })
+
+    await store.updateTrip(trip.id, { status: 'ARCHIVED' })
+
+    expect(store.trips).toEqual([])
+    expect(store.page?.totalElements).toBe(0)
+  })
+
+  it('삭제된 여행을 목록에서 제거하고 페이지 개수를 줄인다', async () => {
+    vi.mocked(tripApi.getTrips).mockResolvedValue(page)
+    vi.mocked(tripApi.deleteTrip).mockResolvedValue(undefined)
+    const store = useTripStore()
+    await store.fetchTrips()
+    store.setCurrentTrip(trip)
+
+    await store.deleteTrip(trip.id)
+
+    expect(store.trips).toEqual([])
+    expect(store.currentTrip).toBeNull()
+    expect(store.page?.totalElements).toBe(0)
+    expect(store.mutating).toBe(false)
   })
 })
