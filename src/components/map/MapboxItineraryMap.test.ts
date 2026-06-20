@@ -13,7 +13,14 @@ const mapbox = vi.hoisted(() => {
     fitBounds: vi.fn(),
     getLayer: vi.fn(),
     getSource: vi.fn(),
+    getBounds: vi.fn(() => ({
+      getWest: () => 126.9,
+      getSouth: () => 37.4,
+      getEast: () => 127.2,
+      getNorth: () => 37.7,
+    })),
     on: vi.fn((event: string, callback: () => void) => handlers.set(event, callback)),
+    once: vi.fn((event: string, callback: () => void) => handlers.set(event, callback)),
     remove: vi.fn(),
     removeLayer: vi.fn(),
     removeSource: vi.fn(),
@@ -76,6 +83,7 @@ describe('MapboxItineraryMap', () => {
     const wrapper = mount(MapboxItineraryMap, { props: { stops } })
     await flushPromises()
     mapbox.handlers.get('load')?.()
+    mapbox.handlers.get('idle')?.()
     await nextTick()
 
     expect(mapbox.Map).toHaveBeenCalledOnce()
@@ -83,6 +91,12 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-day-1', expect.objectContaining({ type: 'geojson' }))
     expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'itinerary-day-1', type: 'line' }))
     expect(mapbox.map.fitBounds).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('viewportChange')).toEqual([[
+      { minLng: 126.9, minLat: 37.4, maxLng: 127.2, maxLat: 37.7 },
+    ]])
+
+    mapbox.handlers.get('moveend')?.()
+    expect(wrapper.emitted('viewportChange')).toHaveLength(1)
 
     await wrapper.setProps({ stops: [stops[0]] })
     expect(mapbox.marker.remove).toHaveBeenCalledTimes(2)

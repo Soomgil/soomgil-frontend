@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import type { Viewport } from '@/types/geo'
 
 export interface ItineraryMapStop {
   id: string
@@ -14,7 +15,10 @@ export interface ItineraryMapStop {
 }
 
 const props = defineProps<{ stops: ItineraryMapStop[] }>()
-const emit = defineEmits<{ selectPlace: [placeId: string] }>()
+const emit = defineEmits<{
+  selectPlace: [placeId: string]
+  viewportChange: [viewport: Viewport]
+}>()
 
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
 const container = ref<HTMLElement | null>(null)
@@ -27,6 +31,7 @@ let resizeObserver: ResizeObserver | null = null
 let lineLayerIds: string[] = []
 let styleReady = false
 let initializationSequence = 0
+let lastEmittedViewport = ''
 
 function dayColor(dayIndex: number) {
   const colors = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
@@ -144,6 +149,22 @@ function renderStops() {
   }
 }
 
+function emitViewport() {
+  if (!map || !styleReady) return
+  const bounds = map.getBounds()
+  if (!bounds) return
+  const viewport = {
+    minLng: bounds.getWest(),
+    minLat: bounds.getSouth(),
+    maxLng: bounds.getEast(),
+    maxLat: bounds.getNorth(),
+  }
+  const viewportKey = `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
+  if (viewportKey === lastEmittedViewport) return
+  lastEmittedViewport = viewportKey
+  emit('viewportChange', viewport)
+}
+
 function cleanupMapResources() {
   resizeObserver?.disconnect()
   resizeObserver = null
@@ -151,6 +172,7 @@ function cleanupMapResources() {
   map?.remove()
   map = null
   styleReady = false
+  lastEmittedViewport = ''
 }
 
 async function initializeMap() {
@@ -184,12 +206,14 @@ async function initializeMap() {
       mapError.value = ''
       canRetry.value = false
       renderStops()
+      createdMap.once('idle', emitViewport)
     })
     createdMap.on('error', () => {
       if (sequence !== initializationSequence || map !== createdMap || styleReady) return
       mapError.value = '지도를 불러오지 못했습니다.'
       canRetry.value = true
     })
+    createdMap.on('moveend', emitViewport)
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => map?.resize())
       resizeObserver.observe(container.value)

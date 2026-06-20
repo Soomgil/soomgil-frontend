@@ -10,6 +10,7 @@ import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerar
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
 import { useItinerary } from '@/composables/useItinerary'
+import { useMapViewport } from '@/composables/useMapViewport'
 import { mockPlaces } from '@/mocks/mockPlaces'
 import { useTripStore } from '@/stores/trip.store'
 
@@ -27,6 +28,7 @@ const route = useRoute()
 const tripIdParam = route.params.tripId
 const tripId = Array.isArray(tripIdParam) ? tripIdParam[0] ?? '' : tripIdParam ?? ''
 const itinerary = useItinerary(tripId)
+const mapViewport = useMapViewport()
 const tripStore = useTripStore()
 const trip = computed(() => {
   const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
@@ -1179,7 +1181,11 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ MAP CANVAS ═══ -->
           <div class="map-canvas" aria-label="대전 여행 지도">
-            <MapboxItineraryMap :stops="mapStops" @select-place="selectPlace" />
+            <MapboxItineraryMap
+              :stops="mapStops"
+              @select-place="selectPlace"
+              @viewport-change="mapViewport.updateViewport"
+            />
 
             <!-- ===== Pen popover ===== -->
             <div :class="['tool-popover', { 'is-open': isPenPopoverOpen }]" id="pen-popover" :aria-hidden="!isPenPopoverOpen">

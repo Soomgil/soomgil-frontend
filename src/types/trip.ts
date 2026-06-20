@@ -1,3 +1,5 @@
+import type { LegalRegion } from './geo'
+
 /* ── Enums ── */
 export type TripStatus = 'ACTIVE' | 'ARCHIVED' | 'DELETED'
 export type TripMemberRole = 'OWNER' | 'MEMBER'
@@ -21,15 +23,6 @@ export interface TripSummary {
   myRole: TripAccessRole
   itineraryVersion: number
   createdAt: string
-}
-
-export interface LegalRegion {
-  code: string
-  name: string
-  fullName: string
-  level: string
-  parentCode: string | null
-  isActive: boolean
 }
 
 export interface TripDetail extends TripSummary {
