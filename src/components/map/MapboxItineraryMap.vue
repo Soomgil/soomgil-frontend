@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import mapboxgl from 'mapbox-gl'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 
 export interface ItineraryMapStop {
   id: string
@@ -19,10 +19,14 @@ const emit = defineEmits<{ selectPlace: [placeId: string] }>()
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
 const container = ref<HTMLElement | null>(null)
 const mapError = ref('')
-let map: mapboxgl.Map | null = null
-let markers: mapboxgl.Marker[] = []
+const canRetry = ref(false)
+let mapboxgl: typeof import('mapbox-gl').default | null = null
+let map: MapboxMap | null = null
+let markers: MapboxMarker[] = []
 let resizeObserver: ResizeObserver | null = null
 let lineLayerIds: string[] = []
+let styleReady = false
+let initializationSequence = 0
 
 function dayColor(dayIndex: number) {
   const colors = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
@@ -41,6 +45,7 @@ function createMarkerElement(stop: ItineraryMapStop) {
 
   const imageWrapper = document.createElement('span')
   imageWrapper.className = 'map-pin-img-wrapper'
+  imageWrapper.style.display = 'block'
   if (stop.image) {
     const image = document.createElement('img')
     image.className = 'map-pin-img'
@@ -59,6 +64,7 @@ function createMarkerElement(stop: ItineraryMapStop) {
 
   const info = document.createElement('span')
   info.className = 'map-pin-info'
+  info.style.display = 'block'
   const title = document.createElement('span')
   title.className = 'map-pin-title'
   title.textContent = stop.title
@@ -78,7 +84,10 @@ function createMarkerElement(stop: ItineraryMapStop) {
 function clearMapContent() {
   markers.forEach((marker) => marker.remove())
   markers = []
-  if (!map) return
+  if (!map || !styleReady) {
+    lineLayerIds = []
+    return
+  }
   lineLayerIds.forEach((id) => {
     if (map?.getLayer(id)) map.removeLayer(id)
     if (map?.getSource(id)) map.removeSource(id)
@@ -87,11 +96,12 @@ function clearMapContent() {
 }
 
 function renderStops() {
-  if (!map || !map.loaded()) return
+  if (!map || !mapboxgl || !styleReady) return
+  const mapbox = mapboxgl
   clearMapContent()
 
   props.stops.forEach((stop) => {
-    markers.push(new mapboxgl.Marker({ element: createMarkerElement(stop), anchor: 'bottom' })
+    markers.push(new mapbox.Marker({ element: createMarkerElement(stop), anchor: 'bottom' })
       .setLngLat([stop.lng, stop.lat])
       .addTo(map!))
   })
@@ -128,56 +138,81 @@ function renderStops() {
   } else if (props.stops.length === 1) {
     map.easeTo({ center: [props.stops[0].lng, props.stops[0].lat], zoom: 13 })
   } else {
-    const bounds = new mapboxgl.LngLatBounds()
+    const bounds = new mapbox.LngLatBounds()
     props.stops.forEach((stop) => bounds.extend([stop.lng, stop.lat]))
     map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 500 })
   }
 }
 
-function initializeMap() {
+function cleanupMapResources() {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  clearMapContent()
+  map?.remove()
+  map = null
+  styleReady = false
+}
+
+async function initializeMap() {
   if (!container.value) return
   const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim()
   if (!accessToken) {
     mapError.value = 'Mapbox access token이 설정되지 않았습니다.'
+    canRetry.value = false
     return
   }
 
+  const sequence = ++initializationSequence
   mapError.value = ''
-  mapboxgl.accessToken = accessToken
+  canRetry.value = false
   try {
-    map = new mapboxgl.Map({
+    const module = await import('mapbox-gl')
+    if (sequence !== initializationSequence || !container.value) return
+    mapboxgl = module.default
+    mapboxgl.accessToken = accessToken
+    const createdMap = new mapboxgl.Map({
       container: container.value,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: DEFAULT_CENTER,
       zoom: 10,
     })
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.on('load', renderStops)
-    map.on('error', () => {
-      if (!map?.loaded()) mapError.value = '지도를 불러오지 못했습니다.'
+    map = createdMap
+    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right')
+    createdMap.on('load', () => {
+      if (sequence !== initializationSequence || map !== createdMap) return
+      styleReady = true
+      mapError.value = ''
+      canRetry.value = false
+      renderStops()
+    })
+    createdMap.on('error', () => {
+      if (sequence !== initializationSequence || map !== createdMap || styleReady) return
+      mapError.value = '지도를 불러오지 못했습니다.'
+      canRetry.value = true
     })
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => map?.resize())
       resizeObserver.observe(container.value)
     }
   } catch {
+    if (sequence !== initializationSequence) return
+    cleanupMapResources()
     mapError.value = '지도를 초기화하지 못했습니다.'
+    canRetry.value = true
   }
 }
 
 function retry() {
-  map?.remove()
-  map = null
-  initializeMap()
+  initializationSequence++
+  cleanupMapResources()
+  void initializeMap()
 }
 
 watch(() => props.stops, renderStops, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {
-  resizeObserver?.disconnect()
-  clearMapContent()
-  map?.remove()
-  map = null
+  initializationSequence++
+  cleanupMapResources()
 })
 </script>
 
@@ -186,7 +221,7 @@ onBeforeUnmount(() => {
     <div ref="container" class="itinerary-map__canvas" aria-label="여행 일정 지도"></div>
     <div v-if="mapError" class="itinerary-map__error" role="alert">
       <span>{{ mapError }}</span>
-      <button type="button" class="btn ghost" @click="retry">다시 시도</button>
+      <button v-if="canRetry" type="button" class="btn ghost" @click="retry">다시 시도</button>
     </div>
   </div>
 </template>

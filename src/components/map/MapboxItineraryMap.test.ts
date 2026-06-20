@@ -1,9 +1,10 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from './MapboxItineraryMap.vue'
 
 const mapbox = vi.hoisted(() => {
+  const handlers = new Map<string, () => void>()
   const map = {
     addControl: vi.fn(),
     addLayer: vi.fn(),
@@ -12,10 +13,7 @@ const mapbox = vi.hoisted(() => {
     fitBounds: vi.fn(),
     getLayer: vi.fn(),
     getSource: vi.fn(),
-    loaded: vi.fn(() => true),
-    on: vi.fn((event: string, callback: () => void) => {
-      if (event === 'load') callback()
-    }),
+    on: vi.fn((event: string, callback: () => void) => handlers.set(event, callback)),
     remove: vi.fn(),
     removeLayer: vi.fn(),
     removeSource: vi.fn(),
@@ -27,6 +25,7 @@ const mapbox = vi.hoisted(() => {
     setLngLat: vi.fn().mockReturnThis(),
   }
   return {
+    handlers,
     map,
     marker,
     Map: vi.fn(function Map() { return map }),
@@ -46,29 +45,37 @@ vi.mock('mapbox-gl', () => ({
   },
 }))
 
-describe('MapboxItineraryMap', () => {
-  beforeEach(() => vi.clearAllMocks())
-  afterEach(() => vi.unstubAllEnvs())
+const stops = [
+  { id: 'item-1', placeId: 'place-1', title: '첫 장소', dayIndex: 1, index: 1, lat: 36.35, lng: 127.38 },
+  { id: 'item-2', placeId: 'place-2', title: '둘째 장소', dayIndex: 1, index: 2, lat: 36.36, lng: 127.39 },
+]
 
-  it('access token이 없으면 설정 오류와 재시도를 표시한다', async () => {
+describe('MapboxItineraryMap', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mapbox.handlers.clear()
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('access token이 없으면 재시도할 수 없는 설정 오류를 표시한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', '')
 
     const wrapper = mount(MapboxItineraryMap, { props: { stops: [] } })
     await nextTick()
 
     expect(wrapper.get('[role="alert"]').text()).toContain('Mapbox access token')
-    expect(wrapper.get('button').text()).toBe('다시 시도')
+    expect(wrapper.find('button').exists()).toBe(false)
     expect(mapbox.Map).not.toHaveBeenCalled()
   })
 
-  it('일정 좌표로 마커와 일차별 경로선을 그리고 viewport를 맞춘다', async () => {
+  it('일정 좌표로 마커와 경로선을 그리고 변경된 좌표도 즉시 반영한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
-    const stops = [
-      { id: 'item-1', placeId: 'place-1', title: '첫 장소', dayIndex: 1, index: 1, lat: 36.35, lng: 127.38 },
-      { id: 'item-2', placeId: 'place-2', title: '둘째 장소', dayIndex: 1, index: 2, lat: 36.36, lng: 127.39 },
-    ]
-
     const wrapper = mount(MapboxItineraryMap, { props: { stops } })
+    await flushPromises()
+    mapbox.handlers.get('load')?.()
     await nextTick()
 
     expect(mapbox.Map).toHaveBeenCalledOnce()
@@ -77,11 +84,46 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'itinerary-day-1', type: 'line' }))
     expect(mapbox.map.fitBounds).toHaveBeenCalledOnce()
 
+    await wrapper.setProps({ stops: [stops[0]] })
+    expect(mapbox.marker.remove).toHaveBeenCalledTimes(2)
+    expect(mapbox.Marker).toHaveBeenCalledTimes(3)
+    expect(mapbox.map.easeTo).toHaveBeenCalledWith({ center: [127.38, 36.35], zoom: 13 })
+
     const markerCall = mapbox.Marker.mock.calls[0]
-    expect(markerCall).toBeDefined()
     const markerElement = (markerCall![0] as { element: HTMLButtonElement }).element
+    expect(getComputedStyle(markerElement.querySelector('.map-pin-info')!).display).toBe('block')
     markerElement.click()
     await nextTick()
     expect(wrapper.emitted('selectPlace')).toEqual([['place-1']])
+  })
+
+  it('초기 오류 후 load가 성공하면 오류를 해제하고 재시도 시 observer를 정리한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const observer = { observe: vi.fn(), disconnect: vi.fn() }
+    vi.stubGlobal('ResizeObserver', vi.fn(function ResizeObserver() { return observer }))
+    const wrapper = mount(MapboxItineraryMap, { props: { stops: [] } })
+    await flushPromises()
+
+    mapbox.handlers.get('error')?.()
+    await nextTick()
+    expect(wrapper.get('[role="alert"]').text()).toContain('지도를 불러오지 못했습니다.')
+
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(observer.disconnect).toHaveBeenCalledOnce()
+    expect(mapbox.map.remove).toHaveBeenCalledOnce()
+    expect(mapbox.Map).toHaveBeenCalledTimes(2)
+
+    mapbox.handlers.get('load')?.()
+    await nextTick()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+
+    mapbox.handlers.get('error')?.()
+    await nextTick()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+
+    wrapper.unmount()
+    expect(observer.disconnect).toHaveBeenCalledTimes(2)
+    expect(mapbox.map.remove).toHaveBeenCalledTimes(2)
   })
 })
