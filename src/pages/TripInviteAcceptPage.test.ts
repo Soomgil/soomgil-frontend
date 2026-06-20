@@ -17,19 +17,29 @@ const trip = {
 }
 
 const routerPush = vi.hoisted(() => vi.fn())
+const route = vi.hoisted(() => ({
+  current: null as { params: { inviteCode: string } } | null,
+}))
 const store = vi.hoisted(() => ({
   acceptingInvite: false,
   acceptInvite: vi.fn(),
 }))
 
 vi.mock('@/stores/trip.store', () => ({ useTripStore: () => store }))
-vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { inviteCode: 'JOIN-ME' } }),
-  useRouter: () => ({ push: routerPush }),
-}))
+vi.mock('vue-router', async () => {
+  const { reactive } = await import('vue')
+  route.current = reactive({ params: { inviteCode: 'JOIN-ME' } })
+  return {
+    useRoute: () => route.current,
+    useRouter: () => ({ push: routerPush }),
+  }
+})
 
 describe('TripInviteAcceptPage', () => {
-  beforeEach(() => vi.resetAllMocks())
+  beforeEach(() => {
+    vi.resetAllMocks()
+    route.current!.params.inviteCode = 'JOIN-ME'
+  })
 
   it('초대 수락 후 여행 이동을 제공한다', async () => {
     store.acceptInvite.mockResolvedValue(trip)
@@ -71,5 +81,42 @@ describe('TripInviteAcceptPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain(expectedMessage)
+  })
+
+  it('같은 페이지에서 초대 코드가 변경되면 새 초대를 처리한다', async () => {
+    store.acceptInvite
+      .mockResolvedValueOnce(trip)
+      .mockResolvedValueOnce({ ...trip, id: 'trip-2', title: '제주 여행' })
+    const wrapper = mount(TripInviteAcceptPage, {
+      global: { stubs: { AppHeader: true } },
+    })
+    await flushPromises()
+
+    route.current!.params.inviteCode = 'NEXT-INVITE'
+    await flushPromises()
+
+    expect(store.acceptInvite).toHaveBeenNthCalledWith(2, 'NEXT-INVITE')
+    expect(wrapper.text()).toContain('제주 여행')
+  })
+
+  it('이전 초대 응답이 늦게 도착해도 새 초대 결과를 유지한다', async () => {
+    let resolveFirstInvite!: (value: typeof trip) => void
+    const firstInvite = new Promise<typeof trip>((resolve) => {
+      resolveFirstInvite = resolve
+    })
+    store.acceptInvite
+      .mockReturnValueOnce(firstInvite)
+      .mockResolvedValueOnce({ ...trip, id: 'trip-2', title: '제주 여행' })
+    const wrapper = mount(TripInviteAcceptPage, {
+      global: { stubs: { AppHeader: true } },
+    })
+
+    route.current!.params.inviteCode = 'NEXT-INVITE'
+    await flushPromises()
+    resolveFirstInvite(trip)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('제주 여행')
+    expect(wrapper.text()).not.toContain('부산 여행')
   })
 })

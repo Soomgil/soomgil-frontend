@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -23,6 +23,7 @@ const router = useRouter()
 const tripStore = useTripStore()
 const state = ref<AcceptState>('loading')
 const acceptedTrip = ref<TripDetail | null>(null)
+let acceptAttempt = 0
 
 const inviteCode = computed(() => {
   const value = route.params.inviteCode
@@ -53,16 +54,22 @@ function classifyError(cause: unknown): AcceptState {
 }
 
 async function acceptInvite() {
-  if (!inviteCode.value) {
+  const attempt = ++acceptAttempt
+  const code = inviteCode.value
+
+  if (!code) {
     state.value = 'not-found'
     return
   }
 
   state.value = 'loading'
   try {
-    acceptedTrip.value = await tripStore.acceptInvite(inviteCode.value)
+    const trip = await tripStore.acceptInvite(code)
+    if (attempt !== acceptAttempt) return
+    acceptedTrip.value = trip
     state.value = 'success'
   } catch (cause) {
+    if (attempt !== acceptAttempt) return
     state.value = classifyError(cause)
   }
 }
@@ -72,7 +79,10 @@ function goToTrip() {
   router.push({ name: 'Route', params: { tripId: acceptedTrip.value.id } })
 }
 
-onMounted(acceptInvite)
+watch(inviteCode, () => {
+  acceptedTrip.value = null
+  void acceptInvite()
+}, { immediate: true })
 </script>
 
 <template>
