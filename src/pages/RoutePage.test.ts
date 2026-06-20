@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import RoutePage from './RoutePage.vue'
 
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any }))
@@ -63,7 +64,7 @@ describe('RoutePage itinerary integration', () => {
             {
               id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
               itemType: 'CUSTOM_PLACE', place: null, placeName: '자유 시간',
-              address: null, lat: null, lng: null, thumbnailUrl: null,
+              address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null,
               sourceStatus: 'AVAILABLE',
             },
           ],
@@ -96,6 +97,9 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.text()).toContain('1일차')
     expect(wrapper.text()).toContain('일차 미정')
     expect(wrapper.text()).toContain('자유 시간')
+    expect(wrapper.findComponent(MapboxItineraryMap).props('stops')).toEqual([
+      expect.objectContaining({ id: 'item-1', title: '자유 시간', lat: 36.35, lng: 127.38 }),
+    ])
     expect(wrapper.get('button[aria-label="일차 추가"]').attributes('aria-label')).toBe('일차 추가')
 
     await wrapper.get('button[aria-label="일차 추가"]').trigger('click')

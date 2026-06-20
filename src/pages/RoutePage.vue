@@ -7,6 +7,8 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
 import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
+import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
+import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
 import { useItinerary } from '@/composables/useItinerary'
 import { mockPlaces } from '@/mocks/mockPlaces'
 import { useTripStore } from '@/stores/trip.store'
@@ -18,44 +20,6 @@ interface RouteLink {
   id: string
   fromItemId: string
   toItemId: string
-}
-
-/* ── Kakao Maps SDK 로더 ── */
-declare global {
-  interface Window {
-    kakao: any
-  }
-}
-
-function loadKakaoSDK(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.kakao && window.kakao.maps) {
-      resolve()
-      return
-    }
-    const existing = document.querySelector('script[data-kakao-maps]')
-    if (existing) {
-      // Already loading — poll until ready
-      const poll = setInterval(() => {
-        if (window.kakao && window.kakao.maps) {
-          clearInterval(poll)
-          resolve()
-        }
-      }, 100)
-      // Timeout after 10s
-      setTimeout(() => { clearInterval(poll); reject(new Error('Kakao SDK timeout')) }, 10000)
-      return
-    }
-    const script = document.createElement('script')
-    script.setAttribute('data-kakao-maps', 'true')
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${import.meta.env.VITE_KAKAO_MAP_KEY}&autoload=false`
-    script.onload = () => {
-      // After script loads, give kakao.maps a moment to initialize
-      setTimeout(() => resolve(), 100)
-    }
-    script.onerror = () => reject(new Error('Kakao Maps SDK 로드 실패'))
-    document.head.appendChild(script)
-  })
 }
 
 /* ── Data ── */
@@ -77,209 +41,32 @@ const trip = computed(() => {
       .map((member) => ({ id: member.id, displayName: member.user.displayName })),
   }
 })
-// 드래그앤드롭으로 순서/일차 변경을 위해 reactive 배열 사용
 const dayPlans = ref<DayPlan[]>([])
+const mapStops = computed<ItineraryMapStop[]>(() => {
+  let index = 1
+  return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
+    const currentIndex = index++
+    if (item.lat == null || item.lng == null) return []
+    const place = mockPlaces.find((candidate) => candidate.externalPlaceId === item.placeExternalId)
+    return [{
+      id: item.id,
+      placeId: item.placeExternalId,
+      title: item.title,
+      dayIndex: day.day,
+      index: currentIndex,
+      lat: item.lat,
+      lng: item.lng,
+      image: item.thumbnailUrl ?? place?.thumbnailUrl,
+    }]
+  }))
+})
 
 const activeDay = ref(0)
 const activePlan = computed(() => dayPlans.value.find((day) => day.day === activeDay.value) ?? null)
 const itineraryLoadError = ref(false)
 const itineraryActionsDisabled = computed(() => itinerary.loading.value || itinerary.mutating.value || itineraryLoadError.value)
 const dayColors = ['day-color-1', 'day-color-2', 'day-color-3', 'day-color-4', 'day-color-5']
-const dayColorHex = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
 function getDayColorClass(day: number) { return day <= 0 ? dayColors[4] : dayColors[(day - 1) % dayColors.length] }
-function getDayColorHex(day: number) { return day <= 0 ? dayColorHex[4] : dayColorHex[(day - 1) % dayColorHex.length] }
-
-/* ── Kakao Map ── */
-let kakaoMap: any = null
-let mapOverlays: any[] = []
-const mapContainer = ref<HTMLElement | null>(null)
-
-function getCoordsFromItinerary() {
-  const coords: { lat: number; lng: number; title: string; dayIndex: number; index: number; image?: string | null; placeId?: string }[] = []
-  let globalIdx = 1
-  dayPlans.value.forEach(day => {
-    day.items.forEach(item => {
-      if (item.lat != null && item.lng != null) {
-        const place = mockPlaces.find(p => p.externalPlaceId === item.placeExternalId)
-        coords.push({
-          lat: item.lat!,
-          lng: item.lng!,
-          title: item.title,
-          dayIndex: day.day,
-          index: globalIdx,
-          image: item.thumbnailUrl ?? place?.thumbnailUrl,
-          placeId: item.placeExternalId,
-        })
-      }
-      globalIdx++
-    })
-  })
-  return coords
-}
-
-function drawMapMarkers(coords: ReturnType<typeof getCoordsFromItinerary>) {
-  if (!kakaoMap) return
-  mapOverlays.forEach(o => o.setMap(null))
-  mapOverlays = []
-
-  coords.forEach(c => {
-    const position = new window.kakao.maps.LatLng(c.lat, c.lng)
-    const dayClass = getDayColorClass(c.dayIndex)
-    const dayText = c.dayIndex <= 0 ? '일차 미정' : `${c.dayIndex}일차`
-    const safeTitle = escapeHtml(c.title)
-    const safePlaceId = escapeHtml(c.placeId ?? '')
-    const safeImage = c.image ? escapeHtml(c.image) : null
-
-    let markerContent: string
-    if (safeImage) {
-      markerContent = `
-        <div class="map-pin-card ${dayClass}" data-place-id="${safePlaceId}" style="cursor:pointer;">
-          <div class="map-pin-img-wrapper">
-            <img src="${safeImage}" class="map-pin-img" alt="${safeTitle}">
-          </div>
-          <div class="map-pin-info">
-            <span class="map-pin-title">${safeTitle}</span>
-            <span class="map-pin-day-badge">${dayText}</span>
-          </div>
-          <div class="map-pin-badge">${c.index}</div>
-        </div>`
-    } else {
-      markerContent = `
-        <div class="map-pin-card ${dayClass}" data-place-id="${safePlaceId}" style="cursor:pointer;">
-          <div class="map-pin-img-wrapper">
-            <div class="map-pin-icon-placeholder">
-              <span class="material-symbols-rounded" style="font-size:24px;color:var(--day-color)">train</span>
-            </div>
-          </div>
-          <div class="map-pin-info">
-            <span class="map-pin-title">${safeTitle}</span>
-            <span class="map-pin-day-badge">${dayText}</span>
-          </div>
-          <div class="map-pin-badge">${c.index}</div>
-        </div>`
-    }
-
-    const template = document.createElement('template')
-    template.innerHTML = markerContent.trim()
-    const markerElement = template.content.firstElementChild as HTMLElement
-    markerElement.addEventListener('click', () => {
-      if (c.placeId) selectPlace(c.placeId)
-    })
-
-    const customOverlay = new window.kakao.maps.CustomOverlay({
-      position,
-      content: markerElement,
-      yAnchor: 1.1,
-    })
-    customOverlay.setMap(kakaoMap)
-    mapOverlays.push(customOverlay)
-  })
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;',
-  })[character] ?? character)
-}
-
-function drawMapLine(coords: ReturnType<typeof getCoordsFromItinerary>) {
-  if (!kakaoMap) return
-  // Remove old polylines only
-  mapOverlays = mapOverlays.filter(o => {
-    if (o instanceof window.kakao.maps.Polyline) { o.setMap(null); return false }
-    return true
-  })
-
-  // Group coords by dayIndex and draw a polyline per day
-  const dayGroups = new Map<number, typeof coords>()
-  coords.forEach(c => {
-    if (!dayGroups.has(c.dayIndex)) dayGroups.set(c.dayIndex, [])
-    dayGroups.get(c.dayIndex)!.push(c)
-  })
-
-  dayGroups.forEach((group, dayIdx) => {
-    if (group.length < 2) return
-    const linePath = group.map(c => new window.kakao.maps.LatLng(c.lat, c.lng))
-    const polyline = new window.kakao.maps.Polyline({
-      path: linePath,
-      strokeWeight: 4,
-      strokeColor: getDayColorHex(dayIdx),
-      strokeOpacity: 0.8,
-      strokeStyle: 'shortdash',
-    })
-    polyline.setMap(kakaoMap)
-    mapOverlays.push(polyline)
-  })
-}
-
-function redrawMap() {
-  if (!kakaoMap) return
-  const coords = getCoordsFromItinerary()
-  drawMapMarkers(coords)
-  if (coords.length === 0) return
-  drawMapLine(coords)
-
-  const bounds = new window.kakao.maps.LatLngBounds()
-  coords.forEach(c => bounds.extend(new window.kakao.maps.LatLng(c.lat, c.lng)))
-  kakaoMap.relayout()
-  kakaoMap.setBounds(bounds)
-}
-
-let mapRetries = 0
-
-function loadKakaoMap(): boolean {
-  if (typeof window.kakao === 'undefined' || !window.kakao.maps) return false
-
-  if (typeof window.kakao.maps.load === 'function') {
-    window.kakao.maps.load(() => {
-      initKakaoMap()
-      setTimeout(redrawMap, 100)
-    })
-    return true
-  }
-  return initKakaoMap()
-}
-
-function initKakaoMap(): boolean {
-  const el = mapContainer.value
-  if (!el || typeof window.kakao === 'undefined' || !window.kakao.maps) return false
-
-  const coords = getCoordsFromItinerary()
-  if (coords.length === 0) return true
-
-  const center = new window.kakao.maps.LatLng(coords[0].lat, coords[0].lng)
-  kakaoMap = new window.kakao.maps.Map(el, { center, level: 7 })
-
-  drawMapMarkers(coords)
-  drawMapLine(coords)
-
-  const bounds = new window.kakao.maps.LatLngBounds()
-  coords.forEach(c => bounds.extend(new window.kakao.maps.LatLng(c.lat, c.lng)))
-  kakaoMap.relayout()
-  kakaoMap.setBounds(bounds)
-
-  return true
-}
-
-function tryInitMap() {
-  const el = mapContainer.value
-  if (!el || el.offsetWidth === 0 || el.offsetHeight === 0) {
-    if (mapRetries++ < 30) setTimeout(tryInitMap, 300)
-    return
-  }
-
-  if (!window.kakao || !window.kakao.maps) {
-    if (mapRetries++ < 30) setTimeout(tryInitMap, 300)
-    return
-  }
-
-  if (loadKakaoMap()) return
-  if (mapRetries++ < 30) setTimeout(tryInitMap, 300)
-}
 
 async function loadItinerary() {
   if (!tripId) {
@@ -313,33 +100,19 @@ watch(itinerary.days, (days) => {
   }
   nextTick(() => {
     initDragDrop()
-    redrawMap()
   })
 }, { deep: true })
 
 onMounted(() => {
   void loadTrip()
   void loadItinerary()
-  loadKakaoSDK()
-    .then(() => {
-      nextTick(() => {
-        tryInitMap()
-      })
-    })
-    .catch(err => {
-      console.error(err)
-    })
   nextTick(() => {
     initDragDrop()
   })
-  window.addEventListener('resize', redrawMap)
   window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
-  kakaoMap = null
-  mapOverlays = []
-  window.removeEventListener('resize', redrawMap)
   window.removeEventListener('keydown', handleKeydown)
 })
 
@@ -362,7 +135,7 @@ async function undo() {
   dayPlans.value = prev.plans
   routeLinks.value = prev.links || []
   pendingRouteFrom.value = null
-  nextTick(() => { initDragDrop(); redrawMap() })
+  nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
 }
 
@@ -374,7 +147,7 @@ async function redo() {
   dayPlans.value = next.plans
   routeLinks.value = next.links || []
   pendingRouteFrom.value = null
-  nextTick(() => { initDragDrop(); redrawMap() })
+  nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
 }
 
@@ -411,7 +184,7 @@ function removeRouteLinkBetween(id1: string, id2: string) {
       (l.fromItemId === id2 && l.toItemId === id1))
   )
   showToast('경로 연결이 해제되었습니다')
-  nextTick(() => { initDragDrop(); redrawMap() })
+  nextTick(initDragDrop)
 }
 
 function handleRoutePenClick(item: RouteStop) {
@@ -437,7 +210,7 @@ function handleRoutePenClick(item: RouteStop) {
   })
   pendingRouteFrom.value = null
   showToast('경로가 연결되었습니다')
-  nextTick(() => { initDragDrop(); redrawMap() })
+  nextTick(initDragDrop)
 }
 
 function handleStopClick(item: RouteStop) {
@@ -579,7 +352,6 @@ function onPointerDown(e: PointerEvent) {
 
     nextTick(() => {
       initDragDrop()
-      redrawMap()
     })
   }
 
@@ -738,7 +510,6 @@ function initDragDrop() {
 watch(activeDay, () => {
   nextTick(() => {
     initDragDrop()
-    redrawMap()
   })
 })
 
@@ -1038,13 +809,11 @@ function selectPlace(placeId: string) {
   }
 
   isDetailbarOpen.value = true
-  setTimeout(redrawMap, 420)
 }
 
 function closeDetailbar() {
   isDetailbarOpen.value = false
   selectedPlace.value = null
-  setTimeout(redrawMap, 420)
 }
 
 /* ── Toast ── */
@@ -1410,7 +1179,7 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ MAP CANVAS ═══ -->
           <div class="map-canvas" aria-label="대전 여행 지도">
-            <div ref="mapContainer" id="kakao-map" style="width:100%;height:100%;"></div>
+            <MapboxItineraryMap :stops="mapStops" @select-place="selectPlace" />
 
             <!-- ===== Pen popover ===== -->
             <div :class="['tool-popover', { 'is-open': isPenPopoverOpen }]" id="pen-popover" :aria-hidden="!isPenPopoverOpen">
