@@ -224,7 +224,7 @@ watch(activeFilter, loadTrips)
 
     <div
       class="modal-overlay trip-create-modal"
-      :class="{ active: createModal.isOpen.value }"
+      :class="{ show: createModal.isOpen.value }"
       :aria-hidden="!createModal.isOpen.value"
     >
       <div class="modal-card trip-create-card" role="dialog" aria-modal="true" aria-labelledby="trip-create-title">

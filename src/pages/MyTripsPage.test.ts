@@ -72,6 +72,23 @@ describe('MyTripsPage', () => {
     expect(activeFilter?.attributes('aria-pressed')).toBe('true')
   })
 
+  it('새 여행 버튼을 누르면 생성 모달을 표시한다', async () => {
+    const wrapper = mount(MyTripsPage, {
+      global: {
+        stubs: {
+          AppHeader: true,
+          TripAccessModal: true,
+          TripSettingsModal: true,
+        },
+      },
+    })
+
+    await wrapper.get('button.btn.primary').trigger('click')
+
+    expect(wrapper.get('.trip-create-modal').classes()).toContain('show')
+    expect(wrapper.get('.trip-create-modal').attributes('aria-hidden')).toBe('false')
+  })
+
   it('선택한 법정동 코드를 여행 생성 요청에 포함한다', async () => {
     vi.useFakeTimers()
     geo.searchLegalRegions.mockResolvedValue({
