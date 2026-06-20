@@ -13,10 +13,11 @@ export function formatViewportBbox(viewport: Viewport) {
 }
 
 export const geoApi = {
-  searchLegalRegions: async (params: LegalRegionSearchParams = {}): Promise<LegalRegionPage> => {
+  searchLegalRegions: async (params: LegalRegionSearchParams = {}, signal?: AbortSignal): Promise<LegalRegionPage> => {
     const response = await http.get<LegalRegionPage>('/legal-regions', {
       params,
       paramsSerializer: { indexes: null },
+      ...(signal ? { signal } : {}),
     })
     return response.data
   },

@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MyTripsPage from './MyTripsPage.vue'
+
+const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
 
 const trip = {
   id: 'trip-1',
@@ -27,12 +29,19 @@ const store = vi.hoisted(() => ({
 
 vi.mock('@/stores/trip.store', () => ({ useTripStore: () => store }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('@/api/geo.api', () => ({ geoApi: geo }))
 
 describe('MyTripsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     store.createTrip.mockResolvedValue(trip)
+    geo.searchLegalRegions.mockResolvedValue({
+      items: [],
+      page: { page: 0, size: 10, totalElements: 0, totalPages: 0, sort: [] },
+    })
   })
+
+  afterEach(() => vi.useRealTimers())
 
   it('보관됨 필터에서 여행 생성 후 진행 중 필터로 전환한다', async () => {
     const wrapper = mount(MyTripsPage, {
@@ -61,5 +70,39 @@ describe('MyTripsPage', () => {
       displayDestination: '부산광역시',
     })
     expect(activeFilter?.attributes('aria-pressed')).toBe('true')
+  })
+
+  it('선택한 법정동 코드를 여행 생성 요청에 포함한다', async () => {
+    vi.useFakeTimers()
+    geo.searchLegalRegions.mockResolvedValue({
+      items: [{
+        code: '2600000000', name: '부산광역시', fullName: '부산광역시',
+        level: 'SIDO', parentCode: null, isActive: true,
+      }],
+      page: { page: 0, size: 10, totalElements: 1, totalPages: 1, sort: [] },
+    })
+    const wrapper = mount(MyTripsPage, {
+      global: {
+        stubs: {
+          AppHeader: true,
+          TripAccessModal: true,
+          TripSettingsModal: true,
+        },
+      },
+    })
+    await wrapper.get('button.btn.primary').trigger('click')
+    await wrapper.get('input[name="title"]').setValue('부산 여행')
+    await wrapper.get('input[name="displayDestination"]').setValue('부산')
+    await vi.advanceTimersByTimeAsync(300)
+    await wrapper.get('[role="option"]').trigger('click')
+    await wrapper.get('form').trigger('submit')
+    await Promise.resolve()
+
+    expect(store.createTrip).toHaveBeenCalledWith({
+      title: '부산 여행',
+      displayDestination: '부산광역시',
+      legalRegionCodes: ['2600000000'],
+    })
+    wrapper.unmount()
   })
 })

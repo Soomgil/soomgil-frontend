@@ -6,10 +6,12 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import TripAccessModal from '@/components/trip/TripAccessModal.vue'
+import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
+import type { LegalRegion } from '@/types/geo'
 
 const router = useRouter()
 const tripStore = useTripStore()
@@ -18,6 +20,7 @@ const activeFilter = ref<TripFilter>('all')
 const searchQuery = ref('')
 const newTitle = ref('')
 const newDestination = ref('')
+const selectedRegion = ref<LegalRegion | null>(null)
 const createError = ref('')
 const accessTrip = ref<TripSummary | null>(null)
 const settingsTrip = ref<TripSummary | null>(null)
@@ -96,6 +99,7 @@ async function handleCreateTrip() {
     await tripStore.createTrip({
       title,
       displayDestination: newDestination.value.trim() || undefined,
+      ...(selectedRegion.value ? { legalRegionCodes: [selectedRegion.value.code] } : {}),
     })
     resetForm()
     createModal.close()
@@ -108,6 +112,7 @@ async function handleCreateTrip() {
 function resetForm() {
   newTitle.value = ''
   newDestination.value = ''
+  selectedRegion.value = null
   createError.value = ''
 }
 
@@ -237,10 +242,16 @@ watch(activeFilter, loadTrips)
             <span class="form-label-text">여행 이름</span>
             <input v-model="newTitle" class="field" type="text" name="title" maxlength="160" required>
           </label>
-          <label class="form-label">
-            <span class="form-label-text">표시 목적지</span>
-            <input v-model="newDestination" class="field" type="text" name="displayDestination" maxlength="160" placeholder="예: 부산광역시">
-          </label>
+          <div class="form-label">
+            <label class="form-label-text" for="trip-create-destination">표시 목적지</label>
+            <LegalRegionCombobox
+              id="trip-create-destination"
+              v-model="newDestination"
+              name="displayDestination"
+              placeholder="예: 부산광역시"
+              @select="selectedRegion = $event"
+            />
+          </div>
 
           <p v-if="createError" class="trip-create-error" aria-live="polite">{{ createError }}</p>
 

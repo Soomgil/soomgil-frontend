@@ -12,12 +12,14 @@ describe('geoApi', () => {
   it('법정동 검색 조건을 전달한다', async () => {
     vi.mocked(http.get).mockResolvedValue({ data: { items: [], page: {} } })
     const params = { q: '종로구', level: 'SIGUNGU' as const, isActive: true, page: 0, size: 20 }
+    const controller = new AbortController()
 
-    await geoApi.searchLegalRegions(params)
+    await geoApi.searchLegalRegions(params, controller.signal)
 
     expect(http.get).toHaveBeenCalledWith('/legal-regions', {
       params,
       paramsSerializer: { indexes: null },
+      signal: controller.signal,
     })
   })
 
