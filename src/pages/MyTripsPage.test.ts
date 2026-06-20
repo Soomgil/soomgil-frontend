@@ -1,0 +1,65 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import MyTripsPage from './MyTripsPage.vue'
+
+const trip = {
+  id: 'trip-1',
+  title: '새 부산 여행',
+  displayDestination: '부산광역시',
+  status: 'ACTIVE' as const,
+  myRole: 'OWNER' as const,
+  itineraryVersion: 0,
+  createdAt: '2026-06-20T00:00:00Z',
+}
+
+const store = vi.hoisted(() => ({
+  trips: [],
+  loading: false,
+  error: null,
+  creating: false,
+  loadingMore: false,
+  loadMoreError: null,
+  hasMoreTrips: false,
+  fetchTrips: vi.fn().mockResolvedValue(undefined),
+  fetchNextPage: vi.fn().mockResolvedValue(undefined),
+  createTrip: vi.fn(),
+}))
+
+vi.mock('@/stores/trip.store', () => ({ useTripStore: () => store }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+
+describe('MyTripsPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    store.createTrip.mockResolvedValue(trip)
+  })
+
+  it('보관됨 필터에서 여행 생성 후 진행 중 필터로 전환한다', async () => {
+    const wrapper = mount(MyTripsPage, {
+      global: {
+        stubs: {
+          AppHeader: true,
+          TripAccessModal: true,
+          TripSettingsModal: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '보관됨')
+    expect(archivedFilter).toBeDefined()
+    await archivedFilter!.trigger('click')
+    await wrapper.get('button.btn.primary').trigger('click')
+    await wrapper.get('input[name="title"]').setValue('새 부산 여행')
+    await wrapper.get('input[name="displayDestination"]').setValue('부산광역시')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    const activeFilter = wrapper.findAll('button').find((button) => button.text() === '진행 중')
+    expect(store.createTrip).toHaveBeenCalledWith({
+      title: '새 부산 여행',
+      displayDestination: '부산광역시',
+    })
+    expect(activeFilter?.attributes('aria-pressed')).toBe('true')
+  })
+})

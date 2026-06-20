@@ -47,7 +47,7 @@ const page: PagedTripSummary = {
 describe('trip store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   it('실제 목록 응답의 items와 page를 저장한다', async () => {
@@ -59,6 +59,28 @@ describe('trip store', () => {
     expect(store.trips).toEqual([trip])
     expect(store.page).toEqual(page.page)
     expect(store.error).toBeNull()
+    expect(store.loading).toBe(false)
+  })
+
+  it('연속 목록 조회에서는 가장 최근 요청 결과만 반영한다', async () => {
+    let resolveActive!: (value: PagedTripSummary) => void
+    let resolveArchived!: (value: PagedTripSummary) => void
+    const activeRequest = new Promise<PagedTripSummary>((resolve) => { resolveActive = resolve })
+    const archivedRequest = new Promise<PagedTripSummary>((resolve) => { resolveArchived = resolve })
+    const archivedTrip = { ...trip, id: 'trip-archived', status: 'ARCHIVED' as const }
+    vi.mocked(tripApi.getTrips)
+      .mockReturnValueOnce(activeRequest)
+      .mockReturnValueOnce(archivedRequest)
+    const store = useTripStore()
+
+    const first = store.fetchTrips({ status: 'ACTIVE' })
+    const second = store.fetchTrips({ status: 'ARCHIVED' })
+    resolveArchived({ items: [archivedTrip], page: page.page })
+    await second
+    resolveActive(page)
+    await first
+
+    expect(store.trips).toEqual([archivedTrip])
     expect(store.loading).toBe(false)
   })
 
@@ -75,6 +97,7 @@ describe('trip store', () => {
 
   it('생성된 여행을 목록 첫 위치에 추가한다', async () => {
     vi.mocked(tripApi.createTrip).mockResolvedValue(trip)
+    vi.mocked(tripApi.getTrips).mockResolvedValue(page)
     const store = useTripStore()
 
     const created = await store.createTrip({
@@ -84,6 +107,7 @@ describe('trip store', () => {
 
     expect(created).toEqual(trip)
     expect(store.trips).toEqual([trip])
+    expect(store.error).toBeNull()
     expect(store.creating).toBe(false)
   })
 
@@ -106,6 +130,31 @@ describe('trip store', () => {
     expect(tripApi.getTrips).toHaveBeenLastCalledWith({ page: 1, size: 1, status: 'ACTIVE' })
     expect(store.trips).toEqual([trip, nextTrip])
     expect(store.hasMoreTrips).toBe(false)
+  })
+
+  it('더 보기 도중 필터가 바뀌면 이전 페이지 응답을 무시한다', async () => {
+    let resolveNextPage!: (value: PagedTripSummary) => void
+    const nextPageRequest = new Promise<PagedTripSummary>((resolve) => { resolveNextPage = resolve })
+    const archivedTrip = { ...trip, id: 'trip-archived', status: 'ARCHIVED' as const }
+    vi.mocked(tripApi.getTrips)
+      .mockResolvedValueOnce({
+        items: [trip],
+        page: { ...page.page, totalElements: 2, totalPages: 2 },
+      })
+      .mockReturnValueOnce(nextPageRequest)
+      .mockResolvedValueOnce({ items: [archivedTrip], page: page.page })
+    const store = useTripStore()
+    await store.fetchTrips({ status: 'ACTIVE', size: 1 })
+
+    const loadMore = store.fetchNextPage()
+    await store.fetchTrips({ status: 'ARCHIVED', size: 1 })
+    resolveNextPage({
+      items: [{ ...trip, id: 'trip-2' }],
+      page: { ...page.page, page: 1, totalElements: 2, totalPages: 2 },
+    })
+    await loadMore
+
+    expect(store.trips).toEqual([archivedTrip])
   })
 
   it('다음 페이지 조회 실패를 현재 목록을 유지한 채 표시한다', async () => {
@@ -164,7 +213,9 @@ describe('trip store', () => {
   it('상태 변경으로 현재 필터에서 벗어난 여행을 목록에서 제거한다', async () => {
     const activePage = { ...page, page: { ...page.page, totalElements: 1, totalPages: 1 } }
     const archived = { ...trip, status: 'ARCHIVED' as const }
-    vi.mocked(tripApi.getTrips).mockResolvedValue(activePage)
+    vi.mocked(tripApi.getTrips)
+      .mockResolvedValueOnce(activePage)
+      .mockResolvedValueOnce({ items: [], page: { ...page.page, totalElements: 0, totalPages: 0 } })
     vi.mocked(tripApi.updateTrip).mockResolvedValue(archived)
     const store = useTripStore()
     await store.fetchTrips({ status: 'ACTIVE' })
@@ -176,7 +227,9 @@ describe('trip store', () => {
   })
 
   it('삭제된 여행을 목록에서 제거하고 페이지 개수를 줄인다', async () => {
-    vi.mocked(tripApi.getTrips).mockResolvedValue(page)
+    vi.mocked(tripApi.getTrips)
+      .mockResolvedValueOnce(page)
+      .mockResolvedValueOnce({ items: [], page: { ...page.page, totalElements: 0, totalPages: 0 } })
     vi.mocked(tripApi.deleteTrip).mockResolvedValue(undefined)
     const store = useTripStore()
     await store.fetchTrips()
@@ -188,5 +241,32 @@ describe('trip store', () => {
     expect(store.currentTrip).toBeNull()
     expect(store.page?.totalElements).toBe(0)
     expect(store.mutating).toBe(false)
+  })
+
+  it('페이지 경계에서 삭제 후 서버가 재배치한 항목을 다시 가져온다', async () => {
+    const initialItems = Array.from({ length: 20 }, (_, index) => ({
+      ...trip,
+      id: `trip-${index + 1}`,
+      title: `여행 ${index + 1}`,
+    }))
+    const movedTrip = { ...trip, id: 'trip-21', title: '여행 21' }
+    vi.mocked(tripApi.getTrips)
+      .mockResolvedValueOnce({
+        items: initialItems,
+        page: { ...page.page, totalElements: 21, totalPages: 2 },
+      })
+      .mockResolvedValueOnce({
+        items: [...initialItems.slice(1), movedTrip],
+        page: { ...page.page, totalElements: 20, totalPages: 1 },
+      })
+    vi.mocked(tripApi.deleteTrip).mockResolvedValue(undefined)
+    const store = useTripStore()
+    await store.fetchTrips({ page: 0, size: 20 })
+
+    await store.deleteTrip('trip-1')
+
+    expect(store.trips).toHaveLength(20)
+    expect(store.trips.at(-1)).toEqual(movedTrip)
+    expect(tripApi.getTrips).toHaveBeenLastCalledWith({ page: 0, size: 20 })
   })
 })

@@ -14,6 +14,7 @@ import type {
 import { tripApi } from '@/api/trip.api'
 
 export const useTripStore = defineStore('trip', () => {
+  let listRequestSequence = 0
   const currentTrip = ref<TripDetail | null>(null)
   const trips = ref<TripSummary[]>([])
   const page = ref<PageMeta | null>(null)
@@ -32,36 +33,44 @@ export const useTripStore = defineStore('trip', () => {
   const hasMoreTrips = computed(() => Boolean(page.value && page.value.page + 1 < page.value.totalPages))
 
   async function fetchTrips(params?: TripListParams) {
+    const requestId = ++listRequestSequence
+    const requestParams = { ...params, page: params?.page ?? 0 }
     loading.value = true
     error.value = null
     loadMoreError.value = null
-    listParams.value = { ...params, page: params?.page ?? 0 }
+    listParams.value = requestParams
     try {
-      const result = await tripApi.getTrips(listParams.value)
+      const result = await tripApi.getTrips(requestParams)
+      if (requestId !== listRequestSequence) return
       trips.value = result.items
       page.value = result.page
     } catch (cause) {
+      if (requestId !== listRequestSequence) return
       error.value = '여행 목록을 불러오지 못했습니다.'
       throw cause
     } finally {
-      loading.value = false
+      if (requestId === listRequestSequence) loading.value = false
     }
   }
 
   async function fetchNextPage() {
     if (!hasMoreTrips.value || loadingMore.value || !page.value) return
 
+    const requestId = listRequestSequence
     loadingMore.value = true
     loadMoreError.value = null
     try {
       const nextParams = { ...listParams.value, page: page.value.page + 1 }
       const result = await tripApi.getTrips(nextParams)
+      if (requestId !== listRequestSequence) return
       const knownIds = new Set(trips.value.map((trip) => trip.id))
       trips.value.push(...result.items.filter((trip) => !knownIds.has(trip.id)))
       page.value = result.page
       listParams.value = nextParams
     } catch {
-      loadMoreError.value = '다음 여행을 불러오지 못했습니다.'
+      if (requestId === listRequestSequence) {
+        loadMoreError.value = '다음 여행을 불러오지 못했습니다.'
+      }
     } finally {
       loadingMore.value = false
     }
@@ -79,7 +88,9 @@ export const useTripStore = defineStore('trip', () => {
     creating.value = true
     try {
       const created = await tripApi.createTrip(data)
-      trips.value.unshift(created)
+      const matchesCurrentStatus = !listParams.value.status || listParams.value.status === created.status
+      if (matchesCurrentStatus) trips.value.unshift(created)
+      await syncFirstPageAfterMutation()
       return created
     } finally {
       creating.value = false
@@ -114,7 +125,7 @@ export const useTripStore = defineStore('trip', () => {
         trips.value[index] = updated
       } else if (index >= 0) {
         trips.value.splice(index, 1)
-        decrementPageTotal()
+        await syncFirstPageAfterMutation()
       }
       if (currentTrip.value?.id === tripId) currentTrip.value = updated
       return updated
@@ -129,19 +140,26 @@ export const useTripStore = defineStore('trip', () => {
       await tripApi.deleteTrip(tripId)
       trips.value = trips.value.filter((trip) => trip.id !== tripId)
       if (currentTrip.value?.id === tripId) currentTrip.value = null
-      decrementPageTotal()
+      await syncFirstPageAfterMutation()
     } finally {
       mutating.value = false
     }
   }
 
-  function decrementPageTotal() {
-    if (!page.value) return
-    const totalElements = Math.max(0, page.value.totalElements - 1)
-    page.value = {
-      ...page.value,
-      totalElements,
-      totalPages: Math.ceil(totalElements / page.value.size),
+  async function syncFirstPageAfterMutation() {
+    const requestId = ++listRequestSequence
+    const requestParams = { ...listParams.value, page: 0 }
+    listParams.value = requestParams
+    try {
+      const result = await tripApi.getTrips(requestParams)
+      if (requestId !== listRequestSequence) return
+      trips.value = result.items
+      page.value = result.page
+      error.value = null
+    } catch {
+      if (requestId === listRequestSequence) {
+        error.value = '변경된 여행 목록을 다시 불러오지 못했습니다.'
+      }
     }
   }
 

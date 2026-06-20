@@ -99,6 +99,7 @@ async function handleCreateTrip() {
     })
     resetForm()
     createModal.close()
+    if (activeFilter.value === 'past') activeFilter.value = 'upcoming'
   } catch {
     createError.value = '여행을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.'
   }
