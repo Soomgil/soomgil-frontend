@@ -58,7 +58,13 @@ const itinerary: Itinerary = {
 }
 
 describe('useItinerary', () => {
-  beforeEach(() => vi.resetAllMocks())
+  beforeEach(() => {
+    vi.resetAllMocks()
+    scheduledDay.items = []
+    unscheduledDay.items = []
+    itinerary.itineraryVersion = 3
+    itinerary.days = [scheduledDay]
+  })
 
   it('일정과 version을 조회한다', async () => {
     vi.mocked(itineraryApi.getItinerary).mockResolvedValue(itinerary)
@@ -94,6 +100,27 @@ describe('useItinerary', () => {
       sortOrder: 1,
     })
     expect(state.itineraryVersion.value).toBe(4)
+  })
+
+  it('일차 미정 생성이 진행 중이면 같은 요청 결과를 공유한다', async () => {
+    let resolveCreation!: (value: Awaited<ReturnType<typeof itineraryApi.createDay>>) => void
+    const creation = new Promise<Awaited<ReturnType<typeof itineraryApi.createDay>>>((resolve) => {
+      resolveCreation = resolve
+    })
+    vi.mocked(itineraryApi.getItinerary).mockResolvedValue(itinerary)
+    vi.mocked(itineraryApi.createDay).mockReturnValue(creation)
+    const state = useItinerary('trip-1')
+    await state.fetchItinerary()
+
+    const first = state.ensureUnscheduledDay()
+    const second = state.ensureUnscheduledDay()
+    resolveCreation({
+      tripId: 'trip-1', itineraryVersion: 4, day: unscheduledDay, item: null,
+      route: null, drawing: null, affectedRouteIds: [],
+    })
+
+    await expect(Promise.all([first, second])).resolves.toEqual([unscheduledDay, unscheduledDay])
+    expect(itineraryApi.createDay).toHaveBeenCalledTimes(1)
   })
 
   it('day 수정 시 기존 아이템을 보존하고 최신 version으로 삭제한다', async () => {
@@ -162,6 +189,27 @@ describe('useItinerary', () => {
       itineraryDayId: 'day-1',
     })
     expect(state.itineraryVersion.value).toBe(5)
+  })
+
+  it('응답의 대상 day가 없으면 기존 아이템과 version을 유지한다', async () => {
+    const scheduledItem = { ...item, itineraryDayId: 'day-1' }
+    vi.mocked(itineraryApi.getItinerary).mockResolvedValue({
+      ...itinerary,
+      days: [{ ...scheduledDay, items: [scheduledItem] }],
+    })
+    vi.mocked(itineraryApi.updateItem).mockResolvedValue({
+      tripId: 'trip-1', itineraryVersion: 4, day: null,
+      item: { ...scheduledItem, itineraryDayId: 'missing-day' },
+      route: null, drawing: null, affectedRouteIds: [],
+    })
+    const state = useItinerary('trip-1')
+    await state.fetchItinerary()
+
+    await expect(state.updateItem('item-1', { itineraryDayId: 'missing-day' }))
+      .rejects.toThrow('Itinerary day not found for item.')
+
+    expect(state.getItemsByDay('day-1')).toEqual([scheduledItem])
+    expect(state.itineraryVersion.value).toBe(3)
   })
 
   it('아이템 삭제 시 영향받은 route도 정리한다', async () => {

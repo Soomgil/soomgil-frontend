@@ -20,6 +20,7 @@ export function useItinerary(tripId: string) {
   const loading = ref(false)
   const mutating = ref(false)
   const error = ref<string | null>(null)
+  let unscheduledDayCreation: Promise<ItineraryDay> | null = null
 
   const allItems = computed(() => days.value.flatMap((day) => day.items))
   const unscheduledDay = computed(() => days.value.find((day) => day.groupType === 'UNSCHEDULED') ?? null)
@@ -48,11 +49,12 @@ export function useItinerary(tripId: string) {
   }
 
   function upsertItem(item: ItineraryItem) {
+    const targetDay = days.value.find((day) => day.id === item.itineraryDayId)
+    if (!targetDay) throw new Error('Itinerary day not found for item.')
+
     for (const day of days.value) {
       day.items = day.items.filter((current) => current.id !== item.id)
     }
-    const targetDay = days.value.find((day) => day.id === item.itineraryDayId)
-    if (!targetDay) throw new Error('Itinerary day not found for item.')
     targetDay.items.push(item)
     targetDay.items.sort((left, right) => left.sortOrder - right.sortOrder)
   }
@@ -93,22 +95,29 @@ export function useItinerary(tripId: string) {
         ...input,
         baseVersion: itineraryVersion.value,
       })
-      applyMutation(response)
       if (!response.day) throw new Error('Created itinerary day is missing.')
       upsertDay(response.day)
+      applyMutation(response)
       return response.day
     })
   }
 
   async function ensureUnscheduledDay() {
     if (unscheduledDay.value) return unscheduledDay.value
+    if (unscheduledDayCreation) return unscheduledDayCreation
+
     const nextSortOrder = days.value.reduce((maximum, day) => Math.max(maximum, day.sortOrder), -1) + 1
-    return createDay({
+    unscheduledDayCreation = createDay({
       groupType: 'UNSCHEDULED',
       dayNumber: null,
       date: null,
       sortOrder: nextSortOrder,
     })
+    try {
+      return await unscheduledDayCreation
+    } finally {
+      unscheduledDayCreation = null
+    }
   }
 
   async function updateDay(dayId: string, input: UpdateItineraryDayInput) {
@@ -117,9 +126,9 @@ export function useItinerary(tripId: string) {
         ...input,
         baseVersion: itineraryVersion.value,
       })
-      applyMutation(response)
       if (!response.day) throw new Error('Updated itinerary day is missing.')
       upsertDay(response.day)
+      applyMutation(response)
       return response.day
     })
   }
@@ -138,9 +147,9 @@ export function useItinerary(tripId: string) {
         ...input,
         baseVersion: itineraryVersion.value,
       })
-      applyMutation(response)
       if (!response.item) throw new Error('Created itinerary item is missing.')
       upsertItem(response.item)
+      applyMutation(response)
       return response.item
     })
   }
@@ -151,9 +160,9 @@ export function useItinerary(tripId: string) {
         ...input,
         baseVersion: itineraryVersion.value,
       })
-      applyMutation(response)
       if (!response.item) throw new Error('Updated itinerary item is missing.')
       upsertItem(response.item)
+      applyMutation(response)
       return response.item
     })
   }
