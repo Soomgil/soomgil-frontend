@@ -1,26 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
+import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
+import { useItinerary } from '@/composables/useItinerary'
 import { mockTrips } from '@/mocks/mockTrips'
 import { mockPlaces } from '@/mocks/mockPlaces'
 
 /* ── RoutePage 내부 전용 타입 ── */
-interface RouteStop {
-  id: string
-  placeExternalId: string
-  title: string
-  time: string
-  order: number
-  day: number
-  memo: string
-  lat: number | null
-  lng: number | null
-}
-interface DayPlan {
-  day: number
-  date: string
-  items: RouteStop[]
-}
+type RouteStop = RouteStopViewModel
+type DayPlan = DayPlanViewModel
 interface RouteLink {
   id: string
   fromItemId: string
@@ -66,35 +59,21 @@ function loadKakaoSDK(): Promise<void> {
 }
 
 /* ── Data ── */
+const route = useRoute()
+const tripIdParam = route.params.tripId
+const tripId = Array.isArray(tripIdParam) ? tripIdParam[0] ?? '' : tripIdParam ?? ''
+const itinerary = useItinerary(tripId)
 const trip = mockTrips[0]
 // 드래그앤드롭으로 순서/일차 변경을 위해 reactive 배열 사용
 const dayPlans = ref<DayPlan[]>([])
 
-function buildInitialDayPlans(): DayPlan[] {
-  const placeItems: RouteStop[] = mockPlaces.map((place, idx) => ({
-    id: `item_${idx + 1}`,
-    placeExternalId: place.externalPlaceId,
-    title: place.placeName,
-    time: idx === 0 ? '5.20 도착' : idx === 1 ? '5.20 오후' : idx === 2 ? '5.21 오전' : idx === 3 ? '5.21 오후' : '5.22 종일',
-    order: idx + 1,
-    day: idx < 2 ? 1 : idx < 4 ? 2 : 3,
-    memo: '',
-    lat: place.lat,
-    lng: place.lng,
-  }))
-  return [
-    { day: 1, date: '5.20 월', items: placeItems.filter(i => i.day === 1) },
-    { day: 2, date: '5.21 화', items: placeItems.filter(i => i.day === 2) },
-    { day: 3, date: '5.22 수', items: placeItems.filter(i => i.day === 3) },
-  ]
-}
-dayPlans.value = buildInitialDayPlans()
-
 const activeDay = ref(0)
+const activePlan = computed(() => dayPlans.value.find((day) => day.day === activeDay.value) ?? null)
+const itineraryLoadError = ref(false)
 const dayColors = ['day-color-1', 'day-color-2', 'day-color-3', 'day-color-4', 'day-color-5']
 const dayColorHex = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
-function getDayColorClass(day: number) { return dayColors[(day - 1) % dayColors.length] }
-function getDayColorHex(day: number) { return dayColorHex[(day - 1) % dayColorHex.length] }
+function getDayColorClass(day: number) { return day <= 0 ? dayColors[4] : dayColors[(day - 1) % dayColors.length] }
+function getDayColorHex(day: number) { return day <= 0 ? dayColorHex[4] : dayColorHex[(day - 1) % dayColorHex.length] }
 
 /* ── Kakao Map ── */
 let kakaoMap: any = null
@@ -114,7 +93,7 @@ function getCoordsFromItinerary() {
           title: item.title,
           dayIndex: day.day,
           index: globalIdx,
-          image: place?.thumbnailUrl,
+          image: item.thumbnailUrl ?? place?.thumbnailUrl,
           placeId: item.placeExternalId,
         })
       }
@@ -132,45 +111,65 @@ function drawMapMarkers(coords: ReturnType<typeof getCoordsFromItinerary>) {
   coords.forEach(c => {
     const position = new window.kakao.maps.LatLng(c.lat, c.lng)
     const dayClass = getDayColorClass(c.dayIndex)
-    const dayNum = c.dayIndex || 1
+    const dayText = c.dayIndex <= 0 ? '일차 미정' : `${c.dayIndex}일차`
+    const safeTitle = escapeHtml(c.title)
+    const safePlaceId = escapeHtml(c.placeId ?? '')
+    const safeImage = c.image ? escapeHtml(c.image) : null
 
     let markerContent: string
-    if (c.image) {
+    if (safeImage) {
       markerContent = `
-        <div class="map-pin-card ${dayClass}" data-place-id="${c.placeId || ''}" onclick="window.selectPlace && window.selectPlace('${c.placeId || ''}')" style="cursor:pointer;">
+        <div class="map-pin-card ${dayClass}" data-place-id="${safePlaceId}" style="cursor:pointer;">
           <div class="map-pin-img-wrapper">
-            <img src="${c.image}" class="map-pin-img" alt="${c.title}">
+            <img src="${safeImage}" class="map-pin-img" alt="${safeTitle}">
           </div>
           <div class="map-pin-info">
-            <span class="map-pin-title">${c.title}</span>
-            <span class="map-pin-day-badge">${dayNum}일차</span>
+            <span class="map-pin-title">${safeTitle}</span>
+            <span class="map-pin-day-badge">${dayText}</span>
           </div>
           <div class="map-pin-badge">${c.index}</div>
         </div>`
     } else {
       markerContent = `
-        <div class="map-pin-card ${dayClass}" data-place-id="${c.placeId || ''}" onclick="window.selectPlace && window.selectPlace('${c.placeId || ''}')" style="cursor:pointer;">
+        <div class="map-pin-card ${dayClass}" data-place-id="${safePlaceId}" style="cursor:pointer;">
           <div class="map-pin-img-wrapper">
             <div class="map-pin-icon-placeholder">
               <span class="material-symbols-rounded" style="font-size:24px;color:var(--day-color)">train</span>
             </div>
           </div>
           <div class="map-pin-info">
-            <span class="map-pin-title">${c.title}</span>
-            <span class="map-pin-day-badge">${dayNum}일차</span>
+            <span class="map-pin-title">${safeTitle}</span>
+            <span class="map-pin-day-badge">${dayText}</span>
           </div>
           <div class="map-pin-badge">${c.index}</div>
         </div>`
     }
 
+    const template = document.createElement('template')
+    template.innerHTML = markerContent.trim()
+    const markerElement = template.content.firstElementChild as HTMLElement
+    markerElement.addEventListener('click', () => {
+      if (c.placeId) selectPlace(c.placeId)
+    })
+
     const customOverlay = new window.kakao.maps.CustomOverlay({
       position,
-      content: markerContent,
+      content: markerElement,
       yAnchor: 1.1,
     })
     customOverlay.setMap(kakaoMap)
     mapOverlays.push(customOverlay)
   })
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  })[character] ?? character)
 }
 
 function drawMapLine(coords: ReturnType<typeof getCoordsFromItinerary>) {
@@ -268,7 +267,35 @@ function tryInitMap() {
   if (mapRetries++ < 30) setTimeout(tryInitMap, 300)
 }
 
+async function loadItinerary() {
+  if (!tripId) {
+    itineraryLoadError.value = true
+    return
+  }
+  itineraryLoadError.value = false
+  try {
+    await itinerary.fetchItinerary()
+  } catch {
+    itineraryLoadError.value = true
+  }
+}
+
+watch(itinerary.days, (days) => {
+  dayPlans.value = toDayPlans(days)
+  if (activeDay.value !== 0 && !dayPlans.value.some((day) => day.day === activeDay.value)) {
+    activeDay.value = 0
+  }
+  if (!dayPlans.value.some((day) => day.day === customDay.value)) {
+    customDay.value = dayPlans.value[0]?.day ?? 1
+  }
+  nextTick(() => {
+    initDragDrop()
+    redrawMap()
+  })
+}, { deep: true })
+
 onMounted(() => {
+  void loadItinerary()
   loadKakaoSDK()
     .then(() => {
       nextTick(() => {
@@ -404,6 +431,7 @@ interface DragSource {
 }
 
 function onPointerDown(e: PointerEvent) {
+  if ((e.target as HTMLElement).closest('button')) return
   if (
     !(e.target as HTMLElement).closest('.grip-icon') &&
     !(e.target as HTMLElement).closest('.stop-num') &&
@@ -580,15 +608,19 @@ function reorderAllDays(source: DragSource, targetIdx: number) {
   }
 
   // Convert flat list back to dayPlans
-  const originalDates = dayPlans.value.map(d => d.date)
+  const originalPlans = [...dayPlans.value]
+  const originalDates = originalPlans.map(d => d.date)
   const newPlans: DayPlan[] = []
   let currentItems: RouteStop[] = []
 
   for (const item of flatList) {
     if (item.type === 'separator') {
       if (newPlans.length > 0 || currentItems.length > 0) {
-        const dayNum = newPlans.length + 1
+        const sourcePlan = originalPlans[newPlans.length]
+        const dayNum = sourcePlan?.day ?? newPlans.length + 1
         newPlans.push({
+          id: sourcePlan?.id ?? `local-day-${dayNum}`,
+          groupType: sourcePlan?.groupType ?? 'DAY',
           day: dayNum,
           date: originalDates[newPlans.length] || '',
           items: currentItems.map((it, idx) => ({ ...it, order: idx + 1, day: dayNum }))
@@ -604,8 +636,11 @@ function reorderAllDays(source: DragSource, targetIdx: number) {
   }
   // Last day
   if (currentItems.length > 0 || newPlans.length < originalDates.length) {
-    const dayNum = newPlans.length + 1
+    const sourcePlan = originalPlans[newPlans.length]
+    const dayNum = sourcePlan?.day ?? newPlans.length + 1
     newPlans.push({
+      id: sourcePlan?.id ?? `local-day-${dayNum}`,
+      groupType: sourcePlan?.groupType ?? 'DAY',
       day: dayNum,
       date: originalDates[newPlans.length] || '',
       items: currentItems.map((it, idx) => ({ ...it, order: idx + 1, day: dayNum }))
@@ -796,15 +831,81 @@ function getCategoryClass(cat: string) {
 
 /* ── Custom schedule form ── */
 const customTitle = ref('')
-const customCategory = ref('custom')
 const customDay = ref(1)
-const customTime = ref('12:00')
-const customDuration = ref('60')
+const itineraryActionError = ref('')
 
-function submitCustomSchedule() {
+function targetPlan(dayNumber = customDay.value) {
+  return dayPlans.value.find((day) => day.day === dayNumber) ?? dayPlans.value[0] ?? null
+}
+
+async function submitCustomSchedule() {
   if (!customTitle.value.trim()) return
-  customTitle.value = ''
-  showCustomForm.value = false
+  const plan = targetPlan()
+  if (!plan) {
+    itineraryActionError.value = '일정을 추가할 일차를 먼저 만들어 주세요.'
+    return
+  }
+
+  itineraryActionError.value = ''
+  try {
+    await itinerary.createItem({
+      itineraryDayId: plan.id,
+      sortOrder: plan.items.length,
+      itemType: 'CUSTOM_PLACE',
+      placeName: customTitle.value.trim(),
+    })
+    showToast(`"${customTitle.value.trim()}" 일정이 추가되었습니다.`)
+    customTitle.value = ''
+    showCustomForm.value = false
+  } catch {
+    itineraryActionError.value = '일정을 추가하지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function createNextDay() {
+  const scheduledDays = dayPlans.value.filter((day) => day.groupType === 'DAY')
+  const nextDayNumber = Math.max(0, ...scheduledDays.map((day) => day.day)) + 1
+  const nextSortOrder = Math.max(-1, ...dayPlans.value.map((day) => itinerary.days.value.find((item) => item.id === day.id)?.sortOrder ?? -1)) + 1
+  itineraryActionError.value = ''
+  try {
+    await itinerary.createDay({ groupType: 'DAY', dayNumber: nextDayNumber, sortOrder: nextSortOrder })
+    activeDay.value = nextDayNumber
+  } catch {
+    itineraryActionError.value = '일차를 추가하지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function createUnscheduledDay() {
+  itineraryActionError.value = ''
+  try {
+    const day = await itinerary.ensureUnscheduledDay()
+    activeDay.value = day.groupType === 'UNSCHEDULED' ? -1 : (day.dayNumber ?? 0)
+  } catch {
+    itineraryActionError.value = '일차 미정을 만들지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function removeDay(plan: DayPlan) {
+  if (plan.items.length > 0) {
+    itineraryActionError.value = '일정이 남아 있는 일차는 삭제할 수 없습니다.'
+    return
+  }
+  itineraryActionError.value = ''
+  try {
+    await itinerary.deleteDay(plan.id)
+  } catch {
+    itineraryActionError.value = '일차를 삭제하지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function removeItineraryItem(item: RouteStop) {
+  itineraryActionError.value = ''
+  try {
+    await itinerary.deleteItem(item.id)
+    showToast(`"${item.title}" 일정이 삭제되었습니다.`)
+  } catch {
+    itineraryActionError.value = '일정을 삭제하지 못했습니다. 다시 시도해 주세요.'
+  }
 }
 
 /* ── Modals ── */
@@ -902,32 +1003,28 @@ function showToast(msg: string) {
   toastTimer = setTimeout(() => { toastVisible.value = false }, 3000)
 }
 
-function addPlaceToItinerary(place: any) {
-  pushUndoState()
-  const targetDay = activeDay.value === 0 ? 1 : activeDay.value
-  const timeKey = targetDay === 1 ? '5.20' : targetDay === 2 ? '5.21' : '5.22'
-
-  const newItem: RouteStop = {
-    id: `step_${Date.now()}`,
-    placeExternalId: place.externalPlaceId,
-    title: place.name,
-    time: `${timeKey} 오후`,
-    order: 0,
-    day: targetDay,
-    memo: '',
-    lat: place.lat ?? null,
-    lng: place.lng ?? null,
+async function addPlaceToItinerary(place: any) {
+  const plan = targetPlan(activeDay.value === 0 ? (dayPlans.value[0]?.day ?? 1) : activeDay.value)
+  if (!plan) {
+    itineraryActionError.value = '일정을 추가할 일차를 먼저 만들어 주세요.'
+    return
   }
-
-  // Add to the correct day plan
-  const plan = dayPlans.value.find(d => d.day === targetDay)
-  if (plan) {
-    newItem.order = plan.items.length + 1
-    plan.items.push(newItem)
+  itineraryActionError.value = ''
+  try {
+    await itinerary.createItem({
+      itineraryDayId: plan.id,
+      sortOrder: plan.items.length,
+      itemType: 'CUSTOM_PLACE',
+      placeName: place.name,
+      address: place.address ?? null,
+      lat: place.lat ?? null,
+      lng: place.lng ?? null,
+      thumbnailUrl: place.photo ?? null,
+    })
+    showToast(`"${place.name}" 일정이 추가되었습니다.`)
+  } catch {
+    itineraryActionError.value = '일정을 추가하지 못했습니다. 다시 시도해 주세요.'
   }
-
-  showToast(`"${place.name}"이(가) ${targetDay}일차 일정에 추가되었습니다.`)
-  nextTick(() => { redrawMap(); initDragDrop() })
 }
 
 /* ── Toast component ── */
@@ -1004,10 +1101,10 @@ function textAvatarStyle(index: unknown) {
                   <button :class="['day-tab', { active: activeDay === 0 }]" type="button" @click="activeDay = 0">
                     <span class="day-title">전체</span>
                   </button>
-                  <button v-for="day in dayPlans" :key="day.day"
+                  <button v-for="day in dayPlans" :key="day.id"
                     :class="['day-tab', { active: activeDay === day.day }]"
                     type="button" @click="activeDay = day.day">
-                    <span class="day-title">{{ day.day }}일차</span>
+                    <span class="day-title">{{ dayPlanLabel(day) }}</span>
                     <span class="day-date">{{ day.date }}</span>
                   </button>
                 </div>
@@ -1016,14 +1113,45 @@ function textAvatarStyle(index: unknown) {
                 </button>
               </div>
 
+              <div class="itinerary-day-actions" aria-label="일차 관리">
+                <button class="icon-btn" type="button" title="일차 추가" aria-label="일차 추가" :disabled="itinerary.mutating.value" @click="createNextDay">
+                  <span class="material-symbols-rounded" aria-hidden="true">calendar_add_on</span>
+                </button>
+                <button class="icon-btn" type="button" title="일차 미정 추가" aria-label="일차 미정 추가" :disabled="itinerary.mutating.value" @click="createUnscheduledDay">
+                  <span class="material-symbols-rounded" aria-hidden="true">event_question</span>
+                </button>
+              </div>
+              <p v-if="itineraryActionError" class="itinerary-action-error" role="alert">{{ itineraryActionError }}</p>
+
               <!-- Itinerary -->
               <div class="itinerary" data-sidebar-itinerary ref="itineraryRef">
+                <LoadingState v-if="itinerary.loading.value" />
+                <ErrorState
+                  v-else-if="itineraryLoadError"
+                  message="일정을 불러오지 못했습니다."
+                  @retry="loadItinerary"
+                />
+                <EmptyState
+                  v-else-if="dayPlans.length === 0"
+                  icon="event_busy"
+                  message="아직 일정이 없습니다. 일차를 추가해 계획을 시작하세요."
+                />
                 <!-- 전체 보기 -->
-                <template v-if="activeDay === 0">
+                <template v-else-if="activeDay === 0">
                   <template v-for="day in dayPlans" :key="day.day">
                     <div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day">
-                      <span class="day-pill">{{ day.day }}일차</span>
+                      <span class="day-pill">{{ dayPlanLabel(day) }}</span>
                       <span class="line"></span>
+                      <button
+                        v-if="day.items.length === 0"
+                        class="itinerary-delete-btn"
+                        type="button"
+                        :aria-label="`${dayPlanLabel(day)} 삭제`"
+                        :disabled="itinerary.mutating.value"
+                        @click.stop="removeDay(day)"
+                      >
+                        <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                      </button>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <template v-for="(item, idx) in day.items" :key="item.id">
@@ -1035,6 +1163,9 @@ function textAvatarStyle(index: unknown) {
                           <strong>{{ item.title }}</strong>
                           <span class="small muted">{{ item.time }}</span>
                         </div>
+                        <button class="itinerary-delete-btn" type="button" :aria-label="`${item.title} 삭제`" :disabled="itinerary.mutating.value" @click.stop="removeItineraryItem(item)">
+                          <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                        </button>
                         <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                       </div>
                       <!-- Route connector between linked adjacent stops -->
@@ -1050,12 +1181,22 @@ function textAvatarStyle(index: unknown) {
                   </template>
                 </template>
                 <!-- 특정 일차 -->
-                <template v-else>
+                <template v-else-if="activePlan">
                   <div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay">
-                    <span class="day-pill">{{ activeDay }}일차</span>
+                    <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
                     <span class="line"></span>
+                    <button
+                      v-if="activePlan.items.length === 0"
+                      class="itinerary-delete-btn"
+                      type="button"
+                      :aria-label="`${dayPlanLabel(activePlan)} 삭제`"
+                      :disabled="itinerary.mutating.value"
+                      @click.stop="removeDay(activePlan)"
+                    >
+                      <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                    </button>
                   </div>
-                  <template v-for="(item, idx) in dayPlans[activeDay - 1]?.items" :key="item.id">
+                  <template v-for="(item, idx) in activePlan.items" :key="item.id">
                     <div :class="['stop', getDayColorClass(activeDay), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id) }]"
                       :data-step-id="item.id" :data-place-id="item.placeExternalId"
                       @click.stop="handleStopClick(item)">
@@ -1064,12 +1205,15 @@ function textAvatarStyle(index: unknown) {
                         <strong>{{ item.title }}</strong>
                         <span class="small muted">{{ item.time }}</span>
                       </div>
+                      <button class="itinerary-delete-btn" type="button" :aria-label="`${item.title} 삭제`" :disabled="itinerary.mutating.value" @click.stop="removeItineraryItem(item)">
+                        <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                      </button>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <!-- Route connector between linked adjacent stops -->
-                    <div v-if="dayPlans[activeDay - 1] && idx < dayPlans[activeDay - 1].items.length - 1 && hasRouteLinkBetween(item.id, dayPlans[activeDay - 1].items[idx + 1].id)"
+                    <div v-if="idx < activePlan.items.length - 1 && hasRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       class="route-connector"
-                      @click.stop="removeRouteLinkBetween(item.id, dayPlans[activeDay - 1].items[idx + 1].id)"
+                      @click.stop="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       :title="'경로 연결 해제'">
                       <div class="route-connector-line"></div>
                       <span class="material-symbols-rounded route-unlink-icon">link_off</span>
@@ -1081,7 +1225,7 @@ function textAvatarStyle(index: unknown) {
 
               <!-- Add stop: 원본처럼 버튼 클릭 시 바로 검색 패널 열기 -->
               <div class="add-stop-container">
-                <button class="add-stop-dashed" type="button" @click="openSearchPanel">
+                <button class="add-stop-dashed" type="button" :disabled="dayPlans.length === 0 || itinerary.mutating.value" @click="openSearchPanel">
                   <span class="material-symbols-rounded">add_circle</span>
                   <span>일정 추가</span>
                 </button>
@@ -1140,41 +1284,15 @@ function textAvatarStyle(index: unknown) {
                       <input class="field" type="text" id="inline-custom-title" placeholder="예: 점심 식사, 자유 시간" v-model="customTitle">
                     </label>
                   </div>
-                  <div class="custom-form-row">
-                    <label class="form-label">
-                      <span class="form-label-text">카테고리</span>
-                      <select class="field" id="inline-custom-category" v-model="customCategory">
-                        <option value="custom" selected>기타/자유일정</option>
-                        <option value="attraction">관광지</option>
-                        <option value="food">맛집</option>
-                        <option value="cafe">카페</option>
-                        <option value="hotel">숙소</option>
-                      </select>
-                    </label>
+                  <div class="custom-form-field">
                     <label class="form-label">
                       <span class="form-label-text">방문 일차</span>
                       <select class="field" id="inline-custom-day" v-model="customDay">
-                        <option v-for="day in dayPlans" :key="day.day" :value="day.day">{{ day.day }}일차</option>
+                        <option v-for="day in dayPlans" :key="day.id" :value="day.day">{{ dayPlanLabel(day) }}</option>
                       </select>
                     </label>
                   </div>
-                  <div class="custom-form-row">
-                    <label class="form-label">
-                      <span class="form-label-text">방문 시간</span>
-                      <input class="field" type="time" id="inline-custom-time" v-model="customTime">
-                    </label>
-                    <label class="form-label">
-                      <span class="form-label-text">소요 시간</span>
-                      <select class="field" id="inline-custom-duration" v-model="customDuration">
-                        <option value="30">30분</option>
-                        <option value="60" selected>1시간</option>
-                        <option value="90">1시간 30분</option>
-                        <option value="120">2시간</option>
-                        <option value="180">3시간</option>
-                      </select>
-                    </label>
-                  </div>
-                  <button type="button" class="btn primary" id="inline-custom-submit" style="width:100%;margin-top:12px;" @click="submitCustomSchedule">
+                  <button type="button" class="btn primary" id="inline-custom-submit" style="width:100%;margin-top:12px;" :disabled="itinerary.mutating.value || !customTitle.trim()" @click="submitCustomSchedule">
                     <span class="material-symbols-rounded" style="font-size:18px;">add_circle</span>
                     일정 추가하기
                   </button>
@@ -1841,6 +1959,7 @@ function textAvatarStyle(index: unknown) {
 }
 .route-page-section .stop {
   width: calc(100% - 12px);
+  grid-template-columns: 24px minmax(0, 1fr) 28px 24px;
 }
 .route-page-section .day-separator {
   width: 100%;
@@ -1855,6 +1974,51 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .map-canvas {
   height: 100%;
   min-height: 0;
+}
+
+.itinerary-day-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin: -6px 0 8px;
+}
+
+.itinerary-day-actions .icon-btn {
+  height: 32px;
+  width: 32px;
+}
+
+.itinerary-action-error {
+  color: #be123c;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.itinerary-delete-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #9ca3af;
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.itinerary-delete-btn:hover {
+  color: #be123c;
+}
+
+.itinerary-delete-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.itinerary-delete-btn .material-symbols-rounded {
+  font-size: 18px;
 }
 
 /* ── Popover items ── */
