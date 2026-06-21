@@ -81,7 +81,9 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
             <a href="#" @click.prevent="router.push('/reset-password')">비밀번호 찾기</a>
           </div>
 
-          <p v-if="submitError" class="auth-submit-error" role="alert">{{ submitError }}</p>
+          <div class="auth-feedback-slot" data-testid="auth-feedback" aria-live="polite">
+            <p v-if="submitError" class="auth-submit-error" role="alert">{{ submitError }}</p>
+          </div>
 
           <button class="btn primary auth-main-action" type="submit" :disabled="submitting">
             <span class="material-symbols-rounded">login</span>로그인

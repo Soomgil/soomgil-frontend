@@ -50,8 +50,17 @@ describe('RegisterPage', () => {
   it('백엔드에 연결할 수 없으면 폼 안에서 명확하게 안내한다', async () => {
     const wrapper = await submitRegistration({ isAxiosError: true, code: 'ERR_NETWORK' })
 
-    expect(wrapper.get('[role="alert"]').text()).toContain('서버에 연결할 수 없습니다')
+    expect(wrapper.get('[data-testid="auth-feedback"] [role="alert"]').text()).toContain('서버에 연결할 수 없습니다')
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('오류가 없어도 폼의 피드백 공간을 미리 확보한다', async () => {
+    getPolicyDocuments.mockResolvedValue([policy])
+    const wrapper = mount(RegisterPage, { global: { stubs: { AppHeader: true } } })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="auth-feedback"]').classes()).toContain('auth-feedback-slot')
+    expect(wrapper.get('[data-testid="auth-feedback"]').text()).toBe('')
   })
 
   it('이미 가입된 이메일이면 원인을 구체적으로 안내한다', async () => {
