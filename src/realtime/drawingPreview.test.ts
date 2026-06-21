@@ -1,0 +1,111 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { RealtimeTransport } from './stompTransport'
+import {
+  downsampleCoordinates,
+  drawingPreviewSendDestination,
+  drawingPreviewTopic,
+  useDrawingPreviewChannel,
+  type DrawingPreviewMessage,
+} from './drawingPreview'
+
+class FakeTransport implements RealtimeTransport {
+  connected = false
+  published: Array<{ destination: string; payload: unknown }> = []
+  private subscriptions = new Map<string, (payload: unknown) => void>()
+
+  connect() {
+    this.connected = true
+  }
+
+  async disconnect() {
+    this.connected = false
+  }
+
+  publish(destination: string, payload: unknown) {
+    if (!this.connected) return false
+    this.published.push({ destination, payload })
+    return true
+  }
+
+  subscribe<T>(destination: string, handler: (payload: T) => void) {
+    this.subscriptions.set(destination, handler as (payload: unknown) => void)
+    return () => this.subscriptions.delete(destination)
+  }
+
+  receive(destination: string, payload: unknown) {
+    this.subscriptions.get(destination)?.(payload)
+  }
+}
+
+describe('drawing preview realtime channel', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-21T05:00:00Z'))
+  })
+
+  it('좌표의 처음과 끝을 유지하며 최대 개수로 downsample한다', () => {
+    const coordinates = Array.from({ length: 101 }, (_, index) => ({ lng: index, lat: index }))
+    const sampled = downsampleCoordinates(coordinates, 32)
+
+    expect(sampled).toHaveLength(32)
+    expect(sampled[0]).toEqual(coordinates[0])
+    expect(sampled.at(-1)).toEqual(coordinates.at(-1))
+  })
+
+  it('UPDATE를 throttle하고 END는 즉시 전송한다', () => {
+    const transport = new FakeTransport()
+    const channel = useDrawingPreviewChannel({
+      tripId: 'trip 1',
+      clientId: 'client-1',
+      transport,
+      throttleMs: 50,
+      maxCoordinates: 3,
+    })
+    channel.connect()
+    const coordinates = Array.from({ length: 10 }, (_, index) => ({ lng: index, lat: index }))
+
+    channel.publish({ previewId: 'stroke-1', sequence: 1, phase: 'UPDATE', coordinates, color: '#111827', width: 4 })
+    channel.publish({ previewId: 'stroke-1', sequence: 2, phase: 'UPDATE', coordinates, color: '#111827', width: 4 })
+    expect(transport.published).toHaveLength(1)
+
+    vi.advanceTimersByTime(50)
+    expect(transport.published).toHaveLength(2)
+    expect(transport.published[1]?.destination).toBe(drawingPreviewSendDestination('trip 1'))
+    expect((transport.published[1]?.payload as DrawingPreviewMessage).coordinates).toHaveLength(3)
+
+    channel.publish({ previewId: 'stroke-1', sequence: 3, phase: 'END', coordinates, color: '#111827', width: 4 })
+    expect(transport.published).toHaveLength(3)
+  })
+
+  it('자기 echo를 제외하고 원격 preview를 반영·취소·만료한다', async () => {
+    const transport = new FakeTransport()
+    const channel = useDrawingPreviewChannel({
+      tripId: 'trip-1',
+      clientId: 'client-1',
+      transport,
+      remoteTtlMs: 1000,
+    })
+    channel.connect()
+    const message: DrawingPreviewMessage = {
+      tripId: 'trip-1', clientId: 'client-2', previewId: 'stroke-1', sequence: 1,
+      phase: 'UPDATE', coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#ef4444', width: 6, sentAt: new Date().toISOString(),
+    }
+
+    transport.receive(drawingPreviewTopic('trip-1'), { ...message, clientId: 'client-1' })
+    expect(channel.remoteDrawings.value).toEqual([])
+
+    transport.receive(drawingPreviewTopic('trip-1'), message)
+    expect(channel.remoteDrawings.value).toEqual([expect.objectContaining({
+      id: 'remote:client-2:stroke-1', color: '#ef4444', width: 6,
+    })])
+
+    transport.receive(drawingPreviewTopic('trip-1'), { ...message, phase: 'CANCEL', sequence: 2 })
+    expect(channel.remoteDrawings.value).toEqual([])
+
+    transport.receive(drawingPreviewTopic('trip-1'), message)
+    vi.advanceTimersByTime(1000)
+    expect(channel.remoteDrawings.value).toEqual([])
+    await channel.disconnect()
+  })
+})
