@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import MapDrawingOverlay from './MapDrawingOverlay.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from './MapDrawingOverlay.vue'
+import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { LngLat, Viewport } from '@/types/geo'
 
 export interface ItineraryMapStop {
@@ -35,6 +36,7 @@ const emit = defineEmits<{
   viewportChange: [viewport: Viewport]
   drawingCreate: [drawing: MapDrawingDraft]
   drawingErase: [drawingId: string]
+  drawingPreview: [event: DrawingPreviewEvent]
 }>()
 
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
@@ -292,6 +294,7 @@ onBeforeUnmount(() => {
       :unproject="unprojectDrawingPoint"
       @create="emit('drawingCreate', $event)"
       @erase="emit('drawingErase', $event)"
+      @preview="emit('drawingPreview', $event)"
     />
     <div v-if="mapError" class="itinerary-map__error" role="alert">
       <span>{{ mapError }}</span>

@@ -6,6 +6,32 @@ import RoutePage from './RoutePage.vue'
 
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any }))
 const geo = vi.hoisted(() => ({ simplifyCoordinates: vi.fn() }))
+const realtime = vi.hoisted(() => ({ instances: [] as any[] }))
+
+vi.mock('@/realtime/stompTransport', () => ({
+  resolveWebSocketUrl: () => 'ws://localhost/ws',
+  StompTransport: class FakeStompTransport {
+    connected = false
+    published: Array<{ destination: string; payload: unknown }> = []
+    subscriptions = new Map<string, (payload: unknown) => void>()
+
+    constructor() {
+      realtime.instances.push(this)
+    }
+
+    connect() { this.connected = true }
+    async disconnect() { this.connected = false }
+    publish(destination: string, payload: unknown) {
+      if (!this.connected) return false
+      this.published.push({ destination, payload })
+      return true
+    }
+    subscribe(destination: string, handler: (payload: unknown) => void) {
+      this.subscriptions.set(destination, handler)
+      return () => this.subscriptions.delete(destination)
+    }
+  },
+}))
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { tripId: 'trip-1' } }),
@@ -56,6 +82,8 @@ vi.mock('@/composables/useMapViewport', async () => {
 describe('RoutePage itinerary integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
+    realtime.instances.length = 0
     holder.tripStore = reactive({
       currentTrip: null,
       fetchTrip: vi.fn(async () => {
@@ -216,6 +244,48 @@ describe('RoutePage itinerary integration', () => {
     map.vm.$emit('drawingErase', 'local-drawing-1')
     await nextTick()
     expect(map.props('drawings')).toEqual([])
+  })
+
+  it('지도 drawing preview를 전송하고 다른 사용자의 preview를 표시한다', async () => {
+    localStorage.setItem('accessToken', 'test-token')
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const transport = realtime.instances[0]
+    const coordinates = Array.from({ length: 40 }, (_, index) => ({ lng: 127 + index / 100, lat: 36 }))
+
+    map.vm.$emit('drawingPreview', {
+      previewId: 'local-preview', sequence: 1, phase: 'UPDATE', coordinates,
+      color: '#1f2937', width: 4,
+    })
+    await nextTick()
+
+    expect(transport.connected).toBe(true)
+    expect(transport.published).toEqual([expect.objectContaining({
+      destination: '/app/trips/trip-1/map-drawing-preview',
+      payload: expect.objectContaining({ previewId: 'local-preview', coordinates: expect.any(Array) }),
+    })])
+    expect(transport.published[0].payload.coordinates).toHaveLength(32)
+
+    transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
+      tripId: 'trip-1', clientId: 'remote-client', previewId: 'remote-preview', sequence: 1,
+      phase: 'UPDATE', coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#ef4444', width: 6, sentAt: '2026-06-21T05:00:00Z',
+    })
+    await nextTick()
+
+    expect(map.props('drawings')).toEqual([expect.objectContaining({
+      id: 'remote:remote-client:remote-preview', color: '#ef4444', width: 6,
+    })])
   })
 
   it('저장 전 지도 그림 생성과 삭제를 로컬에서 실행 취소하고 다시 실행한다', async () => {

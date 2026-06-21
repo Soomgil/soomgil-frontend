@@ -14,7 +14,10 @@ import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/compon
 import { useItinerary } from '@/composables/useItinerary'
 import { useMapViewport } from '@/composables/useMapViewport'
 import { mockPlaces } from '@/mocks/mockPlaces'
+import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
+import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
+import type { DrawingPreviewEvent } from '@/types/collaboration'
 
 /* ── RoutePage 내부 전용 타입 ── */
 type RouteStop = RouteStopViewModel
@@ -685,7 +688,28 @@ const localDrawings = ref<MapDrawingStroke[]>([])
 const pendingDrawingIds = ref<string[]>([])
 const drawingRetryIds = ref<string[]>([])
 const simplifiedDrawingCoordinates = new Map<string, MapDrawingStroke['coordinates']>()
+const drawingPreviewTransport = new StompTransport({
+  brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
+  accessToken: () => localStorage.getItem('accessToken'),
+})
+const drawingPreviewChannel = useDrawingPreviewChannel({
+  tripId,
+  clientId: globalThis.crypto?.randomUUID?.() ?? `drawing-client-${Date.now()}`,
+  transport: drawingPreviewTransport,
+})
+const mapDrawings = computed(() => [
+  ...localDrawings.value,
+  ...drawingPreviewChannel.remoteDrawings.value,
+])
 let localDrawingSequence = 0
+
+onMounted(() => {
+  if (tripId && localStorage.getItem('accessToken')) drawingPreviewChannel.connect()
+})
+
+onUnmounted(() => {
+  void drawingPreviewChannel.disconnect()
+})
 
 async function simplifyLocalDrawing(drawingId: string) {
   const drawing = localDrawings.value.find((candidate) => candidate.id === drawingId)
@@ -728,6 +752,10 @@ function eraseLocalDrawing(drawingId: string) {
   pushUndoState('drawing')
   localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
   drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+}
+
+function publishDrawingPreview(event: DrawingPreviewEvent) {
+  drawingPreviewChannel.publish(event)
 }
 
 function retryDrawingSimplification() {
@@ -1325,7 +1353,7 @@ function textAvatarStyle(index: unknown) {
           <div class="map-canvas" aria-label="대전 여행 지도">
             <MapboxItineraryMap
               :stops="mapStops"
-              :drawings="localDrawings"
+              :drawings="mapDrawings"
               :drawing-tool="activeTool"
               :drawing-color="penColor"
               :drawing-width="penSize"
@@ -1334,6 +1362,7 @@ function textAvatarStyle(index: unknown) {
               @viewport-change="mapViewport.updateViewport"
               @drawing-create="createLocalDrawing"
               @drawing-erase="eraseLocalDrawing"
+              @drawing-preview="publishDrawingPreview"
             />
 
             <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">

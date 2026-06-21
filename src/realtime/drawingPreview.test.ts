@@ -88,7 +88,7 @@ describe('drawing preview realtime channel', () => {
     channel.connect()
     const message: DrawingPreviewMessage = {
       tripId: 'trip-1', clientId: 'client-2', previewId: 'stroke-1', sequence: 1,
-      phase: 'UPDATE', coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      phase: 'UPDATE', coordinates: Array.from({ length: 40 }, (_, index) => ({ lng: 127 + index, lat: 36 })),
       color: '#ef4444', width: 6, sentAt: new Date().toISOString(),
     }
 
@@ -99,6 +99,11 @@ describe('drawing preview realtime channel', () => {
     expect(channel.remoteDrawings.value).toEqual([expect.objectContaining({
       id: 'remote:client-2:stroke-1', color: '#ef4444', width: 6,
     })])
+    expect(channel.remoteDrawings.value[0]?.coordinates).toHaveLength(32)
+
+    transport.receive(drawingPreviewTopic('trip-1'), { ...message, sequence: 0, color: '#000000' })
+    transport.receive(drawingPreviewTopic('trip-1'), { drawing: { id: 'saved-drawing' } })
+    expect(channel.remoteDrawings.value[0]?.color).toBe('#ef4444')
 
     transport.receive(drawingPreviewTopic('trip-1'), { ...message, phase: 'CANCEL', sequence: 2 })
     expect(channel.remoteDrawings.value).toEqual([])

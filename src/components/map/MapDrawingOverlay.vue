@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { DrawingPreviewEvent, DrawingPreviewPhase } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
 
 export type MapDrawingTool = 'cursor' | 'route-pen' | 'pen' | 'eraser'
@@ -36,11 +37,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   create: [drawing: MapDrawingDraft]
   erase: [drawingId: string]
+  preview: [event: DrawingPreviewEvent]
 }>()
 
 const surface = ref<SVGSVGElement | null>(null)
 const currentPoints = ref<ScreenPoint[]>([])
 let activePointerId: number | null = null
+let activePreviewId: string | null = null
+let activePreviewSequence = 0
+let previewIdSequence = 0
 
 const editable = computed(() => props.enabled && (props.tool === 'pen' || props.tool === 'eraser'))
 const currentPointString = computed(() => currentPoints.value.map((point) => `${point.x},${point.y}`).join(' '))
@@ -66,12 +71,34 @@ function pointDistance(left: ScreenPoint, right: ScreenPoint) {
   return Math.hypot(right.x - left.x, right.y - left.y)
 }
 
+function createPreviewId() {
+  return globalThis.crypto?.randomUUID?.() ?? `drawing-preview-${Date.now()}-${++previewIdSequence}`
+}
+
+function emitPreview(phase: DrawingPreviewPhase, points = currentPoints.value) {
+  if (!activePreviewId) return
+  const coordinates = points
+    .map(props.unproject)
+    .filter((coordinate): coordinate is LngLat => coordinate !== null)
+  if (phase !== 'CANCEL' && coordinates.length < 2) return
+  emit('preview', {
+    previewId: activePreviewId,
+    sequence: ++activePreviewSequence,
+    phase,
+    coordinates,
+    color: props.color,
+    width: props.width,
+  })
+}
+
 function beginStroke(event: PointerEvent) {
   if (!props.enabled || props.tool !== 'pen' || event.button !== 0) return
   const point = localPoint(event)
   if (!point) return
   event.preventDefault()
   activePointerId = event.pointerId
+  activePreviewId = createPreviewId()
+  activePreviewSequence = 0
   currentPoints.value = [point]
   surface.value?.setPointerCapture?.(event.pointerId)
 }
@@ -82,6 +109,7 @@ function extendStroke(event: PointerEvent) {
   const previous = currentPoints.value.at(-1)
   if (!point || !previous || pointDistance(previous, point) < 2) return
   currentPoints.value.push(point)
+  emitPreview('UPDATE')
 }
 
 function releasePointerCapture(pointerId: number) {
@@ -95,7 +123,9 @@ function finishStroke(event: PointerEvent) {
   if (activePointerId !== event.pointerId) return
   extendStroke(event)
   const points = [...currentPoints.value]
+  emitPreview('END', points)
   activePointerId = null
+  activePreviewId = null
   currentPoints.value = []
   releasePointerCapture(event.pointerId)
 
@@ -108,14 +138,18 @@ function finishStroke(event: PointerEvent) {
 
 function cancelStroke(event: PointerEvent) {
   if (activePointerId !== event.pointerId) return
+  emitPreview('CANCEL')
   activePointerId = null
+  activePreviewId = null
   currentPoints.value = []
   releasePointerCapture(event.pointerId)
 }
 
 function handleLostPointerCapture(event: PointerEvent) {
   if (activePointerId !== event.pointerId) return
+  emitPreview('CANCEL')
   activePointerId = null
+  activePreviewId = null
   currentPoints.value = []
 }
 

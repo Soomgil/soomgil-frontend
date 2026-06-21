@@ -165,11 +165,14 @@ describe('MapboxItineraryMap', () => {
     expect(overlay.props('project')({ lng: 127.38, lat: 36.35 })).toEqual({ x: 127.38, y: 36.35 })
 
     const draft = { coordinates: drawing.coordinates, color: drawing.color, width: drawing.width }
+    const preview = { previewId: 'preview-1', sequence: 1, phase: 'UPDATE', ...draft }
     overlay.vm.$emit('create', draft)
     overlay.vm.$emit('erase', drawing.id)
+    overlay.vm.$emit('preview', preview)
     await nextTick()
 
     expect(wrapper.emitted('drawingCreate')).toEqual([[draft]])
     expect(wrapper.emitted('drawingErase')).toEqual([[drawing.id]])
+    expect(wrapper.emitted('drawingPreview')).toEqual([[preview]])
   })
 })

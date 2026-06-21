@@ -50,6 +50,10 @@ describe('MapDrawingOverlay', () => {
       color: '#ef4444',
       width: 6,
     }].map((drawing) => [drawing]))
+    const previews = wrapper.emitted('preview')?.map(([event]) => event as { previewId: string; sequence: number; phase: string }) ?? []
+    expect(previews.map(({ phase }) => phase)).toEqual(['UPDATE', 'UPDATE', 'END'])
+    expect(previews.map(({ sequence }) => sequence)).toEqual([1, 2, 3])
+    expect(new Set(previews.map(({ previewId }) => previewId)).size).toBe(1)
   })
 
   it('지우개로 선택한 stroke id를 전달한다', async () => {
@@ -137,5 +141,6 @@ describe('MapDrawingOverlay', () => {
 
     expect(wrapper.find('.is-current').exists()).toBe(false)
     expect(wrapper.emitted('create')).toBeUndefined()
+    expect(wrapper.emitted('preview')?.at(-1)?.[0]).toEqual(expect.objectContaining({ phase: 'CANCEL' }))
   })
 })

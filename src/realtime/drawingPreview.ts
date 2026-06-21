@@ -1,24 +1,10 @@
 import { computed, ref } from 'vue'
 import type { MapDrawingStroke } from '@/components/map/MapDrawingOverlay.vue'
 import type { LngLat } from '@/types/geo'
+import type { DrawingPreviewEvent, DrawingPreviewMessage } from '@/types/collaboration'
 import type { RealtimeTransport } from './stompTransport'
 
-export type DrawingPreviewPhase = 'UPDATE' | 'END' | 'CANCEL'
-
-export interface DrawingPreviewEvent {
-  previewId: string
-  sequence: number
-  phase: DrawingPreviewPhase
-  coordinates: LngLat[]
-  color: string
-  width: number
-}
-
-export interface DrawingPreviewMessage extends DrawingPreviewEvent {
-  tripId: string
-  clientId: string
-  sentAt: string
-}
+export type { DrawingPreviewEvent, DrawingPreviewMessage } from '@/types/collaboration'
 
 interface DrawingPreviewChannelOptions {
   tripId: string
@@ -54,6 +40,7 @@ export function useDrawingPreviewChannel(options: DrawingPreviewChannelOptions) 
   const remoteTtlMs = options.remoteTtlMs ?? 10000
   const remoteByKey = ref(new Map<string, MapDrawingStroke>())
   const remoteExpiryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const remoteSequences = new Map<string, number>()
   let unsubscribe: (() => void) | null = null
   let pendingEvent: DrawingPreviewEvent | null = null
   let throttleTimer: ReturnType<typeof setTimeout> | null = null
@@ -97,26 +84,59 @@ export function useDrawingPreviewChannel(options: DrawingPreviewChannelOptions) 
     }, remaining)
   }
 
-  function receive(message: DrawingPreviewMessage) {
+  function isDrawingPreviewMessage(message: unknown): message is DrawingPreviewMessage {
+    if (!message || typeof message !== 'object') return false
+    const candidate = message as Partial<DrawingPreviewMessage>
+    const coordinates = candidate.coordinates
+    return typeof candidate.tripId === 'string'
+      && typeof candidate.clientId === 'string'
+      && typeof candidate.previewId === 'string'
+      && typeof candidate.sequence === 'number'
+      && Number.isSafeInteger(candidate.sequence)
+      && candidate.sequence >= 0
+      && (candidate.phase === 'UPDATE' || candidate.phase === 'END' || candidate.phase === 'CANCEL')
+      && Array.isArray(coordinates)
+      && coordinates.every((coordinate) => (
+        typeof coordinate === 'object'
+        && coordinate !== null
+        && typeof (coordinate as Partial<LngLat>).lng === 'number'
+        && Number.isFinite((coordinate as Partial<LngLat>).lng)
+        && typeof (coordinate as Partial<LngLat>).lat === 'number'
+        && Number.isFinite((coordinate as Partial<LngLat>).lat)
+      ))
+      && typeof candidate.color === 'string'
+      && typeof candidate.width === 'number'
+      && Number.isFinite(candidate.width)
+      && candidate.width > 0
+  }
+
+  function receive(message: unknown) {
+    if (!isDrawingPreviewMessage(message)) return
     if (message.tripId !== options.tripId || message.clientId === options.clientId) return
     const key = `${message.clientId}:${message.previewId}`
+    if ((remoteSequences.get(key) ?? -1) >= message.sequence) return
+    remoteSequences.set(key, message.sequence)
     const expiryTimer = remoteExpiryTimers.get(key)
     if (expiryTimer) clearTimeout(expiryTimer)
     if (message.phase === 'CANCEL') {
-      remoteExpiryTimers.delete(key)
       remoteByKey.value.delete(key)
       remoteByKey.value = new Map(remoteByKey.value)
+      remoteExpiryTimers.set(key, setTimeout(() => {
+        remoteExpiryTimers.delete(key)
+        remoteSequences.delete(key)
+      }, remoteTtlMs))
       return
     }
     remoteByKey.value.set(key, {
       id: `remote:${key}`,
-      coordinates: message.coordinates,
+      coordinates: downsampleCoordinates(message.coordinates, maxCoordinates),
       color: message.color,
       width: message.width,
     })
     remoteByKey.value = new Map(remoteByKey.value)
     remoteExpiryTimers.set(key, setTimeout(() => {
       remoteExpiryTimers.delete(key)
+      remoteSequences.delete(key)
       remoteByKey.value.delete(key)
       remoteByKey.value = new Map(remoteByKey.value)
     }, remoteTtlMs))
@@ -124,7 +144,7 @@ export function useDrawingPreviewChannel(options: DrawingPreviewChannelOptions) 
 
   function connect() {
     if (!unsubscribe) {
-      unsubscribe = options.transport.subscribe<DrawingPreviewMessage>(drawingPreviewTopic(options.tripId), receive)
+      unsubscribe = options.transport.subscribe<unknown>(drawingPreviewTopic(options.tripId), receive)
     }
     options.transport.connect()
   }
@@ -137,6 +157,7 @@ export function useDrawingPreviewChannel(options: DrawingPreviewChannelOptions) 
     pendingEvent = null
     remoteExpiryTimers.forEach(clearTimeout)
     remoteExpiryTimers.clear()
+    remoteSequences.clear()
     remoteByKey.value = new Map()
     await options.transport.disconnect()
   }
