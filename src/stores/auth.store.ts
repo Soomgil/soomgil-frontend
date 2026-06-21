@@ -41,11 +41,15 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('accessToken'))
   const isAuthenticated = computed(() => !!token.value)
 
-  function _persistAuth(accessToken: string, refreshToken: string, expiresIn: number) {
+  function _persistAuth(accessToken: string, refreshToken: string, expiresIn?: number) {
     token.value = accessToken
     localStorage.setItem('accessToken', accessToken)
     localStorage.setItem('refreshToken', refreshToken)
-    localStorage.setItem('tokenExpiresAt', String(Date.now() + expiresIn * 1000))
+    if (typeof expiresIn === 'number' && Number.isFinite(expiresIn)) {
+      localStorage.setItem('tokenExpiresAt', String(Date.now() + expiresIn * 1000))
+    } else {
+      localStorage.removeItem('tokenExpiresAt')
+    }
   }
 
   function _clearAuth() {

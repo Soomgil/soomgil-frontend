@@ -72,14 +72,18 @@ function clearAuthAndRedirect() {
 async function doRefresh(): Promise<string> {
   const refreshToken = localStorage.getItem('refreshToken')
   if (!refreshToken) throw new Error('no refresh token')
-  const res = await refreshClient.post<{ accessToken: string; refreshToken: string; expiresIn: number }>(
+  const res = await refreshClient.post<{ accessToken: string; refreshToken: string; expiresIn?: number }>(
     '/auth/refresh',
     { refreshToken },
   )
   const { accessToken, refreshToken: newRefresh, expiresIn } = res.data
   localStorage.setItem('accessToken', accessToken)
   localStorage.setItem('refreshToken', newRefresh)
-  localStorage.setItem('tokenExpiresAt', String(Date.now() + expiresIn * 1000))
+  if (typeof expiresIn === 'number' && Number.isFinite(expiresIn)) {
+    localStorage.setItem('tokenExpiresAt', String(Date.now() + expiresIn * 1000))
+  } else {
+    localStorage.removeItem('tokenExpiresAt')
+  }
   return accessToken
 }
 
@@ -103,6 +107,7 @@ http.interceptors.response.use(
       }
       // 중복 재시도 방지
       if (original._retried) {
+        clearAuthAndRedirect()
         return Promise.reject(error)
       }
       original._retried = true

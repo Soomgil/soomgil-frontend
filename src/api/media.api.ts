@@ -37,13 +37,13 @@ export const mediaApi = {
   ): Promise<MediaFile> => {
     const response = await http.post<MediaFile>('/media/files', {
       objectKey: upload.objectKey,
-      publicUrl: metadata.publicUrl ?? null,
       mimeType: file.type,
       byteSize: file.size,
-      width: metadata.width ?? null,
-      height: metadata.height ?? null,
-      linkedResourceType: metadata.linkedResourceType ?? null,
-      linkedResourceId: metadata.linkedResourceId ?? null,
+      ...(metadata.publicUrl != null && { publicUrl: metadata.publicUrl }),
+      ...(metadata.width != null && { width: metadata.width }),
+      ...(metadata.height != null && { height: metadata.height }),
+      ...(metadata.linkedResourceType != null && { linkedResourceType: metadata.linkedResourceType }),
+      ...(metadata.linkedResourceId != null && { linkedResourceId: metadata.linkedResourceId }),
     })
     return response.data
   },

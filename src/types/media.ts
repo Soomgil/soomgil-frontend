@@ -4,9 +4,9 @@ export type MediaPurpose = 'PROFILE_IMAGE' | 'TRIP_RECORD' | 'COMMUNITY_POST'
 
 export interface MediaUploadUrl {
   uploadUrl: string
-  method: string
+  method?: 'PUT' | 'POST'
   objectKey: string
-  headers: Record<string, string>
+  headers?: Record<string, string>
   expiresAt: string
 }
 
@@ -21,11 +21,11 @@ export interface MediaUploadMetadata {
 /* ── Media File ── */
 export interface MediaFile {
   id: string
-  publicUrl: string | null
+  publicUrl?: string
   mimeType: string
-  byteSize: number
-  width: number | null
-  height: number | null
+  byteSize?: number
+  width?: number
+  height?: number
   status: MediaStatus
   createdAt: string
 }
@@ -62,13 +62,13 @@ export interface TripRecordMedia {
 
 export interface TripRecordPhoto {
   tripId: string
-  tripTitle: string | null
+  tripTitle?: string
   recordId: string
-  itineraryDayId: string | null
-  itineraryItemId: string | null
+  itineraryDayId?: string
+  itineraryItemId?: string
   media: MediaFile
-  uploadedBy: import('./auth').UserSummary | null
-  takenAt: string | null
+  uploadedBy?: import('./auth').UserSummary
+  takenAt?: string
   createdAt: string
 }
 

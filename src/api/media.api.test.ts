@@ -68,13 +68,10 @@ describe('media API', () => {
     })
     expect(post).toHaveBeenNthCalledWith(2, '/media/files', {
       objectKey: upload.objectKey,
-      publicUrl: null,
       mimeType: 'image/jpeg',
       byteSize: file.size,
       width: 320,
       height: 320,
-      linkedResourceType: null,
-      linkedResourceId: null,
     })
     expect(result).toEqual(mediaFile)
   })
