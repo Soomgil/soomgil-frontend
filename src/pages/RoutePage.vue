@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
+import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
 import { mockTrips } from '@/mocks/mockTrips'
 import { mockPlaces } from '@/mocks/mockPlaces'
+import type { Place } from '@/types/place'
 
 /* ── RoutePage 내부 전용 타입 ── */
 interface RouteStop {
@@ -67,6 +70,8 @@ function loadKakaoSDK(): Promise<void> {
 
 /* ── Data ── */
 const trip = mockTrips[0]
+const route = useRoute()
+const tripId = computed(() => String(route.params.tripId))
 // 드래그앤드롭으로 순서/일차 변경을 위해 reactive 배열 사용
 const dayPlans = ref<DayPlan[]>([])
 
@@ -91,6 +96,15 @@ function buildInitialDayPlans(): DayPlan[] {
 dayPlans.value = buildInitialDayPlans()
 
 const activeDay = ref(0)
+const discoveryBbox = computed(() => {
+  const coordinates = dayPlans.value.flatMap(day => day.items)
+    .filter(item => item.lat != null && item.lng != null)
+  if (coordinates.length === 0) return '127.25,36.20,127.55,36.50'
+  const lngs = coordinates.map(item => item.lng as number)
+  const lats = coordinates.map(item => item.lat as number)
+  const padding = 0.05
+  return `${Math.min(...lngs) - padding},${Math.min(...lats) - padding},${Math.max(...lngs) + padding},${Math.max(...lats) + padding}`
+})
 const dayColors = ['day-color-1', 'day-color-2', 'day-color-3', 'day-color-4', 'day-color-5']
 const dayColorHex = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
 function getDayColorClass(day: number) { return dayColors[(day - 1) % dayColors.length] }
@@ -744,55 +758,10 @@ function toggleCardState() {
 
 /* ── Search panel ── */
 const isSearchPanelOpen = ref(false)
-const searchQuery = ref('')
-const searchCategory = ref('all')
 const showCustomForm = ref(false)
 
-const searchCategories = [
-  { key: 'all', label: '전체' },
-  { key: 'attraction', label: '관광지' },
-  { key: 'food', label: '맛집' },
-  { key: 'cafe', label: '카페' },
-  { key: 'hotel', label: '숙소' },
-]
-
-const mockSearchPlaces = [
-  { id: 'p1', name: '에펠탑 (Eiffel Tower)', category: 'attraction', rating: 4.8, reviews: 14502, address: 'Champ de Mars, 5 Avenue Anatole', img: '🗼', photo: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=150&q=80', description: '파리의 영원한 상징이자 전망이 아름다운 324m 격자 철탑' },
-  { id: 'p2', name: '루브르 박물관 (Louvre Museum)', category: 'attraction', rating: 4.7, reviews: 9812, address: 'Rue de Rivoli, 75001 Paris', img: '🏛️', photo: 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=150&q=80', description: '모나리자 등 인류의 위대한 예술품이 가득한 세계 최대 박물관' },
-  { id: 'p3', name: '몽마르뜨 언덕 (Montmartre)', category: 'attraction', rating: 4.6, reviews: 7540, address: '75018 Paris', img: '⛪', photo: 'https://images.unsplash.com/photo-1549693578-d683be217e58?auto=format&fit=crop&w=150&q=80', description: '예술가들의 향기와 사크레쾨르 대성당이 있는 낭만적인 고지' },
-  { id: 'p4', name: '개선문 (Arc de Triomphe)', category: 'attraction', rating: 4.7, reviews: 6320, address: 'Pl. Charles de Gaulle, 75008', img: '🏛️', photo: 'https://images.unsplash.com/photo-1509060464153-44667396260f?auto=format&fit=crop&w=150&q=80', description: '프랑스 군대의 승리를 기념하는 샹젤리제 거리의 웅장한 관문' },
-  { id: 'p5', name: '르 프로코프 (Le Procope)', category: 'food', rating: 4.4, reviews: 2310, address: "13 Rue de l'Ancienne Comédie", img: '🍽️', photo: 'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?auto=format&fit=crop&w=150&q=80', description: '1686년에 개업한 파리 최초이자 가장 오래된 역사적 명소 레스토랑' },
-  { id: 'p6', name: '앙젤리나 파리 (Angelina)', category: 'food', rating: 4.5, reviews: 4210, address: '226 Rue de Rivoli, 75001', img: '🍰', photo: 'https://images.unsplash.com/photo-1551024601-bec78aea704b?auto=format&fit=crop&w=150&q=80', description: '세계적인 몽블랑 페이스트리와 유서 깊은 달콤한 쇼콜라 쇼 맛집' },
-  { id: 'p7', name: '라뒤레 샹젤리제 (Ladurée)', category: 'food', rating: 4.3, reviews: 5420, address: '75 Av. des Champs-Élysées', img: '🍩', photo: 'https://images.unsplash.com/photo-1514517604298-cf80e0fb7f1e?auto=format&fit=crop&w=150&q=80', description: '형형색색 아름다운 마카롱을 맛볼 수 있는 파리 대표 살롱 드 떼' },
-  { id: 'p8', name: '카페 드 플로르 (Café de Flore)', category: 'cafe', rating: 4.2, reviews: 3105, address: '172 Bd Saint-Germain, 75006', img: '☕', photo: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=150&q=80', description: '사르트르, 보부아르 등 실존주의 철학자와 예술가들의 단골 카페' },
-  { id: 'p9', name: '레 되 마고 (Les Deux Magots)', category: 'cafe', rating: 4.3, reviews: 2980, address: '6 Pl. Saint-Germain des Prés', img: '☕', photo: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=150&q=80', description: '헤밍웨이와 제임스 조이스가 문학을 토론하던 역사 깊은 지적 쉼터' },
-  { id: 'p10', name: '리츠 파리 (Ritz Paris)', category: 'hotel', rating: 4.9, reviews: 850, address: '15 Pl. Vendôme, 75001', img: '🏨', photo: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=150&q=80', description: '코코 샤넬과 다이애나 비가 사랑했던 세계 최고의 호화 5성급 호텔' },
-  { id: 'p11', name: '풀만 파리 타워 에펠 (Pullman)', category: 'hotel', rating: 4.6, reviews: 1980, address: '18 Avenue De Suffren, 75015', img: '🏨', photo: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=150&q=80', description: '에펠탑 바로 옆에 위치하여 멋진 전망을 소장한 현대적인 호텔' },
-]
-
-const filteredSearchPlaces = computed(() => {
-  return mockSearchPlaces.filter(p => {
-    const matchCat = searchCategory.value === 'all' || p.category === searchCategory.value
-    const matchQ = !searchQuery.value || p.name.includes(searchQuery.value) || p.address.includes(searchQuery.value)
-    return matchCat && matchQ
-  })
-})
-
 function openSearchPanel() { isSearchPanelOpen.value = true }
-function closeSearchPanel() { isSearchPanelOpen.value = false; searchQuery.value = ''; searchCategory.value = 'all'; showCustomForm.value = false }
-
-function getCategoryLabel(cat: string) {
-  if (cat === 'food') return '맛집'
-  if (cat === 'cafe') return '카페'
-  if (cat === 'hotel') return '숙소'
-  return '관광지'
-}
-function getCategoryClass(cat: string) {
-  if (cat === 'food') return 'tag-food'
-  if (cat === 'cafe') return 'tag-cafe'
-  if (cat === 'hotel') return 'tag-hotel'
-  return 'tag-attraction'
-}
+function closeSearchPanel() { isSearchPanelOpen.value = false; showCustomForm.value = false }
 
 /* ── Custom schedule form ── */
 const customTitle = ref('')
@@ -834,9 +803,8 @@ function selectPlace(placeId: string) {
     }
     return
   }
-  // Try itinerary items first (mockPlaces - rich data), then search results (mockSearchPlaces)
+  // Existing itinerary items keep their rich local detail until itinerary API migration is complete.
   const itineraryPlace = mockPlaces.find(p => p.externalPlaceId === placeId)
-  const mp = mockSearchPlaces.find(p => p.id === placeId)
 
   if (itineraryPlace) {
     const p = itineraryPlace as any
@@ -859,27 +827,27 @@ function selectPlace(placeId: string) {
       travelStories: p.travelStories,
     }
     detailbarMainImg.value = p.image
-  } else if (mp) {
-    selectedPlace.value = {
-      id: mp.id,
-      title: mp.name,
-      description: (mp as any).description,
-      image: (mp as any).photo,
-      likes: (mp as any).reviews ? `${((mp as any).reviews / 1000).toFixed(1)}k` : '1.2k',
-      location: mp.address,
-      hours: '09:00 - 18:00 (현지 시간)',
-      closed: '연중무휴',
-      parking: '주변 공영 주차장 및 갓길 주차 이용',
-      photos: [(mp as any).photo],
-      accessibility: { wheelchair: true, pets: true, stroller: true },
-      contact: '현지 관광안내소 문의',
-      likedBy: [{ avatar: 'MJ', name: 'MJ' }, { avatar: 'JH', name: 'JH' }],
-    }
-    detailbarMainImg.value = (mp as any).photo
   } else {
     return
   }
 
+  isDetailbarOpen.value = true
+  setTimeout(redrawMap, 420)
+}
+
+function selectDiscoveredPlace(place: Place) {
+  selectedPlace.value = {
+    id: place.externalPlaceId,
+    title: place.placeName,
+    description: place.description || place.summary || '',
+    image: place.thumbnailUrl,
+    likes: '',
+    location: place.address,
+    photos: place.photos ?? (place.thumbnailUrl ? [place.thumbnailUrl] : []),
+    contact: place.contact,
+    likedBy: [],
+  }
+  detailbarMainImg.value = place.thumbnailUrl ?? ''
   isDetailbarOpen.value = true
   setTimeout(redrawMap, 420)
 }
@@ -910,7 +878,7 @@ function addPlaceToItinerary(place: any) {
   const newItem: RouteStop = {
     id: `step_${Date.now()}`,
     placeExternalId: place.externalPlaceId,
-    title: place.name,
+    title: place.placeName ?? place.name,
     time: `${timeKey} 오후`,
     order: 0,
     day: targetDay,
@@ -1094,7 +1062,7 @@ function textAvatarStyle(index: unknown) {
                     <span class="material-symbols-rounded">edit_note</span>
                     <div class="popover-item-text"><strong>커스텀 일정 추가</strong><span>자유시간, 이동 등 직접 입력</span></div>
                   </button>
-                  <button class="popover-item" type="button" @click="openSearchPanel(); searchQuery = '명소'">
+                  <button class="popover-item" type="button" @click="openSearchPanel">
                     <span class="material-symbols-rounded">explore</span>
                     <div class="popover-item-text"><strong>추천 관광지 보기</strong><span>지역 인기 명소 추천 받기</span></div>
                   </button>
@@ -1115,22 +1083,12 @@ function textAvatarStyle(index: unknown) {
                 </button>
               </div>
               <div class="search-panel-body">
-                <div class="search-input-wrapper">
-                  <button class="search-submit-btn" id="place-search-submit" type="button" aria-label="장소 검색">
-                    <span class="material-symbols-rounded" aria-hidden="true">search</span>
-                  </button>
-                  <input type="text" id="place-search-input" placeholder="관광지, 맛집, 숙소 검색..." v-model="searchQuery" />
-                  <button v-if="searchQuery" class="clear-btn" id="place-search-clear" type="button" @click="searchQuery = ''">
-                    <span class="material-symbols-rounded">close</span>
-                  </button>
-                </div>
-
-                <div class="search-categories">
-                  <button v-for="cat in searchCategories" :key="cat.key"
-                    :class="['category-chip', { active: searchCategory === cat.key }]"
-                    :data-category="cat.key" type="button"
-                    @click="searchCategory = cat.key">{{ cat.label }}</button>
-                </div>
+                <PlaceDiscoveryPanel
+                  :trip-id="tripId"
+                  :bbox="discoveryBbox"
+                  @select="selectDiscoveredPlace"
+                  @add="addPlaceToItinerary"
+                />
 
                 <!-- 커스텀 일정 폼 -->
                 <div class="custom-schedule-form" id="custom-schedule-form" v-if="showCustomForm">
@@ -1180,37 +1138,6 @@ function textAvatarStyle(index: unknown) {
                   </button>
                 </div>
 
-                <ul class="search-results-list" id="search-results-list">
-                  <li v-for="place in filteredSearchPlaces" :key="place.id"
-                    :class="['search-result-item', place.category]" style="cursor:pointer;"
-                    @click="selectPlace(place.id)">
-                    <div class="search-result-img-wrapper">
-                      <img class="search-result-photo" :src="(place as any).photo" :alt="place.name">
-                      <span class="search-result-category-icon">{{ (place as any).img }}</span>
-                    </div>
-                    <div class="search-result-info">
-                      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                        <span :class="['search-result-badge', getCategoryClass(place.category)]">{{ getCategoryLabel(place.category) }}</span>
-                        <div class="search-result-meta">
-                          <span class="search-result-rating">★ {{ place.rating }}</span>
-                          <span style="font-size:10px;color:var(--muted);">({{ (place as any).reviews?.toLocaleString() }})</span>
-                        </div>
-                      </div>
-                      <h5 class="search-result-title">{{ place.name }}</h5>
-                      <p class="search-result-address">
-                        <span class="material-symbols-rounded" style="font-size:11px;vertical-align:middle;">location_on</span>
-                        <span style="vertical-align:middle;">{{ place.address }}</span>
-                      </p>
-                    </div>
-                    <button class="search-result-add-btn" type="button" :aria-label="place.name + ' 일정 추가'"
-                      @click.stop="addPlaceToItinerary(place)">
-                      <span class="material-symbols-rounded">add</span>
-                    </button>
-                  </li>
-                  <li v-if="filteredSearchPlaces.length === 0" style="text-align:center;color:var(--muted);padding:40px 0;font-size:14px;">
-                    검색 결과가 없습니다.
-                  </li>
-                </ul>
               </div>
             </div>
 
