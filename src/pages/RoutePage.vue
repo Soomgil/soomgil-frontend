@@ -5,10 +5,12 @@ import AppShell from '@/components/layout/AppShell.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
+import { geoApi } from '@/api/geo.api'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
 import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
+import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/components/map/MapDrawingOverlay.vue'
 import { useItinerary } from '@/composables/useItinerary'
 import { useMapViewport } from '@/composables/useMapViewport'
 import { mockPlaces } from '@/mocks/mockPlaces'
@@ -592,7 +594,56 @@ const drawingOn = ref(true)
 const isPenPopoverOpen = ref(false)
 const penSize = ref(6)
 const penColor = ref('#1f2937')
-const activeTool = ref('cursor')
+const activeTool = ref<MapDrawingTool>('cursor')
+const localDrawings = ref<MapDrawingStroke[]>([])
+const pendingDrawingIds = ref<string[]>([])
+const drawingRetryIds = ref<string[]>([])
+let localDrawingSequence = 0
+
+async function simplifyLocalDrawing(drawingId: string) {
+  const drawing = localDrawings.value.find((candidate) => candidate.id === drawingId)
+  if (!drawing || pendingDrawingIds.value.includes(drawingId)) return
+  pendingDrawingIds.value = [...pendingDrawingIds.value, drawingId]
+  drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+  try {
+    const simplified = await geoApi.simplifyCoordinates({
+      coordinates: drawing.coordinates,
+      maxPoints: 100,
+    })
+    const index = localDrawings.value.findIndex((candidate) => candidate.id === drawingId)
+    if (index >= 0) {
+      localDrawings.value[index] = { ...localDrawings.value[index], coordinates: simplified.coordinates }
+    }
+  } catch {
+    if (localDrawings.value.some((candidate) => candidate.id === drawingId)) {
+      if (!drawingRetryIds.value.includes(drawingId)) {
+        drawingRetryIds.value = [...drawingRetryIds.value, drawingId]
+      }
+    }
+  } finally {
+    pendingDrawingIds.value = pendingDrawingIds.value.filter((id) => id !== drawingId)
+  }
+}
+
+function createLocalDrawing(draft: MapDrawingDraft) {
+  const drawing: MapDrawingStroke = {
+    id: `local-drawing-${++localDrawingSequence}`,
+    ...draft,
+  }
+  localDrawings.value = [...localDrawings.value, drawing]
+  void simplifyLocalDrawing(drawing.id)
+}
+
+function eraseLocalDrawing(drawingId: string) {
+  localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
+  drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+}
+
+function retryDrawingSimplification() {
+  const retryIds = [...drawingRetryIds.value]
+  drawingRetryIds.value = []
+  retryIds.forEach((drawingId) => void simplifyLocalDrawing(drawingId))
+}
 
 function toggleRouteState() {
   const states: Array<'route' | 'dashed' | 'hidden'> = ['route', 'dashed', 'hidden']
@@ -1183,8 +1234,15 @@ function textAvatarStyle(index: unknown) {
           <div class="map-canvas" aria-label="대전 여행 지도">
             <MapboxItineraryMap
               :stops="mapStops"
+              :drawings="localDrawings"
+              :drawing-tool="activeTool"
+              :drawing-color="penColor"
+              :drawing-width="penSize"
+              :drawings-visible="drawingOn"
               @select-place="selectPlace"
               @viewport-change="mapViewport.updateViewport"
+              @drawing-create="createLocalDrawing"
+              @drawing-erase="eraseLocalDrawing"
             />
 
             <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
@@ -1198,6 +1256,18 @@ function textAvatarStyle(index: unknown) {
                 aria-label="지도 범위 동기화 다시 시도"
                 title="다시 시도"
                 @click="mapViewport.retry"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+              </button>
+            </div>
+
+            <div v-if="drawingRetryIds.length > 0" class="map-drawing-status" role="alert">
+              <span>그림 좌표를 정리하지 못했습니다.</span>
+              <button
+                type="button"
+                aria-label="그림 좌표 정리 다시 시도"
+                title="다시 시도"
+                @click="retryDrawingSimplification"
               >
                 <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
               </button>
@@ -1242,10 +1312,10 @@ function textAvatarStyle(index: unknown) {
               <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" title="여행 경로 그리기 (경로 펜)" data-tool="route-pen" @click="activeTool = 'route-pen'">
                 <span class="material-symbols-rounded">route</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" title="펜 (자유 그리기) — 굵기/색상 보기" data-tool="pen" @click="activeTool = 'pen'; isPenPopoverOpen = !isPenPopoverOpen">
+              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" title="펜 (자유 그리기) — 굵기/색상 보기" data-tool="pen" @click="activeTool = 'pen'; drawingOn = true; isPenPopoverOpen = !isPenPopoverOpen">
                 <span class="material-symbols-rounded">edit</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" title="지우개" data-tool="eraser" @click="activeTool = 'eraser'">
+              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" title="지우개" data-tool="eraser" @click="activeTool = 'eraser'; drawingOn = true">
                 <span class="material-symbols-rounded">ink_eraser</span>
               </button>
 
@@ -1880,6 +1950,41 @@ function textAvatarStyle(index: unknown) {
 }
 
 .map-viewport-retry .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.map-drawing-status {
+  align-items: center;
+  background: rgb(255 255 255 / 96%);
+  border: 1px solid #fecdd3;
+  border-radius: 6px;
+  bottom: 16px;
+  color: #be123c;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  padding: 7px 10px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 8;
+}
+
+.map-drawing-status button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.map-drawing-status .material-symbols-rounded {
   font-size: 18px;
 }
 

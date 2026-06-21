@@ -1,10 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { nextTick, reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import RoutePage from './RoutePage.vue'
 
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any }))
+const geo = vi.hoisted(() => ({ simplifyCoordinates: vi.fn() }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { tripId: 'trip-1' } }),
@@ -35,6 +36,8 @@ vi.mock('@/composables/useItinerary', async () => {
 vi.mock('@/stores/trip.store', () => ({
   useTripStore: () => holder.tripStore,
 }))
+
+vi.mock('@/api/geo.api', () => ({ geoApi: geo }))
 
 vi.mock('@/composables/useMapViewport', async () => {
   const { computed, ref } = await import('vue')
@@ -71,6 +74,12 @@ describe('RoutePage itinerary integration', () => {
     holder.state.error.value = null
     holder.viewportState.loading.value = false
     holder.viewportState.error.value = null
+    geo.simplifyCoordinates.mockResolvedValue({
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      originalCount: 2,
+      simplifiedCount: 2,
+      maxPoints: 100,
+    })
     holder.state.fetchItinerary.mockImplementation(async () => {
       holder.state.days.value = [
         {
@@ -172,5 +181,82 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('.map-viewport-status[role="alert"]').text()).toContain('지도 범위를 동기화하지 못했습니다.')
     await wrapper.get('.map-viewport-retry').trigger('click')
     expect(holder.viewportState.retry).toHaveBeenCalledOnce()
+  })
+
+  it('새 지도 그림을 좌표 단순화한 뒤 표시하고 지운다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const draft = {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 127.5, lat: 36.5 }, { lng: 128, lat: 37 }],
+      color: '#ef4444',
+      width: 6,
+    }
+
+    map.vm.$emit('drawingCreate', draft)
+    await flushPromises()
+
+    expect(geo.simplifyCoordinates).toHaveBeenCalledWith({ coordinates: draft.coordinates, maxPoints: 100 })
+    expect(map.props('drawings')).toEqual([{
+      id: 'local-drawing-1',
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#ef4444',
+      width: 6,
+    }])
+
+    map.vm.$emit('drawingErase', 'local-drawing-1')
+    await nextTick()
+    expect(map.props('drawings')).toEqual([])
+  })
+
+  it('좌표 단순화 실패를 표시하고 재시도한다', async () => {
+    geo.simplifyCoordinates
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({
+        coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+        originalCount: 2,
+        simplifiedCount: 2,
+        maxPoints: 100,
+      })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.getComponent(MapboxItineraryMap).vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.map-drawing-status[role="alert"]').text()).toContain('그림 좌표를 정리하지 못했습니다.')
+    wrapper.getComponent(MapboxItineraryMap).vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 126, lat: 35 }, { lng: 127, lat: 36 }],
+      color: '#ef4444',
+      width: 2,
+    })
+    await flushPromises()
+    expect(wrapper.find('.map-drawing-status').exists()).toBe(true)
+
+    await wrapper.get('.map-drawing-status button').trigger('click')
+    await flushPromises()
+    expect(geo.simplifyCoordinates).toHaveBeenCalledTimes(3)
+    expect(wrapper.find('.map-drawing-status').exists()).toBe(false)
   })
 })
