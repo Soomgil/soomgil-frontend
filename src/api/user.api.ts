@@ -7,6 +7,7 @@ import type {
   UserSettings,
   UserSummary,
 } from '@/types/auth'
+import type { PagedItems } from '@/types/api'
 import { mapBackendUser } from '@/types/auth'
 
 export const userApi = {
@@ -41,7 +42,7 @@ export const userApi = {
 
   /** 사용자 팔로우 */
   follow: async (userId: string): Promise<any> => {
-    const res = await http.post(`/users/${userId}/follow`)
+    const res = await http.put(`/users/${userId}/follow`)
     return res.data
   },
 
@@ -52,14 +53,18 @@ export const userApi = {
 
   /** 팔로워 목록 조회 */
   getFollowers: async (userId: string): Promise<UserSummary[]> => {
-    const res = await http.get<UserSummary[]>(`/users/${userId}/followers`)
-    return res.data
+    const res = await http.get<PagedItems<UserSummary>>(`/users/${userId}/followers`, {
+      params: { page: 0, size: 100 },
+    })
+    return res.data.items
   },
 
   /** 팔로잉 목록 조회 */
   getFollowing: async (userId: string): Promise<UserSummary[]> => {
-    const res = await http.get<UserSummary[]>(`/users/${userId}/following`)
-    return res.data
+    const res = await http.get<PagedItems<UserSummary>>(`/users/${userId}/following`, {
+      params: { page: 0, size: 100 },
+    })
+    return res.data.items
   },
   /** 특정 사용자 프로필 조회 (GET /users/{userId}) */
   getUserProfile: async (userId: string): Promise<any> => {
