@@ -1,13 +1,26 @@
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { mockCommunityStories } from '@/mocks/mockCommunity'
+import { communityApi } from '@/api/community.api'
+import type { CommunityPostSummary } from '@/types/community'
 import AppShell from '@/components/layout/AppShell.vue'
+import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
+const toast = useToast()
+const posts = ref<CommunityPostSummary[]>([])
 
 function goBack() {
   router.push('/community')
 }
+
+onMounted(async () => {
+  try {
+    posts.value = (await communityApi.getPosts({ page: 0, size: 100 })).items
+  } catch {
+    toast.error('여행기 목록을 불러오지 못했습니다.')
+  }
+})
 </script>
 
 <template>
@@ -28,17 +41,17 @@ function goBack() {
 
         <div class="story-list-grid">
           <a
-            v-for="story in mockCommunityStories"
+            v-for="story in posts"
             :key="story.id"
             class="story-list-card"
             href="#"
             @click.prevent
           >
-            <img :alt="story.title + ' 스토리'" :src="story.image" />
+            <img :alt="story.title + ' 스토리'" :src="story.coverMedia?.publicUrl ?? '/images/랜딩페이지/korea_hero.png'" />
             <div>
               <span class="post-type story">여행기</span>
               <h3>{{ story.title }}</h3>
-              <p class="muted">{{ story.author }} · 좋아요 {{ story.likes }} · 댓글 {{ story.comments }}</p>
+              <p class="muted">{{ story.publishedBy?.displayName ?? '숨길 여행자' }} · 좋아요 {{ story.likeCount }} · 댓글 {{ story.commentCount }}</p>
             </div>
           </a>
         </div>

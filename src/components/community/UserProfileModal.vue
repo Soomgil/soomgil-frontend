@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import type { UserProfile } from '@/types/user'
 import { mockCommunityStories } from '@/mocks/mockCommunity'
 import { mockFollowers, mockFollowing, mockOtherUsers } from '@/mocks/mockUser'
-import type { FollowUser } from '@/mocks/mockUser'
+import type { UserSummary } from '@/types/auth'
 import FollowListModal from '@/components/common/FollowListModal.vue'
 
 const props = defineProps<{ user: UserProfile | null }>()
@@ -27,14 +27,14 @@ const showFollowersModal = ref(false)
 const showFollowingModal = ref(false)
 
 // Mock followers/following for this user
-const followersList: FollowUser[] = mockOtherUsers.slice(0, Math.min(6, userFollowerCount.value)).map(u => ({
-  userId: u.id,
+const followersList: UserSummary[] = mockOtherUsers.slice(0, Math.min(6, userFollowerCount.value)).map(u => ({
+  id: u.id,
   displayName: u.displayName,
   profileImageUrl: u.profileImageUrl,
   bio: u.bio ?? '',
 }))
-const followingList: FollowUser[] = mockOtherUsers.slice(3, Math.min(8, 3 + userFollowingCount.value)).map(u => ({
-  userId: u.id,
+const followingList: UserSummary[] = mockOtherUsers.slice(3, Math.min(8, 3 + userFollowingCount.value)).map(u => ({
+  id: u.id,
   displayName: u.displayName,
   profileImageUrl: u.profileImageUrl,
   bio: u.bio ?? '',

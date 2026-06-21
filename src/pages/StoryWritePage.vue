@@ -1,28 +1,37 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
+import http from '@/api/http'
+import { communityApi } from '@/api/community.api'
+import { mediaApi } from '@/api/media.api'
+import type { PageMeta } from '@/types/community'
+import type { TripRecordPhoto } from '@/types/media'
+import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
+const toast = useToast()
 
 // Form state
 const title = ref('성심당만 보고 갔다가 대전에 반하고 온 여행')
 const selectedTripId = ref('')
 const tagsInput = ref('#대전여행 #성심당 #빵지순례')
 
-// 내 여행계획 목록 (mock)
-const myTrips = [
-  { id: 'trip_1', title: '대전 2박 3일 힐링 코스', date: '2026.05.20 ~ 05.22' },
-  { id: 'trip_2', title: '부산 바다 여행', date: '2026.06.10 ~ 06.12' },
-  { id: 'trip_3', title: '제주도 3박 4일 완전정복', date: '2026.07.01 ~ 07.04' },
-]
+interface PublishableTrip {
+  id: string
+  title: string
+  displayDestination: string | null
+  itineraryVersion: number
+}
+const myTrips = ref<PublishableTrip[]>([])
+const publishing = ref(false)
 const content = ref('성심당문화원에서 커피 마시고 은행동 거리를 걷는데 분위기가 진짜 좋았습니다. 저녁에는 중앙시장까지 걸어갔는데 사람도 많고 먹거리도 다양해서 예상보다 훨씬 재밌었어요.')
-const photoPreviews = ref<{ file?: File; url: string }[]>([])
-
-// Photo state
-const addedPhotos = ref<string[]>([])
-const representativePhoto = ref('')
+const recordPhotos = ref<TripRecordPhoto[]>([])
+const selectedMediaIds = ref<Set<string>>(new Set())
+const loadingRecordPhotos = ref(false)
 const previewImageIndex = ref(0)
+const selectedPhotos = computed(() => recordPhotos.value.filter((photo) => selectedMediaIds.value.has(photo.media.id)))
+const addedPhotos = computed(() => selectedPhotos.value.flatMap((photo) => photo.media.publicUrl ? [photo.media.publicUrl] : []))
 
 // Char counter
 const charCount = computed(() => content.value.length)
@@ -52,7 +61,7 @@ const previewHtml = computed(() => {
 
 const previewTitle = computed(() => title.value.trim() || '여행의 제목을 입력하세요')
 const previewRegion = computed(() => {
-  const trip = myTrips.find(t => t.id === selectedTripId.value)
+  const trip = myTrips.value.find(t => t.id === selectedTripId.value)
   return trip ? trip.title : '여행계획을 선택하세요'
 })
 
@@ -78,46 +87,57 @@ function insertMarkdown(prefix: string, suffix: string, placeholder: string) {
 }
 
 function handleSave() {
-  alert('임시 저장되었습니다.')
+  toast.info('임시저장은 아직 백엔드 API에서 지원하지 않습니다.')
 }
 
-function handlePublish() {
-  alert('여행기가 성공적으로 등록되었습니다!')
-  router.push('/community/stories')
-}
-
-// Photo upload
-function onPhotoSelect(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files) return
-  for (const file of Array.from(input.files)) {
-    if (photoPreviews.value.length >= 6) break
-    const url = URL.createObjectURL(file)
-    photoPreviews.value.push({ file, url })
-    addedPhotos.value.push(url)
+async function handlePublish() {
+  const trip = myTrips.value.find((item) => item.id === selectedTripId.value)
+  if (!trip || !title.value.trim() || selectedPhotos.value.length === 0) {
+    toast.info('여행계획, 제목, 기록 사진을 한 장 이상 선택해주세요.')
+    return
   }
-  if (!representativePhoto.value && addedPhotos.value.length > 0) {
-    representativePhoto.value = addedPhotos.value[0]
-    previewImageIndex.value = 0
-  }
-  input.value = ''
-}
-
-function removePhoto(index: number) {
-  const removed = photoPreviews.value.splice(index, 1)
-  addedPhotos.value.splice(index, 1)
-  if (removed[0]?.url) URL.revokeObjectURL(removed[0].url)
-  if (representativePhoto.value === removed[0]?.url) {
-    representativePhoto.value = addedPhotos.value[0] || ''
-  }
-  if (previewImageIndex.value >= addedPhotos.value.length) {
-    previewImageIndex.value = Math.max(0, addedPhotos.value.length - 1)
+  publishing.value = true
+  try {
+    await communityApi.createPost({
+      sourceTripId: trip.id,
+      baseVersion: trip.itineraryVersion,
+      visibility: 'PUBLIC',
+      title: title.value.trim(),
+      summary: content.value.trim() || null,
+      hashtags: previewTags.value.map((tag) => tag.replace(/^#/, '')),
+      mediaFileIds: selectedPhotos.value.map((photo) => photo.media.id),
+      coverMediaFileId: selectedPhotos.value[0]?.media.id ?? null,
+    })
+    toast.success('여행기가 등록되었습니다.')
+    router.push('/community/stories')
+  } catch {
+    toast.error('여행기를 등록하지 못했습니다. 여행계획 버전을 확인해주세요.')
+  } finally {
+    publishing.value = false
   }
 }
 
-function setRepresentative(index: number) {
-  representativePhoto.value = addedPhotos.value[index]
-  previewImageIndex.value = index
+async function loadRecordPhotos(tripId: string) {
+  loadingRecordPhotos.value = true
+  recordPhotos.value = []
+  selectedMediaIds.value = new Set()
+  previewImageIndex.value = 0
+  try {
+    const response = await mediaApi.getRecordPhotos(tripId)
+    recordPhotos.value = response.items.filter((photo) => Boolean(photo.media.publicUrl))
+  } catch {
+    toast.error('선택한 여행의 기록 사진을 불러오지 못했습니다.')
+  } finally {
+    loadingRecordPhotos.value = false
+  }
+}
+
+function toggleRecordPhoto(photo: TripRecordPhoto) {
+  const next = new Set(selectedMediaIds.value)
+  if (next.has(photo.media.id)) next.delete(photo.media.id)
+  else next.add(photo.media.id)
+  selectedMediaIds.value = next
+  if (previewImageIndex.value >= addedPhotos.value.length) previewImageIndex.value = 0
 }
 
 function carouselPrev() {
@@ -129,6 +149,20 @@ function carouselNext() {
   if (addedPhotos.value.length < 2) return
   previewImageIndex.value = (previewImageIndex.value + 1) % addedPhotos.value.length
 }
+
+onMounted(async () => {
+  try {
+    const response = await http.get<{ items: PublishableTrip[]; page: PageMeta }>('/trips', {
+      params: { page: 0, size: 100, status: 'ACTIVE' },
+    })
+    myTrips.value = response.data.items
+  } catch {
+    toast.error('내 여행계획을 불러오지 못했습니다.')
+  }
+})
+watch(selectedTripId, (tripId) => {
+  if (tripId) void loadRecordPhotos(tripId)
+})
 </script>
 
 <template>
@@ -141,7 +175,7 @@ function carouselNext() {
           </a>
           <div style="display: flex; gap: 10px;">
             <button class="btn ghost" type="button" style="border-radius: 999px;" @click="handleSave">임시저장</button>
-            <button class="btn primary" type="button" style="border-radius: 999px; padding: 0 24px;" @click="handlePublish">게시하기</button>
+            <button class="btn primary" type="button" :disabled="publishing" style="border-radius: 999px; padding: 0 24px;" @click="handlePublish">{{ publishing ? '게시 중...' : '게시하기' }}</button>
           </div>
         </div>
 
@@ -156,9 +190,6 @@ function carouselNext() {
                 </div>
               </div>
 
-              <!-- Hidden file upload input -->
-              <input type="file" id="photo-upload-input" style="display:none;" accept="image/*" multiple @change="onPhotoSelect">
-
               <form class="write-form" aria-label="여행기 작성 폼" style="border: 0; background: transparent; padding: 0; box-shadow: none; display: grid; gap: 28px;">
                 <div class="form-group" style="display: grid; gap: 10px;">
                   <label for="story-title" style="font-weight: 800; font-size: 15px; color: var(--ink);">제목</label>
@@ -172,7 +203,7 @@ function carouselNext() {
                       <span class="material-symbols-rounded">flight</span>
                       <select id="story-trip-select" class="field" v-model="selectedTripId" style="padding-left: 48px !important; appearance: auto;">
                         <option value="" disabled>여행계획을 선택하세요</option>
-                        <option v-for="trip in myTrips" :key="trip.id" :value="trip.id">{{ trip.title }} ({{ trip.date }})</option>
+                        <option v-for="trip in myTrips" :key="trip.id" :value="trip.id">{{ trip.title }}{{ trip.displayDestination ? ` (${trip.displayDestination})` : '' }}</option>
                       </select>
                     </div>
                   </div>
@@ -210,26 +241,27 @@ function carouselNext() {
                 </div>
 
                 <div class="form-group" style="display: grid; gap: 10px;">
-                  <label style="font-weight: 800; font-size: 15px; color: var(--ink);">커버 및 갤러리</label>
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                    <label style="font-weight: 800; font-size: 15px; color: var(--ink);">여행 기록에서 사진 선택</label>
+                    <span class="small muted">{{ selectedPhotos.length }}장 선택 · 첫 사진이 커버</span>
+                  </div>
                   <div class="upload-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
-                    <!-- Upload trigger -->
-                    <label for="photo-upload-input" class="upload-box" style="height: 120px; min-height: 0; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: var(--muted);">
-                      <span class="material-symbols-rounded" style="font-size: 28px; margin-bottom: 4px;">add_photo_alternate</span>
-                      <span class="small" style="font-weight: 750;">사진 추가</span>
-                    </label>
-                    <!-- Uploaded photo cards -->
-                    <div
-                      v-for="(photo, idx) in photoPreviews"
-                      :key="idx"
-                      style="position: relative; height: 120px; border-radius: 16px; overflow: hidden; box-shadow: var(--soft-shadow); cursor: pointer;"
-                      @click="setRepresentative(idx)"
+                    <div v-if="!selectedTripId" style="grid-column:1/-1; padding:30px; border:2px dashed var(--line); border-radius:16px; text-align:center; color:var(--muted);">먼저 여행계획을 선택해주세요.</div>
+                    <div v-else-if="loadingRecordPhotos" style="grid-column:1/-1; padding:30px; text-align:center; color:var(--muted);">기록 사진을 불러오는 중...</div>
+                    <div v-else-if="recordPhotos.length === 0" style="grid-column:1/-1; padding:30px; border:2px dashed var(--line); border-radius:16px; text-align:center; color:var(--muted);">이 여행에는 선택할 수 있는 기록 사진이 없습니다.</div>
+                    <button
+                      v-for="(photo, idx) in recordPhotos"
+                      :key="photo.media.id"
+                      type="button"
+                      :aria-pressed="selectedMediaIds.has(photo.media.id)"
+                      style="position: relative; height: 120px; padding:0; border-radius: 16px; overflow: hidden; box-shadow: var(--soft-shadow); cursor: pointer;"
+                      :style="{ border: selectedMediaIds.has(photo.media.id) ? '3px solid var(--violet)' : '3px solid transparent' }"
+                      @click="toggleRecordPhoto(photo)"
                     >
-                      <img :src="photo.url" :alt="`업로드한 여행 사진 ${idx + 1}`" style="width: 100%; height: 100%; object-fit: cover;" />
-                      <div v-if="representativePhoto === photo.url" style="position: absolute; top: 8px; left: 8px; padding: 4px 8px; background: var(--violet); color: #fff; border-radius: 8px; font-size: 10px; font-weight: 900; z-index: 2;">대표</div>
-                      <button type="button" style="position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border-radius: 999px; border: 0; background: rgba(0,0,0,0.5); color: #fff; display: grid; place-items: center; cursor: pointer; transition: background 0.2s; z-index: 3;" @click.stop="removePhoto(idx)">
-                        <span class="material-symbols-rounded" style="font-size: 14px;">close</span>
-                      </button>
-                    </div>
+                      <img :src="photo.media.publicUrl ?? ''" :alt="`여행 기록 사진 ${idx + 1}`" style="width: 100%; height: 100%; object-fit: cover; display:block;" />
+                      <span v-if="selectedMediaIds.has(photo.media.id)" style="position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:50%; background:var(--violet); color:#fff; display:grid; place-items:center;"><span class="material-symbols-rounded" style="font-size:18px;">check</span></span>
+                      <span v-if="selectedPhotos[0]?.media.id === photo.media.id" style="position:absolute; left:8px; bottom:8px; padding:4px 8px; border-radius:8px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; font-weight:900;">커버</span>
+                    </button>
                   </div>
                 </div>
               </form>

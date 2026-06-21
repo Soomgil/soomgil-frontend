@@ -49,9 +49,32 @@ export interface TripRecordMedia {
   caption: string | null
 }
 
+export interface TripRecordPhotoMedia {
+  id: string
+  publicUrl: string | null
+  mimeType: string
+  byteSize: number | null
+  width: number | null
+  height: number | null
+  status: string
+  createdAt: string
+}
+
+export interface TripRecordPhoto {
+  tripId: string
+  tripTitle: string | null
+  recordId: string
+  itineraryDayId: string | null
+  itineraryItemId: string | null
+  media: TripRecordPhotoMedia
+  uploadedBy: import('./auth').UserSummary | null
+  takenAt: string | null
+  createdAt: string
+}
+
 /* ── Media Upload Response ── */
 export interface MediaUploadResponse {
-  mediaFileId: string
+  id: string
   publicUrl: string
 }
 

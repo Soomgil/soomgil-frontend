@@ -15,12 +15,21 @@ export interface PaginatedResponse<T> {
 }
 
 /* ── RFC 7807 Problem Detail ── */
+export interface ProblemField {
+  name: string
+  reason: string
+}
+
 export interface ProblemDetail {
   type: string
   title: string
   status: number
   detail: string | null
   instance: string | null
+  method?: string
+  code?: string
+  requestId?: string | null
+  fields?: ProblemField[]
   properties?: Record<string, unknown>
 }
 

@@ -1,34 +1,71 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import '@/styles/mypage.css'
 import AppShell from '@/components/layout/AppShell.vue'
 import { mockUser, mockFollowers, mockFollowing } from '@/mocks/mockUser'
-import type { FollowUser } from '@/mocks/mockUser'
-import { mockPlaces } from '@/mocks/mockPlaces'
-import { mockCommunityStories } from '@/mocks/mockCommunity'
 import { useModal } from '@/composables/useModal'
+import { useAuthStore } from '@/stores/auth.store'
+import { userApi } from '@/api/user.api'
+import { mediaApi } from '@/api/media.api'
+import { communityApi } from '@/api/community.api'
+import { communityPostToStory } from '@/utils/community'
+import type { UpdateMeRequest, UserSummary } from '@/types/auth'
+import type { Place } from '@/types/place'
+import type { Story } from '@/types/community'
 import LikedPlacesModal from '@/components/mypage/LikedPlacesModal.vue'
 import MyStoriesModal from '@/components/mypage/MyStoriesModal.vue'
 import FollowListModal from '@/components/common/FollowListModal.vue'
 
 const router = useRouter()
+const auth = useAuthStore()
 
-// Search for liked places
+// store.user가 있으면 우선, 없으면 mockUser fallback (community 도메인은 미연동)
+const displayUser = computed(() => auth.user ?? mockUser)
+const displayName = computed(() => displayUser.value.displayName || '사용자')
+const displayEmail = computed(() => displayUser.value.email || '')
+// bio가 없으면 빈 문자열 (빈 경우 템플릿에서 v-if로 숨김)
+const displayBio = computed(() => displayUser.value.bio ?? '')
+
+// onMounted에서 최신 /me로 동기화 (토큰 있을 때만)
+onMounted(async () => {
+  if (!auth.isAuthenticated) return
+  try {
+    await auth.fetchUser()
+    await Promise.all([loadFollowData(), loadMyStories()])
+  } catch {
+    // fetch 실패해도 페이지는 노출
+  }
+})
+
+// 좋아요한 장소 — place 도메인 연동 전까지 빈 배열.
+// TODO(place-domain): userApi.getLikedPlaces()로 교체
+const likedPlacesSource = ref<Place[]>([])
 const placeSearchQuery = ref('')
 
 const likedPlaces = computed(() => {
-  if (!placeSearchQuery.value.trim()) return mockPlaces
+  if (!placeSearchQuery.value.trim()) return likedPlacesSource.value
   const q = placeSearchQuery.value.trim().toLowerCase()
-  return mockPlaces.filter((p) =>
+  return likedPlacesSource.value.filter((p) =>
     p.placeName.toLowerCase().includes(q) ||
     (p.address ?? '').toLowerCase().includes(q) ||
     (p.tags ?? []).some(t => t.toLowerCase().includes(q))
   )
 })
 
-// My stories
-const myStories = computed(() => mockCommunityStories.slice(0, 6))
+const myStories = ref<Story[]>([])
+
+async function loadMyStories() {
+  if (!auth.user?.id) return
+  const response = await communityApi.getPosts({ page: 0, size: 100 })
+  myStories.value = response.items
+    .filter((post) => post.publishedBy?.id === auth.user?.id)
+    .map(communityPostToStory)
+}
+
+function openCommunityStory(storyId: string) {
+  router.push({ path: '/community', query: { story: storyId } })
+}
 
 // Places slider
 const placesSliderRef = ref<HTMLElement | null>(null)
@@ -50,25 +87,129 @@ const myStoriesModal = useModal()
 const followersModal = useModal()
 const followingModal = useModal()
 
-const followingIds = ref(new Set(mockFollowing.map(f => f.userId)))
-const showDeletePreferenceConfirm = ref(false)
+const followers = ref<UserSummary[]>([])
+const following = ref<UserSummary[]>([])
+const followingIds = ref<Set<string>>(new Set())
+
+async function loadFollowData() {
+  if (!auth.user?.id) return
+  try {
+    const [followerList, followingList] = await Promise.all([
+      userApi.getFollowers(auth.user.id),
+      userApi.getFollowing(auth.user.id),
+    ])
+    followers.value = followerList
+    following.value = followingList
+    followingIds.value = new Set(followingList.map(f => f.id))
+  } catch (err) {
+    console.error('Failed to load follow lists:', err)
+  }
+}
+
+async function toggleFollow(userId: string) {
+  try {
+    if (followingIds.value.has(userId)) {
+      await userApi.unfollow(userId)
+      followingIds.value.delete(userId)
+    } else {
+      await userApi.follow(userId)
+      followingIds.value.add(userId)
+    }
+    await loadFollowData()
+  } catch (err) {
+    console.error('Failed to toggle follow status:', err)
+  }
+}
 const profileEditModal = useModal()
+// 알림 토글은 제거 — DB user_settings에는 marketing_email_opt_in / trip_invite_email_opt_in 만 있고
+// 푸시 알림 컬럼은 아예 없음. 실제 알림 설정은 SettingsPage에서 /me/settings 로 관리.
 const profileForm = ref({
-  displayName: mockUser.displayName,
-  intro: '여행의 즐거움을 찾아 떠나는 것을 좋아합니다. 자연과 카페, 문화공간을 사랑합니다.',
+  displayName: '',
+  intro: '',
   visibility: 'public',
-  emailNotifications: true,
-  pushNotifications: true,
 })
 
-// Stats for profile card
-const profileStats = [
-  { icon: 'luggage', value: '12', label: '내 여행' },
-  { icon: 'favorite', value: '248', label: '좋아요' },
-  { icon: 'auto_stories', value: '8', label: '여행기' },
-  { icon: 'group', value: String(mockFollowers.length), label: '팔로워' },
-  { icon: 'person_add', value: String(mockFollowing.length), label: '팔로잉' },
-]
+// 사진 변경 — 미디어 모듈(media.media_files) 연동 전이므로 파일 선택창만 열고 안내.
+const photoInput = ref<HTMLInputElement | null>(null)
+const photoNotice = ref<string | null>(null)
+function triggerPhotoPicker() {
+  photoNotice.value = null
+  photoInput.value?.click()
+}
+async function onPhotoSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  photoNotice.value = null
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await mediaApi.upload(formData)
+    if (res.data && res.data.id) {
+      await userApi.updateMe({
+        profileMediaFileId: res.data.id,
+      })
+      await auth.fetchUser()
+    }
+  } catch (err) {
+    console.error('Photo upload failed:', err)
+    photoNotice.value = '사진 업로드에 실패했습니다. 다시 시도해주세요.'
+  } finally {
+    input.value = ''
+  }
+}
+
+function syncProfileForm() {
+  profileForm.value.displayName = displayUser.value.displayName
+  profileForm.value.intro = displayBio.value
+}
+
+// 모달이 열릴 때만 폼 초기값 동기화.
+// watchEffect를 쓰면 fetchUser() 지연 해결 시 사용자가 입력한 값을 덮어쓴다.
+function openProfileEdit() {
+  syncProfileForm()
+  profileError.value = null
+  profileEditModal.open()
+}
+
+const profileSaving = ref(false)
+const profileError = ref<string | null>(null)
+
+async function saveProfile() {
+  profileSaving.value = true
+  profileError.value = null
+  try {
+    const payload: UpdateMeRequest = {
+      displayName: profileForm.value.displayName,
+      bio: profileForm.value.intro,
+    }
+    await userApi.updateMe(payload)
+    await auth.fetchUser()
+    profileEditModal.close()
+  } catch (e: unknown) {
+    // 인터셉터가 콘솔엔 찍어주지만 사용자에게도 피드백 필요
+    const status = (e as { response?: { status?: number } })?.response?.status
+    profileError.value =
+      status === 401
+        ? '로그인이 만료되었습니다. 다시 로그인해주세요.'
+        : status === 400
+          ? '입력값이 올바르지 않습니다.'
+          : '저장에 실패했습니다. 잠시 후 다시 시도해주세요.'
+    console.error('[saveProfile] failed:', e)
+  } finally {
+    profileSaving.value = false
+  }
+}
+
+// Stats for profile card — 도메인 미연동 상태면 0 표시 (거짓 데이터 노출 금지)
+const profileStats = computed(() => [
+  { icon: 'luggage', value: '0', label: '내 여행' },
+  { icon: 'favorite', value: '0', label: '좋아요' },
+  { icon: 'auto_stories', value: String(myStories.value.length), label: '여행기' },
+  { icon: 'group', value: String(followers.value.length), label: '팔로워' },
+  { icon: 'person_add', value: String(following.value.length), label: '팔로잉' },
+])
 
 function onStatClick(label: string) {
   if (label === '팔로워') followersModal.open()
@@ -80,6 +221,12 @@ function onStatClick(label: string) {
   } else if (label === '내 여행') {
     router.push('/my-trips')
   }
+}
+
+function handleUserClick(userId: string) {
+  followersModal.close()
+  followingModal.close()
+  router.push(`/mypage/${userId}`)
 }
 </script>
 
@@ -98,7 +245,7 @@ function onStatClick(label: string) {
             <div class="mypage-profile-card">
               <!-- Avatar + Info -->
               <div class="profile-card-left-group">
-                <div class="mypage-hero__avatar-container">
+                <div class="mypage-hero__avatar-container" style="cursor: pointer;" @click="triggerPhotoPicker">
                   <span class="mypage-hero__avatar-ring">
                     <span
                       class="mypage-hero__avatar"
@@ -110,8 +257,12 @@ function onStatClick(label: string) {
                         color: '#fff',
                         fontWeight: 800,
                         fontSize: '28px',
+                        overflow: 'hidden'
                       }"
-                    >{{ mockUser.displayName.charAt(0) }}</span>
+                    >
+                      <img v-if="displayUser.profileImageUrl" :src="displayUser.profileImageUrl" alt="프로필 이미지" style="width: 100%; height: 100%; object-fit: cover;">
+                      <span v-else>{{ displayName.charAt(0) }}</span>
+                    </span>
                   </span>
                   <span class="avatar-link-badge">
                     <span class="material-symbols-rounded">link</span>
@@ -120,13 +271,14 @@ function onStatClick(label: string) {
                 <div class="profile-card-details">
                   <div class="mypage-hero__name-col">
                     <div class="mypage-hero__name-row">
-                      <h2 class="mypage-hero__name">{{ mockUser.displayName }}</h2>
+                      <h2 class="mypage-hero__name">{{ displayName }}</h2>
                       <span class="material-symbols-rounded verified-check-badge">verified</span>
                     </div>
-                    <span class="mypage-hero__email">{{ mockUser.email }}</span>
+                    <span class="mypage-hero__email">{{ displayEmail }}</span>
                   </div>
-                  <p class="mypage-hero__intro">여행의 즐거움을 찾아 떠나는 것을 좋아합니다. 자연과 카페, 문화공간을 사랑합니다.</p>
-                  <ul class="mypage-hero__tags">
+                  <p v-if="displayBio" class="mypage-hero__intro">{{ displayBio }}</p>
+                  <!-- 취향 태그는 preference 도메인 연동 후 사용자 데이터로 표시 (현재는 숨김) -->
+                  <ul v-if="false" class="mypage-hero__tags">
                     <li class="mypage-hero__tag">#호수</li>
                     <li class="mypage-hero__tag">#온천</li>
                     <li class="mypage-hero__tag">#산책</li>
@@ -149,7 +301,7 @@ function onStatClick(label: string) {
 
               <!-- Actions -->
               <div class="mypage-profile-actions">
-                <button type="button" class="mypage-profile-btn edit" @click="profileEditModal.open">
+                <button type="button" class="mypage-profile-btn edit" @click="openProfileEdit">
                   <span class="material-symbols-rounded">edit</span>프로필 수정
                 </button>
                 <button type="button" class="mypage-profile-btn share">
@@ -170,7 +322,7 @@ function onStatClick(label: string) {
             <h2 id="section-liked-places-title" class="mypage-section-title">
               <span class="material-symbols-rounded section-icon section-icon--rose" aria-hidden="true">favorite</span>좋아요한 장소
             </h2>
-            <div class="mypage-header-search-row">
+            <div v-if="likedPlaces.length > 0" class="mypage-header-search-row">
               <div class="mypage-search-inline">
                 <span class="material-symbols-rounded">search</span>
                 <input type="search" v-model="placeSearchQuery" placeholder="장소명, 지역, 태그로 검색" />
@@ -181,7 +333,16 @@ function onStatClick(label: string) {
           </div>
 
           <div class="mypage-section-content liked-places-layout">
-            <div class="mypage-places-slider-wrapper">
+            <!-- 빈 상태 -->
+            <div v-if="likedPlaces.length === 0" class="mypage-empty-state">
+              <span class="material-symbols-rounded mypage-empty-icon">favorite_border</span>
+              <p class="mypage-empty-title">아직 좋아요한 장소가 없어요</p>
+              <p class="mypage-empty-desc">마음에 드는 장소에 좋아요를 눌러 모아보세요.</p>
+              <button type="button" class="mypage-empty-cta" @click="router.push('/search')">장소 둘러보기</button>
+            </div>
+
+            <!-- 데이터 있을 때 슬라이더 -->
+            <div v-else class="mypage-places-slider-wrapper">
               <button v-if="likedPlaces.length > 3" type="button" class="places-slider-btn prev" aria-label="이전 장소" @click="scrollPlaces('prev')">
                 <span class="material-symbols-rounded">chevron_left</span>
               </button>
@@ -216,15 +377,24 @@ function onStatClick(label: string) {
             <h2 id="section-my-stories-title" class="mypage-section-title">
               <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">auto_stories</span>내 여행기
             </h2>
-            <a href="#" class="mypage-more-link" @click.prevent="myStoriesModal.open()">모두 보기 ›</a>
+            <a v-if="myStories.length > 0" href="#" class="mypage-more-link" @click.prevent="myStoriesModal.open()">모두 보기 ›</a>
           </div>
 
-          <div class="mypage-stories-magazine" data-mypage-stories-list>
-            <div v-for="story in myStories" :key="story.id" class="mypage-story-magazine-item">
+          <!-- 빈 상태 -->
+          <div v-if="myStories.length === 0" class="mypage-empty-state">
+            <span class="material-symbols-rounded mypage-empty-icon">auto_stories</span>
+            <p class="mypage-empty-title">작성한 여행기가 없어요</p>
+            <p class="mypage-empty-desc">여행에서 만난 순간들을 기록으로 남겨보세요.</p>
+            <button type="button" class="mypage-empty-cta" @click="router.push('/community/story-write')">여행기 쓰기</button>
+          </div>
+
+          <!-- 데이터 있을 때 -->
+          <div v-else class="mypage-stories-magazine" data-mypage-stories-list>
+            <div v-for="story in myStories" :key="story.id" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
               <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
               <div class="story-magazine-body">
                 <h3 class="story-magazine-title">
-                  <a href="#">{{ story.title }}</a>
+                  <a href="#" @click.prevent>{{ story.title }}</a>
                 </h3>
                 <div class="story-magazine-meta">
                   <span class="story-date">{{ story.location }}</span>
@@ -249,23 +419,12 @@ function onStatClick(label: string) {
             <article class="insight-card map-insight-card">
               <div class="insight-card-header">
                 <h3 id="section-insights-title">내 여행 지도</h3>
-                <p class="insight-subtitle">방문한 지역 <strong>18곳</strong> <span class="divider">|</span> 국내 여행 15</p>
+                <p class="insight-subtitle">방문한 지역이 없습니다</p>
               </div>
-              <div class="map-insight-content">
-                <div class="korea-map-container" data-map-visual>
-                  <!-- SVG 한국 지도 그래픽 placeholder -->
-                  <span class="material-symbols-rounded" style="font-size:80px; color:var(--muted); opacity:0.3;">public</span>
-                </div>
-                <div class="map-stats-panel">
-                  <ol class="map-stats-list">
-                    <li><span class="rank-num">1</span> <span class="rank-city">대전</span> <span class="rank-count">6회</span></li>
-                    <li><span class="rank-num">2</span> <span class="rank-city">부산</span> <span class="rank-count">3회</span></li>
-                    <li><span class="rank-num">3</span> <span class="rank-city">제주</span> <span class="rank-count">2회</span></li>
-                    <li><span class="rank-num">4</span> <span class="rank-city">서울</span> <span class="rank-count">2회</span></li>
-                    <li><span class="rank-num">5</span> <span class="rank-city">울릉</span> <span class="rank-count">1회</span></li>
-                  </ol>
-                  <button type="button" class="btn-more-map">지도로 더 보기</button>
-                </div>
+              <div class="mypage-empty-state mypage-empty-state--inline">
+                <span class="material-symbols-rounded mypage-empty-icon">public</span>
+                <p class="mypage-empty-title">아직 방문한 지역이 없어요</p>
+                <p class="mypage-empty-desc">여행을 기록하면 지도에 표시됩니다.</p>
               </div>
             </article>
 
@@ -276,50 +435,12 @@ function onStatClick(label: string) {
                   <h3>여행 취향</h3>
                   <p class="insight-subtitle">데이터 기반 나의 여행 스타일</p>
                 </div>
-                <button type="button" class="preference-delete-btn" @click="showDeletePreferenceConfirm = true">
-                  <span class="material-symbols-rounded">restart_alt</span>초기화
-                </button>
               </div>
-              <div class="preference-insight-content">
-                <div class="preference-charts-row">
-                  <div class="preference-chart-item">
-                    <div class="circular-progress-bar" style="--percent: 42%; --color: var(--violet)">
-                      <div class="progress-inner">42%</div>
-                    </div>
-                    <span class="preference-label-badge nature">자연</span>
-                  </div>
-                  <div class="preference-chart-item">
-                    <div class="circular-progress-bar" style="--percent: 28%; --color: var(--yellow)">
-                      <div class="progress-inner">28%</div>
-                    </div>
-                    <span class="preference-label-badge cafe">카페</span>
-                  </div>
-                  <div class="preference-chart-item">
-                    <div class="circular-progress-bar" style="--percent: 18%; --color: var(--blue)">
-                      <div class="progress-inner">18%</div>
-                    </div>
-                    <span class="preference-label-badge city">도시</span>
-                  </div>
-                  <div class="preference-chart-item">
-                    <div class="circular-progress-bar" style="--percent: 12%; --color: var(--rose)">
-                      <div class="progress-inner">12%</div>
-                    </div>
-                    <span class="preference-label-badge culture">문화</span>
-                  </div>
-                </div>
-
-                <div class="preference-keywords-row">
-                  <span class="preference-keyword-pill">#호수</span>
-                  <span class="preference-keyword-pill">#온천</span>
-                  <span class="preference-keyword-pill">#산책</span>
-                  <span class="preference-keyword-pill">#카페</span>
-                  <span class="preference-keyword-pill">#전시</span>
-                </div>
-
-                <!-- 파스텔톤 여행 밴 일러스트 영역 -->
-                <div class="van-illustration-wrap">
-                  <!-- SVG 또는 정교한 CSS 일러스트레이션 -->
-                </div>
+              <div class="mypage-empty-state mypage-empty-state--inline">
+                <span class="material-symbols-rounded mypage-empty-icon">explore</span>
+                <p class="mypage-empty-title">아직 분석된 취향이 없어요</p>
+                <p class="mypage-empty-desc">장소를 탐색하고 스와이프하면 취향이 분석됩니다.</p>
+                <button type="button" class="mypage-empty-cta" @click="router.push('/swipe')">취향 분석 시작하기</button>
               </div>
             </article>
           </div>
@@ -331,10 +452,10 @@ function onStatClick(label: string) {
     </main>
 
     <!-- Modals -->
-    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="mockPlaces" @close="likedPlacesModal.close()" />
-    <MyStoriesModal v-if="myStoriesModal.isOpen.value" :stories="mockCommunityStories" @close="myStoriesModal.close()" />
-    <FollowListModal v-if="followersModal.isOpen.value" title="팔로워" :users="mockFollowers" :followingIds="followingIds" @close="followersModal.close()" />
-    <FollowListModal v-if="followingModal.isOpen.value" title="팔로잉" :users="mockFollowing" :followingIds="followingIds" @close="followingModal.close()" />
+    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" @close="likedPlacesModal.close()" />
+    <MyStoriesModal v-if="myStoriesModal.isOpen.value" :stories="myStories" @close="myStoriesModal.close()" @story-click="openCommunityStory" />
+    <FollowListModal v-if="followersModal.isOpen.value" title="팔로워" :users="followers" :followingIds="followingIds" @close="followersModal.close()" @toggle-follow="toggleFollow" @user-click="handleUserClick" />
+    <FollowListModal v-if="followingModal.isOpen.value" title="팔로잉" :users="following" :followingIds="followingIds" @close="followingModal.close()" @toggle-follow="toggleFollow" @user-click="handleUserClick" />
 
     <!-- 프로필 수정 모달 -->
     <div v-if="profileEditModal.isOpen.value" class="story-overlay" role="dialog" aria-modal="true" aria-label="프로필 수정">
@@ -350,11 +471,16 @@ function onStatClick(label: string) {
 
           <!-- 아바타 변경 -->
           <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 28px;">
-            <div style="width: 72px; height: 72px; border-radius: 50%; background: var(--violet); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 28px; font-weight: 800; flex-shrink: 0;">{{ mockUser.displayName.charAt(0) }}</div>
+            <div style="width: 72px; height: 72px; border-radius: 50%; background: var(--violet); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 28px; font-weight: 800; flex-shrink: 0; overflow: hidden;">
+              <img v-if="displayUser.profileImageUrl" :src="displayUser.profileImageUrl" alt="프로필 이미지" style="width: 100%; height: 100%; object-fit: cover;">
+              <span v-else>{{ displayName.charAt(0) }}</span>
+            </div>
             <div>
-              <button type="button" style="padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;">
+              <button type="button" style="padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;" @click="triggerPhotoPicker">
                 <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">photo_camera</span>사진 변경
               </button>
+              <input ref="photoInput" type="file" accept="image/*" style="display: none;" @change="onPhotoSelected" />
+              <p v-if="photoNotice" style="margin: 8px 0 0; font-size: 12px; color: var(--muted); font-weight: 600;">{{ photoNotice }}</p>
             </div>
           </div>
 
@@ -401,50 +527,26 @@ function onStatClick(label: string) {
             </div>
           </div>
 
-          <!-- 알림 설정 -->
-          <div style="margin-bottom: 28px;">
-            <label style="display: block; font-size: 13px; font-weight: 800; color: var(--ink); margin-bottom: 12px;">
-              <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">notifications</span>알림 설정
-            </label>
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-              <label style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: #fff; cursor: pointer;">
-                <span style="font-size: 14px; font-weight: 600;">이메일 알림</span>
-                <input type="checkbox" v-model="profileForm.emailNotifications" style="accent-color: var(--violet); width: 18px; height: 18px;" />
-              </label>
-              <label style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: #fff; cursor: pointer;">
-                <span style="font-size: 14px; font-weight: 600;">푸시 알림</span>
-                <input type="checkbox" v-model="profileForm.pushNotifications" style="accent-color: var(--violet); width: 18px; height: 18px;" />
-              </label>
+          <!-- 알림 설정 안내 (실제 설정은 SettingsPage의 /me/settings 사용) -->
+          <div style="margin-bottom: 28px; padding: 14px 16px; border-radius: 12px; background: rgba(0, 102, 255, 0.04); border: 1px solid rgba(0, 102, 255, 0.15); display: flex; align-items: flex-start; gap: 10px;">
+            <span class="material-symbols-rounded" style="font-size: 18px; color: var(--violet); flex-shrink: 0;">info</span>
+            <div style="font-size: 13px; color: var(--ink); line-height: 1.5;">
+              <strong style="font-weight: 800;">알림 / 마케팅 수신 설정</strong>은
+              <a href="#" style="color: var(--violet); font-weight: 700; text-decoration: underline;" @click.prevent="() => { profileEditModal.close(); router.push('/settings') }">설정 페이지</a>에서 관리합니다.
             </div>
+          </div>
+
+          <!-- 에러 메시지 -->
+          <div v-if="profileError" style="margin-top: 12px; padding: 10px 14px; border-radius: 10px; background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.2); color: #dc2626; font-size: 13px; font-weight: 600;">
+            {{ profileError }}
           </div>
 
           <!-- 저장 버튼 -->
           <div style="display: flex; gap: 12px; justify-content: flex-end;">
             <button type="button" style="padding: 12px 24px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;" @click="profileEditModal.close()">취소</button>
-            <button type="button" style="padding: 12px 28px; border-radius: 999px; border: none; background: linear-gradient(135deg, var(--violet), var(--blue)); color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 18px rgba(0, 102, 255, 0.25);" @click="profileEditModal.close()">
-              <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">save</span>저장
+            <button type="button" :disabled="profileSaving" style="padding: 12px 28px; border-radius: 999px; border: none; background: linear-gradient(135deg, var(--violet), var(--blue)); color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 18px rgba(0, 102, 255, 0.25); opacity: 1;" @click="saveProfile">
+              <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">save</span>{{ profileSaving ? '저장 중...' : '저장' }}
             </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 취향 정보 삭제 확인 모달 -->
-    <div v-if="showDeletePreferenceConfirm" class="story-overlay" role="dialog" aria-modal="true" aria-label="취향 정보 삭제 확인">
-      <div class="story-overlay-backdrop" @click="showDeletePreferenceConfirm = false"></div>
-      <div class="story-overlay-panel" style="width: min(92vw, 420px); max-height: auto;">
-        <button class="story-overlay-close" type="button" aria-label="닫기" @click="showDeletePreferenceConfirm = false">
-          <span class="material-symbols-rounded">close</span>
-        </button>
-        <div style="padding: 40px 32px; text-align: center;">
-          <span class="material-symbols-rounded" style="font-size: 48px; color: var(--rose); display: block; margin-bottom: 16px;">restart_alt</span>
-          <h2 style="font-size: 20px; font-weight: 800; margin: 0 0 12px; color: var(--ink);">취향 정보를 초기화하시겠습니까?</h2>
-          <p style="font-size: 14px; color: var(--muted); line-height: 1.6; margin: 0 0 28px;">
-            초기화된 취향 데이터는 복구할 수 없습니다.<br>스와이프 기록과 취향 분석이 모두 초기화됩니다.
-          </p>
-          <div style="display: flex; gap: 12px; justify-content: center;">
-            <button type="button" style="padding: 12px 28px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;" @click="showDeletePreferenceConfirm = false">취소</button>
-            <button type="button" style="padding: 12px 28px; border-radius: 999px; border: none; background: var(--rose); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 18px rgba(255, 92, 141, 0.3);" @click="showDeletePreferenceConfirm = false">초기화</button>
           </div>
         </div>
       </div>
@@ -453,30 +555,56 @@ function onStatClick(label: string) {
 </template>
 
 <style scoped>
-.preference-delete-btn {
-  display: inline-flex;
+/* 빈 상태 박스 — 데이터 없는 섹션 공통 사용 */
+.mypage-empty-state {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 92, 141, 0.2);
-  background: rgba(255, 92, 141, 0.06);
-  color: var(--rose);
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  border-radius: 18px;
+  background: rgba(0, 102, 255, 0.02);
+  border: 1px dashed var(--line);
+}
+.mypage-empty-state--inline {
+  padding: 36px 20px;
+  height: 100%;
+  box-sizing: border-box;
+}
+.mypage-empty-icon {
+  font-size: 48px;
+  color: var(--muted);
+  opacity: 0.5;
+  margin-bottom: 14px;
+}
+.mypage-empty-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+.mypage-empty-desc {
   font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
+  color: var(--muted);
+  margin: 0 0 18px;
+  line-height: 1.5;
 }
-.preference-delete-btn:hover {
-  background: var(--rose);
+.mypage-empty-cta {
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, var(--violet), var(--blue));
   color: #fff;
-  border-color: var(--rose);
-  box-shadow: 0 4px 12px rgba(255, 92, 141, 0.25);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 6px 18px rgba(0, 102, 255, 0.2);
 }
-.preference-delete-btn .material-symbols-rounded {
-  font-size: 18px;
+.mypage-empty-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0, 102, 255, 0.28);
 }
 
 /* Places slider */

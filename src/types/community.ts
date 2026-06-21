@@ -1,118 +1,142 @@
-/* ── Enums ── */
-export type PostVisibility = 'PUBLIC' | 'UNLISTED'
+import type { UserSummary } from './auth'
+
+export type PostVisibility = 'PUBLIC' | 'UNLISTED' | 'HIDDEN'
 export type ModerationStatus = 'VISIBLE' | 'HIDDEN' | 'DELETED'
 export type ReportReasonCode = 'SPAM' | 'INAPPROPRIATE' | 'HARASSMENT_OR_HATE' | 'RIGHTS_VIOLATION' | 'OTHER'
 export type ReportStatus = 'OPEN' | 'REVIEWING' | 'RESOLVED' | 'REJECTED'
 
-/* ── Post ── */
-export interface Post {
+export interface PageMeta {
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  sort: string[]
+}
+
+export interface CommunityMediaFile {
   id: string
-  sourceTripId: string
-  publishedByUserId: string
-  coverMediaFileId: string | null
+  publicUrl: string | null
+  mimeType: string
+  byteSize: number | null
+  width: number | null
+  height: number | null
+  status: string
+  createdAt: string
+}
+
+export interface CommunityPostSummary {
+  id: string
+  sourceTripId: string | null
+  publishedBy: UserSummary | null
+  coverMedia: CommunityMediaFile | null
   visibility: PostVisibility
   title: string
   summary: string | null
-  snapshotVersion: number
-  snapshot: PostSnapshot | null
+  hashtags: string[]
   likeCount: number
   retripCount: number
   commentCount: number
   mediaCount: number
+  likedByMe: boolean | null
   moderationStatus: ModerationStatus
   publishedAt: string
-  updatedAt: string
-
-  /** UI 표시용 (API에서 join) */
-  authorDisplayName?: string
-  authorProfileImageUrl?: string
-  coverImageUrl?: string
-  hashtags?: string[]
 }
 
-/* ── Post Snapshot (immutable rendering data) ── */
-export interface PostSnapshot {
-  days: PostSnapshotDay[]
-  routes: PostSnapshotRoute[]
+export interface CommunityPostPage {
+  items: CommunityPostSummary[]
+  page: PageMeta
 }
 
-export interface PostSnapshotDay {
-  id: string
-  groupType: 'DAY' | 'UNSCHEDULED'
-  dayNumber: number | null
-  date: string | null
-  title: string | null
-  sortOrder: number
-  items: PostSnapshotItem[]
+export interface CommunityPostDetail extends CommunityPostSummary {
+  snapshotVersion: number
+  snapshot: CommunityPostSnapshot
+  media: CommunityMediaFile[]
+  shareToken: string | null
+  shareUrl: string | null
+  shareTokenCreatedAt: string | null
+  shareTokenRotatedAt: string | null
 }
 
-export interface PostSnapshotItem {
-  id: string
-  placeProvider: string | null
-  externalPlaceId: string | null
-  sourceStatus: 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
+export interface CommunityPostSnapshot {
+  days: CommunitySnapshotDay[]
+  routes: unknown[]
+  authorDisplay: UserSummary | null
+}
+
+export interface CommunitySnapshotDay {
+  id?: string
+  groupType?: string
+  dayNumber?: number | null
+  date?: string | null
+  title?: string | null
+  sortOrder?: number
+  items?: CommunitySnapshotItem[]
+}
+
+export interface CommunitySnapshotItem {
+  id?: string
   placeName: string
-  address: string | null
-  lat: number | null
-  lng: number | null
-  thumbnailUrl: string | null
+  address?: string | null
+  thumbnailUrl?: string | null
 }
 
-export interface PostSnapshotRoute {
-  id: string
-  originSnapshotItemId: string
-  destinationSnapshotItemId: string
-  mode: 'DRIVING' | 'WALKING'
-  geometry: import('./itinerary').LineStringGeometry | null
-  distanceMeters: number | null
-  durationSeconds: number | null
-}
-
-/* ── Post Comment (1-level depth only) ── */
-export interface PostComment {
+export interface CommunityComment {
   id: string
   postId: string
   parentCommentId: string | null
-  authorUserId: string
-  content: string
-  depth: 0 | 1
+  author: UserSummary
+  content: string | null
+  depth: number
   moderationStatus: ModerationStatus
+  deletedAt: string | null
   createdAt: string
-  updatedAt: string
-
-  /** UI 표시용 (API에서 join) */
-  authorDisplayName?: string
-  authorProfileImageUrl?: string
 }
 
-/* ── Hashtag ── */
-export interface Hashtag {
-  id: string
-  name: string
-  normalizedName: string
+export interface PagedCommunityComment {
+  items: CommunityComment[]
+  page: PageMeta
 }
 
-/* ── Content Report ── */
-export interface ContentReport {
-  id: string
-  reporterUserId: string
+export interface CommunityPostReactionSummary {
+  postId: string
+  liked: boolean
+  likeCount: number
+}
+
+export interface CreateCommunityPostRequest {
+  sourceTripId: string
+  baseVersion: number
+  visibility: 'PUBLIC' | 'UNLISTED'
+  title: string
+  summary?: string | null
+  coverMediaFileId?: string | null
+  mediaFileIds?: string[]
+  hashtags?: string[]
+}
+
+export interface ReportReason {
+  code: ReportReasonCode
+  displayName: string
+  isActive: boolean
+}
+
+export interface CreateContentReportRequest {
   targetType: 'POST' | 'POST_COMMENT'
   targetId: string
   reasonCode: ReportReasonCode
-  detail: string | null
+  detail?: string | null
+}
+
+export interface ContentReport extends CreateContentReportRequest {
+  id: string
+  reporter: UserSummary | null
   status: ReportStatus
   createdAt: string
+  resolvedAt: string | null
+  resolutionNote: string | null
 }
 
-/* ── Post Create Request ── */
-export interface PostCreateRequest {
-  sourceTripId: string
-  visibility: PostVisibility
-  title: string
-  summary?: string
-}
-
-/* ── Story (UI 호환 타입 - mock/community 페이지에서 사용) ── */
+/** 기존 목업 기반 화면의 점진적 전환 동안만 유지하는 UI 타입입니다. */
 export interface Story {
   id: string
   type: 'story' | 'route'
@@ -131,28 +155,9 @@ export interface Story {
   photos: string[]
 }
 
-/** @deprecated Story 대신 Post 사용 */
-export interface RoutePost {
-  id: string
-  type: 'route'
-  author: string
-  avatar: string
-  title: string
-  image: string
-  places: number
-  likes: number
-  comments: number
-  tags: string[]
-}
-
-/** @deprecated PostComment 사용 */
-export interface Comment {
-  id: string
-  author: string
-  avatar: string
-  time: string
-  text: string
-  likes?: number
-  /** depth 1 답글 (최대 1뎁스까지만 허용) */
-  replyTo?: { author: string; text: string }
-}
+/** @deprecated API 응답 타입인 CommunityPostSummary를 사용하세요. */
+export type Post = CommunityPostSummary
+/** @deprecated API 응답 타입인 CommunityComment를 사용하세요. */
+export type PostComment = CommunityComment
+/** @deprecated CreateCommunityPostRequest를 사용하세요. */
+export type PostCreateRequest = CreateCommunityPostRequest

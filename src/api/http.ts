@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { AxiosRequestConfig } from 'axios'
 import type { ApiResponse, ProblemDetail } from '@/types/api'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
@@ -9,30 +10,118 @@ const http = axios.create({
   timeout: 10000,
 })
 
+type RetryableConfig = AxiosRequestConfig & { _retried?: boolean }
+
+function isUsableAccessToken(token: string): boolean {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return false
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = payload.padEnd(Math.ceil(payload.length / 4) * 4, '=')
+    const claims = JSON.parse(atob(padded)) as { exp?: number }
+    return typeof claims.exp === 'number' && claims.exp * 1000 > Date.now() + 5000
+  } catch {
+    return false
+  }
+}
+
 /* ── Request: JWT 주입 ── */
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken')
-  if (token) {
+  if (token && isUsableAccessToken(token)) {
     config.headers.Authorization = `Bearer ${token}`
+  } else if (token) {
+    // 손상되거나 만료된 access token은 공개 API까지 401로 만드는 원인이 된다.
+    // refresh token은 유지해 보호 API의 401 응답에서 정상 갱신하도록 한다.
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('tokenExpiresAt')
   }
   return config
 })
 
-/* ── Response: 에러 처리 (RFC 7807) ── */
+/* ── 토큰 갱신 (재귀 방지용 raw 인스턴스) ── */
+const refreshClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 10000,
+})
+
+let isRefreshing = false
+let pendingQueue: Array<{ resolve: (token: string) => void; reject: (e: unknown) => void }> = []
+
+function flushQueue(error: unknown | null, token: string | null) {
+  pendingQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token!)))
+  pendingQueue = []
+}
+
+function clearAuthAndRedirect() {
+  localStorage.removeItem('accessToken')
+  localStorage.removeItem('refreshToken')
+  localStorage.removeItem('tokenExpiresAt')
+  window.location.href = '/login'
+}
+
+async function doRefresh(): Promise<string> {
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) throw new Error('no refresh token')
+  const res = await refreshClient.post<{ accessToken: string; refreshToken: string; expiresIn: number }>(
+    '/auth/refresh',
+    { refreshToken },
+  )
+  const { accessToken, refreshToken: newRefresh, expiresIn } = res.data
+  localStorage.setItem('accessToken', accessToken)
+  localStorage.setItem('refreshToken', newRefresh)
+  localStorage.setItem('tokenExpiresAt', String(Date.now() + expiresIn * 1000))
+  return accessToken
+}
+
+/* ── Response: 에러 처리 (RFC 7807) + 401 refresh 재시도 ── */
 http.interceptors.response.use(
   (response) => response,
   async (error) => {
     const status = error.response?.status
+    const original = error.config as RetryableConfig | undefined
     const problem: ProblemDetail | undefined = error.response?.data
 
-    if (status === 401) {
-      // TODO: 토큰 갱신 로직 (refresh token으로 재시도)
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken')
-      window.location.href = '/login'
+    if (status === 401 && original) {
+      // refresh 자체 실패 → 영구 로그아웃
+      if (original.url?.includes('/auth/refresh')) {
+        clearAuthAndRedirect()
+        return Promise.reject(error)
+      }
+      // login/register 실패는 재시도 금지
+      if (original.url?.includes('/auth/login') || original.url?.includes('/auth/register')) {
+        return Promise.reject(error)
+      }
+      // 중복 재시도 방지
+      if (original._retried) {
+        return Promise.reject(error)
+      }
+      original._retried = true
+
+      try {
+        let newToken: string
+        if (isRefreshing) {
+          newToken = await new Promise<string>((resolve, reject) => {
+            pendingQueue.push({ resolve, reject })
+          })
+        } else {
+          isRefreshing = true
+          newToken = await doRefresh()
+          isRefreshing = false
+          flushQueue(null, newToken)
+        }
+        original.headers = original.headers ?? {}
+        ;(original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`
+        return http.request(original)
+      } catch (refreshError) {
+        isRefreshing = false
+        flushQueue(refreshError, null)
+        clearAuthAndRedirect()
+        return Promise.reject(refreshError)
+      }
     }
 
-    // RFC 7807 Problem Detail이 있으면 구조화된 에러 제공
     if (problem?.type) {
       console.error(`[${problem.status}] ${problem.title}: ${problem.detail}`)
     } else if (status === 403) {
@@ -45,7 +134,7 @@ http.interceptors.response.use(
   },
 )
 
-/* ── Typed API helper ── */
+/* ── Typed API helper (다른 도메인에서 사용) ── */
 export async function apiCall<T>(method: 'get' | 'post' | 'put' | 'patch' | 'delete', url: string, data?: unknown): Promise<ApiResponse<T>> {
   const response = await http[method]<ApiResponse<T>>(url, data)
   return response.data

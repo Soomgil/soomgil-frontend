@@ -2,7 +2,7 @@
 import type { Story } from '@/types/community'
 
 defineProps<{ stories: Story[] }>()
-defineEmits<{ close: [] }>()
+defineEmits<{ close: []; storyClick: [storyId: string] }>()
 </script>
 
 <template>
@@ -22,11 +22,11 @@ defineEmits<{ close: [] }>()
 
         <div style="overflow-y: auto; max-height: calc(94vh - 120px);">
           <div class="mypage-stories-magazine">
-            <div v-for="story in stories" :key="story.id" class="mypage-story-magazine-item">
+            <div v-for="story in stories" :key="story.id" class="mypage-story-magazine-item" @click="$emit('storyClick', story.id)">
               <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
               <div class="story-magazine-body">
                 <h3 class="story-magazine-title">
-                  <a href="#">{{ story.title }}</a>
+                  <a href="#" @click.prevent>{{ story.title }}</a>
                 </h3>
                 <div class="story-magazine-meta">
                   <span class="story-date">{{ story.location }}</span>

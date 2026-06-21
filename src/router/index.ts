@@ -22,6 +22,24 @@ const router = createRouter({
       meta: { guestOnly: true },
     },
     {
+      path: '/verify-email',
+      name: 'VerifyEmail',
+      component: () => import('@/pages/VerifyEmailPage.vue'),
+      meta: { guestOnly: true },
+    },
+    {
+      path: '/reset-password',
+      name: 'ResetPassword',
+      component: () => import('@/pages/ResetPasswordPage.vue'),
+    },
+    {
+      // Kakao/Google에서 리다이렉트 돌아오는 콜백 경로.
+      // requiresAuth 없음 — 이 페이지가 토큰을 세팅한다.
+      path: '/auth/oauth/:provider/callback',
+      name: 'OAuthCallback',
+      component: () => import('@/pages/OAuthCallbackPage.vue'),
+    },
+    {
       path: '/home',
       name: 'Home',
       component: () => import('@/pages/HomePage.vue'),
