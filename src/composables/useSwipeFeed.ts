@@ -10,9 +10,7 @@ import type {
 } from '@/types/swipe'
 import type { SwipeFeedParams } from '@/api/swipe.api'
 
-const DISPLAY_QUEUE_SIZE = 5
-const FETCH_LIMIT = 20
-const PREFETCH_THRESHOLD = 10
+const QUEUE_CAPACITY = 10
 const TAG_POLL_INTERVAL_MS = 750
 
 export interface SwipeFeedGateway {
@@ -29,17 +27,17 @@ export function useSwipeFeed(gateway: SwipeFeedGateway = swipeApi) {
   const prefetching = ref(false)
   const submitting = ref(false)
   const error = ref<string | null>(null)
-  const lastParams = ref<SwipeFeedParams>({ limit: FETCH_LIMIT, excludeRecent: true })
+  const lastParams = ref<SwipeFeedParams>({ limit: QUEUE_CAPACITY, excludeRecent: true })
   let tagPollTimer: ReturnType<typeof setTimeout> | null = null
 
-  const activeQueue = computed(() => items.value.slice(0, DISPLAY_QUEUE_SIZE))
+  const activeQueue = computed(() => items.value.slice(0, QUEUE_CAPACITY))
   const queueDepth = computed(() => activeQueue.value.length)
   const currentItem = computed(() => activeQueue.value[0] ?? null)
   const completedCount = computed(() => currentIndex.value)
   const finished = computed(() => !loading.value && !prefetching.value && items.value.length === 0 && !nextSeed.value)
 
   async function load(params: SwipeFeedParams = lastParams.value) {
-    lastParams.value = { limit: FETCH_LIMIT, excludeRecent: true, ...params }
+    lastParams.value = { ...params, limit: QUEUE_CAPACITY, excludeRecent: params.excludeRecent ?? true }
     loading.value = true
     error.value = null
     currentIndex.value = 0
@@ -63,23 +61,25 @@ export function useSwipeFeed(gateway: SwipeFeedGateway = swipeApi) {
     const additions = response.items
       .filter((item) => !known.has(keyOf(item)))
       .sort((left, right) => tagPriority(left) - tagPriority(right))
-    items.value.push(...additions)
+    const availableSpace = Math.max(QUEUE_CAPACITY - items.value.length, 0)
+    items.value.push(...additions.slice(0, availableSpace))
     nextSeed.value = response.nextSeed
   }
 
   async function maintainBuffer(attempt = 0) {
-    if (items.value.length > PREFETCH_THRESHOLD || !nextSeed.value || prefetching.value) return
+    const missingCount = QUEUE_CAPACITY - items.value.length
+    if (missingCount <= 0 || !nextSeed.value || prefetching.value) return
     prefetching.value = true
     const seed = nextSeed.value
     try {
-      const response = await gateway.getFeed({ ...lastParams.value, limit: FETCH_LIMIT, seed })
+      const response = await gateway.getFeed({ ...lastParams.value, limit: missingCount, seed })
       append(response)
       scheduleTagRefresh()
     } catch {
       // The visible queue remains usable. A later swipe retries prefetch.
     } finally {
       prefetching.value = false
-      if (items.value.length <= PREFETCH_THRESHOLD && nextSeed.value && attempt < 2) {
+      if (items.value.length < QUEUE_CAPACITY && nextSeed.value && attempt < 2) {
         await maintainBuffer(attempt + 1)
       }
     }

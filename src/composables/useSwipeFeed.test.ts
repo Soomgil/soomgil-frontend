@@ -70,12 +70,12 @@ describe('useSwipeFeed', () => {
     expect(feed.completedCount.value).toBe(0)
   })
 
-  it('keeps five active cards and prefetches before the reserve buffer runs out', async () => {
-    const firstItems = Array.from({ length: 20 }, (_, index) => ({
+  it('keeps one current card and nine waiting cards, then refills only the missing space', async () => {
+    const firstItems = Array.from({ length: 10 }, (_, index) => ({
       ...item,
       place: { ...item.place, externalPlaceId: `place-${index}` },
     }))
-    const nextItems = Array.from({ length: 20 }, (_, index) => ({
+    const nextItems = Array.from({ length: 10 }, (_, index) => ({
       ...item,
       place: { ...item.place, externalPlaceId: `next-${index}` },
     }))
@@ -88,13 +88,15 @@ describe('useSwipeFeed', () => {
     const feed = useSwipeFeed(gateway)
 
     await feed.load()
-    expect(feed.activeQueue.value).toHaveLength(5)
+    expect(gateway.getFeed).toHaveBeenCalledWith(expect.objectContaining({ limit: 10 }))
+    expect(feed.currentItem.value?.place.externalPlaceId).toBe('place-0')
+    expect(feed.items.value).toHaveLength(10)
 
-    for (let index = 0; index < 10; index += 1) feed.advance()
+    feed.advance()
     await vi.waitFor(() => expect(gateway.getFeed).toHaveBeenCalledTimes(2))
 
-    expect(gateway.getFeed).toHaveBeenLastCalledWith(expect.objectContaining({ seed: 'page-2', limit: 20 }))
-    expect(feed.activeQueue.value).toHaveLength(5)
-    expect(feed.items.value).toHaveLength(30)
+    expect(gateway.getFeed).toHaveBeenLastCalledWith(expect.objectContaining({ seed: 'page-2', limit: 1 }))
+    expect(feed.currentItem.value?.place.externalPlaceId).toBe('place-1')
+    expect(feed.items.value).toHaveLength(10)
   })
 })
