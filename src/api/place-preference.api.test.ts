@@ -43,7 +43,13 @@ describe('place and preference APIs', () => {
   })
 
   it('loads swipe feed and persists reactions using backend contract paths', async () => {
-    get.mockResolvedValue({ data: { items: [{ place, myReaction: null, likedByFollowees: [] }], nextSeed: 'next' } })
+    const swipePlace = {
+      ...place,
+      description: '넓은 백사장이 있는 해수욕장',
+      photos: ['https://cdn.example.com/haeundae.jpg', 'https://cdn.example.com/haeundae-2.jpg'],
+      tags: ['바다·해안', '산책'],
+    }
+    get.mockResolvedValue({ data: { items: [{ place: swipePlace, myReaction: null, likedByFollowees: [] }], nextSeed: 'next' } })
     put.mockResolvedValue({ data: { place: { provider: 'KTO', externalPlaceId: '126508' }, reaction: 'SUPER_LIKE', savedPlaceEligible: true, updatedAt: '2026-06-21T00:00:00Z' } })
 
     const feed = await swipeApi.getFeed({ limit: 20, excludeRecent: true })
@@ -52,6 +58,9 @@ describe('place and preference APIs', () => {
     expect(get).toHaveBeenCalledWith('/swipe/feed', { params: { limit: 20, excludeRecent: true } })
     expect(put).toHaveBeenCalledWith('/places/KTO/126508/swipe-reaction', { reaction: 'SUPER_LIKE', source: 'swipe-feed' })
     expect(feed.items[0].place.placeName).toBe('해운대해수욕장')
+    expect(feed.items[0].place.description).toBe('넓은 백사장이 있는 해수욕장')
+    expect(feed.items[0].place.photos).toHaveLength(2)
+    expect(feed.items[0].place.tags).toEqual(['바다·해안', '산책'])
     expect(reaction.savedPlaceEligible).toBe(true)
   })
 

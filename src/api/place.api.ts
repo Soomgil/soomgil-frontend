@@ -12,6 +12,9 @@ interface PlaceSummaryDto {
   thumbnailUrl: string | null
   category: string | null
   sourceStatus: PlaceSourceStatus
+  description?: string | null
+  photos?: string[] | null
+  tags?: string[] | null
 }
 
 interface PlaceDetailDto extends PlaceSummaryDto {
@@ -36,7 +39,7 @@ export interface PlaceSearchParams {
 }
 
 export function mapPlace(dto: PlaceSummaryDto | PlaceDetailDto): Place {
-  const detail = 'description' in dto ? dto : null
+  const detail = 'phone' in dto ? dto : null
   return {
     provider: dto.provider,
     externalPlaceId: dto.externalPlaceId,
@@ -47,8 +50,10 @@ export function mapPlace(dto: PlaceSummaryDto | PlaceDetailDto): Place {
     thumbnailUrl: dto.thumbnailUrl,
     category: dto.category,
     sourceStatus: dto.sourceStatus,
-    summary: detail?.description ?? undefined,
-    description: detail?.description ?? undefined,
+    summary: dto.description ?? detail?.description ?? undefined,
+    description: dto.description ?? detail?.description ?? undefined,
+    photos: dto.photos ?? undefined,
+    tags: dto.tags ?? undefined,
     contact: detail?.phone ?? undefined,
   }
 }

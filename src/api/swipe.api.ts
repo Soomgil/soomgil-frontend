@@ -14,6 +14,9 @@ interface PlaceSummaryDto {
   thumbnailUrl: string | null
   category: string | null
   sourceStatus: 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
+  description?: string | null
+  photos?: string[] | null
+  tags?: string[] | null
 }
 
 interface SwipeFeedDto {
