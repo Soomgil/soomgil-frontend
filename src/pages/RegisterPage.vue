@@ -124,12 +124,6 @@ async function handleRegister() {
             <p>{{ isOAuthOnboarding ? '소셜 로그인을 위해 닉네임과 필수 약관에 동의해주세요.' : '그룹 여행 설계를 시작할 계정을 만들어보세요.' }}</p>
           </div>
 
-          <template v-if="!isOAuthOnboarding">
-            <OAuthButtons mode="signup" :disabled="submitting" @select="handleOAuthLogin" />
-
-            <div class="divider"><span>또는 이메일로 가입</span></div>
-          </template>
-
           <label>
             <span class="small muted">닉네임</span>
             <span class="auth-field-wrap"><span class="material-symbols-rounded">person</span><input v-model="name" class="field" type="text" aria-label="닉네임"></span>
@@ -176,6 +170,12 @@ async function handleRegister() {
           <button class="btn primary auth-main-action" type="submit" :disabled="submitting || !allAccepted">
             <span class="material-symbols-rounded">arrow_forward</span>{{ isOAuthOnboarding ? '동의하고 시작하기' : '가입하고 취향 수집 시작' }}
           </button>
+
+          <template v-if="!isOAuthOnboarding">
+            <div class="divider"><span>또는 간편 가입</span></div>
+            <OAuthButtons mode="signup" :disabled="submitting" @select="handleOAuthLogin" />
+          </template>
+
           <p v-if="!isOAuthOnboarding" class="small muted auth-switch">이미 계정이 있나요? <a href="#" @click.prevent="router.push('/login')">로그인</a></p>
         </form>
       </section>
