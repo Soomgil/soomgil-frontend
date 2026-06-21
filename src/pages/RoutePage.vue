@@ -25,6 +25,13 @@ interface RouteLink {
   toItemId: string
 }
 
+interface RouteHistoryState {
+  plans: DayPlan[]
+  links: RouteLink[]
+  drawings: MapDrawingStroke[]
+  drawingRetryIds: string[]
+}
+
 /* ── Data ── */
 const route = useRoute()
 const tripIdParam = route.params.tripId
@@ -121,23 +128,58 @@ onUnmounted(() => {
 })
 
 /* ── Undo / Redo ── */
+const HISTORY_LIMIT = 5
 const undoStack = ref<string[]>([])
 const redoStack = ref<string[]>([])
 const canUndo = computed(() => undoStack.value.length > 0)
 const canRedo = computed(() => redoStack.value.length > 0)
 
+function currentHistoryState() {
+  return JSON.stringify({
+    plans: dayPlans.value,
+    links: routeLinks.value,
+    drawings: localDrawings.value,
+    drawingRetryIds: drawingRetryIds.value,
+  } satisfies RouteHistoryState)
+}
+
+function pushHistoryState(stack: string[], state: string) {
+  stack.push(state)
+  if (stack.length > HISTORY_LIMIT) stack.shift()
+}
+
 function pushUndoState() {
-  undoStack.value.push(JSON.stringify({ plans: dayPlans.value, links: routeLinks.value }))
+  pushHistoryState(undoStack.value, currentHistoryState())
   redoStack.value = []
+}
+
+function restoreDrawingState(state: RouteHistoryState) {
+  localDrawings.value = (state.drawings ?? []).map((drawing) => {
+    const simplified = simplifiedDrawingCoordinates.get(drawing.id)
+    return simplified ? { ...drawing, coordinates: simplified } : drawing
+  })
+  const drawingIds = new Set(localDrawings.value.map((drawing) => drawing.id))
+  drawingRetryIds.value = (state.drawingRetryIds ?? [])
+    .filter((id) => drawingIds.has(id) && !simplifiedDrawingCoordinates.has(id))
+  localDrawings.value.forEach((drawing) => {
+    if (
+      !simplifiedDrawingCoordinates.has(drawing.id)
+      && !pendingDrawingIds.value.includes(drawing.id)
+      && !drawingRetryIds.value.includes(drawing.id)
+    ) {
+      void simplifyLocalDrawing(drawing.id)
+    }
+  })
 }
 
 async function undo() {
   if (!canUndo.value || itinerary.mutating.value) return
-  redoStack.value.push(JSON.stringify({ plans: dayPlans.value, links: routeLinks.value }))
-  const prev = JSON.parse(undoStack.value.pop()!)
+  pushHistoryState(redoStack.value, currentHistoryState())
+  const prev = JSON.parse(undoStack.value.pop()!) as RouteHistoryState
   const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(prev.plans)
   dayPlans.value = prev.plans
   routeLinks.value = prev.links || []
+  restoreDrawingState(prev)
   pendingRouteFrom.value = null
   nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
@@ -145,11 +187,12 @@ async function undo() {
 
 async function redo() {
   if (!canRedo.value || itinerary.mutating.value) return
-  undoStack.value.push(JSON.stringify({ plans: dayPlans.value, links: routeLinks.value }))
-  const next = JSON.parse(redoStack.value.pop()!)
+  pushHistoryState(undoStack.value, currentHistoryState())
+  const next = JSON.parse(redoStack.value.pop()!) as RouteHistoryState
   const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(next.plans)
   dayPlans.value = next.plans
   routeLinks.value = next.links || []
+  restoreDrawingState(next)
   pendingRouteFrom.value = null
   nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
@@ -598,6 +641,7 @@ const activeTool = ref<MapDrawingTool>('cursor')
 const localDrawings = ref<MapDrawingStroke[]>([])
 const pendingDrawingIds = ref<string[]>([])
 const drawingRetryIds = ref<string[]>([])
+const simplifiedDrawingCoordinates = new Map<string, MapDrawingStroke['coordinates']>()
 let localDrawingSequence = 0
 
 async function simplifyLocalDrawing(drawingId: string) {
@@ -610,6 +654,7 @@ async function simplifyLocalDrawing(drawingId: string) {
       coordinates: drawing.coordinates,
       maxPoints: 100,
     })
+    simplifiedDrawingCoordinates.set(drawingId, simplified.coordinates)
     const index = localDrawings.value.findIndex((candidate) => candidate.id === drawingId)
     if (index >= 0) {
       localDrawings.value[index] = { ...localDrawings.value[index], coordinates: simplified.coordinates }
@@ -626,6 +671,7 @@ async function simplifyLocalDrawing(drawingId: string) {
 }
 
 function createLocalDrawing(draft: MapDrawingDraft) {
+  pushUndoState()
   const drawing: MapDrawingStroke = {
     id: `local-drawing-${++localDrawingSequence}`,
     ...draft,
@@ -635,6 +681,8 @@ function createLocalDrawing(draft: MapDrawingDraft) {
 }
 
 function eraseLocalDrawing(drawingId: string) {
+  if (!localDrawings.value.some((drawing) => drawing.id === drawingId)) return
+  pushUndoState()
   localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
   drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
 }
@@ -1361,12 +1409,14 @@ function textAvatarStyle(index: unknown) {
 
               <!-- Undo / Redo -->
               <button :class="['tool-btn', canUndo ? 'is-on' : 'is-off']" type="button"
+                data-action="undo"
                 title="실행 취소 (Ctrl+Z)"
                 :disabled="!canUndo || itinerary.mutating.value"
                 @click="undo">
                 <span class="material-symbols-rounded">undo</span>
               </button>
               <button :class="['tool-btn', canRedo ? 'is-on' : 'is-off']" type="button"
+                data-action="redo"
                 title="다시 실행 (Ctrl+Y)"
                 :disabled="!canRedo || itinerary.mutating.value"
                 @click="redo">

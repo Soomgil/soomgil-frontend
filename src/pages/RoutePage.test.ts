@@ -218,6 +218,157 @@ describe('RoutePage itinerary integration', () => {
     expect(map.props('drawings')).toEqual([])
   })
 
+  it('저장 전 지도 그림 생성과 삭제를 로컬에서 실행 취소하고 다시 실행한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await flushPromises()
+
+    const undoButton = wrapper.get('button[data-action="undo"]')
+    const redoButton = wrapper.get('button[data-action="redo"]')
+    expect(undoButton.attributes('disabled')).toBeUndefined()
+
+    await undoButton.trigger('click')
+    expect(map.props('drawings')).toEqual([])
+    expect(redoButton.attributes('disabled')).toBeUndefined()
+
+    await redoButton.trigger('click')
+    expect(map.props('drawings')).toHaveLength(1)
+
+    map.vm.$emit('drawingErase', 'local-drawing-1')
+    await nextTick()
+    expect(map.props('drawings')).toEqual([])
+
+    await undoButton.trigger('click')
+    expect(map.props('drawings')).toHaveLength(1)
+  })
+
+  it('실행 취소 후 새 그림을 만들면 로컬 다시 실행 이력을 비운다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const draft = {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    }
+
+    map.vm.$emit('drawingCreate', draft)
+    await flushPromises()
+    await wrapper.get('button[data-action="undo"]').trigger('click')
+    expect(wrapper.get('button[data-action="redo"]').attributes('disabled')).toBeUndefined()
+
+    map.vm.$emit('drawingCreate', { ...draft, color: '#ef4444' })
+    await flushPromises()
+
+    expect(wrapper.get('button[data-action="redo"]').attributes('disabled')).toBeDefined()
+    expect(map.props('drawings')).toHaveLength(1)
+  })
+
+  it('좌표 단순화 중 실행 취소와 다시 실행을 해도 요청을 중복하지 않는다', async () => {
+    let resolveSimplification: ((value: {
+      coordinates: Array<{ lng: number; lat: number }>
+      originalCount: number
+      simplifiedCount: number
+      maxPoints: number
+    }) => void) | undefined
+    geo.simplifyCoordinates.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveSimplification = resolve
+    }))
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 127.5, lat: 36.5 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await nextTick()
+    await wrapper.get('button[data-action="undo"]').trigger('click')
+    await wrapper.get('button[data-action="redo"]').trigger('click')
+
+    expect(geo.simplifyCoordinates).toHaveBeenCalledOnce()
+    resolveSimplification?.({
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      originalCount: 3,
+      simplifiedCount: 2,
+      maxPoints: 100,
+    })
+    await flushPromises()
+
+    const drawings = map.props('drawings') ?? []
+    expect(drawings).toHaveLength(1)
+    expect(drawings[0]?.coordinates).toEqual([
+      { lng: 127, lat: 36 },
+      { lng: 128, lat: 37 },
+    ])
+  })
+
+  it('로컬 실행 취소 이력을 최근 5개로 제한한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const undoButton = wrapper.get('button[data-action="undo"]')
+
+    for (let index = 0; index < 6; index += 1) {
+      map.vm.$emit('drawingCreate', {
+        coordinates: [{ lng: 127 + index, lat: 36 }, { lng: 128 + index, lat: 37 }],
+        color: '#1f2937',
+        width: 4,
+      })
+      await flushPromises()
+    }
+    for (let index = 0; index < 5; index += 1) {
+      await undoButton.trigger('click')
+    }
+
+    expect(map.props('drawings')).toHaveLength(1)
+    expect(undoButton.attributes('disabled')).toBeDefined()
+  })
+
   it('좌표 단순화 실패를 표시하고 재시도한다', async () => {
     geo.simplifyCoordinates
       .mockRejectedValueOnce(new Error('network'))
