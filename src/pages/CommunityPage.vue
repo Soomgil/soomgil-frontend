@@ -14,10 +14,12 @@ import AppShell from '@/components/layout/AppShell.vue'
 import StoryWriteModal from '@/components/community/StoryWriteModal.vue'
 import { useModal } from '@/composables/useModal'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth.store'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const auth = useAuthStore()
 
 interface StoryView {
   id: string
@@ -221,6 +223,7 @@ const comments = computed(() => apiComments.value.map((comment) => ({
 })))
 
 const overlayComment = ref('')
+const replyTarget = ref<{ id: string; name: string } | null>(null)
 const reportModal = ref(false)
 const reportReason = ref<ReportReasonCode | ''>('')
 const reportDetail = ref('')
@@ -258,12 +261,51 @@ async function submitComment() {
   const content = overlayComment.value.trim()
   if (!selectedPost.value || !content) return
   try {
-    const comment = await communityApi.createComment(selectedPost.value.id, content)
+    const comment = await communityApi.createComment(selectedPost.value.id, content, replyTarget.value?.id)
     apiComments.value.push(comment)
     selectedPost.value.commentCount += 1
     overlayComment.value = ''
+    replyTarget.value = null
   } catch {
     toast.error('댓글을 등록하지 못했습니다.')
+  }
+}
+
+async function deleteComment(commentId: string) {
+  if (!selectedPost.value || !window.confirm('댓글을 삭제할까요?')) return
+  try {
+    await communityApi.deleteComment(selectedPost.value.id, commentId)
+    apiComments.value = apiComments.value.filter((comment) => comment.id !== commentId)
+    selectedPost.value.commentCount = Math.max(0, selectedPost.value.commentCount - 1)
+  } catch {
+    toast.error('댓글을 삭제하지 못했습니다.')
+  }
+}
+
+async function editStory(story: StoryView) {
+  const title = window.prompt('여행기 제목', story.title)?.trim()
+  if (!title) return
+  const summary = window.prompt('여행기 소개', story.summary)?.trim() ?? story.summary
+  try {
+    const updated = await communityApi.updatePost(story.id, { title, summary })
+    const index = posts.value.findIndex((post) => post.id === story.id)
+    if (index >= 0) posts.value[index] = updated
+    selectedPost.value = updated
+    toast.success('여행기를 수정했습니다.')
+  } catch {
+    toast.error('여행기를 수정하지 못했습니다.')
+  }
+}
+
+async function deleteStory(story: StoryView) {
+  if (!window.confirm('여행기를 삭제할까요?')) return
+  try {
+    await communityApi.deletePost(story.id)
+    posts.value = posts.value.filter((post) => post.id !== story.id)
+    closeModal()
+    toast.success('여행기를 삭제했습니다.')
+  } catch {
+    toast.error('여행기를 삭제하지 못했습니다.')
   }
 }
 
@@ -292,6 +334,29 @@ async function toggleStoryLike(story: StoryView) {
     const next = new Set(likingPostIds.value)
     next.delete(story.id)
     likingPostIds.value = next
+  }
+}
+
+async function retripStory(story: StoryView) {
+  try {
+    const trip = await communityApi.retrip(story.id)
+    toast.success('새 여행방으로 가져왔습니다.')
+    closeModal()
+    await router.push(`/trips/${trip.id}/route`)
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+    toast.error(detail || '여행기를 가져오지 못했습니다.')
+  }
+}
+
+async function shareStory(story: StoryView) {
+  try {
+    const shared = await communityApi.rotateShareToken(story.id)
+    await navigator.clipboard.writeText(shared.shareUrl)
+    toast.success('공유 링크를 복사했습니다.')
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+    toast.error(detail || 'UNLISTED 여행기만 공유 링크를 만들 수 있습니다.')
   }
 }
 
@@ -558,6 +623,12 @@ onMounted(loadPosts)
                       <span class="material-symbols-rounded" style="font-size:20px">favorite</span> {{ story.likes }}
                     </button>
                     <span style="display:flex; align-items:center; gap:4px;"><span class="material-symbols-rounded" style="font-size:20px; color:var(--violet)">chat_bubble</span> {{ story.comments }}</span>
+                    <button type="button" class="story-like-button" @click="retripStory(story)"><span class="material-symbols-rounded" style="font-size:20px">content_copy</span> 재여행</button>
+                    <button type="button" class="story-like-button" @click="shareStory(story)"><span class="material-symbols-rounded" style="font-size:20px">share</span> 공유</button>
+                    <template v-if="story.authorUserId === auth.user?.id">
+                      <button type="button" class="story-like-button" @click="editStory(story)"><span class="material-symbols-rounded" style="font-size:20px">edit</span> 수정</button>
+                      <button type="button" class="story-like-button" @click="deleteStory(story)"><span class="material-symbols-rounded" style="font-size:20px">delete</span> 삭제</button>
+                    </template>
                   </div>
                 </div>
               </article>
@@ -613,8 +684,11 @@ onMounted(loadPosts)
                       <button>
                         <span class="material-symbols-rounded">favorite</span><span>{{ comment.likes }}</span>
                       </button>
-                      <button>
+                      <button type="button" @click="replyTarget = { id: comment.id, name: comment.name }">
                         <span class="material-symbols-rounded">reply</span>답글
+                      </button>
+                      <button v-if="comment.authorUserId === auth.user?.id" type="button" @click="deleteComment(comment.id)">
+                        <span class="material-symbols-rounded">delete</span>삭제
                       </button>
                     </div>
                   </div>
@@ -622,6 +696,9 @@ onMounted(loadPosts)
               </div>
 
               <div class="feed-comment-input-area">
+                <div v-if="replyTarget" class="small muted" style="display:flex;justify-content:space-between;padding:0 4px 6px">
+                  <span>{{ replyTarget.name }}님에게 답글</span><button type="button" @click="replyTarget = null">취소</button>
+                </div>
                 <div class="feed-comment-composer">
                   <div class="feed-comment-input-wrap">
                     <input v-model="overlayComment" type="text" placeholder="댓글을 남겨보세요..." />

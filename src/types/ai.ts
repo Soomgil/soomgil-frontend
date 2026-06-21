@@ -8,51 +8,53 @@ export type ToolCallStatus = 'REQUESTED' | 'SUCCEEDED' | 'FAILED' | 'BLOCKED'
 export interface AiChatSession {
   id: string
   tripId: string
-  status: AiSessionStatus
-  summary: string | null
+  status: AiSessionStatus | string
   summaryUpdatedAt: string | null
-  createdAt: string
-  updatedAt: string
+  createdAt: string | null
 }
 
 /* ── AI Chat Message ── */
 export interface AiChatMessage {
   id: string
-  sessionId: string
-  requesterUserId: string | null
   role: AiMessageRole
+  requester: import('./auth').UserSummary | null
   content: string
   toolCallId: string | null
-  metadata: Record<string, unknown> | null
   createdAt: string
 }
 
 /* ── AI Tool Call ── */
 export interface AiToolCall {
   id: string
-  sessionId: string
-  tripId: string
-  requestMessageId: string | null
-  resultMessageId: string | null
-  requestedByUserId: string
   toolName: string
   executionPolicy: ToolExecutionPolicy
-  arguments: Record<string, unknown>
-  result: Record<string, unknown> | null
   status: ToolCallStatus
   versionBefore: number | null
   versionAfter: number | null
-  undoRedoAvailable: boolean
-  errorMessage: string | null
-  createdAt: string
-  completedAt: string | null
+  undoRedoAvailable: boolean | null
+  errorCode: string | null
 }
 
 /* ── Request Types ── */
 export interface AiChatRequest {
-  message: string
+  content: string
+  baseVersion?: number | null
+  viewport?: {
+    minLng: number
+    minLat: number
+    maxLng: number
+    maxLat: number
+  } | null
 }
 
 export interface AiRouteDraftRequest {
   preferences?: Record<string, unknown>
+}
+
+export interface AiMessageResponse {
+  message: AiChatMessage
+  toolCalls: AiToolCall[]
+  itineraryVersion: number | null
+  undoAvailable: boolean | null
+  redoAvailable: boolean | null
 }

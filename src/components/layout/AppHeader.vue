@@ -2,6 +2,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
+import { notificationApi } from '@/api/notification.api'
+import type { Notification } from '@/types/notification'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,6 +44,10 @@ const activeNavKey = computed(() => {
 const showBriefing = ref(false)
 const showNotif = ref(false)
 const showProfile = ref(false)
+const notifications = ref<Notification[]>([])
+const notificationsLoading = ref(false)
+const notificationsError = ref('')
+const unreadCount = computed(() => notifications.value.filter((item) => !item.readAt).length)
 
 function closeAllDropdowns() {
   showBriefing.value = false
@@ -55,10 +61,46 @@ function toggleBriefing() {
   showBriefing.value = next
 }
 
-function toggleNotif() {
+async function toggleNotif() {
   const next = !showNotif.value
   closeAllDropdowns()
   showNotif.value = next
+  if (next) await loadNotifications()
+}
+
+async function loadNotifications() {
+  notificationsLoading.value = true
+  notificationsError.value = ''
+  try {
+    notifications.value = (await notificationApi.getNotifications({ page: 0, size: 20 })).items
+  } catch {
+    notificationsError.value = '알림을 불러오지 못했습니다.'
+  } finally {
+    notificationsLoading.value = false
+  }
+}
+
+async function openNotification(notification: Notification) {
+  if (!notification.readAt) {
+    const updated = await notificationApi.markAsRead(notification.id)
+    notifications.value = notifications.value.map((item) => item.id === updated.id ? updated : item)
+  }
+  const destination = notification.payload?.route
+    || (notification.payload?.inviteCode ? `/trip-invites/${notification.payload.inviteCode}` : null)
+    || (notification.tripId ? `/trips/${notification.tripId}/route` : null)
+  closeAllDropdowns()
+  if (destination) await router.push(destination)
+}
+
+async function markAllNotificationsRead() {
+  await notificationApi.markAllAsRead()
+  const readAt = new Date().toISOString()
+  notifications.value = notifications.value.map((item) => ({ ...item, readAt: item.readAt ?? readAt }))
+}
+
+async function dismissNotification(notificationId: string) {
+  await notificationApi.deleteNotification(notificationId)
+  notifications.value = notifications.value.filter((item) => item.id !== notificationId)
 }
 
 function toggleProfile() {
@@ -172,28 +214,25 @@ async function handleLogout() {
         <div class="notifications-dropdown" style="position:relative;">
           <button type="button" id="header-notif-btn" class="btn ghost icon-btn" style="border-radius:50%; width:40px; height:40px; padding:0; position:relative; border:none; cursor:pointer;" @click.stop="toggleNotif">
             <span class="material-symbols-rounded">notifications</span>
-            <span style="position:absolute; top:6px; right:8px; width:8px; height:8px; background:var(--rose); border-radius:50%;"></span>
+            <span v-if="unreadCount" style="position:absolute; top:4px; right:4px; min-width:16px; height:16px; padding:0 4px; background:var(--rose); color:#fff; border-radius:999px; font-size:10px; line-height:16px;">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
           </button>
           <div id="header-notif-panel" class="header-dropdown-panel" :class="{ 'is-open': showNotif }">
-            <h4 style="margin:0 0 12px 0; font-size:15px; font-weight:700; display:flex; align-items:center; gap:6px;">
-              <span class="material-symbols-rounded" style="font-size:18px; color:var(--rose)">group_add</span>
-              초대받은 여행방
-            </h4>
-            <div style="background:var(--bg); padding:12px; border-radius:12px; margin-bottom:24px; border:1px solid var(--line);">
-              <div style="margin-bottom:12px;">
-                <strong style="font-size:14px; display:block; margin-bottom:2px; color:var(--ink);">전주 먹방 1박 2일</strong>
-                <p style="font-size:12px; color:var(--muted); margin:0;">민지님이 초대했어요 · 6.28 출발</p>
-              </div>
-              <div style="display:flex; gap:8px;">
-                <button class="btn primary" type="button" style="flex:1; padding:8px 0; font-size:13px; min-height:0; height:auto; border-radius:999px;">수락</button>
-                <button class="btn ghost" type="button" style="flex:1; padding:8px 0; font-size:13px; min-height:0; height:auto; background:#fff; border-color:var(--line); border-radius:999px;">거절</button>
-              </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <h4 style="margin:0;font-size:15px;font-weight:700;">알림</h4>
+              <button v-if="unreadCount" type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="markAllNotificationsRead">모두 읽음</button>
             </div>
-            <h4 style="margin:0 0 12px 0; font-size:15px; font-weight:700;">최근 활동</h4>
-            <div class="activity-list" style="padding:0; background:transparent; border:none; border-radius:0; gap:16px;">
-              <div><span></span><p style="font-size:13px;"><strong>민지</strong>님이 성심당문화원을 추가했어요</p></div>
-              <div><span></span><p style="font-size:13px;"><strong>AI</strong>가 1일차 동선을 추천했어요</p></div>
-              <div><span></span><p style="font-size:13px;"><strong>서연</strong>님이 여행 날짜를 수정했어요</p></div>
+            <p v-if="notificationsLoading" style="font-size:13px;color:var(--muted)">불러오는 중…</p>
+            <p v-else-if="notificationsError" style="font-size:13px;color:var(--rose)">{{ notificationsError }}</p>
+            <p v-else-if="notifications.length === 0" style="font-size:13px;color:var(--muted)">새 알림이 없습니다.</p>
+            <div v-else style="display:grid;gap:8px;max-height:360px;overflow:auto;">
+              <article v-for="notification in notifications" :key="notification.id" :style="{background: notification.readAt ? '#fff' : 'var(--bg)', padding:'10px', borderRadius:'12px', border:'1px solid var(--line)'}">
+                <button type="button" style="display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:0" @click="openNotification(notification)">
+                  <strong style="font-size:13px;display:block;color:var(--ink)">{{ notification.title }}</strong>
+                  <span v-if="notification.actor" style="font-size:11px;color:var(--violet)">{{ notification.actor.displayName }}</span>
+                  <p v-if="notification.body" style="font-size:12px;color:var(--muted);margin:3px 0 0">{{ notification.body }}</p>
+                </button>
+                <button type="button" aria-label="알림 삭제" style="margin-top:6px;border:0;background:transparent;color:var(--muted);font-size:11px;cursor:pointer" @click="dismissNotification(notification.id)">삭제</button>
+              </article>
             </div>
           </div>
         </div>

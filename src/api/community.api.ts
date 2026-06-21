@@ -10,6 +10,7 @@ import type {
   CreateContentReportRequest,
   PagedCommunityComment,
   ReportReason,
+  CommunityPostShareToken,
 } from '@/types/community'
 
 export interface CommunityPostQuery {
@@ -88,6 +89,16 @@ export const communityApi = {
 
   async createReport(data: CreateContentReportRequest): Promise<ContentReport> {
     const response = await http.post<ContentReport>('/community/reports', data)
+    return response.data
+  },
+
+  async retrip(postId: string, title?: string): Promise<import('@/types/trip').Trip> {
+    const response = await http.post<import('@/types/trip').Trip>(`/stories/${postId}/retrip`, title ? { title } : {})
+    return response.data
+  },
+
+  async rotateShareToken(postId: string): Promise<CommunityPostShareToken> {
+    const response = await http.post<CommunityPostShareToken>(`/stories/${postId}/share-token`)
     return response.data
   },
 }

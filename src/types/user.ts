@@ -8,6 +8,18 @@ export interface UserProfile extends User {
   tripCount: number
 }
 
+export interface PublicUserProfile {
+  id: string
+  displayName: string
+  profileImageUrl: string | null
+  bio: string | null
+  followerCount: number | null
+  followingCount: number | null
+  followedByMe: boolean | null
+  followStatus: string | null
+  profileVisibility: 'PUBLIC' | 'PRIVATE'
+}
+
 export interface UserStats {
   tripsCount: number
   placesLiked: number
