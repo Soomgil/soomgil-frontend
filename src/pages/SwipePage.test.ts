@@ -10,7 +10,6 @@ const { getFeed, react, push } = vi.hoisted(() => ({
 vi.mock('@/api/swipe.api', () => ({ swipeApi: { getFeed, react } }))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
-  useRoute: () => ({ params: { tripId: 'trip-1' } }),
 }))
 
 import SwipePage from './SwipePage.vue'
@@ -55,6 +54,9 @@ describe('SwipePage', () => {
 
     await vi.runAllTimersAsync()
     expect(wrapper.text()).toContain('취향 수집 완료')
+
+    await wrapper.get('a').trigger('click')
+    expect(push).toHaveBeenCalledWith('/my-trips')
     vi.useRealTimers()
   })
 

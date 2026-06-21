@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -9,8 +9,6 @@ import { useSwipeFeed } from '@/composables/useSwipeFeed'
 import type { SwipeAction } from '@/types/swipe'
 
 const router = useRouter()
-const route = useRoute()
-const tripId = computed(() => String(route.params.tripId))
 
 const {
   items,
@@ -270,7 +268,7 @@ onMounted(() => {
                 <div v-else-if="isFinished" class="panel" style="text-align: center; padding: 40px">
                   <h2 style="color: var(--violet)">취향 수집 완료!</h2>
                   <p class="lead">모든 관광지를 확인했습니다. 이제 멤버들의 선택을 기다려보세요.</p>
-                  <a class="btn primary" href="#" @click.prevent="router.push(`/trips/${tripId}/route`)" style="margin-top: 20px">경로 관리로 이동</a>
+                  <a class="btn primary" href="#" @click.prevent="router.push('/my-trips')" style="margin-top: 20px">내 여행 보기</a>
                 </div>
 
                 <template v-else>

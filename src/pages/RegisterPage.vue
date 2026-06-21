@@ -38,7 +38,7 @@ async function handleRegister() {
           <div class="auth-visual-content">
             <p class="eyebrow">Create Account</p>
             <h1>친구들과 여행 취향부터 맞춰보세요</h1>
-            <p>가입 후 여행방을 만들고 멤버를 초대하면 취향 수집, 경로 관리, 커뮤니티 저장까지 한 번에 시작할 수 있습니다.</p>
+            <p>가입 후 개인 취향을 먼저 수집하고, 여행방에서는 멤버들의 취향을 합친 장소 추천을 받을 수 있습니다.</p>
           </div>
         </div>
 
