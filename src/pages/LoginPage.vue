@@ -65,6 +65,9 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
             <p>내 여행 대시보드로 돌아가 계획을 계속 정리하세요.</p>
           </div>
 
+          <OAuthButtons mode="signin" :disabled="submitting" @select="handleOAuthLogin" />
+          <div class="divider"><span>또는 이메일로 로그인</span></div>
+
           <label>
             <span class="small muted">이메일</span>
             <span class="auth-field-wrap"><span class="material-symbols-rounded">mail</span><input v-model="email" class="field" type="email" aria-label="이메일"></span>
@@ -83,9 +86,6 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
           <button class="btn primary auth-main-action" type="submit" :disabled="submitting">
             <span class="material-symbols-rounded">login</span>로그인
           </button>
-
-          <div class="divider"><span>또는 간편 로그인</span></div>
-          <OAuthButtons mode="signin" :disabled="submitting" @select="handleOAuthLogin" />
 
           <p class="small muted auth-switch">계정이 없나요? <a href="#" @click.prevent="router.push('/register')">회원가입</a></p>
         </form>
