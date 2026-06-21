@@ -20,8 +20,8 @@ const emit = defineEmits<{
       :disabled="disabled"
       @click="emit('select', 'google')"
     >
-      <img src="/images/oauth/google-g-logo.png" alt="">
-      <span>{{ mode === 'signup' ? 'Google 계정으로 가입' : 'Google 계정으로 로그인' }}</span>
+      <img class="google-provider-icon" src="/images/oauth/google-g-logo.png" alt="">
+      <span class="google-provider-label">{{ mode === 'signup' ? 'Google 계정으로 가입' : 'Google 계정으로 로그인' }}</span>
     </button>
     <button
       class="oauth-provider-button kakao"
@@ -30,7 +30,8 @@ const emit = defineEmits<{
       :disabled="disabled"
       @click="emit('select', 'kakao')"
     >
-      <img class="kakao-official-image" src="/images/oauth/kakao-login.png" alt="">
+      <span class="kakao-provider-icon" aria-hidden="true"></span>
+      <span class="kakao-provider-label">카카오 로그인</span>
     </button>
   </div>
 </template>
@@ -57,31 +58,57 @@ const emit = defineEmits<{
 }
 
 .oauth-provider-button.google {
-  gap: 12px;
+  position: relative;
   border: 1px solid #747775;
   background: #fff;
   color: #1f1f1f;
-  font-family: Roboto, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
   font-size: 14px;
   font-weight: 500;
 }
 
 .oauth-provider-button.google img {
+  position: absolute;
+  left: 16%;
   width: 20px;
   height: 20px;
+  transform: translateX(-50%);
+}
+
+.google-provider-label {
+  position: absolute;
+  left: 50%;
+  white-space: nowrap;
+  transform: translateX(-50%);
 }
 
 .oauth-provider-button.kakao {
-  overflow: hidden;
+  position: relative;
   border: 0;
   background: #fee500;
+  color: rgba(0, 0, 0, 0.85);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
 }
 
-.oauth-provider-button .kakao-official-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+.kakao-provider-icon {
+  position: absolute;
+  left: 16%;
+  width: 24px;
+  height: 24px;
+  background-image: url('/images/oauth/kakao-login.png');
+  background-repeat: no-repeat;
+  background-position: -14px -12px;
+  background-size: 320px 48px;
+  transform: translateX(-50%);
+}
+
+.kakao-provider-label {
+  position: absolute;
+  left: 50%;
+  white-space: nowrap;
+  transform: translateX(-50%);
 }
 
 .oauth-provider-button:hover:not(:disabled) {
