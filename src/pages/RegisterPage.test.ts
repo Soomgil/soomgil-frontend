@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RegisterPage from './RegisterPage.vue'
 
 const register = vi.hoisted(() => vi.fn())
+const loginWithOAuth = vi.hoisted(() => vi.fn())
 const getPolicyDocuments = vi.hoisted(() => vi.fn())
 
-vi.mock('@/composables/useAuth', () => ({ useAuth: () => ({ register }) }))
+vi.mock('@/composables/useAuth', () => ({ useAuth: () => ({ register, loginWithOAuth }) }))
 vi.mock('@/stores/auth.store', () => ({
   useAuthStore: () => ({ user: null, onboard: vi.fn() }),
 }))
@@ -69,5 +70,16 @@ describe('RegisterPage', () => {
 
     expect(wrapper.get('[role="alert"]').text()).toContain('약관을 불러오지 못했습니다')
     expect(wrapper.get('[data-testid="retry-policies"]').text()).toContain('다시 시도')
+  })
+
+  it('간편 가입 버튼이 실제 OAuth 흐름을 시작한다', async () => {
+    getPolicyDocuments.mockResolvedValue([policy])
+    loginWithOAuth.mockResolvedValue(undefined)
+    const wrapper = mount(RegisterPage, { global: { stubs: { AppHeader: true } } })
+    await flushPromises()
+
+    await wrapper.get('[aria-label="Google 계정으로 가입"]').trigger('click')
+
+    expect(loginWithOAuth).toHaveBeenCalledWith('google')
   })
 })

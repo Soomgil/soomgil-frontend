@@ -6,11 +6,12 @@ import { useAuthStore } from '@/stores/auth.store'
 import { authApi } from '@/api/auth.api'
 import type { PolicyDocument } from '@/types/auth'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import OAuthButtons from '@/components/auth/OAuthButtons.vue'
 import { getAuthErrorMessage } from '@/utils/auth-error'
 
 const router = useRouter()
 const route = useRoute()
-const { register } = useAuth()
+const { register, loginWithOAuth } = useAuth()
 const authStore = useAuthStore()
 
 const name = ref('')
@@ -66,8 +67,13 @@ async function loadPolicies() {
 
 onMounted(loadPolicies)
 
-function notifyOAuthUnsupported() {
-  alert('OAuth 로그인은 준비 중입니다.')
+async function handleOAuthLogin(provider: 'kakao' | 'google') {
+  submitError.value = null
+  try {
+    await loginWithOAuth(provider)
+  } catch (error) {
+    submitError.value = getAuthErrorMessage(error, 'oauth')
+  }
 }
 
 async function handleRegister() {
@@ -119,11 +125,7 @@ async function handleRegister() {
           </div>
 
           <template v-if="!isOAuthOnboarding">
-            <div class="oauth-row" aria-label="간편 가입">
-              <button class="oauth-btn google" type="button" @click="notifyOAuthUnsupported"><span>G</span>Google</button>
-              <button class="oauth-btn kakao" type="button" @click="notifyOAuthUnsupported"><span>K</span>Kakao</button>
-              <button class="oauth-btn naver" type="button" @click="notifyOAuthUnsupported"><span>N</span>Naver</button>
-            </div>
+            <OAuthButtons mode="signup" :disabled="submitting" @select="handleOAuthLogin" />
 
             <div class="divider"><span>또는 이메일로 가입</span></div>
           </template>
