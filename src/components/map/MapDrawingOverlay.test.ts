@@ -1,0 +1,78 @@
+import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import { describe, expect, it, vi } from 'vitest'
+import MapDrawingOverlay from './MapDrawingOverlay.vue'
+
+const project = ({ lng, lat }: { lng: number; lat: number }) => ({ x: lng, y: lat })
+const unproject = ({ x, y }: { x: number; y: number }) => ({ lng: x, lat: y })
+
+async function dispatchPointer(
+  element: Element,
+  type: string,
+  options: MouseEventInit & { pointerId: number },
+) {
+  const event = new MouseEvent(type, options)
+  Object.defineProperty(event, 'pointerId', { value: options.pointerId })
+  element.dispatchEvent(event)
+  await nextTick()
+}
+
+describe('MapDrawingOverlay', () => {
+  it('포인터 이동을 지도 좌표 stroke로 변환한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [],
+        tool: 'pen',
+        color: '#ef4444',
+        width: 6,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    })
+
+    await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 0, clientX: 10, clientY: 20 })
+    await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, clientX: 20, clientY: 30 })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 30, clientY: 40 })
+
+    expect(wrapper.emitted('create')).toEqual([{
+      coordinates: [
+        { lng: 10, lat: 20 },
+        { lng: 20, lat: 30 },
+        { lng: 30, lat: 40 },
+      ],
+      color: '#ef4444',
+      width: 6,
+    }].map((drawing) => [drawing]))
+  })
+
+  it('지우개로 선택한 stroke id를 전달한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [{
+          id: 'drawing-1',
+          coordinates: [{ lng: 10, lat: 20 }, { lng: 30, lat: 40 }],
+          color: '#1f2937',
+          width: 4,
+        }],
+        tool: 'eraser',
+        color: '#1f2937',
+        width: 4,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+
+    await dispatchPointer(wrapper.get('.map-drawing-stroke').element, 'pointerdown', { pointerId: 1, button: 0 })
+
+    expect(wrapper.emitted('erase')).toEqual([['drawing-1']])
+  })
+})

@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from './MapboxItineraryMap.vue'
+import MapDrawingOverlay from './MapDrawingOverlay.vue'
 
 const mapbox = vi.hoisted(() => {
   const handlers = new Map<string, () => void>()
@@ -13,6 +14,8 @@ const mapbox = vi.hoisted(() => {
     fitBounds: vi.fn(),
     getLayer: vi.fn(),
     getSource: vi.fn(),
+    project: vi.fn(([lng, lat]: [number, number]) => ({ x: lng, y: lat })),
+    unproject: vi.fn(([x, y]: [number, number]) => ({ lng: x, lat: y })),
     getBounds: vi.fn(() => ({
       getWest: () => 126.9,
       getSouth: () => 37.4,
@@ -139,5 +142,34 @@ describe('MapboxItineraryMap', () => {
     wrapper.unmount()
     expect(observer.disconnect).toHaveBeenCalledTimes(2)
     expect(mapbox.map.remove).toHaveBeenCalledTimes(2)
+  })
+
+  it('drawing overlay에 지도 좌표 변환과 drawing 이벤트를 연결한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const drawing = {
+      id: 'drawing-1',
+      coordinates: [{ lng: 127.38, lat: 36.35 }, { lng: 127.39, lat: 36.36 }],
+      color: '#ef4444',
+      width: 6,
+    }
+    const wrapper = mount(MapboxItineraryMap, {
+      props: { stops: [], drawings: [drawing], drawingTool: 'pen' },
+    })
+    await flushPromises()
+    mapbox.handlers.get('load')?.()
+    await nextTick()
+
+    const overlay = wrapper.getComponent(MapDrawingOverlay)
+    expect(overlay.props('drawings')).toEqual([drawing])
+    expect(overlay.props('tool')).toBe('pen')
+    expect(overlay.props('project')({ lng: 127.38, lat: 36.35 })).toEqual({ x: 127.38, y: 36.35 })
+
+    const draft = { coordinates: drawing.coordinates, color: drawing.color, width: drawing.width }
+    overlay.vm.$emit('create', draft)
+    overlay.vm.$emit('erase', drawing.id)
+    await nextTick()
+
+    expect(wrapper.emitted('drawingCreate')).toEqual([[draft]])
+    expect(wrapper.emitted('drawingErase')).toEqual([[drawing.id]])
   })
 })

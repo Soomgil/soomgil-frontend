@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
-import type { Viewport } from '@/types/geo'
+import MapDrawingOverlay from './MapDrawingOverlay.vue'
+import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from './MapDrawingOverlay.vue'
+import type { LngLat, Viewport } from '@/types/geo'
 
 export interface ItineraryMapStop {
   id: string
@@ -14,16 +16,32 @@ export interface ItineraryMapStop {
   image?: string | null
 }
 
-const props = defineProps<{ stops: ItineraryMapStop[] }>()
+const props = withDefaults(defineProps<{
+  stops: ItineraryMapStop[]
+  drawings?: MapDrawingStroke[]
+  drawingTool?: MapDrawingTool
+  drawingColor?: string
+  drawingWidth?: number
+  drawingsVisible?: boolean
+}>(), {
+  drawings: () => [],
+  drawingTool: 'cursor',
+  drawingColor: '#1f2937',
+  drawingWidth: 6,
+  drawingsVisible: true,
+})
 const emit = defineEmits<{
   selectPlace: [placeId: string]
   viewportChange: [viewport: Viewport]
+  drawingCreate: [drawing: MapDrawingDraft]
+  drawingErase: [drawingId: string]
 }>()
 
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
 const container = ref<HTMLElement | null>(null)
 const mapError = ref('')
 const canRetry = ref(false)
+const projectionRevision = ref(0)
 let mapboxgl: typeof import('mapbox-gl').default | null = null
 let map: MapboxMap | null = null
 let markers: MapboxMarker[] = []
@@ -165,6 +183,22 @@ function emitViewport() {
   emit('viewportChange', viewport)
 }
 
+function updateDrawingProjection() {
+  projectionRevision.value += 1
+}
+
+function projectDrawingCoordinate(coordinate: LngLat) {
+  if (!map) return null
+  const point = map.project([coordinate.lng, coordinate.lat])
+  return { x: point.x, y: point.y }
+}
+
+function unprojectDrawingPoint(point: { x: number; y: number }) {
+  if (!map) return null
+  const coordinate = map.unproject([point.x, point.y])
+  return { lng: coordinate.lng, lat: coordinate.lat }
+}
+
 function cleanupMapResources() {
   resizeObserver?.disconnect()
   resizeObserver = null
@@ -173,6 +207,7 @@ function cleanupMapResources() {
   map = null
   styleReady = false
   lastEmittedViewport = ''
+  updateDrawingProjection()
 }
 
 async function initializeMap() {
@@ -206,6 +241,7 @@ async function initializeMap() {
       mapError.value = ''
       canRetry.value = false
       renderStops()
+      updateDrawingProjection()
       createdMap.once('idle', emitViewport)
     })
     createdMap.on('error', () => {
@@ -214,6 +250,8 @@ async function initializeMap() {
       canRetry.value = true
     })
     createdMap.on('moveend', emitViewport)
+    createdMap.on('move', updateDrawingProjection)
+    createdMap.on('resize', updateDrawingProjection)
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => map?.resize())
       resizeObserver.observe(container.value)
@@ -243,6 +281,18 @@ onBeforeUnmount(() => {
 <template>
   <div class="itinerary-map">
     <div ref="container" class="itinerary-map__canvas" aria-label="여행 일정 지도"></div>
+    <MapDrawingOverlay
+      :drawings="drawings"
+      :tool="drawingTool"
+      :color="drawingColor"
+      :width="drawingWidth"
+      :enabled="drawingsVisible && !mapError"
+      :projection-revision="projectionRevision"
+      :project="projectDrawingCoordinate"
+      :unproject="unprojectDrawingPoint"
+      @create="emit('drawingCreate', $event)"
+      @erase="emit('drawingErase', $event)"
+    />
     <div v-if="mapError" class="itinerary-map__error" role="alert">
       <span>{{ mapError }}</span>
       <button v-if="canRetry" type="button" class="btn ghost" @click="retry">다시 시도</button>
