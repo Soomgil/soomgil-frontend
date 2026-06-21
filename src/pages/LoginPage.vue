@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import OAuthButtons from '@/components/auth/OAuthButtons.vue'
 import { getAuthErrorMessage } from '@/utils/auth-error'
 
 const router = useRouter()
@@ -64,10 +65,7 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
             <p>내 여행 대시보드로 돌아가 계획을 계속 정리하세요.</p>
           </div>
 
-          <div class="oauth-row" aria-label="간편 로그인">
-            <button class="oauth-btn google" type="button" @click="handleOAuthLogin('google')"><span>G</span>Google</button>
-            <button class="oauth-btn kakao" type="button" @click="handleOAuthLogin('kakao')"><span>K</span>Kakao</button>
-          </div>
+          <OAuthButtons mode="signin" :disabled="submitting" @select="handleOAuthLogin" />
 
           <div class="divider"><span>또는 이메일로 로그인</span></div>
 

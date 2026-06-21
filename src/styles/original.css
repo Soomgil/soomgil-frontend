@@ -2087,54 +2087,6 @@
       gap: 7px;
     }
 
-    .oauth-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      min-height: 46px;
-      border: none;
-      border-radius: 16px;
-      background: #fff;
-      color: var(--ink);
-      cursor: pointer;
-      font-weight: 900;
-      box-shadow: 0 6px 16px rgba(0, 102, 255, 0.04);
-      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .oauth-btn:hover {
-      transform: translateY(-1px);
-      border-color: rgba(0, 102, 255, 0.24);
-      box-shadow: 0 10px 24px rgba(0, 102, 255, 0.09);
-    }
-
-    .oauth-btn span {
-      display: grid;
-      place-items: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 999px;
-      color: #fff;
-      background: var(--ink);
-      font-size: 13px;
-      font-weight: 950;
-    }
-
-    .oauth-btn.kakao {
-      background: #fee500;
-      border-color: #f1d600;
-    }
-
-    .oauth-btn.kakao span {
-      color: #3b2b00;
-      background: #fff3a0;
-    }
-
-    .oauth-btn.naver span {
-      background: #03c75a;
-    }
-
     .auth-field-wrap {
       position: relative;
       display: block;
@@ -2413,20 +2365,6 @@
 
     .auth-modern-form .auth-form-head h2 {
       font-size: 30px;
-    }
-
-    .oauth-row {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .oauth-row .oauth-btn {
-      min-height: 44px;
-      padding: 0 10px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      box-shadow: none;
     }
 
     .auth-form-options {
@@ -7339,8 +7277,7 @@
       .auth-visual-content h1 {
         font-size: 36px;
       }
-      .auth-status-board,
-      .oauth-row {
+      .auth-status-board {
         grid-template-columns: 1fr;
       }
       .auth-modern-form {
