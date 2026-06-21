@@ -289,6 +289,63 @@ describe('RoutePage itinerary integration', () => {
     expect(map.props('drawings')).toHaveLength(1)
   })
 
+  it('지도 그림 실행 취소가 이후 반영된 일정 상태를 되돌리지 않는다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await flushPromises()
+
+    holder.state.days.value[0].items[0].placeName = '외부에서 갱신된 일정'
+    await nextTick()
+    await wrapper.get('button[data-action="undo"]').trigger('click')
+
+    expect(map.props('drawings')).toEqual([])
+    expect(wrapper.text()).toContain('외부에서 갱신된 일정')
+    expect(holder.state.reorder).not.toHaveBeenCalled()
+  })
+
+  it('텍스트 입력 중에는 실행 취소 단축키로 지도 그림을 변경하지 않는다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await flushPromises()
+
+    const searchInput = wrapper.get('#place-search-input')
+    await searchInput.setValue('부산')
+    await searchInput.trigger('keydown', { key: 'z', ctrlKey: true })
+
+    expect(map.props('drawings')).toHaveLength(1)
+    expect(searchInput.element).toHaveProperty('value', '부산')
+  })
+
   it('좌표 단순화 중 실행 취소와 다시 실행을 해도 요청을 중복하지 않는다', async () => {
     let resolveSimplification: ((value: {
       coordinates: Array<{ lng: number; lat: number }>

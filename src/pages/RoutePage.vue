@@ -25,12 +25,24 @@ interface RouteLink {
   toItemId: string
 }
 
-interface RouteHistoryState {
+interface ItineraryHistoryState {
+  domain: 'itinerary'
   plans: DayPlan[]
+}
+
+interface RouteLinksHistoryState {
+  domain: 'route-links'
   links: RouteLink[]
+}
+
+interface DrawingHistoryState {
+  domain: 'drawing'
   drawings: MapDrawingStroke[]
   drawingRetryIds: string[]
 }
+
+type RouteHistoryState = ItineraryHistoryState | RouteLinksHistoryState | DrawingHistoryState
+type RouteHistoryDomain = RouteHistoryState['domain']
 
 /* ── Data ── */
 const route = useRoute()
@@ -129,37 +141,46 @@ onUnmounted(() => {
 
 /* ── Undo / Redo ── */
 const HISTORY_LIMIT = 5
-const undoStack = ref<string[]>([])
-const redoStack = ref<string[]>([])
+const undoStack = ref<RouteHistoryState[]>([])
+const redoStack = ref<RouteHistoryState[]>([])
 const canUndo = computed(() => undoStack.value.length > 0)
 const canRedo = computed(() => redoStack.value.length > 0)
 
-function currentHistoryState() {
-  return JSON.stringify({
-    plans: dayPlans.value,
-    links: routeLinks.value,
-    drawings: localDrawings.value,
-    drawingRetryIds: drawingRetryIds.value,
-  } satisfies RouteHistoryState)
+function cloneHistoryValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
-function pushHistoryState(stack: string[], state: string) {
+function currentHistoryState(domain: RouteHistoryDomain): RouteHistoryState {
+  if (domain === 'itinerary') {
+    return { domain, plans: cloneHistoryValue(dayPlans.value) }
+  }
+  if (domain === 'route-links') {
+    return { domain, links: cloneHistoryValue(routeLinks.value) }
+  }
+  return {
+    domain,
+    drawings: cloneHistoryValue(localDrawings.value),
+    drawingRetryIds: [...drawingRetryIds.value],
+  }
+}
+
+function pushHistoryState(stack: RouteHistoryState[], state: RouteHistoryState) {
   stack.push(state)
   if (stack.length > HISTORY_LIMIT) stack.shift()
 }
 
-function pushUndoState() {
-  pushHistoryState(undoStack.value, currentHistoryState())
+function pushUndoState(domain: RouteHistoryDomain) {
+  pushHistoryState(undoStack.value, currentHistoryState(domain))
   redoStack.value = []
 }
 
-function restoreDrawingState(state: RouteHistoryState) {
-  localDrawings.value = (state.drawings ?? []).map((drawing) => {
+function restoreDrawingState(state: DrawingHistoryState) {
+  localDrawings.value = state.drawings.map((drawing) => {
     const simplified = simplifiedDrawingCoordinates.get(drawing.id)
     return simplified ? { ...drawing, coordinates: simplified } : drawing
   })
   const drawingIds = new Set(localDrawings.value.map((drawing) => drawing.id))
-  drawingRetryIds.value = (state.drawingRetryIds ?? [])
+  drawingRetryIds.value = state.drawingRetryIds
     .filter((id) => drawingIds.has(id) && !simplifiedDrawingCoordinates.has(id))
   localDrawings.value.forEach((drawing) => {
     if (
@@ -174,12 +195,20 @@ function restoreDrawingState(state: RouteHistoryState) {
 
 async function undo() {
   if (!canUndo.value || itinerary.mutating.value) return
-  pushHistoryState(redoStack.value, currentHistoryState())
-  const prev = JSON.parse(undoStack.value.pop()!) as RouteHistoryState
-  const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(prev.plans)
-  dayPlans.value = prev.plans
-  routeLinks.value = prev.links || []
-  restoreDrawingState(prev)
+  const previous = undoStack.value.pop()!
+  pushHistoryState(redoStack.value, currentHistoryState(previous.domain))
+  if (previous.domain === 'drawing') {
+    restoreDrawingState(previous)
+    return
+  }
+  if (previous.domain === 'route-links') {
+    routeLinks.value = previous.links
+    pendingRouteFrom.value = null
+    nextTick(initDragDrop)
+    return
+  }
+  const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(previous.plans)
+  dayPlans.value = previous.plans
   pendingRouteFrom.value = null
   nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
@@ -187,18 +216,32 @@ async function undo() {
 
 async function redo() {
   if (!canRedo.value || itinerary.mutating.value) return
-  pushHistoryState(undoStack.value, currentHistoryState())
-  const next = JSON.parse(redoStack.value.pop()!) as RouteHistoryState
+  const next = redoStack.value.pop()!
+  pushHistoryState(undoStack.value, currentHistoryState(next.domain))
+  if (next.domain === 'drawing') {
+    restoreDrawingState(next)
+    return
+  }
+  if (next.domain === 'route-links') {
+    routeLinks.value = next.links
+    pendingRouteFrom.value = null
+    nextTick(initDragDrop)
+    return
+  }
   const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(next.plans)
   dayPlans.value = next.plans
-  routeLinks.value = next.links || []
-  restoreDrawingState(next)
   pendingRouteFrom.value = null
   nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
 }
 
+function isTextEditingTarget(target: EventTarget | null) {
+  return target instanceof Element
+    && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !== null
+}
+
 function handleKeydown(e: KeyboardEvent) {
+  if (isTextEditingTarget(e.target)) return
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
     e.preventDefault(); void undo()
   } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'Z' && e.shiftKey))) {
@@ -225,7 +268,7 @@ function hasRouteLinkBetween(id1: string | undefined, id2: string | undefined): 
 }
 
 function removeRouteLinkBetween(id1: string, id2: string) {
-  pushUndoState()
+  pushUndoState('route-links')
   routeLinks.value = routeLinks.value.filter(l =>
     !((l.fromItemId === id1 && l.toItemId === id2) ||
       (l.fromItemId === id2 && l.toItemId === id1))
@@ -249,7 +292,7 @@ function handleRoutePenClick(item: RouteStop) {
     pendingRouteFrom.value = null
     return
   }
-  pushUndoState()
+  pushUndoState('route-links')
   routeLinks.value.push({
     id: `link_${Date.now()}`,
     fromItemId: pendingRouteFrom.value!,
@@ -408,7 +451,7 @@ function onPointerDown(e: PointerEvent) {
 
 /** 전체 보기: flat list 기반 재배치 */
 function reorderAllDays(source: DragSource, targetIdx: number) {
-  pushUndoState()
+  pushUndoState('itinerary')
   // Build flat ordered list from current data
   const flatList: { type: 'separator' | 'stop'; dayIdx: number; itemIdx: number }[] = []
   dayPlans.value.forEach((day, di) => {
@@ -502,7 +545,7 @@ function reorderAllDays(source: DragSource, targetIdx: number) {
 
 /** 특정 일차: 같은 날 내에서 순서만 변경 */
 function reorderSingleDay(source: DragSource, targetIdx: number) {
-  pushUndoState()
+  pushUndoState('itinerary')
   const plan = dayPlans.value[source.dayIdx]
   if (!plan) return
 
@@ -671,7 +714,7 @@ async function simplifyLocalDrawing(drawingId: string) {
 }
 
 function createLocalDrawing(draft: MapDrawingDraft) {
-  pushUndoState()
+  pushUndoState('drawing')
   const drawing: MapDrawingStroke = {
     id: `local-drawing-${++localDrawingSequence}`,
     ...draft,
@@ -682,7 +725,7 @@ function createLocalDrawing(draft: MapDrawingDraft) {
 
 function eraseLocalDrawing(drawingId: string) {
   if (!localDrawings.value.some((drawing) => drawing.id === drawingId)) return
-  pushUndoState()
+  pushUndoState('drawing')
   localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
   drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
 }
