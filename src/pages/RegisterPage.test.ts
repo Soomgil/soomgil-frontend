@@ -78,6 +78,13 @@ describe('RegisterPage', () => {
     const wrapper = mount(RegisterPage, { global: { stubs: { AppHeader: true } } })
     await flushPromises()
 
+    const passwordInput = wrapper.get('input[aria-label="비밀번호"]').element
+    const submitButton = wrapper.get('button[type="submit"]').element
+    const googleButton = wrapper.get('[aria-label="Google 계정으로 가입"]').element
+
+    expect(passwordInput.compareDocumentPosition(googleButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(submitButton.compareDocumentPosition(googleButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
     await wrapper.get('[aria-label="Google 계정으로 가입"]').trigger('click')
 
     expect(loginWithOAuth).toHaveBeenCalledWith('google')

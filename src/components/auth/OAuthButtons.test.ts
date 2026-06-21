@@ -8,6 +8,8 @@ describe('OAuthButtons', () => {
 
     expect(wrapper.get('[aria-label="Google 계정으로 가입"]').attributes('type')).toBe('button')
     expect(wrapper.get('[aria-label="카카오 계정으로 가입"]').attributes('type')).toBe('button')
+    expect(wrapper.get('[aria-label="Google 계정으로 가입"]').classes()).toContain('oauth-provider-button')
+    expect(wrapper.get('[aria-label="카카오 계정으로 가입"]').classes()).toContain('oauth-provider-button')
     expect(wrapper.text()).not.toContain('Naver')
 
     await wrapper.get('[aria-label="Google 계정으로 가입"]').trigger('click')
