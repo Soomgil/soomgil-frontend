@@ -69,4 +69,32 @@ describe('useSwipeFeed', () => {
     expect(feed.finished.value).toBe(true)
     expect(feed.completedCount.value).toBe(0)
   })
+
+  it('keeps five active cards and prefetches before the reserve buffer runs out', async () => {
+    const firstItems = Array.from({ length: 20 }, (_, index) => ({
+      ...item,
+      place: { ...item.place, externalPlaceId: `place-${index}` },
+    }))
+    const nextItems = Array.from({ length: 20 }, (_, index) => ({
+      ...item,
+      place: { ...item.place, externalPlaceId: `next-${index}` },
+    }))
+    const gateway: SwipeFeedGateway = {
+      getFeed: vi.fn()
+        .mockResolvedValueOnce({ items: firstItems, nextSeed: 'page-2' })
+        .mockResolvedValueOnce({ items: nextItems, nextSeed: 'page-3' }),
+      react: vi.fn().mockResolvedValue({}),
+    }
+    const feed = useSwipeFeed(gateway)
+
+    await feed.load()
+    expect(feed.activeQueue.value).toHaveLength(5)
+
+    for (let index = 0; index < 10; index += 1) feed.advance()
+    await vi.waitFor(() => expect(gateway.getFeed).toHaveBeenCalledTimes(2))
+
+    expect(gateway.getFeed).toHaveBeenLastCalledWith(expect.objectContaining({ seed: 'page-2', limit: 20 }))
+    expect(feed.activeQueue.value).toHaveLength(5)
+    expect(feed.items.value).toHaveLength(30)
+  })
 })
