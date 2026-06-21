@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import { useTripStore } from '@/stores/trip.store'
+import type { LegalRegion } from '@/types/geo'
 import type { TripStatus, TripSummary } from '@/types/trip'
 
 const props = defineProps<{
@@ -16,6 +18,9 @@ const emit = defineEmits<{
 const tripStore = useTripStore()
 const title = ref('')
 const displayDestination = ref('')
+const initialDisplayDestination = ref('')
+const selectedRegion = ref<LegalRegion | null>(null)
+const regionSelectionChanged = ref(false)
 const status = ref<Exclude<TripStatus, 'DELETED'>>('ACTIVE')
 const error = ref('')
 const confirmingDelete = ref(false)
@@ -26,6 +31,9 @@ watch(
     if (!open || !trip) return
     title.value = trip.title
     displayDestination.value = trip.displayDestination ?? ''
+    initialDisplayDestination.value = displayDestination.value
+    selectedRegion.value = null
+    regionSelectionChanged.value = false
     status.value = trip.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE'
     error.value = ''
     confirmingDelete.value = false
@@ -49,6 +57,11 @@ function handleKeydown(event: KeyboardEvent) {
   if (props.open && event.key === 'Escape') close()
 }
 
+function handleRegionSelect(region: LegalRegion | null) {
+  selectedRegion.value = region
+  regionSelectionChanged.value = true
+}
+
 async function save() {
   if (!props.trip) return
   const trimmedTitle = title.value.trim()
@@ -59,9 +72,15 @@ async function save() {
 
   error.value = ''
   try {
+    const trimmedDestination = displayDestination.value.trim()
+    const regionCodesChanged = Boolean(selectedRegion.value)
+      || (regionSelectionChanged.value && trimmedDestination !== initialDisplayDestination.value.trim())
     await tripStore.updateTrip(props.trip.id, {
       title: trimmedTitle,
-      displayDestination: displayDestination.value.trim(),
+      displayDestination: trimmedDestination,
+      ...(regionCodesChanged
+        ? { legalRegionCodes: selectedRegion.value ? [selectedRegion.value.code] : [] }
+        : {}),
       status: status.value,
     })
     emit('close')
@@ -106,10 +125,15 @@ onUnmounted(() => {
           <span class="form-label-text">여행 이름</span>
           <input v-model="title" class="field" type="text" name="title" maxlength="160" required>
         </label>
-        <label class="form-label">
-          <span class="form-label-text">표시 목적지</span>
-          <input v-model="displayDestination" class="field" type="text" name="displayDestination" maxlength="160">
-        </label>
+        <div class="form-label">
+          <label class="form-label-text" for="trip-settings-destination">표시 목적지</label>
+          <LegalRegionCombobox
+            id="trip-settings-destination"
+            v-model="displayDestination"
+            name="displayDestination"
+            @select="handleRegionSelect"
+          />
+        </div>
 
         <fieldset class="status-fieldset">
           <legend>여행 상태</legend>
