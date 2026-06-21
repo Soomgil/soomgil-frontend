@@ -1,333 +1,254 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
-import { mockTrips } from '@/mocks/mockTrips'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import { geoApi } from '@/api/geo.api'
+import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
+import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
+import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
+import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
+import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/components/map/MapDrawingOverlay.vue'
+import { useItinerary } from '@/composables/useItinerary'
+import { useMapViewport } from '@/composables/useMapViewport'
 import { mockPlaces } from '@/mocks/mockPlaces'
+import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
+import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
+import { useTripStore } from '@/stores/trip.store'
+import type { DrawingPreviewEvent } from '@/types/collaboration'
 
 /* ── RoutePage 내부 전용 타입 ── */
-interface RouteStop {
-  id: string
-  placeExternalId: string
-  title: string
-  time: string
-  order: number
-  day: number
-  memo: string
-  lat: number | null
-  lng: number | null
-}
-interface DayPlan {
-  day: number
-  date: string
-  items: RouteStop[]
-}
+type RouteStop = RouteStopViewModel
+type DayPlan = DayPlanViewModel
 interface RouteLink {
   id: string
   fromItemId: string
   toItemId: string
 }
 
-/* ── Kakao Maps SDK 로더 ── */
-declare global {
-  interface Window {
-    kakao: any
-  }
+interface ItineraryHistoryState {
+  domain: 'itinerary'
+  plans: DayPlan[]
 }
 
-function loadKakaoSDK(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.kakao && window.kakao.maps) {
-      resolve()
-      return
-    }
-    const existing = document.querySelector('script[data-kakao-maps]')
-    if (existing) {
-      // Already loading — poll until ready
-      const poll = setInterval(() => {
-        if (window.kakao && window.kakao.maps) {
-          clearInterval(poll)
-          resolve()
-        }
-      }, 100)
-      // Timeout after 10s
-      setTimeout(() => { clearInterval(poll); reject(new Error('Kakao SDK timeout')) }, 10000)
-      return
-    }
-    const script = document.createElement('script')
-    script.setAttribute('data-kakao-maps', 'true')
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${import.meta.env.VITE_KAKAO_MAP_KEY}&autoload=false`
-    script.onload = () => {
-      // After script loads, give kakao.maps a moment to initialize
-      setTimeout(() => resolve(), 100)
-    }
-    script.onerror = () => reject(new Error('Kakao Maps SDK 로드 실패'))
-    document.head.appendChild(script)
-  })
+interface RouteLinksHistoryState {
+  domain: 'route-links'
+  links: RouteLink[]
 }
+
+interface DrawingHistoryState {
+  domain: 'drawing'
+  drawings: MapDrawingStroke[]
+  drawingRetryIds: string[]
+}
+
+type RouteHistoryState = ItineraryHistoryState | RouteLinksHistoryState | DrawingHistoryState
+type RouteHistoryDomain = RouteHistoryState['domain']
 
 /* ── Data ── */
-const trip = mockTrips[0]
-// 드래그앤드롭으로 순서/일차 변경을 위해 reactive 배열 사용
+const route = useRoute()
+const tripIdParam = route.params.tripId
+const tripId = Array.isArray(tripIdParam) ? tripIdParam[0] ?? '' : tripIdParam ?? ''
+const itinerary = useItinerary(tripId)
+const mapViewport = useMapViewport()
+const tripStore = useTripStore()
+const trip = computed(() => {
+  const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
+  return {
+    title: detail?.title ?? '여행',
+    destinationName: detail?.displayDestination ?? '',
+    statusLabel: detail?.status === 'ARCHIVED' ? '보관된 여행' : '진행 중인 여행',
+    startDate: '',
+    endDate: '',
+    members: (detail?.members ?? [])
+      .filter((member) => member.status === 'ACTIVE')
+      .map((member) => ({ id: member.id, displayName: member.user.displayName })),
+  }
+})
 const dayPlans = ref<DayPlan[]>([])
-
-function buildInitialDayPlans(): DayPlan[] {
-  const placeItems: RouteStop[] = mockPlaces.map((place, idx) => ({
-    id: `item_${idx + 1}`,
-    placeExternalId: place.externalPlaceId,
-    title: place.placeName,
-    time: idx === 0 ? '5.20 도착' : idx === 1 ? '5.20 오후' : idx === 2 ? '5.21 오전' : idx === 3 ? '5.21 오후' : '5.22 종일',
-    order: idx + 1,
-    day: idx < 2 ? 1 : idx < 4 ? 2 : 3,
-    memo: '',
-    lat: place.lat,
-    lng: place.lng,
+const mapStops = computed<ItineraryMapStop[]>(() => {
+  let index = 1
+  return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
+    const currentIndex = index++
+    if (item.lat == null || item.lng == null) return []
+    const place = mockPlaces.find((candidate) => candidate.externalPlaceId === item.placeExternalId)
+    return [{
+      id: item.id,
+      placeId: item.placeExternalId,
+      title: item.title,
+      dayIndex: day.day,
+      index: currentIndex,
+      lat: item.lat,
+      lng: item.lng,
+      image: item.thumbnailUrl ?? place?.thumbnailUrl,
+    }]
   }))
-  return [
-    { day: 1, date: '5.20 월', items: placeItems.filter(i => i.day === 1) },
-    { day: 2, date: '5.21 화', items: placeItems.filter(i => i.day === 2) },
-    { day: 3, date: '5.22 수', items: placeItems.filter(i => i.day === 3) },
-  ]
-}
-dayPlans.value = buildInitialDayPlans()
+})
 
 const activeDay = ref(0)
+const activePlan = computed(() => dayPlans.value.find((day) => day.day === activeDay.value) ?? null)
+const itineraryLoadError = ref(false)
+const itineraryActionsDisabled = computed(() => itinerary.loading.value || itinerary.mutating.value || itineraryLoadError.value)
 const dayColors = ['day-color-1', 'day-color-2', 'day-color-3', 'day-color-4', 'day-color-5']
-const dayColorHex = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
-function getDayColorClass(day: number) { return dayColors[(day - 1) % dayColors.length] }
-function getDayColorHex(day: number) { return dayColorHex[(day - 1) % dayColorHex.length] }
+function getDayColorClass(day: number) { return day <= 0 ? dayColors[4] : dayColors[(day - 1) % dayColors.length] }
 
-/* ── Kakao Map ── */
-let kakaoMap: any = null
-let mapOverlays: any[] = []
-const mapContainer = ref<HTMLElement | null>(null)
-
-function getCoordsFromItinerary() {
-  const coords: { lat: number; lng: number; title: string; dayIndex: number; index: number; image?: string | null; placeId?: string }[] = []
-  let globalIdx = 1
-  dayPlans.value.forEach(day => {
-    day.items.forEach(item => {
-      if (item.lat != null && item.lng != null) {
-        const place = mockPlaces.find(p => p.externalPlaceId === item.placeExternalId)
-        coords.push({
-          lat: item.lat!,
-          lng: item.lng!,
-          title: item.title,
-          dayIndex: day.day,
-          index: globalIdx,
-          image: place?.thumbnailUrl,
-          placeId: item.placeExternalId,
-        })
-      }
-      globalIdx++
-    })
-  })
-  return coords
-}
-
-function drawMapMarkers(coords: ReturnType<typeof getCoordsFromItinerary>) {
-  if (!kakaoMap) return
-  mapOverlays.forEach(o => o.setMap(null))
-  mapOverlays = []
-
-  coords.forEach(c => {
-    const position = new window.kakao.maps.LatLng(c.lat, c.lng)
-    const dayClass = getDayColorClass(c.dayIndex)
-    const dayNum = c.dayIndex || 1
-
-    let markerContent: string
-    if (c.image) {
-      markerContent = `
-        <div class="map-pin-card ${dayClass}" data-place-id="${c.placeId || ''}" onclick="window.selectPlace && window.selectPlace('${c.placeId || ''}')" style="cursor:pointer;">
-          <div class="map-pin-img-wrapper">
-            <img src="${c.image}" class="map-pin-img" alt="${c.title}">
-          </div>
-          <div class="map-pin-info">
-            <span class="map-pin-title">${c.title}</span>
-            <span class="map-pin-day-badge">${dayNum}일차</span>
-          </div>
-          <div class="map-pin-badge">${c.index}</div>
-        </div>`
-    } else {
-      markerContent = `
-        <div class="map-pin-card ${dayClass}" data-place-id="${c.placeId || ''}" onclick="window.selectPlace && window.selectPlace('${c.placeId || ''}')" style="cursor:pointer;">
-          <div class="map-pin-img-wrapper">
-            <div class="map-pin-icon-placeholder">
-              <span class="material-symbols-rounded" style="font-size:24px;color:var(--day-color)">train</span>
-            </div>
-          </div>
-          <div class="map-pin-info">
-            <span class="map-pin-title">${c.title}</span>
-            <span class="map-pin-day-badge">${dayNum}일차</span>
-          </div>
-          <div class="map-pin-badge">${c.index}</div>
-        </div>`
-    }
-
-    const customOverlay = new window.kakao.maps.CustomOverlay({
-      position,
-      content: markerContent,
-      yAnchor: 1.1,
-    })
-    customOverlay.setMap(kakaoMap)
-    mapOverlays.push(customOverlay)
-  })
-}
-
-function drawMapLine(coords: ReturnType<typeof getCoordsFromItinerary>) {
-  if (!kakaoMap) return
-  // Remove old polylines only
-  mapOverlays = mapOverlays.filter(o => {
-    if (o instanceof window.kakao.maps.Polyline) { o.setMap(null); return false }
-    return true
-  })
-
-  // Group coords by dayIndex and draw a polyline per day
-  const dayGroups = new Map<number, typeof coords>()
-  coords.forEach(c => {
-    if (!dayGroups.has(c.dayIndex)) dayGroups.set(c.dayIndex, [])
-    dayGroups.get(c.dayIndex)!.push(c)
-  })
-
-  dayGroups.forEach((group, dayIdx) => {
-    if (group.length < 2) return
-    const linePath = group.map(c => new window.kakao.maps.LatLng(c.lat, c.lng))
-    const polyline = new window.kakao.maps.Polyline({
-      path: linePath,
-      strokeWeight: 4,
-      strokeColor: getDayColorHex(dayIdx),
-      strokeOpacity: 0.8,
-      strokeStyle: 'shortdash',
-    })
-    polyline.setMap(kakaoMap)
-    mapOverlays.push(polyline)
-  })
-}
-
-function redrawMap() {
-  if (!kakaoMap) return
-  const coords = getCoordsFromItinerary()
-  if (coords.length === 0) return
-  drawMapMarkers(coords)
-  drawMapLine(coords)
-
-  const bounds = new window.kakao.maps.LatLngBounds()
-  coords.forEach(c => bounds.extend(new window.kakao.maps.LatLng(c.lat, c.lng)))
-  kakaoMap.relayout()
-  kakaoMap.setBounds(bounds)
-}
-
-let mapRetries = 0
-
-function loadKakaoMap(): boolean {
-  if (typeof window.kakao === 'undefined' || !window.kakao.maps) return false
-
-  if (typeof window.kakao.maps.load === 'function') {
-    window.kakao.maps.load(() => {
-      initKakaoMap()
-      setTimeout(redrawMap, 100)
-    })
-    return true
-  }
-  return initKakaoMap()
-}
-
-function initKakaoMap(): boolean {
-  const el = mapContainer.value
-  if (!el || typeof window.kakao === 'undefined' || !window.kakao.maps) return false
-
-  const coords = getCoordsFromItinerary()
-  if (coords.length === 0) return true
-
-  const center = new window.kakao.maps.LatLng(coords[0].lat, coords[0].lng)
-  kakaoMap = new window.kakao.maps.Map(el, { center, level: 7 })
-
-  drawMapMarkers(coords)
-  drawMapLine(coords)
-
-  const bounds = new window.kakao.maps.LatLngBounds()
-  coords.forEach(c => bounds.extend(new window.kakao.maps.LatLng(c.lat, c.lng)))
-  kakaoMap.relayout()
-  kakaoMap.setBounds(bounds)
-
-  return true
-}
-
-function tryInitMap() {
-  const el = mapContainer.value
-  if (!el || el.offsetWidth === 0 || el.offsetHeight === 0) {
-    if (mapRetries++ < 30) setTimeout(tryInitMap, 300)
+async function loadItinerary() {
+  if (!tripId) {
+    itineraryLoadError.value = true
     return
   }
-
-  if (!window.kakao || !window.kakao.maps) {
-    if (mapRetries++ < 30) setTimeout(tryInitMap, 300)
-    return
+  itineraryLoadError.value = false
+  try {
+    await itinerary.fetchItinerary()
+  } catch {
+    itineraryLoadError.value = true
   }
-
-  if (loadKakaoMap()) return
-  if (mapRetries++ < 30) setTimeout(tryInitMap, 300)
 }
 
-onMounted(() => {
-  loadKakaoSDK()
-    .then(() => {
-      nextTick(() => {
-        tryInitMap()
-      })
-    })
-    .catch(err => {
-      console.error(err)
-    })
+async function loadTrip() {
+  if (!tripId) return
+  try {
+    await tripStore.fetchTrip(tripId)
+  } catch {
+    itineraryActionError.value = '여행 정보를 불러오지 못했습니다.'
+  }
+}
+
+watch(itinerary.days, (days) => {
+  dayPlans.value = toDayPlans(days)
+  if (activeDay.value !== 0 && !dayPlans.value.some((day) => day.day === activeDay.value)) {
+    activeDay.value = 0
+  }
+  if (!dayPlans.value.some((day) => day.day === customDay.value)) {
+    customDay.value = dayPlans.value[0]?.day ?? 1
+  }
   nextTick(() => {
     initDragDrop()
   })
-  window.addEventListener('resize', redrawMap)
+}, { deep: true })
+
+onMounted(() => {
+  void loadTrip()
+  void loadItinerary()
+  nextTick(() => {
+    initDragDrop()
+  })
   window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
-  kakaoMap = null
-  mapOverlays = []
-  window.removeEventListener('resize', redrawMap)
   window.removeEventListener('keydown', handleKeydown)
 })
 
 /* ── Undo / Redo ── */
-const undoStack = ref<string[]>([])
-const redoStack = ref<string[]>([])
+const HISTORY_LIMIT = 5
+const undoStack = ref<RouteHistoryState[]>([])
+const redoStack = ref<RouteHistoryState[]>([])
 const canUndo = computed(() => undoStack.value.length > 0)
 const canRedo = computed(() => redoStack.value.length > 0)
 
-function pushUndoState() {
-  undoStack.value.push(JSON.stringify({ plans: dayPlans.value, links: routeLinks.value }))
+function cloneHistoryValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function currentHistoryState(domain: RouteHistoryDomain): RouteHistoryState {
+  if (domain === 'itinerary') {
+    return { domain, plans: cloneHistoryValue(dayPlans.value) }
+  }
+  if (domain === 'route-links') {
+    return { domain, links: cloneHistoryValue(routeLinks.value) }
+  }
+  return {
+    domain,
+    drawings: cloneHistoryValue(localDrawings.value),
+    drawingRetryIds: [...drawingRetryIds.value],
+  }
+}
+
+function pushHistoryState(stack: RouteHistoryState[], state: RouteHistoryState) {
+  stack.push(state)
+  if (stack.length > HISTORY_LIMIT) stack.shift()
+}
+
+function pushUndoState(domain: RouteHistoryDomain) {
+  pushHistoryState(undoStack.value, currentHistoryState(domain))
   redoStack.value = []
 }
 
-function undo() {
-  if (!canUndo.value) return
-  redoStack.value.push(JSON.stringify({ plans: dayPlans.value, links: routeLinks.value }))
-  const prev = JSON.parse(undoStack.value.pop()!)
-  dayPlans.value = prev.plans
-  routeLinks.value = prev.links || []
-  pendingRouteFrom.value = null
-  nextTick(() => { initDragDrop(); redrawMap() })
+function restoreDrawingState(state: DrawingHistoryState) {
+  localDrawings.value = state.drawings.map((drawing) => {
+    const simplified = simplifiedDrawingCoordinates.get(drawing.id)
+    return simplified ? { ...drawing, coordinates: simplified } : drawing
+  })
+  const drawingIds = new Set(localDrawings.value.map((drawing) => drawing.id))
+  drawingRetryIds.value = state.drawingRetryIds
+    .filter((id) => drawingIds.has(id) && !simplifiedDrawingCoordinates.has(id))
+  localDrawings.value.forEach((drawing) => {
+    if (
+      !simplifiedDrawingCoordinates.has(drawing.id)
+      && !pendingDrawingIds.value.includes(drawing.id)
+      && !drawingRetryIds.value.includes(drawing.id)
+    ) {
+      void simplifyLocalDrawing(drawing.id)
+    }
+  })
 }
 
-function redo() {
-  if (!canRedo.value) return
-  undoStack.value.push(JSON.stringify({ plans: dayPlans.value, links: routeLinks.value }))
-  const next = JSON.parse(redoStack.value.pop()!)
-  dayPlans.value = next.plans
-  routeLinks.value = next.links || []
+async function undo() {
+  if (!canUndo.value || itinerary.mutating.value) return
+  const previous = undoStack.value.pop()!
+  pushHistoryState(redoStack.value, currentHistoryState(previous.domain))
+  if (previous.domain === 'drawing') {
+    restoreDrawingState(previous)
+    return
+  }
+  if (previous.domain === 'route-links') {
+    routeLinks.value = previous.links
+    pendingRouteFrom.value = null
+    nextTick(initDragDrop)
+    return
+  }
+  const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(previous.plans)
+  dayPlans.value = previous.plans
   pendingRouteFrom.value = null
-  nextTick(() => { initDragDrop(); redrawMap() })
+  nextTick(initDragDrop)
+  if (plansChanged) await persistItineraryOrder()
+}
+
+async function redo() {
+  if (!canRedo.value || itinerary.mutating.value) return
+  const next = redoStack.value.pop()!
+  pushHistoryState(undoStack.value, currentHistoryState(next.domain))
+  if (next.domain === 'drawing') {
+    restoreDrawingState(next)
+    return
+  }
+  if (next.domain === 'route-links') {
+    routeLinks.value = next.links
+    pendingRouteFrom.value = null
+    nextTick(initDragDrop)
+    return
+  }
+  const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(next.plans)
+  dayPlans.value = next.plans
+  pendingRouteFrom.value = null
+  nextTick(initDragDrop)
+  if (plansChanged) await persistItineraryOrder()
+}
+
+function isTextEditingTarget(target: EventTarget | null) {
+  return target instanceof Element
+    && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !== null
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (isTextEditingTarget(e.target)) return
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-    e.preventDefault(); undo()
+    e.preventDefault(); void undo()
   } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'Z' && e.shiftKey))) {
-    e.preventDefault(); redo()
+    e.preventDefault(); void redo()
   }
 }
 
@@ -350,13 +271,13 @@ function hasRouteLinkBetween(id1: string | undefined, id2: string | undefined): 
 }
 
 function removeRouteLinkBetween(id1: string, id2: string) {
-  pushUndoState()
+  pushUndoState('route-links')
   routeLinks.value = routeLinks.value.filter(l =>
     !((l.fromItemId === id1 && l.toItemId === id2) ||
       (l.fromItemId === id2 && l.toItemId === id1))
   )
   showToast('경로 연결이 해제되었습니다')
-  nextTick(() => { initDragDrop(); redrawMap() })
+  nextTick(initDragDrop)
 }
 
 function handleRoutePenClick(item: RouteStop) {
@@ -374,7 +295,7 @@ function handleRoutePenClick(item: RouteStop) {
     pendingRouteFrom.value = null
     return
   }
-  pushUndoState()
+  pushUndoState('route-links')
   routeLinks.value.push({
     id: `link_${Date.now()}`,
     fromItemId: pendingRouteFrom.value!,
@@ -382,7 +303,7 @@ function handleRoutePenClick(item: RouteStop) {
   })
   pendingRouteFrom.value = null
   showToast('경로가 연결되었습니다')
-  nextTick(() => { initDragDrop(); redrawMap() })
+  nextTick(initDragDrop)
 }
 
 function handleStopClick(item: RouteStop) {
@@ -404,11 +325,14 @@ interface DragSource {
 }
 
 function onPointerDown(e: PointerEvent) {
+  if ((e.target as HTMLElement).closest('button')) return
   if (
-    !(e.target as HTMLElement).closest('.grip-icon') &&
-    !(e.target as HTMLElement).closest('.stop-num') &&
-    e.button !== 0
+    e.button !== 0 || (
+      !(e.target as HTMLElement).closest('.grip-icon') &&
+      !(e.target as HTMLElement).closest('.stop-num')
+    )
   ) return
+  if (itinerary.mutating.value) return
 
   const stop = (e.currentTarget as HTMLElement)
   const containerEl = itineraryRef.value
@@ -517,10 +441,10 @@ function onPointerDown(e: PointerEvent) {
     } else {
       reorderSingleDay(source!, targetIdx)
     }
+    void persistItineraryOrder()
 
     nextTick(() => {
       initDragDrop()
-      redrawMap()
     })
   }
 
@@ -530,7 +454,7 @@ function onPointerDown(e: PointerEvent) {
 
 /** 전체 보기: flat list 기반 재배치 */
 function reorderAllDays(source: DragSource, targetIdx: number) {
-  pushUndoState()
+  pushUndoState('itinerary')
   // Build flat ordered list from current data
   const flatList: { type: 'separator' | 'stop'; dayIdx: number; itemIdx: number }[] = []
   dayPlans.value.forEach((day, di) => {
@@ -580,15 +504,19 @@ function reorderAllDays(source: DragSource, targetIdx: number) {
   }
 
   // Convert flat list back to dayPlans
-  const originalDates = dayPlans.value.map(d => d.date)
+  const originalPlans = [...dayPlans.value]
+  const originalDates = originalPlans.map(d => d.date)
   const newPlans: DayPlan[] = []
   let currentItems: RouteStop[] = []
 
   for (const item of flatList) {
     if (item.type === 'separator') {
       if (newPlans.length > 0 || currentItems.length > 0) {
-        const dayNum = newPlans.length + 1
+        const sourcePlan = originalPlans[newPlans.length]
+        const dayNum = sourcePlan?.day ?? newPlans.length + 1
         newPlans.push({
+          id: sourcePlan?.id ?? `local-day-${dayNum}`,
+          groupType: sourcePlan?.groupType ?? 'DAY',
           day: dayNum,
           date: originalDates[newPlans.length] || '',
           items: currentItems.map((it, idx) => ({ ...it, order: idx + 1, day: dayNum }))
@@ -604,8 +532,11 @@ function reorderAllDays(source: DragSource, targetIdx: number) {
   }
   // Last day
   if (currentItems.length > 0 || newPlans.length < originalDates.length) {
-    const dayNum = newPlans.length + 1
+    const sourcePlan = originalPlans[newPlans.length]
+    const dayNum = sourcePlan?.day ?? newPlans.length + 1
     newPlans.push({
+      id: sourcePlan?.id ?? `local-day-${dayNum}`,
+      groupType: sourcePlan?.groupType ?? 'DAY',
       day: dayNum,
       date: originalDates[newPlans.length] || '',
       items: currentItems.map((it, idx) => ({ ...it, order: idx + 1, day: dayNum }))
@@ -617,7 +548,7 @@ function reorderAllDays(source: DragSource, targetIdx: number) {
 
 /** 특정 일차: 같은 날 내에서 순서만 변경 */
 function reorderSingleDay(source: DragSource, targetIdx: number) {
-  pushUndoState()
+  pushUndoState('itinerary')
   const plan = dayPlans.value[source.dayIdx]
   if (!plan) return
 
@@ -626,6 +557,28 @@ function reorderSingleDay(source: DragSource, targetIdx: number) {
   const insertAt = Math.min(targetIdx, items.length)
   items.splice(insertAt, 0, moved)
   plan.items = items.map((it, idx) => ({ ...it, order: idx + 1 }))
+}
+
+async function persistItineraryOrder() {
+  if (dayPlans.value.length === 0) return
+  itineraryActionError.value = ''
+  try {
+    await itinerary.reorder({
+      days: dayPlans.value.map((day, dayIndex) => ({
+        dayId: day.id,
+        sortOrder: dayIndex,
+        itemOrders: day.items.map((item, itemIndex) => ({
+          itemId: item.id,
+          sortOrder: itemIndex,
+        })),
+      })),
+    })
+  } catch {
+    itineraryActionError.value = '일정 순서를 저장하지 못해 최신 상태로 되돌렸습니다.'
+    undoStack.value = []
+    redoStack.value = []
+    await loadItinerary()
+  }
 }
 
 /* 드래그앤드롭 초기화 */
@@ -650,7 +603,6 @@ function initDragDrop() {
 watch(activeDay, () => {
   nextTick(() => {
     initDragDrop()
-    redrawMap()
   })
 })
 
@@ -731,7 +683,86 @@ const drawingOn = ref(true)
 const isPenPopoverOpen = ref(false)
 const penSize = ref(6)
 const penColor = ref('#1f2937')
-const activeTool = ref('cursor')
+const activeTool = ref<MapDrawingTool>('cursor')
+const localDrawings = ref<MapDrawingStroke[]>([])
+const pendingDrawingIds = ref<string[]>([])
+const drawingRetryIds = ref<string[]>([])
+const simplifiedDrawingCoordinates = new Map<string, MapDrawingStroke['coordinates']>()
+const drawingPreviewTransport = new StompTransport({
+  brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
+  accessToken: () => localStorage.getItem('accessToken'),
+})
+const drawingPreviewChannel = useDrawingPreviewChannel({
+  tripId,
+  clientId: globalThis.crypto?.randomUUID?.() ?? `drawing-client-${Date.now()}`,
+  transport: drawingPreviewTransport,
+})
+const mapDrawings = computed(() => [
+  ...localDrawings.value,
+  ...drawingPreviewChannel.remoteDrawings.value,
+])
+let localDrawingSequence = 0
+
+onMounted(() => {
+  if (tripId && localStorage.getItem('accessToken')) drawingPreviewChannel.connect()
+})
+
+onUnmounted(() => {
+  void drawingPreviewChannel.disconnect()
+})
+
+async function simplifyLocalDrawing(drawingId: string) {
+  const drawing = localDrawings.value.find((candidate) => candidate.id === drawingId)
+  if (!drawing || pendingDrawingIds.value.includes(drawingId)) return
+  pendingDrawingIds.value = [...pendingDrawingIds.value, drawingId]
+  drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+  try {
+    const simplified = await geoApi.simplifyCoordinates({
+      coordinates: drawing.coordinates,
+      maxPoints: 100,
+    })
+    simplifiedDrawingCoordinates.set(drawingId, simplified.coordinates)
+    const index = localDrawings.value.findIndex((candidate) => candidate.id === drawingId)
+    if (index >= 0) {
+      localDrawings.value[index] = { ...localDrawings.value[index], coordinates: simplified.coordinates }
+    }
+  } catch {
+    if (localDrawings.value.some((candidate) => candidate.id === drawingId)) {
+      if (!drawingRetryIds.value.includes(drawingId)) {
+        drawingRetryIds.value = [...drawingRetryIds.value, drawingId]
+      }
+    }
+  } finally {
+    pendingDrawingIds.value = pendingDrawingIds.value.filter((id) => id !== drawingId)
+  }
+}
+
+function createLocalDrawing(draft: MapDrawingDraft) {
+  pushUndoState('drawing')
+  const drawing: MapDrawingStroke = {
+    id: `local-drawing-${++localDrawingSequence}`,
+    ...draft,
+  }
+  localDrawings.value = [...localDrawings.value, drawing]
+  void simplifyLocalDrawing(drawing.id)
+}
+
+function eraseLocalDrawing(drawingId: string) {
+  if (!localDrawings.value.some((drawing) => drawing.id === drawingId)) return
+  pushUndoState('drawing')
+  localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
+  drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+}
+
+function publishDrawingPreview(event: DrawingPreviewEvent) {
+  drawingPreviewChannel.publish(event)
+}
+
+function retryDrawingSimplification() {
+  const retryIds = [...drawingRetryIds.value]
+  drawingRetryIds.value = []
+  retryIds.forEach((drawingId) => void simplifyLocalDrawing(drawingId))
+}
 
 function toggleRouteState() {
   const states: Array<'route' | 'dashed' | 'hidden'> = ['route', 'dashed', 'hidden']
@@ -796,15 +827,81 @@ function getCategoryClass(cat: string) {
 
 /* ── Custom schedule form ── */
 const customTitle = ref('')
-const customCategory = ref('custom')
 const customDay = ref(1)
-const customTime = ref('12:00')
-const customDuration = ref('60')
+const itineraryActionError = ref('')
 
-function submitCustomSchedule() {
+function targetPlan(dayNumber = customDay.value) {
+  return dayPlans.value.find((day) => day.day === dayNumber) ?? dayPlans.value[0] ?? null
+}
+
+async function submitCustomSchedule() {
   if (!customTitle.value.trim()) return
-  customTitle.value = ''
-  showCustomForm.value = false
+  const plan = targetPlan()
+  if (!plan) {
+    itineraryActionError.value = '일정을 추가할 일차를 먼저 만들어 주세요.'
+    return
+  }
+
+  itineraryActionError.value = ''
+  try {
+    await itinerary.createItem({
+      itineraryDayId: plan.id,
+      sortOrder: plan.items.length,
+      itemType: 'CUSTOM_PLACE',
+      placeName: customTitle.value.trim(),
+    })
+    showToast(`"${customTitle.value.trim()}" 일정이 추가되었습니다.`)
+    customTitle.value = ''
+    showCustomForm.value = false
+  } catch {
+    itineraryActionError.value = '일정을 추가하지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function createNextDay() {
+  const scheduledDays = dayPlans.value.filter((day) => day.groupType === 'DAY')
+  const nextDayNumber = Math.max(0, ...scheduledDays.map((day) => day.day)) + 1
+  const nextSortOrder = Math.max(-1, ...dayPlans.value.map((day) => itinerary.days.value.find((item) => item.id === day.id)?.sortOrder ?? -1)) + 1
+  itineraryActionError.value = ''
+  try {
+    await itinerary.createDay({ groupType: 'DAY', dayNumber: nextDayNumber, sortOrder: nextSortOrder })
+    activeDay.value = nextDayNumber
+  } catch {
+    itineraryActionError.value = '일차를 추가하지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function createUnscheduledDay() {
+  itineraryActionError.value = ''
+  try {
+    const day = await itinerary.ensureUnscheduledDay()
+    activeDay.value = day.groupType === 'UNSCHEDULED' ? -1 : (day.dayNumber ?? 0)
+  } catch {
+    itineraryActionError.value = '일차 미정을 만들지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function removeDay(plan: DayPlan) {
+  if (plan.items.length > 0) {
+    itineraryActionError.value = '일정이 남아 있는 일차는 삭제할 수 없습니다.'
+    return
+  }
+  itineraryActionError.value = ''
+  try {
+    await itinerary.deleteDay(plan.id)
+  } catch {
+    itineraryActionError.value = '일차를 삭제하지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function removeItineraryItem(item: RouteStop) {
+  itineraryActionError.value = ''
+  try {
+    await itinerary.deleteItem(item.id)
+    showToast(`"${item.title}" 일정이 삭제되었습니다.`)
+  } catch {
+    itineraryActionError.value = '일정을 삭제하지 못했습니다. 다시 시도해 주세요.'
+  }
 }
 
 /* ── Modals ── */
@@ -815,7 +912,10 @@ const isCustomEventModalOpen = ref(false)
 
 /* ── Trip departure/destination ── */
 const editDeparture = ref('서울 (SEL)')
-const editDestination = ref(trip.destinationName || '부산 (PUS)')
+const editDestination = ref('')
+watch(() => trip.value.destinationName, (destination) => {
+  editDestination.value = destination
+}, { immediate: true })
 
 /* ── Detailbar ── */
 const isDetailbarOpen = ref(false)
@@ -881,13 +981,11 @@ function selectPlace(placeId: string) {
   }
 
   isDetailbarOpen.value = true
-  setTimeout(redrawMap, 420)
 }
 
 function closeDetailbar() {
   isDetailbarOpen.value = false
   selectedPlace.value = null
-  setTimeout(redrawMap, 420)
 }
 
 /* ── Toast ── */
@@ -902,32 +1000,45 @@ function showToast(msg: string) {
   toastTimer = setTimeout(() => { toastVisible.value = false }, 3000)
 }
 
-function addPlaceToItinerary(place: any) {
-  pushUndoState()
-  const targetDay = activeDay.value === 0 ? 1 : activeDay.value
-  const timeKey = targetDay === 1 ? '5.20' : targetDay === 2 ? '5.21' : '5.22'
-
-  const newItem: RouteStop = {
-    id: `step_${Date.now()}`,
-    placeExternalId: place.externalPlaceId,
-    title: place.name,
-    time: `${timeKey} 오후`,
-    order: 0,
-    day: targetDay,
-    memo: '',
-    lat: place.lat ?? null,
-    lng: place.lng ?? null,
+async function addPlaceToItinerary(place: any) {
+  if (!hasPlaceReference(place)) {
+    itineraryActionError.value = '실제 장소 검색 결과만 일정에 추가할 수 있습니다.'
+    return
   }
-
-  // Add to the correct day plan
-  const plan = dayPlans.value.find(d => d.day === targetDay)
-  if (plan) {
-    newItem.order = plan.items.length + 1
-    plan.items.push(newItem)
+  const plan = targetPlan(activeDay.value === 0 ? (dayPlans.value[0]?.day ?? 1) : activeDay.value)
+  if (!plan) {
+    itineraryActionError.value = '일정을 추가할 일차를 먼저 만들어 주세요.'
+    return
   }
+  itineraryActionError.value = ''
+  try {
+    await itinerary.createItem({
+      itineraryDayId: plan.id,
+      sortOrder: plan.items.length,
+      itemType: 'PLACE',
+      place: { provider: place.provider, externalPlaceId: place.externalPlaceId },
+      placeName: place.name,
+      address: place.address ?? null,
+      lat: place.lat ?? null,
+      lng: place.lng ?? null,
+      thumbnailUrl: place.photo ?? null,
+    })
+    showToast(`"${place.name}" 일정이 추가되었습니다.`)
+  } catch {
+    itineraryActionError.value = '일정을 추가하지 못했습니다. 다시 시도해 주세요.'
+  }
+}
 
-  showToast(`"${place.name}"이(가) ${targetDay}일차 일정에 추가되었습니다.`)
-  nextTick(() => { redrawMap(); initDragDrop() })
+function hasPlaceReference(place: any): place is {
+  provider: 'KTO'
+  externalPlaceId: string
+  name: string
+  address?: string | null
+  lat?: number | null
+  lng?: number | null
+  photo?: string | null
+} {
+  return place?.provider === 'KTO' && typeof place.externalPlaceId === 'string' && place.externalPlaceId.length > 0
 }
 
 /* ── Toast component ── */
@@ -962,19 +1073,18 @@ function textAvatarStyle(index: unknown) {
               <!-- Trip header card -->
               <div :class="['trip-header-card', sidebarTheme]" id="trip-header-card-container">
                 <div class="trip-info-badge-row">
-                  <span class="trip-status-badge">&#9992;&#65039; 여행 예정</span>
-                  <span class="trip-dday-badge">D-55</span>
+                  <span class="trip-status-badge">{{ trip.statusLabel }}</span>
                 </div>
                 <h3 class="trip-card-title">{{ trip.title }}</h3>
-                <p class="trip-card-dates">
-                  <span class="material-symbols-rounded" style="font-size:13px;vertical-align:middle;">calendar_month</span>
-                  <span style="vertical-align:middle;">{{ trip.startDate }} - {{ trip.endDate }} (2박 3일)</span>
+                <p v-if="trip.destinationName" class="trip-card-dates">
+                  <span class="material-symbols-rounded" style="font-size:13px;vertical-align:middle;">location_on</span>
+                  <span style="vertical-align:middle;">{{ trip.destinationName }}</span>
                 </p>
                 <div class="trip-card-divider"></div>
                 <div class="trip-stats-grid">
                   <div class="trip-stat-item">
                     <span class="stat-label">선택된 경로</span>
-                    <span class="stat-value">{{ mockPlaces.length }}개 코스</span>
+                    <span class="stat-value">{{ dayPlans.reduce((count, day) => count + day.items.length, 0) }}개 코스</span>
                   </div>
                   <div class="trip-stat-item">
                     <span class="stat-label">멤버</span>
@@ -1004,10 +1114,10 @@ function textAvatarStyle(index: unknown) {
                   <button :class="['day-tab', { active: activeDay === 0 }]" type="button" @click="activeDay = 0">
                     <span class="day-title">전체</span>
                   </button>
-                  <button v-for="day in dayPlans" :key="day.day"
+                  <button v-for="day in dayPlans" :key="day.id"
                     :class="['day-tab', { active: activeDay === day.day }]"
                     type="button" @click="activeDay = day.day">
-                    <span class="day-title">{{ day.day }}일차</span>
+                    <span class="day-title">{{ dayPlanLabel(day) }}</span>
                     <span class="day-date">{{ day.date }}</span>
                   </button>
                 </div>
@@ -1016,14 +1126,45 @@ function textAvatarStyle(index: unknown) {
                 </button>
               </div>
 
+              <div class="itinerary-day-actions" aria-label="일차 관리">
+                <button class="icon-btn" type="button" title="일차 추가" aria-label="일차 추가" :disabled="itineraryActionsDisabled" @click="createNextDay">
+                  <span class="material-symbols-rounded" aria-hidden="true">calendar_add_on</span>
+                </button>
+                <button class="icon-btn" type="button" title="일차 미정 추가" aria-label="일차 미정 추가" :disabled="itineraryActionsDisabled" @click="createUnscheduledDay">
+                  <span class="material-symbols-rounded" aria-hidden="true">event_question</span>
+                </button>
+              </div>
+              <p v-if="itineraryActionError" class="itinerary-action-error" role="alert">{{ itineraryActionError }}</p>
+
               <!-- Itinerary -->
               <div class="itinerary" data-sidebar-itinerary ref="itineraryRef">
+                <LoadingState v-if="itinerary.loading.value" />
+                <ErrorState
+                  v-else-if="itineraryLoadError"
+                  message="일정을 불러오지 못했습니다."
+                  @retry="loadItinerary"
+                />
+                <EmptyState
+                  v-else-if="dayPlans.length === 0"
+                  icon="event_busy"
+                  message="아직 일정이 없습니다. 일차를 추가해 계획을 시작하세요."
+                />
                 <!-- 전체 보기 -->
-                <template v-if="activeDay === 0">
+                <template v-else-if="activeDay === 0">
                   <template v-for="day in dayPlans" :key="day.day">
                     <div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day">
-                      <span class="day-pill">{{ day.day }}일차</span>
+                      <span class="day-pill">{{ dayPlanLabel(day) }}</span>
                       <span class="line"></span>
+                      <button
+                        v-if="day.items.length === 0"
+                        class="itinerary-delete-btn"
+                        type="button"
+                        :aria-label="`${dayPlanLabel(day)} 삭제`"
+                        :disabled="itinerary.mutating.value"
+                        @click.stop="removeDay(day)"
+                      >
+                        <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                      </button>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <template v-for="(item, idx) in day.items" :key="item.id">
@@ -1035,6 +1176,9 @@ function textAvatarStyle(index: unknown) {
                           <strong>{{ item.title }}</strong>
                           <span class="small muted">{{ item.time }}</span>
                         </div>
+                        <button class="itinerary-delete-btn" type="button" :aria-label="`${item.title} 삭제`" :disabled="itinerary.mutating.value" @click.stop="removeItineraryItem(item)">
+                          <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                        </button>
                         <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                       </div>
                       <!-- Route connector between linked adjacent stops -->
@@ -1050,12 +1194,22 @@ function textAvatarStyle(index: unknown) {
                   </template>
                 </template>
                 <!-- 특정 일차 -->
-                <template v-else>
+                <template v-else-if="activePlan">
                   <div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay">
-                    <span class="day-pill">{{ activeDay }}일차</span>
+                    <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
                     <span class="line"></span>
+                    <button
+                      v-if="activePlan.items.length === 0"
+                      class="itinerary-delete-btn"
+                      type="button"
+                      :aria-label="`${dayPlanLabel(activePlan)} 삭제`"
+                      :disabled="itinerary.mutating.value"
+                      @click.stop="removeDay(activePlan)"
+                    >
+                      <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                    </button>
                   </div>
-                  <template v-for="(item, idx) in dayPlans[activeDay - 1]?.items" :key="item.id">
+                  <template v-for="(item, idx) in activePlan.items" :key="item.id">
                     <div :class="['stop', getDayColorClass(activeDay), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id) }]"
                       :data-step-id="item.id" :data-place-id="item.placeExternalId"
                       @click.stop="handleStopClick(item)">
@@ -1064,12 +1218,15 @@ function textAvatarStyle(index: unknown) {
                         <strong>{{ item.title }}</strong>
                         <span class="small muted">{{ item.time }}</span>
                       </div>
+                      <button class="itinerary-delete-btn" type="button" :aria-label="`${item.title} 삭제`" :disabled="itinerary.mutating.value" @click.stop="removeItineraryItem(item)">
+                        <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                      </button>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <!-- Route connector between linked adjacent stops -->
-                    <div v-if="dayPlans[activeDay - 1] && idx < dayPlans[activeDay - 1].items.length - 1 && hasRouteLinkBetween(item.id, dayPlans[activeDay - 1].items[idx + 1].id)"
+                    <div v-if="idx < activePlan.items.length - 1 && hasRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       class="route-connector"
-                      @click.stop="removeRouteLinkBetween(item.id, dayPlans[activeDay - 1].items[idx + 1].id)"
+                      @click.stop="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       :title="'경로 연결 해제'">
                       <div class="route-connector-line"></div>
                       <span class="material-symbols-rounded route-unlink-icon">link_off</span>
@@ -1081,7 +1238,7 @@ function textAvatarStyle(index: unknown) {
 
               <!-- Add stop: 원본처럼 버튼 클릭 시 바로 검색 패널 열기 -->
               <div class="add-stop-container">
-                <button class="add-stop-dashed" type="button" @click="openSearchPanel">
+                <button class="add-stop-dashed" type="button" :disabled="dayPlans.length === 0 || itinerary.mutating.value" @click="openSearchPanel">
                   <span class="material-symbols-rounded">add_circle</span>
                   <span>일정 추가</span>
                 </button>
@@ -1140,41 +1297,15 @@ function textAvatarStyle(index: unknown) {
                       <input class="field" type="text" id="inline-custom-title" placeholder="예: 점심 식사, 자유 시간" v-model="customTitle">
                     </label>
                   </div>
-                  <div class="custom-form-row">
-                    <label class="form-label">
-                      <span class="form-label-text">카테고리</span>
-                      <select class="field" id="inline-custom-category" v-model="customCategory">
-                        <option value="custom" selected>기타/자유일정</option>
-                        <option value="attraction">관광지</option>
-                        <option value="food">맛집</option>
-                        <option value="cafe">카페</option>
-                        <option value="hotel">숙소</option>
-                      </select>
-                    </label>
+                  <div class="custom-form-field">
                     <label class="form-label">
                       <span class="form-label-text">방문 일차</span>
                       <select class="field" id="inline-custom-day" v-model="customDay">
-                        <option v-for="day in dayPlans" :key="day.day" :value="day.day">{{ day.day }}일차</option>
+                        <option v-for="day in dayPlans" :key="day.id" :value="day.day">{{ dayPlanLabel(day) }}</option>
                       </select>
                     </label>
                   </div>
-                  <div class="custom-form-row">
-                    <label class="form-label">
-                      <span class="form-label-text">방문 시간</span>
-                      <input class="field" type="time" id="inline-custom-time" v-model="customTime">
-                    </label>
-                    <label class="form-label">
-                      <span class="form-label-text">소요 시간</span>
-                      <select class="field" id="inline-custom-duration" v-model="customDuration">
-                        <option value="30">30분</option>
-                        <option value="60" selected>1시간</option>
-                        <option value="90">1시간 30분</option>
-                        <option value="120">2시간</option>
-                        <option value="180">3시간</option>
-                      </select>
-                    </label>
-                  </div>
-                  <button type="button" class="btn primary" id="inline-custom-submit" style="width:100%;margin-top:12px;" @click="submitCustomSchedule">
+                  <button type="button" class="btn primary" id="inline-custom-submit" style="width:100%;margin-top:12px;" :disabled="itinerary.mutating.value || !customTitle.trim()" @click="submitCustomSchedule">
                     <span class="material-symbols-rounded" style="font-size:18px;">add_circle</span>
                     일정 추가하기
                   </button>
@@ -1203,6 +1334,8 @@ function textAvatarStyle(index: unknown) {
                       </p>
                     </div>
                     <button class="search-result-add-btn" type="button" :aria-label="place.name + ' 일정 추가'"
+                      :title="hasPlaceReference(place) ? '일정에 추가' : '실제 장소 검색 연동 후 추가할 수 있습니다'"
+                      :disabled="!hasPlaceReference(place) || itineraryActionsDisabled"
                       @click.stop="addPlaceToItinerary(place)">
                       <span class="material-symbols-rounded">add</span>
                     </button>
@@ -1218,7 +1351,47 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ MAP CANVAS ═══ -->
           <div class="map-canvas" aria-label="대전 여행 지도">
-            <div ref="mapContainer" id="kakao-map" style="width:100%;height:100%;"></div>
+            <MapboxItineraryMap
+              :stops="mapStops"
+              :drawings="mapDrawings"
+              :drawing-tool="activeTool"
+              :drawing-color="penColor"
+              :drawing-width="penSize"
+              :drawings-visible="drawingOn"
+              @select-place="selectPlace"
+              @viewport-change="mapViewport.updateViewport"
+              @drawing-create="createLocalDrawing"
+              @drawing-erase="eraseLocalDrawing"
+              @drawing-preview="publishDrawingPreview"
+            />
+
+            <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
+              지도 범위를 동기화하는 중
+            </div>
+            <div v-else-if="mapViewport.error.value" class="map-viewport-status is-error" role="alert">
+              <span>{{ mapViewport.error.value }}</span>
+              <button
+                class="map-viewport-retry"
+                type="button"
+                aria-label="지도 범위 동기화 다시 시도"
+                title="다시 시도"
+                @click="mapViewport.retry"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+              </button>
+            </div>
+
+            <div v-if="drawingRetryIds.length > 0" class="map-drawing-status" role="alert">
+              <span>그림 좌표를 정리하지 못했습니다.</span>
+              <button
+                type="button"
+                aria-label="그림 좌표 정리 다시 시도"
+                title="다시 시도"
+                @click="retryDrawingSimplification"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+              </button>
+            </div>
 
             <!-- ===== Pen popover ===== -->
             <div :class="['tool-popover', { 'is-open': isPenPopoverOpen }]" id="pen-popover" :aria-hidden="!isPenPopoverOpen">
@@ -1259,10 +1432,10 @@ function textAvatarStyle(index: unknown) {
               <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" title="여행 경로 그리기 (경로 펜)" data-tool="route-pen" @click="activeTool = 'route-pen'">
                 <span class="material-symbols-rounded">route</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" title="펜 (자유 그리기) — 굵기/색상 보기" data-tool="pen" @click="activeTool = 'pen'; isPenPopoverOpen = !isPenPopoverOpen">
+              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" title="펜 (자유 그리기) — 굵기/색상 보기" data-tool="pen" @click="activeTool = 'pen'; drawingOn = true; isPenPopoverOpen = !isPenPopoverOpen">
                 <span class="material-symbols-rounded">edit</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" title="지우개" data-tool="eraser" @click="activeTool = 'eraser'">
+              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" title="지우개" data-tool="eraser" @click="activeTool = 'eraser'; drawingOn = true">
                 <span class="material-symbols-rounded">ink_eraser</span>
               </button>
 
@@ -1308,14 +1481,16 @@ function textAvatarStyle(index: unknown) {
 
               <!-- Undo / Redo -->
               <button :class="['tool-btn', canUndo ? 'is-on' : 'is-off']" type="button"
+                data-action="undo"
                 title="실행 취소 (Ctrl+Z)"
-                :disabled="!canUndo"
+                :disabled="!canUndo || itinerary.mutating.value"
                 @click="undo">
                 <span class="material-symbols-rounded">undo</span>
               </button>
               <button :class="['tool-btn', canRedo ? 'is-on' : 'is-off']" type="button"
+                data-action="redo"
                 title="다시 실행 (Ctrl+Y)"
-                :disabled="!canRedo"
+                :disabled="!canRedo || itinerary.mutating.value"
                 @click="redo">
                 <span class="material-symbols-rounded">redo</span>
               </button>
@@ -1841,6 +2016,7 @@ function textAvatarStyle(index: unknown) {
 }
 .route-page-section .stop {
   width: calc(100% - 12px);
+  grid-template-columns: 24px minmax(0, 1fr) 28px 24px;
 }
 .route-page-section .day-separator {
   width: 100%;
@@ -1855,6 +2031,128 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .map-canvas {
   height: 100%;
   min-height: 0;
+}
+
+.map-viewport-status {
+  align-items: center;
+  background: rgb(255 255 255 / 94%);
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 12%);
+  color: #374151;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  left: 50%;
+  line-height: 1.4;
+  max-width: calc(100% - 32px);
+  padding: 7px 10px;
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 8;
+}
+
+.map-viewport-status.is-error {
+  border-color: #fecdd3;
+  color: #be123c;
+}
+
+.map-viewport-retry {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.map-viewport-retry .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.map-drawing-status {
+  align-items: center;
+  background: rgb(255 255 255 / 96%);
+  border: 1px solid #fecdd3;
+  border-radius: 6px;
+  bottom: 16px;
+  color: #be123c;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  padding: 7px 10px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 8;
+}
+
+.map-drawing-status button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.map-drawing-status .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.itinerary-day-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin: -6px 0 8px;
+}
+
+.itinerary-day-actions .icon-btn {
+  height: 32px;
+  width: 32px;
+}
+
+.itinerary-action-error {
+  color: #be123c;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.itinerary-delete-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #9ca3af;
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.itinerary-delete-btn:hover {
+  color: #be123c;
+}
+
+.itinerary-delete-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.itinerary-delete-btn .material-symbols-rounded {
+  font-size: 18px;
 }
 
 /* ── Popover items ── */
