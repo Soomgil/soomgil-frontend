@@ -1,58 +1,93 @@
 import http from './http'
-import type { ApiResponse, PaginatedResponse, PaginationParams } from '@/types/api'
-import type { Post, PostComment, PostCreateRequest } from '@/types/community'
-import { mockCommunityStories } from '@/mocks/mockCommunity'
+import type {
+  CommunityComment,
+  CommunityPostDetail,
+  CommunityPostPage,
+  CommunityPostReactionSummary,
+  CommunityPostSummary,
+  ContentReport,
+  CreateCommunityPostRequest,
+  CreateContentReportRequest,
+  PagedCommunityComment,
+  ReportReason,
+} from '@/types/community'
+
+export interface CommunityPostQuery {
+  query?: string
+  hashtag?: string
+  visibility?: 'PUBLIC' | 'UNLISTED'
+  page?: number
+  size?: number
+  sort?: string[]
+}
 
 export const communityApi = {
-  /** 게시글 목록 조회 */
-  getPosts: async (params?: PaginationParams): Promise<ApiResponse<PaginatedResponse<Post>>> => {
-    // TODO: return http.get('/stories', { params })
-    const page = params?.page ?? 0
-    const size = params?.size ?? 12
-    const start = page * size
-    const content = mockCommunityStories.slice(start, start + size) as unknown as Post[]
-    return {
-      status: 200, message: 'ok',
-      data: { content, totalPages: 1, totalElements: mockCommunityStories.length, page, size },
-    }
+  async getPosts(params: CommunityPostQuery = {}): Promise<CommunityPostPage> {
+    const response = await http.get<CommunityPostPage>('/stories', { params })
+    return response.data
   },
 
-  /** 게시글 상세 조회 */
-  getPost: async (storyId: string): Promise<ApiResponse<Post>> => {
-    // TODO: return http.get(`/stories/${storyId}`)
-    const story = mockCommunityStories.find((s) => s.id === storyId) ?? mockCommunityStories[0]
-    return { status: 200, message: 'ok', data: story as unknown as Post }
+  async getPost(postId: string, shareToken?: string): Promise<CommunityPostDetail> {
+    const response = await http.get<CommunityPostDetail>(`/stories/${postId}`, {
+      params: shareToken ? { share: shareToken } : undefined,
+    })
+    return response.data
   },
 
-  /** 게시글 작성 */
-  createPost: async (data: PostCreateRequest): Promise<ApiResponse<Post>> => {
-    return http.post('/stories', data)
+  async createPost(data: CreateCommunityPostRequest): Promise<CommunityPostDetail> {
+    const response = await http.post<CommunityPostDetail>('/stories', data)
+    return response.data
   },
 
-  /** 댓글 목록 조회 */
-  getComments: async (postId: string): Promise<ApiResponse<PostComment[]>> => {
-    // TODO: return http.get(`/stories/${postId}/comments`)
-    return {
-      status: 200, message: 'ok',
-      data: [
-        { id: 'c1', postId, parentCommentId: null, authorUserId: 'user_1', content: '성심당문화원 분위기 진짜 좋다... 사진 엄청 잘 나와!', depth: 0, moderationStatus: 'VISIBLE', createdAt: '', updatedAt: '', authorDisplayName: '민지', authorProfileImageUrl: undefined },
-        { id: 'c2', postId, parentCommentId: null, authorUserId: 'user_2', content: '한밭수목원이랑 동선 이어서 일정 수정했어요.', depth: 0, moderationStatus: 'VISIBLE', createdAt: '', updatedAt: '', authorDisplayName: '지훈', authorProfileImageUrl: undefined },
-      ],
-    }
+  async updatePost(postId: string, data: Partial<CreateCommunityPostRequest>): Promise<CommunityPostDetail> {
+    const response = await http.patch<CommunityPostDetail>(`/stories/${postId}`, data)
+    return response.data
   },
 
-  /** 댓글 작성 */
-  createComment: async (postId: string, content: string, parentCommentId?: string): Promise<ApiResponse<PostComment>> => {
-    return http.post(`/stories/${postId}/comments`, { content, parentCommentId })
+  async deletePost(postId: string): Promise<void> {
+    await http.delete(`/stories/${postId}`)
   },
 
-  /** 좋아요 토글 */
-  toggleLike: async (postId: string): Promise<ApiResponse<void>> => {
-    return http.post(`/stories/${postId}/likes`)
+  async getComments(postId: string, page = 0, size = 100): Promise<PagedCommunityComment> {
+    const response = await http.get<PagedCommunityComment>(`/stories/${postId}/comments`, {
+      params: { page, size },
+    })
+    return response.data
   },
 
-  /** 리트립 (여행방으로 가져오기) */
-  retrip: async (postId: string): Promise<ApiResponse<{ newTripId: string }>> => {
-    return http.post(`/stories/${postId}/retrip`)
+  async createComment(postId: string, content: string, parentCommentId?: string): Promise<CommunityComment> {
+    const response = await http.post<CommunityComment>(`/stories/${postId}/comments`, {
+      content,
+      parentCommentId: parentCommentId ?? null,
+    })
+    return response.data
+  },
+
+  async deleteComment(postId: string, commentId: string): Promise<void> {
+    await http.delete(`/stories/${postId}/comments/${commentId}`)
+  },
+
+  async likePost(postId: string): Promise<CommunityPostReactionSummary> {
+    const response = await http.post<CommunityPostReactionSummary>(`/stories/${postId}/likes`)
+    return response.data
+  },
+
+  async unlikePost(postId: string): Promise<CommunityPostReactionSummary> {
+    const response = await http.delete<CommunityPostReactionSummary>(`/stories/${postId}/likes`)
+    return response.data
+  },
+
+  async toggleLike(post: Pick<CommunityPostSummary, 'id' | 'likedByMe'>): Promise<CommunityPostReactionSummary> {
+    return post.likedByMe ? this.unlikePost(post.id) : this.likePost(post.id)
+  },
+
+  async getReportReasons(): Promise<ReportReason[]> {
+    const response = await http.get<ReportReason[]>('/community/reports/reasons')
+    return response.data.filter((reason) => reason.isActive !== false)
+  },
+
+  async createReport(data: CreateContentReportRequest): Promise<ContentReport> {
+    const response = await http.post<ContentReport>('/community/reports', data)
+    return response.data
   },
 }

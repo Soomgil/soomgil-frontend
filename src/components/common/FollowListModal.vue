@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { FollowUser } from '@/mocks/mockUser'
+import type { UserSummary } from '@/types/auth'
 
 const props = defineProps<{
   title: string
-  users: FollowUser[]
+  users: UserSummary[]
   followingIds: Set<string>
 }>()
-defineEmits<{
+const emit = defineEmits<{
   close: []
   'toggle-follow': [userId: string]
   'user-click': [userId: string]
@@ -32,6 +32,7 @@ function toggleFollow(userId: string) {
   } else {
     localFollowingIds.value.add(userId)
   }
+  emit('toggle-follow', userId)
 }
 </script>
 
@@ -68,10 +69,13 @@ function toggleFollow(userId: string) {
             <span class="material-symbols-rounded" style="font-size: 40px; display: block; margin-bottom: 8px; opacity: 0.4;">person_off</span>
             검색 결과가 없습니다
           </div>
-          <div v-for="user in filteredUsers" :key="user.userId"
+          <div v-for="user in filteredUsers" :key="user.id"
             style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,0.88); transition: border-color 0.2s; cursor: pointer;"
-            @click="$emit('user-click', user.userId)">
-            <span style="width: 44px; height: 44px; min-width: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--violet); color: #fff; font-size: 16px; font-weight: 800;">{{ user.displayName.charAt(0) }}</span>
+            @click="$emit('user-click', user.id)">
+            <span style="width: 44px; height: 44px; min-width: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--violet); color: #fff; font-size: 16px; font-weight: 800; overflow: hidden;">
+              <img v-if="user.profileImageUrl" :src="user.profileImageUrl" alt="프로필 이미지" style="width: 100%; height: 100%; object-fit: cover;">
+              <span v-else>{{ user.displayName.charAt(0) }}</span>
+            </span>
             <div style="flex: 1; min-width: 0;">
               <strong style="font-size: 14px; color: var(--ink); display: block;">{{ user.displayName }}</strong>
               <span style="font-size: 12px; color: var(--muted); display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ user.bio }}</span>
@@ -81,17 +85,17 @@ function toggleFollow(userId: string) {
                 padding: '0 16px',
                 height: '34px',
                 borderRadius: '999px',
-                border: localFollowingIds.has(user.userId) ? '1px solid var(--line)' : 'none',
-                background: localFollowingIds.has(user.userId) ? '#fff' : 'var(--violet)',
-                color: localFollowingIds.has(user.userId) ? 'var(--muted)' : '#fff',
+                border: localFollowingIds.has(user.id) ? '1px solid var(--line)' : 'none',
+                background: localFollowingIds.has(user.id) ? '#fff' : 'var(--violet)',
+                color: localFollowingIds.has(user.id) ? 'var(--muted)' : '#fff',
                 fontSize: '13px',
                 fontWeight: 800,
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s',
               }"
-              @click.stop="toggleFollow(user.userId)">
-              {{ localFollowingIds.has(user.userId) ? '팔로잉' : '팔로우' }}
+              @click.stop="toggleFollow(user.id)">
+              {{ localFollowingIds.has(user.id) ? '팔로잉' : '팔로우' }}
             </button>
           </div>
         </div>

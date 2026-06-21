@@ -1,21 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { post, del } = vi.hoisted(() => ({
+const { get, post, del } = vi.hoisted(() => ({
+  get: vi.fn(),
   post: vi.fn(),
   del: vi.fn(),
 }))
 
 vi.mock('@/api/http', () => ({
-  default: { post, delete: del },
+  default: { get, post, delete: del },
 }))
 
 import { mediaApi } from '@/api/media.api'
 
 describe('media API', () => {
   beforeEach(() => {
+    get.mockReset()
     post.mockReset()
     del.mockReset()
     vi.unstubAllGlobals()
+  })
+
+  it('filters record photos through the contract collection endpoint', async () => {
+    const payload = { items: [], page: { page: 0, size: 100, totalElements: 0, totalPages: 0 } }
+    get.mockResolvedValue({ data: payload })
+
+    await expect(mediaApi.getRecordPhotos('trip-1')).resolves.toEqual(payload)
+    expect(get).toHaveBeenCalledWith('/records/photos', {
+      params: { tripId: 'trip-1', page: 0, size: 100 },
+    })
   })
 
   it('uploads a file directly to storage and registers its metadata', async () => {

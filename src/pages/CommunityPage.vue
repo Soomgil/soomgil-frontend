@@ -1,31 +1,134 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { mockCommunityStories } from '@/mocks/mockCommunity'
-import { getProfileByAuthorName } from '@/mocks/mockUser'
-import type { Story } from '@/types/community'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { communityApi } from '@/api/community.api'
+import { userApi } from '@/api/user.api'
+import type {
+  CommunityComment,
+  CommunityPostDetail,
+  CommunityPostSummary,
+  ReportReason,
+  ReportReasonCode,
+} from '@/types/community'
 import AppShell from '@/components/layout/AppShell.vue'
 import StoryWriteModal from '@/components/community/StoryWriteModal.vue'
 import { useModal } from '@/composables/useModal'
+import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
+const route = useRoute()
+const toast = useToast()
+
+interface StoryView {
+  id: string
+  author: string
+  authorUserId: string | null
+  authorProfileImageUrl: string | null
+  avatar: string
+  location: string
+  title: string
+  image: string
+  photos: string[]
+  likes: number
+  likedByMe: boolean
+  comments: number
+  tags: string[]
+  summary: string
+  content: string
+}
+
+const FALLBACK_IMAGE = '/images/랜딩페이지/korea_hero.png'
+const posts = ref<CommunityPostSummary[]>([])
+const loading = ref(true)
+const loadError = ref('')
+const profileImageRequests = new Map<string, Promise<string | null>>()
 
 const searchQuery = ref('')
 const currentPage = ref(1)
-const selectedStory = ref<Story | null>(null)
+const selectedPost = ref<CommunityPostDetail | null>(null)
 const storyWriteModal = useModal()
 
-function openUserProfile(authorName: string) {
-  const profile = getProfileByAuthorName(authorName)
-  if (profile) router.push(`/mypage/${profile.id}`)
+function getProfileImage(userId: string): Promise<string | null> {
+  const cached = profileImageRequests.get(userId)
+  if (cached) return cached
+  const request = userApi.getUserProfile(userId)
+    .then((profile) => profile.profileImageUrl ?? null)
+    .catch(() => null)
+  profileImageRequests.set(userId, request)
+  return request
+}
+
+async function enrichPostAuthors(items: Array<CommunityPostSummary | CommunityPostDetail>) {
+  await Promise.all(items.map(async (post) => {
+    if (!post.publishedBy || post.publishedBy.profileImageUrl) return
+    post.publishedBy.profileImageUrl = await getProfileImage(post.publishedBy.id)
+  }))
+}
+
+async function enrichCommentAuthors(items: CommunityComment[]) {
+  await Promise.all(items.map(async (comment) => {
+    if (!comment.author || comment.author.profileImageUrl) return
+    comment.author.profileImageUrl = await getProfileImage(comment.author.id)
+  }))
+}
+
+function openUserProfile(userId: string | null) {
+  if (userId) router.push(`/mypage/${userId}`)
 }
 
 const PER_PAGE = 6
 
+function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryView {
+  const detail = 'snapshot' in post ? post : null
+  const firstPlace = detail?.snapshot?.days?.flatMap((day) => day.items ?? [])[0]
+  const image = post.coverMedia?.publicUrl
+    ?? detail?.media?.find((media) => media.publicUrl)?.publicUrl
+    ?? firstPlace?.thumbnailUrl
+    ?? FALLBACK_IMAGE
+  const photos = detail?.media?.flatMap((media) => media.publicUrl ? [media.publicUrl] : []) ?? []
+  return {
+    id: post.id,
+    author: post.publishedBy?.displayName ?? '숨길 여행자',
+    authorUserId: post.publishedBy?.id ?? null,
+    authorProfileImageUrl: post.publishedBy?.profileImageUrl ?? null,
+    avatar: (post.publishedBy?.displayName ?? '?').slice(0, 1),
+    location: firstPlace?.address ?? firstPlace?.placeName ?? '여행 기록',
+    title: post.title,
+    image,
+    photos: photos.length > 0 ? photos : [image],
+    likes: post.likeCount ?? 0,
+    likedByMe: post.likedByMe === true,
+    comments: post.commentCount ?? 0,
+    tags: post.hashtags ?? [],
+    summary: post.summary ?? '',
+    content: post.summary ?? '',
+  }
+}
+
+const stories = computed(() => posts.value.map((post) =>
+  selectedPost.value?.id === post.id ? toStoryView(selectedPost.value) : toStoryView(post),
+))
+const selectedStory = computed(() => selectedPost.value ? toStoryView(selectedPost.value) : null)
+const storyPhotoIndexes = ref<Record<string, number>>({})
+
+function currentStoryPhoto(story: StoryView): string {
+  const index = storyPhotoIndexes.value[story.id] ?? 0
+  return story.photos[index] ?? story.image
+}
+
+function moveStoryPhoto(story: StoryView, direction: -1 | 1) {
+  if (story.photos.length < 2) return
+  const current = storyPhotoIndexes.value[story.id] ?? 0
+  storyPhotoIndexes.value = {
+    ...storyPhotoIndexes.value,
+    [story.id]: (current + direction + story.photos.length) % story.photos.length,
+  }
+}
+
 const filteredStories = computed(() => {
-  if (!searchQuery.value) return mockCommunityStories
+  if (!searchQuery.value) return stories.value
   const q = searchQuery.value.toLowerCase()
-  return mockCommunityStories.filter(
+  return stories.value.filter(
     (s) =>
       s.title.toLowerCase().includes(q) ||
       s.author.toLowerCase().includes(q) ||
@@ -34,7 +137,7 @@ const filteredStories = computed(() => {
 })
 
 const popularStories = computed(() =>
-  [...mockCommunityStories].sort((a, b) => b.likes - a.likes).slice(0, 3),
+  [...stories.value].sort((a, b) => b.likes - a.likes).slice(0, 3),
 )
 
 const popularIndex = ref(0)
@@ -46,12 +149,47 @@ const pagedStories = computed(() => {
   return filteredStories.value.slice(start, start + PER_PAGE)
 })
 
-function openStory(story: Story) {
-  selectedStory.value = story
+async function loadPosts() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    const response = await communityApi.getPosts({ page: 0, size: 100 })
+    await enrichPostAuthors(response.items)
+    posts.value = response.items
+    const requestedStoryId = typeof route.query.story === 'string' ? route.query.story : null
+    const requestedStory = requestedStoryId
+      ? stories.value.find((story) => story.id === requestedStoryId)
+      : null
+    if (requestedStory) await openStory(requestedStory)
+  } catch {
+    loadError.value = '커뮤니티 게시글을 불러오지 못했습니다.'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function openStory(story: StoryView) {
+  try {
+    const [post, commentPage] = await Promise.all([
+      communityApi.getPost(story.id),
+      communityApi.getComments(story.id),
+    ])
+    await Promise.all([enrichPostAuthors([post]), enrichCommentAuthors(commentPage.items)])
+    selectedPost.value = post
+    apiComments.value = commentPage.items
+    visibleStoryIdx.value = Math.max(0, stories.value.findIndex((item) => item.id === story.id))
+    await nextTick()
+    const container = document.getElementById('overlay-feed-stories')
+    const article = container?.querySelector<HTMLElement>(`[data-story-id="${story.id}"]`)
+    if (container && article) container.scrollTo({ top: article.offsetTop, behavior: 'auto' })
+  } catch {
+    toast.error('여행기 상세를 불러오지 못했습니다.')
+  }
 }
 
 function closeModal() {
-  selectedStory.value = null
+  selectedPost.value = null
+  apiComments.value = []
 }
 
 function goPage(page: number) {
@@ -68,36 +206,122 @@ function nextPopular() {
   popularIndex.value = (popularIndex.value + 1) % popularStories.value.length
 }
 
-const comments = [
-  { id: 'c1', avatar: 'MJ', name: '민지', color: 'var(--rose)', time: '2분 전', text: '성심당 여행기 너무 좋아요! 저도 다음주에 대전 가는데 참고할게요 😊', featured: true, likes: 3 },
-  { id: 'c2', avatar: 'SY', name: '서연', color: 'var(--blue)', time: '15분 전', text: '한밭수목원 장미가 정말 예쁘더라고요. 사진도 잘 나와요!', replyTo: { author: '현서', text: '저도 주말 오전에 갔는데 사람 적어서 산책하기 좋았어요.' }, likes: 7 },
-  { id: 'c3', avatar: 'DW', name: '동우', color: 'var(--cyan)', time: '32분 전', text: '빵지순례 코스 추천 감사합니다! 튀소가 진짜 맛있었어요 🍞', likes: 12 },
-  { id: 'c4', avatar: 'JH', name: '지훈', color: 'var(--violet)', time: '1시간 전', text: '대전 중앙시장 야시장도 꼭 가보세요. 분위기 최고입니다!', likes: 5 },
-  { id: 'c5', avatar: 'HS', name: '현서', color: 'var(--rose)', time: '2시간 전', text: '은행동 카페거리 사진 보니까 바로 가고 싶어졌어요 ☕', likes: 2 },
-]
+const apiComments = ref<CommunityComment[]>([])
+const comments = computed(() => apiComments.value.map((comment) => ({
+  id: comment.id,
+  authorUserId: comment.author?.id ?? null,
+  profileImageUrl: comment.author?.profileImageUrl ?? null,
+  avatar: (comment.author?.displayName ?? '?').slice(0, 1),
+  name: comment.author?.displayName ?? '사용자',
+  color: 'var(--violet)',
+  time: new Intl.DateTimeFormat('ko-KR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(comment.createdAt)),
+  text: comment.content ?? '삭제된 댓글입니다.',
+  featured: false,
+  likes: 0,
+})))
 
 const overlayComment = ref('')
 const reportModal = ref(false)
-const reportReason = ref('')
+const reportReason = ref<ReportReasonCode | ''>('')
 const reportDetail = ref('')
-const reportReasons = [
-  { value: 'spam', label: '스팸 또는 광고' },
-  { value: 'inappropriate', label: '부적절한 콘텐츠' },
-  { value: 'misinformation', label: '허위/오해의 소지가 있는 정보' },
-  { value: 'copyright', label: '저작권 침해' },
-  { value: 'harassment', label: '괴롭힘 또는 혐오 발언' },
-  { value: 'other', label: '기타' },
-]
+const reportReasons = ref<ReportReason[]>([])
 
-function openReport() {
+async function openReport() {
   reportReason.value = ''
   reportDetail.value = ''
   reportModal.value = true
+  try {
+    reportReasons.value = await communityApi.getReportReasons()
+  } catch {
+    reportModal.value = false
+    toast.error('신고 사유를 불러오지 못했습니다.')
+  }
+}
+
+async function submitReport() {
+  if (!selectedPost.value || !reportReason.value) return
+  try {
+    await communityApi.createReport({
+      targetType: 'POST',
+      targetId: selectedPost.value.id,
+      reasonCode: reportReason.value,
+      detail: reportDetail.value.trim() || null,
+    })
+    reportModal.value = false
+    toast.success('신고가 접수되었습니다.')
+  } catch {
+    toast.error('신고를 접수하지 못했습니다.')
+  }
+}
+
+async function submitComment() {
+  const content = overlayComment.value.trim()
+  if (!selectedPost.value || !content) return
+  try {
+    const comment = await communityApi.createComment(selectedPost.value.id, content)
+    apiComments.value.push(comment)
+    selectedPost.value.commentCount += 1
+    overlayComment.value = ''
+  } catch {
+    toast.error('댓글을 등록하지 못했습니다.')
+  }
+}
+
+const likingPostIds = ref(new Set<string>())
+async function toggleStoryLike(story: StoryView) {
+  if (likingPostIds.value.has(story.id)) return
+  likingPostIds.value = new Set(likingPostIds.value).add(story.id)
+  try {
+    const summary = posts.value.find((post) => post.id === story.id)
+    const liked = summary?.likedByMe ?? story.likedByMe
+    const result = liked
+      ? await communityApi.unlikePost(story.id)
+      : await communityApi.likePost(story.id)
+    if (summary) {
+      summary.likedByMe = result.liked
+      summary.likeCount = result.likeCount
+    }
+    if (selectedPost.value?.id === result.postId) {
+      selectedPost.value.likedByMe = result.liked
+      selectedPost.value.likeCount = result.likeCount
+    }
+  } catch (error: unknown) {
+    const status = (error as { response?: { status?: number } }).response?.status
+    toast.error(status === 401 ? '좋아요를 누르려면 로그인이 필요합니다.' : '좋아요를 반영하지 못했습니다.')
+  } finally {
+    const next = new Set(likingPostIds.value)
+    next.delete(story.id)
+    likingPostIds.value = next
+  }
+}
+
+function handlePostPublished(post: CommunityPostDetail) {
+  posts.value.unshift(post)
+  currentPage.value = 1
 }
 const scrollGuideVisible = ref(true)
 const visibleStoryIdx = ref(0)
 
-const visibleStory = computed(() => mockCommunityStories[visibleStoryIdx.value] || mockCommunityStories[0])
+const visibleStory = computed(() => stories.value[visibleStoryIdx.value] || stories.value[0])
+
+let visibleStoryRequest = 0
+async function selectVisibleStory(index: number) {
+  const story = stories.value[index]
+  if (!story || selectedPost.value?.id === story.id) return
+  const request = ++visibleStoryRequest
+  try {
+    const [post, commentPage] = await Promise.all([
+      communityApi.getPost(story.id),
+      communityApi.getComments(story.id),
+    ])
+    await Promise.all([enrichPostAuthors([post]), enrichCommentAuthors(commentPage.items)])
+    if (request !== visibleStoryRequest) return
+    selectedPost.value = post
+    apiComments.value = commentPage.items
+  } catch {
+    toast.error('다음 여행기를 불러오지 못했습니다.')
+  }
+}
 
 function onFeedScroll(e: Event) {
   const el = e.target as HTMLElement
@@ -111,10 +335,16 @@ function onFeedScroll(e: Event) {
     const top = (article as HTMLElement).offsetTop
     const bottom = top + (article as HTMLElement).offsetHeight
     if (centerY >= top && centerY < bottom) {
-      visibleStoryIdx.value = idx
+      if (visibleStoryIdx.value !== idx) {
+        visibleStoryIdx.value = idx
+        void selectVisibleStory(idx)
+      }
     }
   })
 }
+
+watch(searchQuery, () => { currentPage.value = 1 })
+onMounted(loadPosts)
 </script>
 
 <template>
@@ -143,7 +373,14 @@ function onFeedScroll(e: Event) {
         <div class="community-content-container" style="background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(246, 249, 255, 0.85)); backdrop-filter: blur(24px); border: 1px solid rgba(227, 231, 244, 0.8); border-radius: 40px; box-shadow: 0 32px 64px rgba(0, 50, 150, 0.08), 0 8px 24px rgba(0, 102, 255, 0.04), inset 0 2px 4px rgba(255, 255, 255, 0.8);">
 
           <!-- 인기 여행기 (Popular Travelogues) Carousel Section -->
-          <section class="popular-stories-section" style="margin-bottom: 56px; border-bottom: 1px solid var(--line); padding-bottom: 56px;">
+          <p v-if="loading" class="muted" role="status">커뮤니티 게시글을 불러오는 중입니다...</p>
+          <div v-else-if="loadError" style="text-align:center; padding:48px 0;">
+            <p class="muted">{{ loadError }}</p>
+            <button class="btn ghost" type="button" @click="loadPosts">다시 시도</button>
+          </div>
+          <p v-else-if="stories.length === 0" class="muted" style="text-align:center; padding:48px 0;">아직 공개된 여행기가 없습니다.</p>
+
+          <section v-if="popularStories.length" class="popular-stories-section" style="margin-bottom: 56px; border-bottom: 1px solid var(--line); padding-bottom: 56px;">
             <div class="popular-story-column" style="width: 100%; height: 560px; position: relative;">
               <div class="popular-story-card-wrapper" style="height: 100%;">
                 <a
@@ -212,7 +449,7 @@ function onFeedScroll(e: Event) {
                   </div>
                   <h3>{{ story.title }}</h3>
                   <p class="story-card-summary">{{ story.summary }}</p>
-                  <p class="muted"><a href="#" style="color:var(--violet); font-weight:700; text-decoration:none;" @click.prevent.stop="openUserProfile(story.author)">{{ story.author }}</a> · 좋아요 {{ story.likes }} · 댓글 {{ story.comments }}</p>
+                  <p class="muted"><a href="#" style="color:var(--violet); font-weight:700; text-decoration:none;" @click.prevent.stop="openUserProfile(story.authorUserId)">{{ story.author }}</a> · 좋아요 {{ story.likes }} · 댓글 {{ story.comments }}</p>
                 </div>
               </a>
             </div>
@@ -273,15 +510,19 @@ function onFeedScroll(e: Event) {
 
             <div class="story-feed-window" aria-label="스크롤 가능한 여행기 피드" id="overlay-feed-stories" @scroll="onFeedScroll">
               <article
-                v-for="story in mockCommunityStories"
+                v-for="story in stories"
                 :key="story.id"
+                :data-story-id="story.id"
                 class="story-post"
                 style="margin-bottom: 32px;"
               >
                 <div class="story-post-head" style="padding:16px 20px; display:flex; flex-direction:column; align-items:flex-start; gap:12px">
                   <div style="display:flex; align-items:center; justify-content:space-between; width:100%">
-                    <div class="story-author" style="display:flex; align-items:center; gap:10px; cursor:pointer;" @click="openUserProfile(story.author)">
-                      <div class="fc-avatar" style="width:40px; height:40px; background:var(--violet)">{{ story.avatar }}</div>
+                    <div class="story-author" style="display:flex; align-items:center; gap:10px; cursor:pointer;" @click="openUserProfile(story.authorUserId)">
+                      <div class="fc-avatar" style="width:40px; height:40px; background:var(--violet)">
+                        <img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" :alt="`${story.author} 프로필 사진`" />
+                        <span v-else>{{ story.avatar }}</span>
+                      </div>
                       <div>
                         <strong style="font-size:15px; color:var(--violet)">{{ story.author }}</strong>
                         <span class="small muted" style="display:block">{{ story.location }}</span>
@@ -292,8 +533,11 @@ function onFeedScroll(e: Event) {
                     </button>
                   </div>
                 </div>
-                <div style="overflow:hidden; display:block">
-                  <img :alt="story.title" :src="story.image" style="width: 100%; transition: transform 0.5s ease;" />
+                <div style="overflow:hidden; display:block; position:relative;">
+                  <button v-if="story.photos.length > 1" type="button" class="feed-photo-nav carousel-btn prev-btn prev" aria-label="이전 사진" @click="moveStoryPhoto(story, -1)"><span class="material-symbols-rounded">chevron_left</span></button>
+                  <img :alt="story.title" :src="currentStoryPhoto(story)" style="width: 100%; transition: transform 0.5s ease; display:block;" />
+                  <button v-if="story.photos.length > 1" type="button" class="feed-photo-nav carousel-btn next-btn next" aria-label="다음 사진" @click="moveStoryPhoto(story, 1)"><span class="material-symbols-rounded">chevron_right</span></button>
+                  <span v-if="story.photos.length > 1" class="feed-photo-count">{{ (storyPhotoIndexes[story.id] ?? 0) + 1 }} / {{ story.photos.length }}</span>
                 </div>
                 <div class="story-body" style="padding:22px 24px">
                   <h3 style="font-size:20px; line-height:1.4; margin:0 0 12px">{{ story.title }}</h3>
@@ -303,7 +547,16 @@ function onFeedScroll(e: Event) {
                   </div>
                   <p style="font-size:14px; line-height:1.7; color:var(--muted)">{{ story.content }}</p>
                   <div style="margin-top:16px; display:flex; align-items:center; gap:20px; color:var(--muted); font-size:14px;">
-                    <span style="display:flex; align-items:center; gap:4px;"><span class="material-symbols-rounded" style="font-size:20px; color:var(--rose)">favorite</span> {{ story.likes }}</span>
+                    <button
+                      type="button"
+                      class="story-like-button"
+                      :class="{ active: story.likedByMe }"
+                      :disabled="likingPostIds.has(story.id)"
+                      :aria-pressed="story.likedByMe"
+                      @click="toggleStoryLike(story)"
+                    >
+                      <span class="material-symbols-rounded" style="font-size:20px">favorite</span> {{ story.likes }}
+                    </button>
                     <span style="display:flex; align-items:center; gap:4px;"><span class="material-symbols-rounded" style="font-size:20px; color:var(--violet)">chat_bubble</span> {{ story.comments }}</span>
                   </div>
                 </div>
@@ -343,19 +596,19 @@ function onFeedScroll(e: Event) {
                   class="fc-item"
                   :class="{ 'is-featured': comment.featured }"
                 >
-                  <div class="fc-avatar" :style="{ background: comment.color }">{{ comment.avatar }}</div>
+                  <button class="fc-avatar fc-avatar-button" type="button" :style="{ background: comment.color }" :aria-label="`${comment.name} 프로필 보기`" @click="openUserProfile(comment.authorUserId)">
+                    <img v-if="comment.profileImageUrl" :src="comment.profileImageUrl" :alt="`${comment.name} 프로필 사진`" />
+                    <span v-else>{{ comment.avatar }}</span>
+                  </button>
                   <div class="fc-body">
                     <div class="fc-meta">
                       <div>
-                        <span class="fc-name" style="cursor:pointer;" @click="openUserProfile(comment.name)">{{ comment.name }}</span>
+                        <button class="fc-name fc-name-button" type="button" @click="openUserProfile(comment.authorUserId)">{{ comment.name }}</button>
                         <span v-if="comment.featured" class="fc-author-badge">인기</span>
                       </div>
                       <span class="fc-time">{{ comment.time }}</span>
                     </div>
                     <p class="fc-text">{{ comment.text }}</p>
-                    <div v-if="comment.replyTo" class="fc-reply">
-                      <strong>{{ comment.replyTo.author }}</strong> {{ comment.replyTo.text }}
-                    </div>
                     <div class="fc-actions">
                       <button>
                         <span class="material-symbols-rounded">favorite</span><span>{{ comment.likes }}</span>
@@ -372,7 +625,7 @@ function onFeedScroll(e: Event) {
                 <div class="feed-comment-composer">
                   <div class="feed-comment-input-wrap">
                     <input v-model="overlayComment" type="text" placeholder="댓글을 남겨보세요..." />
-                    <button class="comment-submit-btn" type="button" aria-label="댓글 등록">
+                    <button class="comment-submit-btn" type="button" aria-label="댓글 등록" :disabled="!overlayComment.trim()" @click="submitComment">
                       <span class="material-symbols-rounded" style="font-size:16px">send</span>
                       <span class="submit-label">등록</span>
                     </button>
@@ -401,12 +654,12 @@ function onFeedScroll(e: Event) {
           <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px;">
             <label
               v-for="reason in reportReasons"
-              :key="reason.value"
+              :key="reason.code"
               class="report-reason-option"
-              :class="{ active: reportReason === reason.value }"
+              :class="{ active: reportReason === reason.code }"
             >
-              <input type="radio" v-model="reportReason" :value="reason.value" style="accent-color: var(--violet); width: 16px; height: 16px;" />
-              <span>{{ reason.label }}</span>
+              <input type="radio" v-model="reportReason" :value="reason.code" style="accent-color: var(--violet); width: 16px; height: 16px;" />
+              <span>{{ reason.displayName }}</span>
             </label>
           </div>
 
@@ -439,7 +692,7 @@ function onFeedScroll(e: Event) {
                 transition: 'all 0.2s',
                 boxShadow: reportReason ? '0 6px 18px rgba(255, 92, 141, 0.3)' : 'none',
               }"
-              @click="reportModal = false"
+              @click="submitReport"
             >
               신고하기
             </button>
@@ -449,7 +702,7 @@ function onFeedScroll(e: Event) {
     </div>
 
     <!-- Story write modal -->
-    <StoryWriteModal v-if="storyWriteModal.isOpen.value" @close="storyWriteModal.close()" />
+    <StoryWriteModal v-if="storyWriteModal.isOpen.value" @close="storyWriteModal.close()" @published="handlePostPublished" />
   </AppShell>
 </template>
 
@@ -820,7 +1073,18 @@ function onFeedScroll(e: Event) {
   font-size: 11px; font-weight: 900; color: #fff;
   border: 2px solid #fff;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  padding: 0;
 }
+.fc-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.fc-avatar-button { cursor: pointer; }
+.fc-name-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.fc-name-button:hover { color: var(--violet); }
 .fc-body { flex: 1; min-width: 0; }
 .fc-meta {
   display: flex; justify-content: space-between; align-items: center;
@@ -906,6 +1170,20 @@ function onFeedScroll(e: Event) {
 }
 .story-report-btn .material-symbols-rounded {
   font-size: 20px;
+}
+.story-like-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.story-like-button.active,
+.story-like-button:hover {
+  color: var(--rose);
 }
 
 /* Report reason options */

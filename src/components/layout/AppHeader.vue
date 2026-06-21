@@ -90,7 +90,7 @@ function handleNavClick(item: { path?: string; href?: string }) {
 
 async function handleLogout() {
   closeAllDropdowns()
-  auth.logout()
+  await auth.logout()
   router.push('/')
 }
 </script>

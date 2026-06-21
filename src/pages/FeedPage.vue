@@ -1,21 +1,41 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { mockCommunityStories } from '@/mocks/mockCommunity'
+import { ref, computed, onMounted } from 'vue'
+import { communityApi } from '@/api/community.api'
+import type { CommunityComment, CommunityPostSummary } from '@/types/community'
 import AppShell from '@/components/layout/AppShell.vue'
+import { useToast } from '@/composables/useToast'
 
-const stories = mockCommunityStories
+const toast = useToast()
+const posts = ref<CommunityPostSummary[]>([])
+const apiComments = ref<CommunityComment[]>([])
+const activePostId = ref('')
+const stories = computed(() => posts.value.map((post) => ({
+  id: post.id,
+  image: post.coverMedia?.publicUrl ?? '/images/랜딩페이지/korea_hero.png',
+  title: post.title,
+  avatar: (post.publishedBy?.displayName ?? '?').slice(0, 1),
+  author: post.publishedBy?.displayName ?? '숨길 여행자',
+  location: post.hashtags?.[0] ?? '여행 기록',
+  content: post.summary ?? '',
+  tip: '',
+  tags: post.hashtags ?? [],
+})))
 
-const comments = [
-  { id: 'c1', avatar: 'MJ', name: '민지', color: 'var(--rose)', time: '2분 전', text: '성심당 여행기 너무 좋아요! 저도 다음주에 대전 가는데 참고할게요 😊', featured: true, likes: 3 },
-  { id: 'c2', avatar: 'SY', name: '서연', color: 'var(--blue)', time: '15분 전', text: '한밭수목원 장미가 정말 예쁘더라고요. 사진도 잘 나와요!', reply: '현서 저도 주말 오전에 갔는데 사람 적어서 산책하기 좋았어요.', likes: 7 },
-  { id: 'c3', avatar: 'DW', name: '동우', color: 'var(--cyan)', time: '32분 전', text: '빵지순례 코스 추천 감사합니다! 튀소가 진짜 맛있었어요 🍞', likes: 12 },
-  { id: 'c4', avatar: 'JH', name: '지훈', color: 'var(--violet)', time: '1시간 전', text: '대전 중앙시장 야시장도 꼭 가보세요. 분위기 최고입니다!', likes: 5 },
-  { id: 'c5', avatar: 'HS', name: '현서', color: 'var(--rose)', time: '2시간 전', text: '은행동 카페거리 사진 보니까 바로 가고 싶어졌어요 ☕', likes: 2 },
-]
+const comments = computed(() => apiComments.value.map((comment) => ({
+  id: comment.id,
+  avatar: (comment.author?.displayName ?? '?').slice(0, 1),
+  name: comment.author?.displayName ?? '사용자',
+  color: 'var(--violet)',
+  time: new Intl.DateTimeFormat('ko-KR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(comment.createdAt)),
+  text: comment.content ?? '삭제된 댓글입니다.',
+  featured: false,
+  likes: 0,
+  reply: '',
+})))
 
 const hashtags = computed(() => {
   const map = new Map<string, number>()
-  stories.forEach((s) => s.tags.forEach((t) => map.set(t, (map.get(t) || 0) + 1)))
+  stories.value.forEach((s) => s.tags.forEach((t) => map.set(t, (map.get(t) || 0) + 1)))
   return [...map.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
@@ -23,6 +43,30 @@ const hashtags = computed(() => {
 })
 
 const feedComment = ref('')
+
+async function loadFeed() {
+  try {
+    const response = await communityApi.getPosts({ page: 0, size: 100 })
+    posts.value = response.items
+    activePostId.value = response.items[0]?.id ?? ''
+    if (activePostId.value) apiComments.value = (await communityApi.getComments(activePostId.value)).items
+  } catch {
+    toast.error('커뮤니티 피드를 불러오지 못했습니다.')
+  }
+}
+
+async function submitComment() {
+  const content = feedComment.value.trim()
+  if (!activePostId.value || !content) return
+  try {
+    apiComments.value.push(await communityApi.createComment(activePostId.value, content))
+    feedComment.value = ''
+  } catch {
+    toast.error('댓글을 등록하지 못했습니다.')
+  }
+}
+
+onMounted(loadFeed)
 </script>
 
 <template>
@@ -165,7 +209,7 @@ const feedComment = ref('')
                         <button class="comment-tool-btn" type="button" aria-label="사진 추가"><span class="material-symbols-rounded">add_photo_alternate</span></button>
                         <button class="comment-tool-btn" type="button" aria-label="장소 태그"><span class="material-symbols-rounded">location_on</span></button>
                       </div>
-                      <button id="feed-comment-submit" class="comment-submit-btn" type="button" aria-label="댓글 등록">
+                      <button id="feed-comment-submit" class="comment-submit-btn" type="button" aria-label="댓글 등록" :disabled="!feedComment.trim()" @click="submitComment">
                         <span class="material-symbols-rounded" style="font-size:16px">send</span>
                         <span class="submit-label">등록</span>
                       </button>

@@ -60,6 +60,18 @@ export interface TripRecordMedia {
   caption: string | null
 }
 
+export interface TripRecordPhoto {
+  tripId: string
+  tripTitle: string | null
+  recordId: string
+  itineraryDayId: string | null
+  itineraryItemId: string | null
+  media: MediaFile
+  uploadedBy: import('./auth').UserSummary | null
+  takenAt: string | null
+  createdAt: string
+}
+
 /* ── PhotoRecord (UI 호환 타입 - RecordPage에서 사용) ── */
 export interface PhotoRecord {
   id: string

@@ -6,10 +6,20 @@ import type {
   MediaUploadMetadata,
   MediaUploadUrl,
   TripRecordEntry,
+  TripRecordPhoto,
 } from '@/types/media'
+import type { PageMeta } from '@/types/community'
 import { mockRecords } from '@/mocks/mockRecords'
 
 export const mediaApi = {
+  /** 선택한 여행방의 기록에 연결된 사진 목록 */
+  getRecordPhotos: async (tripId: string, page = 0, size = 100): Promise<{ items: TripRecordPhoto[]; page: PageMeta }> => {
+    const response = await http.get<{ items: TripRecordPhoto[]; page: PageMeta }>('/records/photos', {
+      params: { tripId, page, size },
+    })
+    return response.data
+  },
+
   createUploadUrl: async (file: File, purpose: MediaPurpose): Promise<MediaUploadUrl> => {
     const response = await http.post<MediaUploadUrl>('/media/upload-urls', {
       fileName: file.name,

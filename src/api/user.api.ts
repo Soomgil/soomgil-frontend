@@ -1,0 +1,69 @@
+import http from './http'
+import type {
+  BackendUser,
+  UpdateMeRequest,
+  UpdateUserSettingsRequest,
+  User,
+  UserSettings,
+  UserSummary,
+} from '@/types/auth'
+import { mapBackendUser } from '@/types/auth'
+
+export const userApi = {
+  /** 현재 사용자 조회 (GET /me) */
+  getMe: async (): Promise<User> => {
+    const res = await http.get<BackendUser>('/me')
+    return mapBackendUser(res.data)
+  },
+
+  /** 내 프로필 수정 (PATCH /me) */
+  updateMe: async (data: UpdateMeRequest): Promise<User> => {
+    const res = await http.patch<BackendUser>('/me', data)
+    return mapBackendUser(res.data)
+  },
+
+  /** 계정 삭제 요청 (DELETE /me, 202 ACCEPTED) */
+  deleteMe: async (): Promise<void> => {
+    await http.delete('/me')
+  },
+
+  /** 내 설정 조회 (GET /me/settings) */
+  getSettings: async (): Promise<UserSettings> => {
+    const res = await http.get<UserSettings>('/me/settings')
+    return res.data
+  },
+
+  /** 내 설정 수정 (PATCH /me/settings) */
+  updateSettings: async (data: UpdateUserSettingsRequest): Promise<UserSettings> => {
+    const res = await http.patch<UserSettings>('/me/settings', data)
+    return res.data
+  },
+
+  /** 사용자 팔로우 */
+  follow: async (userId: string): Promise<any> => {
+    const res = await http.post(`/users/${userId}/follow`)
+    return res.data
+  },
+
+  /** 팔로우 취소 */
+  unfollow: async (userId: string): Promise<void> => {
+    await http.delete(`/users/${userId}/follow`)
+  },
+
+  /** 팔로워 목록 조회 */
+  getFollowers: async (userId: string): Promise<UserSummary[]> => {
+    const res = await http.get<UserSummary[]>(`/users/${userId}/followers`)
+    return res.data
+  },
+
+  /** 팔로잉 목록 조회 */
+  getFollowing: async (userId: string): Promise<UserSummary[]> => {
+    const res = await http.get<UserSummary[]>(`/users/${userId}/following`)
+    return res.data
+  },
+  /** 특정 사용자 프로필 조회 (GET /users/{userId}) */
+  getUserProfile: async (userId: string): Promise<any> => {
+    const res = await http.get(`/users/${userId}`)
+    return res.data
+  },
+}

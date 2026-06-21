@@ -5,10 +5,10 @@ import { useAuth } from '@/composables/useAuth'
 import AppHeader from '@/components/layout/AppHeader.vue'
 
 const router = useRouter()
-const { login } = useAuth()
+const { login, loginWithOAuth } = useAuth()
 
-const email = ref('traveler@tripmates.kr')
-const password = ref('tripmates')
+const email = ref('')
+const password = ref('')
 const rememberMe = ref(true)
 
 const heroImg = '/images/랜딩페이지/korea_hero.png'
@@ -18,6 +18,15 @@ async function handleLogin() {
     await login(email.value, password.value, rememberMe.value)
   } catch {
     // 에러는 인터셉터에서 처리
+  }
+}
+
+// OAuth — Kakao/Google은 백엔드 지원.
+async function handleOAuthLogin(provider: 'kakao' | 'google') {
+  try {
+    await loginWithOAuth(provider)
+  } catch {
+    // 에러는 인터셉터에서 처리 (예: 백엔드에 client_id 미설정 → OAUTH_NOT_CONFIGURED)
   }
 }
 </script>
@@ -47,9 +56,8 @@ async function handleLogin() {
           </div>
 
           <div class="oauth-row" aria-label="간편 로그인">
-            <button class="oauth-btn google" type="button"><span>G</span>Google</button>
-            <button class="oauth-btn kakao" type="button"><span>K</span>Kakao</button>
-            <button class="oauth-btn naver" type="button"><span>N</span>Naver</button>
+            <button class="oauth-btn google" type="button" @click="handleOAuthLogin('google')"><span>G</span>Google</button>
+            <button class="oauth-btn kakao" type="button" @click="handleOAuthLogin('kakao')"><span>K</span>Kakao</button>
           </div>
 
           <div class="divider"><span>또는 이메일로 로그인</span></div>
@@ -64,7 +72,7 @@ async function handleLogin() {
           </label>
           <div class="auth-form-options">
             <label class="auth-check"><input v-model="rememberMe" type="checkbox"> 로그인 유지</label>
-            <a href="#">비밀번호 찾기</a>
+            <a href="#" @click.prevent="router.push('/reset-password')">비밀번호 찾기</a>
           </div>
 
           <button class="btn primary auth-main-action" type="submit">
