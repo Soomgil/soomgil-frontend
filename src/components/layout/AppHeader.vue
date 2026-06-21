@@ -238,4 +238,15 @@ async function handleLogout() {
 .profile-item-link:hover {
   background: var(--bg);
 }
+
+@media (max-width: 480px) {
+  .header-actions {
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
+  .header-actions .btn {
+    flex: 0 0 auto;
+  }
+}
 </style>
