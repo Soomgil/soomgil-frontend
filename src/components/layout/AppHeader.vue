@@ -20,7 +20,7 @@ const landingNavItems = [
 const serviceNavItems = [
   { label: '홈', key: 'home', path: '/home' },
   { label: '내 여행', key: 'my-trips', path: '/my-trips' },
-  { label: '취향 수집', key: 'swipe', path: '/trips/trip_1/swipe' },
+  { label: '취향 수집', key: 'swipe', path: '/swipe' },
   { label: '커뮤니티', key: 'community', path: '/community' },
   { label: '기록', key: 'record', path: '/record' },
 ]
@@ -237,5 +237,16 @@ async function handleLogout() {
 <style scoped>
 .profile-item-link:hover {
   background: var(--bg);
+}
+
+@media (max-width: 480px) {
+  .header-actions {
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
+  .header-actions .btn {
+    flex: 0 0 auto;
+  }
 }
 </style>

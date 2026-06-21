@@ -40,10 +40,14 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      path: '/trips/:tripId/swipe',
+      path: '/swipe',
       name: 'Swipe',
       component: () => import('@/pages/SwipePage.vue'),
       meta: { requiresAuth: true },
+    },
+    {
+      path: '/trips/:tripId/swipe',
+      redirect: '/swipe',
     },
     {
       path: '/trips/:tripId/route',

@@ -1,20 +1,31 @@
 /* ── Enums ── */
 export type MediaStatus = 'ACTIVE' | 'DELETED' | 'PURGED'
+export type MediaPurpose = 'PROFILE_IMAGE' | 'TRIP_RECORD' | 'COMMUNITY_POST'
+
+export interface MediaUploadUrl {
+  uploadUrl: string
+  method: string
+  objectKey: string
+  headers: Record<string, string>
+  expiresAt: string
+}
+
+export interface MediaUploadMetadata {
+  publicUrl?: string | null
+  width?: number | null
+  height?: number | null
+  linkedResourceType?: string | null
+  linkedResourceId?: string | null
+}
 
 /* ── Media File ── */
 export interface MediaFile {
   id: string
-  ownerUserId: string | null
-  storageProvider: string
-  bucket: string
-  objectKey: string
   publicUrl: string | null
-  mimeType: string | null
-  byteSize: number | null
+  mimeType: string
+  byteSize: number
   width: number | null
   height: number | null
-  linkedResourceType: string | null
-  linkedResourceId: string | null
   status: MediaStatus
   createdAt: string
 }
@@ -47,12 +58,6 @@ export interface TripRecordMedia {
   mediaFileId: string
   sortOrder: number
   caption: string | null
-}
-
-/* ── Media Upload Response ── */
-export interface MediaUploadResponse {
-  mediaFileId: string
-  publicUrl: string
 }
 
 /* ── PhotoRecord (UI 호환 타입 - RecordPage에서 사용) ── */

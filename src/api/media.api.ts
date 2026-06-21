@@ -1,17 +1,65 @@
 import http from './http'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '@/types/api'
-import type { MediaFile, TripRecordEntry, MediaUploadResponse } from '@/types/media'
+import type {
+  MediaFile,
+  MediaPurpose,
+  MediaUploadMetadata,
+  MediaUploadUrl,
+  TripRecordEntry,
+} from '@/types/media'
 import { mockRecords } from '@/mocks/mockRecords'
 
 export const mediaApi = {
-  /** 미디어 파일 업로드 */
-  upload: async (formData: FormData): Promise<ApiResponse<MediaUploadResponse>> => {
-    return http.post('/media', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  createUploadUrl: async (file: File, purpose: MediaPurpose): Promise<MediaUploadUrl> => {
+    const response = await http.post<MediaUploadUrl>('/media/upload-urls', {
+      fileName: file.name,
+      mimeType: file.type,
+      byteSize: file.size,
+      purpose,
+    })
+    return response.data
+  },
+
+  createMediaFile: async (
+    upload: MediaUploadUrl,
+    file: File,
+    metadata: MediaUploadMetadata = {},
+  ): Promise<MediaFile> => {
+    const response = await http.post<MediaFile>('/media/files', {
+      objectKey: upload.objectKey,
+      publicUrl: metadata.publicUrl ?? null,
+      mimeType: file.type,
+      byteSize: file.size,
+      width: metadata.width ?? null,
+      height: metadata.height ?? null,
+      linkedResourceType: metadata.linkedResourceType ?? null,
+      linkedResourceId: metadata.linkedResourceId ?? null,
+    })
+    return response.data
+  },
+
+  uploadFile: async (
+    file: File,
+    purpose: MediaPurpose,
+    metadata: MediaUploadMetadata = {},
+  ): Promise<MediaFile> => {
+    const upload = await mediaApi.createUploadUrl(file, purpose)
+    const response = await fetch(upload.uploadUrl, {
+      method: upload.method || 'PUT',
+      headers: upload.headers,
+      body: file,
+    })
+
+    if (!response.ok) {
+      throw new Error('파일 저장소 업로드에 실패했습니다.')
+    }
+
+    return mediaApi.createMediaFile(upload, file, metadata)
   },
 
   /** 미디어 파일 삭제 */
-  delete: async (mediaId: string): Promise<ApiResponse<void>> => {
-    return http.delete(`/media/${mediaId}`)
+  delete: async (mediaId: string): Promise<void> => {
+    await http.delete(`/media/files/${mediaId}`)
   },
 
   /** 여행 기록 목록 */

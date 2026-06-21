@@ -30,3 +30,16 @@ export interface PaginationParams {
   size?: number
   sort?: string
 }
+
+export interface PageMeta {
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  sort: string[]
+}
+
+export interface PagedItems<T> {
+  items: T[]
+  page: PageMeta
+}

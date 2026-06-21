@@ -1,6 +1,7 @@
 /* ── Enums ── */
 export type PlaceReactionType = 'LIKE' | 'NOPE' | 'SUPER_LIKE'
 export type PlaceProvider = 'KTO' | 'KAKAO' | 'GOOGLE'
+export type PlaceSourceStatus = 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
 
 /* ── Place (외부 장소 참조 기반) ── */
 export interface Place {
@@ -11,6 +12,8 @@ export interface Place {
   lat: number | null
   lng: number | null
   thumbnailUrl: string | null
+  category?: string | null
+  sourceStatus?: PlaceSourceStatus
 
   /** UI 표시용 상세 정보 (API에서 제공) */
   summary?: string
@@ -41,10 +44,22 @@ export interface PlaceReaction {
 /* ── Saved Place ── */
 export interface SavedPlace {
   id: string
-  userId: string
-  provider: PlaceProvider
-  externalPlaceId: string
+  place: Place
   createdAt: string
+}
+
+export interface UserSummary {
+  id: string
+  displayName: string
+  profileImageUrl: string | null
+}
+
+export interface PlaceRecommendation {
+  place: Place
+  matchedMembers: UserSummary[]
+  rank: number | null
+  distanceMeters: number | null
+  recommendationReason: string | null
 }
 
 /* ── Place Travel Story (UI helper) ── */

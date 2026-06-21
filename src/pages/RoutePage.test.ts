@@ -2,11 +2,21 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
+import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
 import RoutePage from './RoutePage.vue'
 
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any }))
 const geo = vi.hoisted(() => ({ simplifyCoordinates: vi.fn() }))
 const realtime = vi.hoisted(() => ({ instances: [] as any[] }))
+
+vi.mock('@/components/place/PlaceDiscoveryPanel.vue', () => ({
+  default: {
+    name: 'PlaceDiscoveryPanel',
+    props: ['tripId', 'bbox'],
+    emits: ['add', 'select'],
+    template: '<div data-testid="place-discovery" />',
+  },
+}))
 
 vi.mock('@/realtime/stompTransport', () => ({
   resolveWebSocketUrl: () => 'ws://localhost/ws',
@@ -173,7 +183,7 @@ describe('RoutePage itinerary integration', () => {
     })
   })
 
-  it('식별자가 없는 목 검색 장소는 일정에 추가하지 못하게 한다', async () => {
+  it('장소 탐색 결과를 실제 장소 참조로 일정에 추가한다', async () => {
     const wrapper = mount(RoutePage, {
       global: {
         stubs: {
@@ -185,11 +195,32 @@ describe('RoutePage itinerary integration', () => {
       },
     })
     await flushPromises()
-    await wrapper.get('.search-panel-custom-trigger').trigger('click')
+    const discovery = wrapper.getComponent(PlaceDiscoveryPanel)
+    expect(discovery.props('tripId')).toBe('trip-1')
+    expect(discovery.props('bbox')).toBe('127.38,36.35,127.38,36.35')
 
-    const addButton = wrapper.get('.search-result-add-btn')
-    expect(addButton.attributes('disabled')).toBeDefined()
-    expect(holder.state.createItem).not.toHaveBeenCalled()
+    discovery.vm.$emit('add', {
+      provider: 'KTO',
+      externalPlaceId: '126508',
+      placeName: '해운대해수욕장',
+      address: '부산 해운대구',
+      lat: 35.1587,
+      lng: 129.1604,
+      thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
+    })
+    await flushPromises()
+
+    expect(holder.state.createItem).toHaveBeenCalledWith({
+      itineraryDayId: 'day-1',
+      sortOrder: 1,
+      itemType: 'PLACE',
+      place: { provider: 'KTO', externalPlaceId: '126508' },
+      placeName: '해운대해수욕장',
+      address: '부산 해운대구',
+      lat: 35.1587,
+      lng: 129.1604,
+      thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
+    })
   })
 
   it('지도 범위 동기화 실패를 표시하고 재시도한다', async () => {
@@ -408,12 +439,12 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
-    const searchInput = wrapper.get('#place-search-input')
-    await searchInput.setValue('부산')
-    await searchInput.trigger('keydown', { key: 'z', ctrlKey: true })
+    const textInput = wrapper.get('#todo-input')
+    await textInput.setValue('부산')
+    await textInput.trigger('keydown', { key: 'z', ctrlKey: true })
 
     expect(map.props('drawings')).toHaveLength(1)
-    expect(searchInput.element).toHaveProperty('value', '부산')
+    expect(textInput.element).toHaveProperty('value', '부산')
   })
 
   it('좌표 단순화 중 실행 취소와 다시 실행을 해도 요청을 중복하지 않는다', async () => {

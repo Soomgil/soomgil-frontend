@@ -1,22 +1,115 @@
 import http from './http'
-import type { ApiResponse } from '@/types/api'
-import type { PreferenceSummary } from '@/types/swipe'
+import { mapPlace } from './place.api'
+import type { PageMeta, PagedItems } from '@/types/api'
+import type { PlaceProvider, PlaceRecommendation, SavedPlace, UserSummary } from '@/types/place'
+import type { RecommendationTab, SwipeAction, SwipeFeed, SwipeReactionResult } from '@/types/swipe'
+
+interface PlaceSummaryDto {
+  provider: PlaceProvider
+  externalPlaceId: string
+  name: string
+  address: string | null
+  lat: number | null
+  lng: number | null
+  thumbnailUrl: string | null
+  category: string | null
+  sourceStatus: 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
+  description?: string | null
+  photos?: string[] | null
+  tags?: string[] | null
+}
+
+interface SwipeFeedDto {
+  items: Array<{
+    place: PlaceSummaryDto
+    myReaction: SwipeAction | null
+    likedByFollowees: UserSummary[]
+  }>
+  nextSeed: string | null
+}
+
+interface SavedPlaceDto {
+  id: string
+  place: PlaceSummaryDto
+  createdAt: string
+}
+
+interface RecommendationDto {
+  place: PlaceSummaryDto
+  matchedMembers: UserSummary[]
+  rank: number | null
+  distanceMeters: number | null
+  recommendationReason: string | null
+}
+
+export interface SwipeFeedParams {
+  legalRegionCode?: string
+  category?: string
+  limit?: number
+  excludeRecent?: boolean
+  seed?: string
+}
+
+export interface RecommendationParams {
+  bbox: string
+  centerLat?: number
+  centerLng?: number
+  tab?: RecommendationTab
+  page?: number
+  size?: number
+}
 
 export const swipeApi = {
-  /** 취향 요약 조회 */
-  getPreferenceSummary: async (tripId: string): Promise<ApiResponse<PreferenceSummary>> => {
-    // TODO: return http.get(`/trips/${tripId}/preference-summary`)
+  async getFeed(params: SwipeFeedParams = {}): Promise<SwipeFeed> {
+    const response = await http.get<SwipeFeedDto>('/swipe/feed', { params })
     return {
-      status: 200, message: 'ok',
-      data: {
-        topTags: [
-          { tagCode: 'cafe', displayName: '카페', weight: 0.85 },
-          { tagCode: 'nature', displayName: '자연', weight: 0.72 },
-          { tagCode: 'healing', displayName: '힐링', weight: 0.60 },
-        ],
-        likedPlaces: [],
-        matchRate: 78,
-      },
+      items: response.data.items.map((item) => ({ ...item, place: mapPlace(item.place) })),
+      nextSeed: response.data.nextSeed,
+    }
+  },
+
+  async react(
+    provider: PlaceProvider,
+    externalPlaceId: string,
+    reaction: SwipeAction,
+  ): Promise<SwipeReactionResult> {
+    const response = await http.put<SwipeReactionResult>(
+      `/places/${provider}/${externalPlaceId}/swipe-reaction`,
+      { reaction, source: 'swipe-feed' },
+    )
+    return response.data
+  },
+
+  async listSaved(page = 0, size = 20): Promise<PagedItems<SavedPlace>> {
+    const response = await http.get<{ items: SavedPlaceDto[]; page: PageMeta }>('/me/saved-places', {
+      params: { page, size },
+    })
+    return {
+      items: response.data.items.map((item) => ({ ...item, place: mapPlace(item.place) })),
+      page: response.data.page,
+    }
+  },
+
+  async savePlace(provider: PlaceProvider, externalPlaceId: string): Promise<SavedPlace> {
+    const response = await http.put<SavedPlaceDto>(`/places/${provider}/${externalPlaceId}/save`)
+    return { ...response.data, place: mapPlace(response.data.place) }
+  },
+
+  async unsavePlace(provider: PlaceProvider, externalPlaceId: string): Promise<void> {
+    await http.delete(`/places/${provider}/${externalPlaceId}/save`)
+  },
+
+  async getRecommendations(
+    tripId: string,
+    params: RecommendationParams,
+  ): Promise<PagedItems<PlaceRecommendation>> {
+    const response = await http.get<{ items: RecommendationDto[]; page: PageMeta }>(
+      `/trips/${tripId}/place-recommendations`,
+      { params },
+    )
+    return {
+      items: response.data.items.map((item) => ({ ...item, place: mapPlace(item.place) })),
+      page: response.data.page,
     }
   },
 }

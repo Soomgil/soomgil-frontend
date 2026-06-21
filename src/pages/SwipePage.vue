@@ -2,25 +2,35 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
-import { mockPlaces } from '@/mocks/mockPlaces'
-import type { Place, PlaceReaction } from '@/types/place'
+import ErrorState from '@/components/common/ErrorState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import SwipeActionBar from '@/components/swipe/SwipeActionBar.vue'
+import { useSwipeFeed } from '@/composables/useSwipeFeed'
+import type { SwipeAction } from '@/types/swipe'
 
 const router = useRouter()
 
-const currentIndex = ref(0)
-const totalPlaces = mockPlaces.length
-const currentPlace = computed(() => mockPlaces[currentIndex.value] as Place | undefined)
-const isFinished = computed(() => currentIndex.value >= totalPlaces)
+const {
+  items,
+  currentItem,
+  completedCount,
+  loading,
+  submitting,
+  error,
+  finished: isFinished,
+  load,
+  persistReaction,
+  advance,
+} = useSwipeFeed()
+
+const totalPlaces = computed(() => items.value.length)
+const currentPlace = computed(() => currentItem.value?.place ?? null)
 const stageRef = ref<HTMLElement | null>(null)
 
 /* ── XP Progress ──────────────────────────────────────── */
-const xpGoal = 40
-const xpCount = ref(0)
-const xpPercent = computed(() => (xpCount.value / xpGoal) * 100)
-
-function updateXp() {
-  xpCount.value = Math.min(xpCount.value + 1, xpGoal)
-}
+const xpGoal = computed(() => Math.max(totalPlaces.value, 1))
+const xpCount = completedCount
+const xpPercent = computed(() => (xpCount.value / xpGoal.value) * 100)
 
 /* ── Swipe State ──────────────────────────────────────── */
 const decision = ref('')
@@ -29,17 +39,11 @@ const overlayOpacity = ref(0)
 const cardTransform = ref('')
 const swipeClass = ref('')
 const activePhotoIdx = ref(0)
-
-function isReaction(item: PlaceReaction | { extra: number }): item is PlaceReaction {
-  return 'reaction' in item
-}
-function countLikes(_place: Place): number {
-  // TODO: 서버에서 집계된 reaction count 사용
-  return 0
-}
-function countSuperLikes(_place: Place): number {
-  return 0
-}
+const activePhoto = computed(() => {
+  if (!currentPlace.value) return null
+  if (activePhotoIdx.value === 0) return currentPlace.value.thumbnailUrl
+  return currentPlace.value.photos?.[activePhotoIdx.value] ?? null
+})
 
 function resetCard() {
   decision.value = ''
@@ -49,11 +53,18 @@ function resetCard() {
   swipeClass.value = ''
 }
 
-function decide(type: 'like' | 'dislike' | 'superlike') {
+async function decide(type: 'like' | 'dislike' | 'superlike') {
+  if (submitting.value || !currentPlace.value) return
+  const action: SwipeAction = type === 'superlike' ? 'SUPER_LIKE' : type === 'like' ? 'LIKE' : 'NOPE'
+  const saved = await persistReaction(action)
+  if (!saved) {
+    resetCard()
+    return
+  }
+
   const label = type === 'superlike' ? 'SUPER' : type === 'like' ? 'LIKE' : 'NOPE'
   decision.value = label
   swipeClass.value = `swiped-${type}`
-  updateXp()
 
   // Spawn particles at center of stage
   if (stageRef.value) {
@@ -67,7 +78,7 @@ function decide(type: 'like' | 'dislike' | 'superlike') {
     swipeClass.value = ''
     decision.value = ''
     overlayOpacity.value = 0
-    currentIndex.value++
+    advance()
     activePhotoIdx.value = 0
     resetCard()
   }, 700)
@@ -144,8 +155,8 @@ function spawnSwipeBurst(type: string, x: number, y: number) {
 }
 
 function handleSwipeButton(type: 'like' | 'dislike' | 'superlike') {
-  if (isFinished.value) return
-  decide(type)
+  if (isFinished.value || submitting.value) return
+  void decide(type)
 }
 
 function selectPhoto(idx: number) {
@@ -164,7 +175,7 @@ let startY = 0
 let dragging = false
 
 function onPointerDown(e: PointerEvent) {
-  if (isFinished.value) return
+  if (isFinished.value || submitting.value) return
   dragging = true
   startX = e.clientX
   startY = e.clientY
@@ -200,9 +211,9 @@ function onPointerUp(e: PointerEvent) {
   const dx = e.clientX - startX
   const dy = e.clientY - startY
 
-  if (dx > 90) decide('like')
-  else if (dx < -90) decide('dislike')
-  else if (dy < -90) decide('superlike')
+  if (dx > 90) void decide('like')
+  else if (dx < -90) void decide('dislike')
+  else if (dy < -90) void decide('superlike')
   else resetCard()
 }
 
@@ -211,6 +222,10 @@ function onPointerCancel() {
   isDragging.value = false
   resetCard()
 }
+
+onMounted(() => {
+  void load()
+})
 </script>
 
 <template>
@@ -247,11 +262,13 @@ function onPointerCancel() {
                 :class="{ 'is-dragging': isDragging, [swipeClass]: swipeClass }"
                 :style="{ '--overlay-opacity': overlayOpacity }"
               >
+                <LoadingState v-if="loading" />
+                <ErrorState v-else-if="error" :message="error" @retry="load()" />
                 <!-- Finished state -->
-                <div v-if="isFinished" class="panel" style="text-align: center; padding: 40px">
+                <div v-else-if="isFinished" class="panel" style="text-align: center; padding: 40px">
                   <h2 style="color: var(--violet)">취향 수집 완료!</h2>
                   <p class="lead">모든 관광지를 확인했습니다. 이제 멤버들의 선택을 기다려보세요.</p>
-                  <a class="btn primary" href="#" @click.prevent="router.push('/trips/trip_1/route')" style="margin-top: 20px">경로 관리로 이동</a>
+                  <a class="btn primary" href="#" @click.prevent="router.push('/my-trips')" style="margin-top: 20px">내 여행 보기</a>
                 </div>
 
                 <template v-else>
@@ -303,11 +320,16 @@ function onPointerCancel() {
                     @pointercancel="onPointerCancel"
                   >
                     <img
+                      v-if="activePhoto"
                       :alt="currentPlace.placeName"
-                      :src="activePhotoIdx === 0 ? (currentPlace.thumbnailUrl ?? '') : (currentPlace.photos ?? [])[activePhotoIdx]"
+                      :src="activePhoto"
+                      data-place-image
                       draggable="false"
-                      style="width: 100%; object-fit: cover; pointer-events: none; user-select: none;"
                     />
+                    <div v-else class="swipe-place-placeholder" aria-hidden="true">
+                      <span class="material-symbols-rounded">landscape</span>
+                      <strong>{{ currentPlace.placeName }}</strong>
+                    </div>
                     <div class="swipe-body">
                       <div class="meta-row">
                         <span style="display: flex; align-items: center; gap: 4px">
@@ -317,13 +339,21 @@ function onPointerCancel() {
                       </div>
                       <h2 style="font-size: 32px; margin: 12px 0 10px">{{ currentPlace.placeName }}</h2>
                       <p class="muted" style="font-size: 15px; line-height: 1.6">{{ currentPlace.summary }}</p>
-                      <div class="tag-row" style="margin-top: 12px">
-                        <span v-for="tag in currentPlace.tags" :key="tag" class="tag">{{ tag }}</span>
+                      <div v-if="currentPlace.tags?.length || currentPlace.category" class="tag-row" style="margin-top: 12px">
+                        <span v-for="tag in (currentPlace.tags ?? [currentPlace.category]).filter(Boolean)" :key="tag ?? ''" class="tag">{{ tag }}</span>
                       </div>
                     </div>
                   </article>
                 </template>
               </div>
+
+              <SwipeActionBar
+                v-if="currentPlace && !loading && !error"
+                :disabled="submitting"
+                @nope="handleSwipeButton('dislike')"
+                @like="handleSwipeButton('like')"
+                @super-like="handleSwipeButton('superlike')"
+              />
 
               <!-- Photo Strip -->
               <section v-if="currentPlace" class="photo-strip-section" aria-label="관광지 추가 사진">
@@ -357,29 +387,29 @@ function onPointerCancel() {
 
               <div class="detail-reaction-card">
                 <div class="detail-reaction-header">
-                  <span class="detail-reaction-title">멤버들의 반응</span>
+                  <span class="detail-reaction-title">팔로우한 친구들의 반응</span>
                   <div class="liked-by-avatars">
-                    <template v-for="(item, idx) in (currentPlace.likedBy ?? [])" :key="idx">
-                      <span v-if="isReaction(item)" class="liked-by-avatar-wrapper" :data-tooltip="`${item.displayName} · ${item.reaction === 'SUPER_LIKE' ? '🔥 슈퍼라이크' : '❤️ 좋아요'}`">
-                        <img class="liked-by-avatar" :src="item.profileImageUrl ?? ''" :alt="item.displayName" />
+                    <template v-for="item in (currentItem?.likedByFollowees ?? [])" :key="item.id">
+                      <span class="liked-by-avatar-wrapper" :data-tooltip="`${item.displayName} · 긍정 반응`">
+                        <img v-if="item.profileImageUrl" class="liked-by-avatar" :src="item.profileImageUrl" :alt="item.displayName" />
+                        <span v-else class="liked-by-avatar-fallback" aria-hidden="true">{{ item.displayName.slice(0, 1) }}</span>
                       </span>
-                      <span v-else class="liked-by-more" :title="`외 ${item.extra}명`">+{{ item.extra }}</span>
                     </template>
                   </div>
                 </div>
                 <div class="detail-reaction-body">
                   <div class="detail-reaction-item">
                     <span class="material-symbols-rounded icon-rose">favorite</span>
-                    <span class="detail-reaction-value">{{ countLikes(currentPlace) }}<span class="detail-reaction-unit">Likes</span></span>
+                    <span class="detail-reaction-value">{{ currentItem?.likedByFollowees.length ?? 0 }}<span class="detail-reaction-unit">친구 반응</span></span>
                   </div>
                   <div class="detail-reaction-item">
-                    <span class="material-symbols-rounded icon-yellow">star</span>
-                    <span class="detail-reaction-value">{{ countSuperLikes(currentPlace) }}<span class="detail-reaction-unit">Super Likes</span></span>
+                    <span class="material-symbols-rounded icon-yellow">touch_app</span>
+                    <span class="detail-reaction-value">{{ currentItem?.myReaction ?? '미선택' }}</span>
                   </div>
                 </div>
               </div>
 
-              <div>
+              <div v-if="currentPlace.travelStories?.length">
                 <p class="detail-section-title">이 장소가 포함된 여행기</p>
                 <div class="detail-review-list">
                   <div v-for="story in (currentPlace.travelStories ?? [])" :key="story.id" class="detail-review-card">
@@ -392,7 +422,7 @@ function onPointerCancel() {
                 </div>
               </div>
 
-              <div class="detail-info-card">
+              <div v-if="currentPlace.hours || currentPlace.closed || currentPlace.parking || currentPlace.accessibility" class="detail-info-card">
                 <p class="detail-section-title">이용 안내</p>
                 <div class="detail-info-row">
                   <span class="detail-info-label"><span class="material-symbols-rounded">schedule</span>이용시간</span>
@@ -427,6 +457,19 @@ function onPointerCancel() {
 </template>
 
 <style scoped>
+.swipe-place-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  background: #e8eef5;
+  color: #526078;
+}
+.swipe-place-placeholder .material-symbols-rounded { font-size: 52px; }
+.swipe-place-placeholder strong { font-size: 16px; }
 .place-detail-panel {
   background: rgba(255, 255, 255, 0.85) !important;
   border: 1px solid rgba(255, 255, 255, 0.6) !important;
@@ -626,6 +669,18 @@ function onPointerCancel() {
 }
 .liked-by-avatar-wrapper:first-child {
   margin-left: 0;
+}
+.liked-by-avatar-fallback {
+  width: 26px;
+  height: 26px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--violet);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
 }
 .liked-by-avatar-wrapper::after {
   content: attr(data-tooltip);
