@@ -10,6 +10,9 @@ describe('OAuthButtons', () => {
     expect(wrapper.get('[aria-label="카카오 계정으로 가입"]').attributes('type')).toBe('button')
     expect(wrapper.get('[aria-label="Google 계정으로 가입"]').classes()).toContain('oauth-provider-button')
     expect(wrapper.get('[aria-label="카카오 계정으로 가입"]').classes()).toContain('oauth-provider-button')
+    expect(wrapper.get('.google-provider-icon').attributes('src')).toContain('google-g-logo.png')
+    expect(wrapper.get('.google-provider-label').text()).toBe('Google 계정으로 가입')
+    expect(wrapper.get('.kakao-provider-label').text()).toBe('카카오 로그인')
     expect(wrapper.text()).not.toContain('Naver')
 
     await wrapper.get('[aria-label="Google 계정으로 가입"]').trigger('click')
