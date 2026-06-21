@@ -1,6 +1,6 @@
 import http from './http'
 import type { PagedItems, PageMeta } from '@/types/api'
-import type { Place, PlaceProvider, PlaceSourceStatus } from '@/types/place'
+import type { Place, PlaceProvider, PlaceSourceStatus, TagPreparationStatus } from '@/types/place'
 
 interface PlaceSummaryDto {
   provider: PlaceProvider
@@ -15,6 +15,7 @@ interface PlaceSummaryDto {
   description?: string | null
   photos?: string[] | null
   tags?: string[] | null
+  tagStatus?: TagPreparationStatus | null
 }
 
 interface PlaceDetailDto extends PlaceSummaryDto {
@@ -54,6 +55,7 @@ export function mapPlace(dto: PlaceSummaryDto | PlaceDetailDto): Place {
     description: dto.description ?? detail?.description ?? undefined,
     photos: dto.photos ?? undefined,
     tags: dto.tags ?? undefined,
+    tagStatus: dto.tagStatus ?? undefined,
     contact: detail?.phone ?? undefined,
   }
 }

@@ -2,6 +2,7 @@
 export type PlaceReactionType = 'LIKE' | 'NOPE' | 'SUPER_LIKE'
 export type PlaceProvider = 'KTO' | 'KAKAO' | 'GOOGLE'
 export type PlaceSourceStatus = 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
+export type TagPreparationStatus = 'READY' | 'REFRESHING' | 'PENDING'
 
 /* ── Place (외부 장소 참조 기반) ── */
 export interface Place {
@@ -14,6 +15,7 @@ export interface Place {
   thumbnailUrl: string | null
   category?: string | null
   sourceStatus?: PlaceSourceStatus
+  tagStatus?: TagPreparationStatus
 
   /** UI 표시용 상세 정보 (API에서 제공) */
   summary?: string

@@ -23,7 +23,7 @@ const {
   advance,
 } = useSwipeFeed()
 
-const totalPlaces = computed(() => items.value.length)
+const totalPlaces = computed(() => completedCount.value + items.value.length)
 const currentPlace = computed(() => currentItem.value?.place ?? null)
 const stageRef = ref<HTMLElement | null>(null)
 
