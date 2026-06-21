@@ -71,8 +71,71 @@ describe('MapDrawingOverlay', () => {
       },
     })
 
-    await dispatchPointer(wrapper.get('.map-drawing-stroke').element, 'pointerdown', { pointerId: 1, button: 0 })
+    const hitTarget = wrapper.get('.map-drawing-hit-target')
+    expect(hitTarget.attributes('stroke-width')).toBe('24')
+    await dispatchPointer(hitTarget.element, 'pointerdown', { pointerId: 1, button: 0 })
 
     expect(wrapper.emitted('erase')).toEqual([['drawing-1']])
+  })
+
+  it('포인터 캡처를 이미 잃은 경우에도 stroke를 정상 완료한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [],
+        tool: 'pen',
+        color: '#ef4444',
+        width: 6,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    })
+    const releasePointerCapture = vi.fn()
+    Object.defineProperties(surface.element, {
+      hasPointerCapture: { value: vi.fn(() => false), configurable: true },
+      releasePointerCapture: { value: releasePointerCapture, configurable: true },
+    })
+
+    await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 0, clientX: 10, clientY: 20 })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 30, clientY: 40 })
+
+    expect(releasePointerCapture).not.toHaveBeenCalled()
+    expect(wrapper.emitted('create')).toHaveLength(1)
+  })
+
+  it('포인터 캡처가 사라지면 진행 중인 stroke를 폐기한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [],
+        tool: 'pen',
+        color: '#ef4444',
+        width: 6,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    })
+
+    await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 0, clientX: 10, clientY: 20 })
+    await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, clientX: 20, clientY: 30 })
+    expect(wrapper.find('.is-current').exists()).toBe(true)
+
+    await dispatchPointer(surface.element, 'lostpointercapture', { pointerId: 1 })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 30, clientY: 40 })
+
+    expect(wrapper.find('.is-current').exists()).toBe(false)
+    expect(wrapper.emitted('create')).toBeUndefined()
   })
 })

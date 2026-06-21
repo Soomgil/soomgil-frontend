@@ -84,23 +84,37 @@ function extendStroke(event: PointerEvent) {
   currentPoints.value.push(point)
 }
 
+function releasePointerCapture(pointerId: number) {
+  const element = surface.value
+  if (element?.hasPointerCapture?.(pointerId)) {
+    element.releasePointerCapture(pointerId)
+  }
+}
+
 function finishStroke(event: PointerEvent) {
   if (activePointerId !== event.pointerId) return
   extendStroke(event)
-  surface.value?.releasePointerCapture?.(event.pointerId)
+  const points = [...currentPoints.value]
   activePointerId = null
+  currentPoints.value = []
+  releasePointerCapture(event.pointerId)
 
-  const coordinates = currentPoints.value
+  const coordinates = points
     .map(props.unproject)
     .filter((coordinate): coordinate is LngLat => coordinate !== null)
-  currentPoints.value = []
   if (coordinates.length < 2) return
   emit('create', { coordinates, color: props.color, width: props.width })
 }
 
 function cancelStroke(event: PointerEvent) {
   if (activePointerId !== event.pointerId) return
-  surface.value?.releasePointerCapture?.(event.pointerId)
+  activePointerId = null
+  currentPoints.value = []
+  releasePointerCapture(event.pointerId)
+}
+
+function handleLostPointerCapture(event: PointerEvent) {
+  if (activePointerId !== event.pointerId) return
   activePointerId = null
   currentPoints.value = []
 }
@@ -124,16 +138,24 @@ function eraseDrawing(event: PointerEvent, drawingId: string) {
     @pointermove="extendStroke"
     @pointerup="finishStroke"
     @pointercancel="cancelStroke"
+    @lostpointercapture="handleLostPointerCapture"
   >
-    <polyline
-      v-for="drawing in projectedDrawings"
-      :key="drawing.id"
-      class="map-drawing-stroke"
-      :points="drawing.points"
-      :stroke="drawing.color"
-      :stroke-width="drawing.width"
-      @pointerdown="eraseDrawing($event, drawing.id)"
-    />
+    <template v-for="drawing in projectedDrawings" :key="drawing.id">
+      <polyline
+        v-if="tool === 'eraser'"
+        class="map-drawing-hit-target"
+        :points="drawing.points"
+        stroke="transparent"
+        :stroke-width="Math.max(drawing.width, 24)"
+        @pointerdown="eraseDrawing($event, drawing.id)"
+      />
+      <polyline
+        class="map-drawing-stroke"
+        :points="drawing.points"
+        :stroke="drawing.color"
+        :stroke-width="drawing.width"
+      />
+    </template>
     <polyline
       v-if="currentPoints.length > 1"
       class="map-drawing-stroke is-current"
@@ -152,7 +174,7 @@ function eraseDrawing(event: PointerEvent, drawingId: string) {
   position: absolute;
   touch-action: none;
   width: 100%;
-  z-index: 4;
+  z-index: 1;
 }
 
 .map-drawing-overlay.editable {
@@ -171,7 +193,10 @@ function eraseDrawing(event: PointerEvent, drawingId: string) {
   stroke-linejoin: round;
 }
 
-.map-drawing-overlay.erasing .map-drawing-stroke:not(.is-current) {
+.map-drawing-hit-target {
+  fill: none;
   pointer-events: stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 </style>
