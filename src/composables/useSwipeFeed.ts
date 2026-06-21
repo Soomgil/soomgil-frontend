@@ -39,14 +39,13 @@ export function useSwipeFeed(gateway: SwipeFeedGateway = swipeApi) {
     }
   }
 
-  async function react(action: SwipeAction): Promise<boolean> {
+  async function persistReaction(action: SwipeAction): Promise<boolean> {
     const item = currentItem.value
     if (!item || submitting.value) return false
     submitting.value = true
     error.value = null
     try {
       await gateway.react(item.place.provider, item.place.externalPlaceId, action)
-      currentIndex.value += 1
       return true
     } catch {
       error.value = '반응을 저장하지 못했습니다. 다시 시도해 주세요.'
@@ -54,6 +53,16 @@ export function useSwipeFeed(gateway: SwipeFeedGateway = swipeApi) {
     } finally {
       submitting.value = false
     }
+  }
+
+  function advance() {
+    if (currentIndex.value < items.value.length) currentIndex.value += 1
+  }
+
+  async function react(action: SwipeAction): Promise<boolean> {
+    const saved = await persistReaction(action)
+    if (saved) advance()
+    return saved
   }
 
   return {
@@ -67,6 +76,8 @@ export function useSwipeFeed(gateway: SwipeFeedGateway = swipeApi) {
     completedCount,
     finished,
     load,
+    persistReaction,
+    advance,
     react,
   }
 }
