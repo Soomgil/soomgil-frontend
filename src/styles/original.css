@@ -2444,6 +2444,32 @@
       font-weight: 900;
     }
 
+    .auth-submit-error {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0;
+      padding: 11px 12px;
+      border: 1px solid rgba(225, 29, 72, 0.28);
+      border-radius: 8px;
+      background: rgba(255, 241, 242, 0.92);
+      color: #be123c;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+
+    .auth-error-retry {
+      flex: 0 0 auto;
+      border: 0;
+      background: transparent;
+      color: #9f1239;
+      font: inherit;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
     .auth-check {
       display: inline-flex !important;
       grid-template-columns: none !important;
