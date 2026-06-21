@@ -1,51 +1,75 @@
 import http from './http'
-import type { ApiResponse, PaginatedResponse, PaginationParams } from '@/types/api'
-import type { Trip, TripCreateRequest, TripMember, TripInvite } from '@/types/trip'
-import { mockTrips } from '@/mocks/mockTrips'
+import type {
+  CreateTripInviteRequest,
+  PagedTripSummary,
+  TripCreateRequest,
+  TripDetail,
+  TripDetailMember,
+  TripInvite,
+  TripListParams,
+  TripUpdateRequest,
+} from '@/types/trip'
 
 export const tripApi = {
-  getTrips: async (params?: PaginationParams): Promise<ApiResponse<PaginatedResponse<Trip>>> => {
-    // TODO: return http.get('/trips', { params })
-    return { status: 200, message: 'ok', data: { content: mockTrips, totalPages: 1, totalElements: mockTrips.length, page: 0, size: 20 } }
+  getTrips: async (params?: TripListParams): Promise<PagedTripSummary> => {
+    const response = await http.get<PagedTripSummary>('/trips', {
+      params,
+      paramsSerializer: { indexes: null },
+    })
+    return response.data
   },
 
-  getTrip: async (tripId: string): Promise<ApiResponse<Trip>> => {
-    // TODO: return http.get(`/trips/${tripId}`)
-    const trip = mockTrips.find((t) => t.id === tripId) ?? mockTrips[0]
-    return { status: 200, message: 'ok', data: trip }
+  getTrip: async (tripId: string): Promise<TripDetail> => {
+    const response = await http.get<TripDetail>(`/trips/${tripId}`)
+    return response.data
   },
 
-  createTrip: async (data: TripCreateRequest): Promise<ApiResponse<Trip>> => {
-    // TODO: return http.post('/trips', data)
-    return { status: 201, message: 'ok', data: { ...mockTrips[0], id: `trip_${Date.now()}`, ...data } }
+  createTrip: async (data: TripCreateRequest): Promise<TripDetail> => {
+    const response = await http.post<TripDetail>('/trips', data)
+    return response.data
   },
 
-  updateTrip: async (tripId: string, data: Partial<Trip>): Promise<ApiResponse<Trip>> => {
-    return http.patch(`/trips/${tripId}`, data)
+  updateTrip: async (tripId: string, data: TripUpdateRequest): Promise<TripDetail> => {
+    const response = await http.patch<TripDetail>(`/trips/${tripId}`, data)
+    return response.data
+  },
+
+  deleteTrip: async (tripId: string): Promise<void> => {
+    await http.delete(`/trips/${tripId}`)
   },
 
   /* ── Members ── */
 
-  getMembers: async (tripId: string): Promise<ApiResponse<TripMember[]>> => {
-    // TODO: return http.get(`/trips/${tripId}/members`)
-    return { status: 200, message: 'ok', data: [] }
+  getMembers: async (tripId: string): Promise<TripDetailMember[]> => {
+    const response = await http.get<TripDetailMember[]>(`/trips/${tripId}/members`)
+    return response.data
   },
 
-  updateMemberRole: async (tripId: string, userId: string, role: string): Promise<ApiResponse<TripMember>> => {
-    return http.patch(`/trips/${tripId}/members/${userId}`, { role })
-  },
-
-  removeMember: async (tripId: string, userId: string): Promise<ApiResponse<void>> => {
-    return http.delete(`/trips/${tripId}/members/${userId}`)
+  removeMember: async (tripId: string, userId: string): Promise<void> => {
+    await http.delete(`/trips/${tripId}/members/${userId}`)
   },
 
   /* ── Invites ── */
 
-  createInvite: async (tripId: string, inviteeUserId?: string): Promise<ApiResponse<TripInvite>> => {
-    return http.post(`/trips/${tripId}/members`, { inviteeUserId })
+  getInvites: async (tripId: string): Promise<TripInvite[]> => {
+    const response = await http.get<TripInvite[]>(`/trips/${tripId}/invites`)
+    return response.data
   },
 
-  acceptInvite: async (inviteCode: string): Promise<ApiResponse<TripInvite>> => {
-    return http.post(`/invites/${inviteCode}/accept`)
+  createInvite: async (tripId: string, data: CreateTripInviteRequest = {}): Promise<TripInvite> => {
+    const response = await http.post<TripInvite>(`/trips/${tripId}/invites`, data)
+    return response.data
+  },
+
+  revokeInvite: async (tripId: string, inviteId: string): Promise<void> => {
+    await http.delete(`/trips/${tripId}/invites/${inviteId}`)
+  },
+
+  acceptInvite: async (inviteCode: string, inviteToken?: string): Promise<TripDetail> => {
+    const response = await http.post<TripDetail>(
+      `/trip-invites/${encodeURIComponent(inviteCode)}/accept`,
+      inviteToken ? { inviteToken } : {},
+    )
+    return response.data
   },
 }

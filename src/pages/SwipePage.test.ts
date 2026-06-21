@@ -71,4 +71,24 @@ describe('SwipePage', () => {
     await flushPromises()
     expect(getFeed).toHaveBeenCalledTimes(2)
   })
+
+  it('shows stable placeholders when place and friend images are missing', async () => {
+    getFeed.mockResolvedValue({
+      items: [{
+        ...feedItem,
+        place: { ...feedItem.place, thumbnailUrl: null },
+        likedByFollowees: [{ id: 'friend-1', displayName: '지호', profileImageUrl: null }],
+      }],
+      nextSeed: null,
+    })
+    const wrapper = mount(SwipePage, {
+      global: { stubs: { AppHeader: true } },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('.swipe-place-placeholder').text()).toContain('해운대해수욕장')
+    expect(wrapper.get('.liked-by-avatar-fallback').text()).toBe('지')
+    expect(wrapper.find('img[src=""]').exists()).toBe(false)
+  })
 })

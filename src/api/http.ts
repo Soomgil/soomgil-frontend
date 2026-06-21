@@ -3,6 +3,14 @@ import type { ApiResponse, ProblemDetail } from '@/types/api'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
+export function buildLoginRedirectUrl(location: Pick<Location, 'pathname' | 'search' | 'hash'>) {
+  const currentPath = `${location.pathname}${location.search}${location.hash}`
+  if (location.pathname === '/login') return '/login'
+
+  const params = new URLSearchParams({ redirect: currentPath })
+  return `/login?${params.toString()}`
+}
+
 const http = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
@@ -29,7 +37,7 @@ http.interceptors.response.use(
       // TODO: 토큰 갱신 로직 (refresh token으로 재시도)
       localStorage.removeItem('accessToken')
       localStorage.removeItem('refreshToken')
-      window.location.href = '/login'
+      window.location.href = buildLoginRedirectUrl(window.location)
     }
 
     // RFC 7807 Problem Detail이 있으면 구조화된 에러 제공

@@ -41,6 +41,11 @@ const overlayOpacity = ref(0)
 const cardTransform = ref('')
 const swipeClass = ref('')
 const activePhotoIdx = ref(0)
+const activePhoto = computed(() => {
+  if (!currentPlace.value) return null
+  if (activePhotoIdx.value === 0) return currentPlace.value.thumbnailUrl
+  return currentPlace.value.photos?.[activePhotoIdx.value] ?? null
+})
 
 function resetCard() {
   decision.value = ''
@@ -317,11 +322,16 @@ onMounted(() => {
                     @pointercancel="onPointerCancel"
                   >
                     <img
+                      v-if="activePhoto"
                       :alt="currentPlace.placeName"
-                      :src="activePhotoIdx === 0 ? (currentPlace.thumbnailUrl ?? '') : (currentPlace.photos ?? [])[activePhotoIdx]"
+                      :src="activePhoto"
+                      data-place-image
                       draggable="false"
-                      style="width: 100%; object-fit: cover; pointer-events: none; user-select: none;"
                     />
+                    <div v-else class="swipe-place-placeholder" aria-hidden="true">
+                      <span class="material-symbols-rounded">landscape</span>
+                      <strong>{{ currentPlace.placeName }}</strong>
+                    </div>
                     <div class="swipe-body">
                       <div class="meta-row">
                         <span style="display: flex; align-items: center; gap: 4px">
@@ -383,7 +393,8 @@ onMounted(() => {
                   <div class="liked-by-avatars">
                     <template v-for="item in (currentItem?.likedByFollowees ?? [])" :key="item.id">
                       <span class="liked-by-avatar-wrapper" :data-tooltip="`${item.displayName} · 긍정 반응`">
-                        <img class="liked-by-avatar" :src="item.profileImageUrl ?? ''" :alt="item.displayName" />
+                        <img v-if="item.profileImageUrl" class="liked-by-avatar" :src="item.profileImageUrl" :alt="item.displayName" />
+                        <span v-else class="liked-by-avatar-fallback" aria-hidden="true">{{ item.displayName.slice(0, 1) }}</span>
                       </span>
                     </template>
                   </div>
@@ -400,7 +411,7 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div>
+              <div v-if="currentPlace.travelStories?.length">
                 <p class="detail-section-title">이 장소가 포함된 여행기</p>
                 <div class="detail-review-list">
                   <div v-for="story in (currentPlace.travelStories ?? [])" :key="story.id" class="detail-review-card">
@@ -413,7 +424,7 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div class="detail-info-card">
+              <div v-if="currentPlace.hours || currentPlace.closed || currentPlace.parking || currentPlace.accessibility" class="detail-info-card">
                 <p class="detail-section-title">이용 안내</p>
                 <div class="detail-info-row">
                   <span class="detail-info-label"><span class="material-symbols-rounded">schedule</span>이용시간</span>
@@ -448,6 +459,19 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.swipe-place-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  background: #e8eef5;
+  color: #526078;
+}
+.swipe-place-placeholder .material-symbols-rounded { font-size: 52px; }
+.swipe-place-placeholder strong { font-size: 16px; }
 .place-detail-panel {
   background: rgba(255, 255, 255, 0.85) !important;
   border: 1px solid rgba(255, 255, 255, 0.6) !important;
@@ -647,6 +671,18 @@ onMounted(() => {
 }
 .liked-by-avatar-wrapper:first-child {
   margin-left: 0;
+}
+.liked-by-avatar-fallback {
+  width: 26px;
+  height: 26px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--violet);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
 }
 .liked-by-avatar-wrapper::after {
   content: attr(data-tooltip);
