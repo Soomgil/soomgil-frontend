@@ -4,23 +4,34 @@ import { useRouter } from 'vue-router'
 import { communityApi } from '@/api/community.api'
 import type { CommunityPostSummary } from '@/types/community'
 import AppShell from '@/components/layout/AppShell.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
 const toast = useToast()
 const posts = ref<CommunityPostSummary[]>([])
+const loading = ref(false)
+const error = ref('')
 
 function goBack() {
   router.push('/community')
 }
 
-onMounted(async () => {
+async function loadPosts() {
+  loading.value = true
+  error.value = ''
   try {
     posts.value = (await communityApi.getPosts({ page: 0, size: 100 })).items
   } catch {
-    toast.error('여행기 목록을 불러오지 못했습니다.')
+    error.value = '여행기 목록을 불러오지 못했습니다.'
+  } finally {
+    loading.value = false
   }
-})
+}
+
+onMounted(loadPosts)
 </script>
 
 <template>
@@ -39,7 +50,17 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="story-list-grid">
+        <LoadingState v-if="loading" />
+        <ErrorState v-else-if="error" :message="error" @retry="loadPosts" />
+        <EmptyState
+          v-else-if="posts.length === 0"
+          icon="auto_stories"
+          title="아직 공개된 여행기가 없어요"
+          description="직접 다녀온 여행을 기록하고 다른 여행자들과 나눠보세요."
+          action-label="첫 여행기 작성하기"
+          @action="router.push('/community/story-write')"
+        />
+        <div v-else class="story-list-grid">
           <a
             v-for="story in posts"
             :key="story.id"

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import SwipeActionBar from '@/components/swipe/SwipeActionBar.vue'
@@ -270,6 +271,15 @@ onMounted(() => {
                   <p class="lead">모든 관광지를 확인했습니다. 이제 멤버들의 선택을 기다려보세요.</p>
                   <a class="btn primary" href="#" @click.prevent="router.push('/my-trips')" style="margin-top: 20px">내 여행 보기</a>
                 </div>
+
+                <EmptyState
+                  v-else-if="!currentPlace"
+                  icon="explore"
+                  title="추천할 장소가 아직 없어요"
+                  description="여행방에 장소를 추가하거나 잠시 후 다시 시도해주세요."
+                  action-label="다시 불러오기"
+                  @action="load()"
+                />
 
                 <template v-else>
                   <!-- XP bar overlay on card -->

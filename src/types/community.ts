@@ -16,6 +16,8 @@ export interface PageMeta {
 export interface CommunityMediaFile {
   id: string
   publicUrl: string | null
+  servingUrl: string | null
+  servingUrlExpiresAt: string | null
   mimeType: string
   byteSize: number | null
   width: number | null

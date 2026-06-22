@@ -24,6 +24,12 @@ const searchCategories: { key: string; icon: string; isNew?: boolean }[] = [
 const activeSearchTab = ref('전체')
 const homeSearchQuery = ref('')
 
+function submitSearch() {
+  const q = homeSearchQuery.value.trim()
+  if (!q) return
+  router.push({ path: '/search', query: { q, tab: activeSearchTab.value } })
+}
+
 function showAlert(msg: string) {
   window.alert(msg)
 }
@@ -182,8 +188,9 @@ async function fetchHomeData() {
                 '유저': '사용자 이름으로 검색',
               }[activeSearchTab]"
               aria-label="검색"
+              @keydown.enter.prevent="submitSearch"
             />
-            <button type="button" class="home-search-capsule-btn">
+            <button type="button" class="home-search-capsule-btn" @click="submitSearch">
               <span class="material-symbols-rounded">search</span> 검색
             </button>
           </div>
@@ -293,11 +300,13 @@ async function fetchHomeData() {
               <a href="#">더보기 <span class="material-symbols-rounded" style="font-size:16px;">arrow_forward</span></a>
             </div>
             <div class="home-toplikes-list">
-              <div v-if="topPlacesLoading" style="text-align: center; padding: 20px; color: var(--muted);">
-                로딩 중...
+              <div v-if="topPlacesLoading" class="home-section-state home-section-state--loading">
+                <div class="home-section-spinner"></div>
+                <p>인기 장소를 불러오는 중…</p>
               </div>
-              <div v-else-if="topPlaces.length === 0" style="text-align: center; padding: 20px; color: var(--muted);">
-                인기 장소가 없습니다.
+              <div v-else-if="topPlaces.length === 0" class="home-section-state">
+                <span class="material-symbols-rounded home-section-state-icon">place</span>
+                <p>아직 인기 장소가 없어요.</p>
               </div>
               <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" @click="router.push({ name: 'PlaceDetail', params: { provider: place.provider, id: place.externalPlaceId } })">
                 <span class="home-toplikes-rank">{{ idx + 1 }}</span>
@@ -360,11 +369,14 @@ async function fetchHomeData() {
           </div>
           <a class="section-link" href="#" @click.prevent="router.push('/community')">더보기 <span class="material-symbols-rounded" style="font-size:18px">arrow_forward</span></a>
         </div>
-        <div v-if="featuredStoriesLoading" style="text-align: center; padding: 40px; color: var(--muted);">
-          로딩 중...
+        <div v-if="featuredStoriesLoading" class="home-section-state home-section-state--loading home-section-state--wide">
+          <div class="home-section-spinner"></div>
+          <p>인기 여행기를 불러오는 중…</p>
         </div>
-        <div v-else-if="featuredStories.length === 0" style="text-align: center; padding: 40px; color: var(--muted);">
-          등록된 여행기가 없습니다.
+        <div v-else-if="featuredStories.length === 0" class="home-section-state home-section-state--wide">
+          <span class="material-symbols-rounded home-section-state-icon">auto_stories</span>
+          <p>아직 공개된 여행기가 없어요.</p>
+          <a class="btn primary home-section-state-cta" href="#" @click.prevent="router.push('/community/story-write')">첫 여행기 작성하기</a>
         </div>
         <div v-else class="home-community-grid">
           <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push(`/community/${story.id}`)">
@@ -379,8 +391,9 @@ async function fetchHomeData() {
               <h3>{{ story.title }}</h3>
               <div class="home-community-card-meta">
                 <div class="home-community-author">
-                  <span class="avatar" :style="{ background: 'var(--violet)', width: '26px', height: '26px', fontSize: '10px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800 }">
-                    {{ (story.publishedBy?.displayName ?? '?').charAt(0) }}
+                  <span class="avatar" :style="{ background: story.publishedBy?.profileImageUrl ? 'transparent' : 'var(--violet)', width: '26px', height: '26px', fontSize: '10px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, overflow: 'hidden' }">
+                    <img v-if="story.publishedBy?.profileImageUrl" :src="story.publishedBy.profileImageUrl" :alt="story.publishedBy.displayName ?? ''" style="width: 100%; height: 100%; object-fit: cover;" />
+                    <template v-else>{{ (story.publishedBy?.displayName ?? '?').charAt(0) }}</template>
                   </span>
                   <span>{{ story.publishedBy?.displayName ?? '알 수 없음' }}</span>
                 </div>
@@ -434,6 +447,50 @@ async function fetchHomeData() {
 </template>
 
 <style scoped>
+/* === Home Section Empty/Loading States === */
+.home-section-state {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px 16px;
+  text-align: center;
+}
+.home-section-state--wide {
+  padding: 48px 16px;
+}
+.home-section-state--loading {
+  gap: 14px;
+}
+.home-section-state p {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+.home-section-state-icon {
+  color: var(--line);
+  font-size: 40px;
+  font-variation-settings: 'FILL' 0, 'wght' 200, 'GRAD' 0, 'opsz' 48;
+  line-height: 1;
+}
+.home-section-spinner {
+  animation: home-spin 0.9s linear infinite;
+  border: 3px solid var(--line);
+  border-radius: 50%;
+  border-top-color: var(--violet);
+  height: 28px;
+  width: 28px;
+}
+.home-section-state-cta {
+  margin-top: 6px;
+  min-height: 38px;
+  padding: 8px 18px;
+}
+@keyframes home-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* === Search Hero Section === */
 .home-search-hero {
   padding: 104px 24px 40px;

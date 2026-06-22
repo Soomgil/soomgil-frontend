@@ -248,8 +248,8 @@ async function handleLogout() {
           </button>
           <div id="header-profile-panel" class="header-dropdown-panel" :class="{ 'is-open': showProfile }">
             <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--line);">
-              <strong style="font-size:14px; display:block; color:var(--ink);">{{ auth.user?.displayName || '김지훈' }}</strong>
-              <span style="font-size:12px; color:var(--muted); display:block; word-break:break-all;">{{ auth.user?.email || 'traveler@tripmates.kr' }}</span>
+              <strong style="font-size:14px; display:block; color:var(--ink);">{{ auth.user?.displayName || '사용자' }}</strong>
+              <span style="font-size:12px; color:var(--muted); display:block; word-break:break-all;">{{ auth.user?.email || '이메일 미확인' }}</span>
             </div>
             <div style="display:grid; gap:4px;">
               <a href="#" style="font-size:13px; color:var(--ink); text-decoration:none; padding:8px; border-radius:8px; display:flex; align-items:center; gap:8px;" class="profile-item-link" @click.prevent="closeAllDropdowns(); router.push('/mypage')">

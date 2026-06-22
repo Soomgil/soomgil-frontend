@@ -125,11 +125,7 @@ async function handleRegister() {
           </div>
 
           <template v-if="!isOAuthOnboarding">
-            <div class="oauth-row" aria-label="간편 가입">
-              <button class="oauth-btn google" type="button" @click="notifyOAuthUnsupported"><span>G</span>Google</button>
-              <button class="oauth-btn kakao" type="button" @click="notifyOAuthUnsupported"><span>K</span>Kakao</button>
-              <button class="oauth-btn naver" type="button" @click="notifyOAuthUnsupported"><span>N</span>Naver</button>
-            </div>
+            <OAuthButtons mode="signup" :disabled="submitting" @select="handleOAuthLogin" />
 
             <div class="divider"><span>또는 이메일로 가입</span></div>
           </template>

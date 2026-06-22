@@ -10,11 +10,13 @@ import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
+import { useAuthStore } from '@/stores/auth.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
 import type { LegalRegion } from '@/types/geo'
 
 const router = useRouter()
 const tripStore = useTripStore()
+const auth = useAuthStore()
 const createModal = useModal()
 const activeFilter = ref<TripFilter>('all')
 const searchQuery = ref('')
@@ -24,6 +26,14 @@ const selectedRegion = ref<LegalRegion | null>(null)
 const createError = ref('')
 const accessTrip = ref<TripSummary | null>(null)
 const settingsTrip = ref<TripSummary | null>(null)
+const timelineEl = ref<HTMLElement | null>(null)
+
+function scrollTimeline(direction: number) {
+  const el = timelineEl.value
+  if (!el) return
+  const cardWidth = 280 + 20 // timeline-card width + gap
+  el.scrollBy({ left: direction * cardWidth * 2, behavior: 'smooth' })
+}
 
 const filters: { label: string; value: TripFilter }[] = [
   { label: '전체', value: 'all' },
@@ -48,17 +58,6 @@ const filteredTrips = computed(() => {
   })
 })
 
-const emptyMessage = computed(() => {
-  if (searchQuery.value.trim()) {
-    return tripStore.hasMoreTrips
-      ? '현재 불러온 여행 중 검색 조건에 맞는 여행이 없습니다.'
-      : '검색 조건에 맞는 여행이 없습니다.'
-  }
-  if (activeFilter.value === 'upcoming') return '진행 중인 여행이 없습니다.'
-  if (activeFilter.value === 'past') return '보관한 여행이 없습니다.'
-  return '아직 만든 여행이 없습니다.'
-})
-
 function formatCreatedAt(value: string) {
   return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(value))
 }
@@ -71,6 +70,60 @@ function statusLabel(trip: TripSummary) {
 
 function goTripDetail(tripId: string) {
   router.push({ name: 'Route', params: { tripId } })
+}
+
+/* ── Carousel (다음 여행) ───────────────────────────── */
+const upcomingTrips = computed(() => filteredTrips.value.filter((trip) => trip.status === 'ACTIVE'))
+const carouselIndex = ref(0)
+const currentTrip = computed(() => upcomingTrips.value[carouselIndex.value] ?? upcomingTrips.value[0] ?? null)
+
+function nextCarousel() {
+  if (upcomingTrips.value.length === 0) return
+  carouselIndex.value = (carouselIndex.value + 1) % upcomingTrips.value.length
+}
+function prevCarousel() {
+  if (upcomingTrips.value.length === 0) return
+  carouselIndex.value = (carouselIndex.value - 1 + upcomingTrips.value.length) % upcomingTrips.value.length
+}
+const carouselDots = computed(() => upcomingTrips.value.map((_, i) => i))
+
+/* ── Boarding pass / timeline helpers ───────────────── */
+function getDestCode(trip: TripSummary): string {
+  const name = trip.displayDestination ?? trip.title
+  if (name.includes('부산')) return 'PUS'
+  if (name.includes('제주')) return 'CJU'
+  if (name.includes('강릉')) return 'KAG'
+  if (name.includes('경주')) return 'KYJ'
+  if (name.includes('여수')) return 'YSU'
+  if (name.includes('대전')) return 'DJN'
+  if (name.includes('전주')) return 'JNJ'
+  return 'SMG'
+}
+
+function getDestName(trip: TripSummary): string {
+  return trip.displayDestination ?? '목적지 미정'
+}
+
+function getTripStatus(trip: TripSummary): string {
+  if (trip.status === 'ARCHIVED') return '지난 여행'
+  if (trip.status === 'DELETED') return '삭제됨'
+  return '진행 중'
+}
+
+function getStatusCls(trip: TripSummary): string {
+  if (trip.status === 'ARCHIVED') return 'is-past'
+  if (trip.status === 'ACTIVE') return 'is-active'
+  return ''
+}
+
+function getPassengerText(trip: TripSummary): string {
+  if (trip.myRole === 'OWNER') return '방장'
+  return '멤버'
+}
+
+function formatTripDate(value: string | null | undefined): string {
+  if (!value) return '미정'
+  return value.replace(/-/g, '.')
 }
 
 async function loadTrips() {
@@ -144,9 +197,9 @@ watch(activeFilter, loadTrips)
       <section class="section my-trips-dashboard">
         <div class="travel-page-head">
           <div>
-            <p class="eyebrow">Trips</p>
-            <h1>내 여행</h1>
-            <p class="lead">진행 중인 여행과 보관한 여행을 확인하세요.</p>
+            <p class="eyebrow">Travel Dashboard</p>
+            <h1><span>내 여행 준비</span>를 이어가세요</h1>
+            <p class="lead">다가오는 일정, 초대받은 여행을 한곳에서 확인하고 다음 계획으로 바로 이어가세요.</p>
           </div>
           <button class="btn primary" type="button" @click="createModal.open">
             <span class="material-symbols-rounded" aria-hidden="true">add</span>
@@ -154,80 +207,234 @@ watch(activeFilter, loadTrips)
           </button>
         </div>
 
-        <div class="section-title compact-title trip-list-head">
-          <div class="trip-tabs" aria-label="여행 필터">
-            <button
-              v-for="filter in filters"
-              :key="filter.value"
-              :class="{ active: activeFilter === filter.value }"
-              type="button"
-              :aria-pressed="activeFilter === filter.value"
-              @click="activeFilter = filter.value"
+        <div class="trip-dashboard-layout">
+          <div class="trip-dashboard-main">
+            <section
+              v-if="!tripStore.loading && !tripStore.error && upcomingTrips.length > 0 && currentTrip"
+              class="next-trip-panel boarding-pass-container"
+              aria-label="다음 여행"
             >
-              {{ filter.label }}
-            </button>
-          </div>
-          <div class="search-box trip-search" role="search">
-            <label class="sr-only" for="trip-search-input">여행 검색</label>
-            <input
-              id="trip-search-input"
-              v-model="searchQuery"
-              type="search"
-              placeholder="여행명 또는 목적지 검색"
-            >
-            <span class="material-symbols-rounded" aria-hidden="true">search</span>
-          </div>
-        </div>
+              <div class="boarding-pass-card boarding-pass-card--placeholder">
+                <div class="ticket-main">
+                  <div class="ticket-header">
+                    <div class="ticket-logo">
+                      <img src="/images/soomgil_logo_none_text.png" alt="숨길 로고" class="logo-image">
+                      <span class="logo-text">SOOMGIL AIR</span>
+                    </div>
+                    <span class="ticket-badge d-day-badge">{{ getTripStatus(currentTrip) }}</span>
+                  </div>
 
-        <LoadingState v-if="tripStore.loading" />
-        <ErrorState
-          v-else-if="tripStore.error"
-          :message="tripStore.error"
-          @retry="loadTrips"
-        />
-        <EmptyState
-          v-else-if="filteredTrips.length === 0"
-          icon="luggage"
-          :message="emptyMessage"
-        />
-        <div v-else class="trip-card-grid">
-          <article
-            v-for="trip in filteredTrips"
-            :key="trip.id"
-            class="travel-card"
-          >
-            <button class="travel-card__main" type="button" @click="goTripDetail(trip.id)">
-              <div class="travel-card__body">
-                <div class="travel-card__header">
-                  <span class="timeline-card-status-badge" :class="{ 'is-past': trip.status === 'ARCHIVED' }">
-                    {{ statusLabel(trip) }}
-                  </span>
-                  <span class="travel-card__role">{{ trip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
+                  <div class="ticket-route">
+                    <div class="route-point departure">
+                      <span class="airport-code">SEL</span>
+                      <span class="city-name">서울 (SEOUL)</span>
+                    </div>
+                    <div class="route-path">
+                      <span class="line"></span>
+                      <span class="material-symbols-rounded plane-icon">flight</span>
+                      <span class="line"></span>
+                    </div>
+                    <div class="route-point destination">
+                      <span class="airport-code">{{ getDestCode(currentTrip) }}</span>
+                      <span class="city-name">{{ getDestName(currentTrip) }}</span>
+                    </div>
+                  </div>
+
+                  <div class="ticket-details">
+                    <div class="detail-item">
+                      <span class="label">PASSENGER</span>
+                      <span class="value">{{ getPassengerText(currentTrip) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="label">CREATED</span>
+                      <span class="value">{{ formatCreatedAt(currentTrip.createdAt) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="label">DESTINATIONS</span>
+                      <span class="value">{{ getDestName(currentTrip) }}</span>
+                    </div>
+                  </div>
+
+                  <div class="ticket-members-wrapper" aria-label="여행 권한">
+                    <span class="label">ROLE</span>
+                    <div class="next-trip-members">
+                      <span class="avatar" :style="auth.user?.profileImageUrl ? { backgroundImage: `url(${auth.user.profileImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
+                        <template v-if="!auth.user?.profileImageUrl">{{ currentTrip.myRole === 'OWNER' ? '방장' : '멤버' }}</template>
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <h2>{{ trip.title }}</h2>
-                <p>{{ trip.displayDestination || '목적지 미정' }}</p>
-                <span class="travel-card__date">{{ formatCreatedAt(trip.createdAt) }} 생성</span>
+
+                <div class="ticket-divider">
+                  <span class="punch-hole top"></span>
+                  <span class="dashed-line"></span>
+                  <span class="punch-hole bottom"></span>
+                </div>
+
+                <div class="ticket-stub">
+                  <div class="stub-header">
+                    <span class="stub-title-label">BOARDING PASS</span>
+                    <h2 class="stub-title">{{ currentTrip.title }}</h2>
+                    <p class="stub-date-info">{{ formatCreatedAt(currentTrip.createdAt) }} 생성</p>
+                  </div>
+
+                  <a class="stub-detail-btn" href="#" @click.prevent="goTripDetail(currentTrip.id)">
+                    <span>자세히 보기</span>
+                    <span class="material-symbols-rounded">arrow_forward</span>
+                  </a>
+
+                  <div class="stub-actions">
+                    <button class="stub-action-btn" type="button" @click.stop="openTripAccess(currentTrip)">
+                      <span class="material-symbols-rounded" aria-hidden="true">group</span>
+                      {{ currentTrip.myRole === 'OWNER' ? '멤버 및 초대' : '멤버 보기' }}
+                    </button>
+                    <button v-if="currentTrip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click.stop="openTripSettings(currentTrip)">
+                      <span class="material-symbols-rounded" aria-hidden="true">settings</span>
+                      설정
+                    </button>
+                  </div>
+
+                  <div class="stub-controls">
+                    <div class="next-trip-dots carousel-dots-container" aria-label="여행 개수와 현재 위치">
+                      <span
+                        v-for="i in carouselDots"
+                        :key="i"
+                        class="carousel-dot"
+                        :class="{ active: i === carouselIndex }"
+                      ></span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-            </button>
-            <div class="travel-card__actions">
-              <button class="travel-card__access" type="button" @click="openTripAccess(trip)">
-                <span class="material-symbols-rounded" aria-hidden="true">group</span>
-                {{ trip.myRole === 'OWNER' ? '멤버 및 초대' : '멤버 보기' }}
-              </button>
-              <button v-if="trip.myRole === 'OWNER'" class="travel-card__settings" type="button" @click="openTripSettings(trip)">
-                <span class="material-symbols-rounded" aria-hidden="true">settings</span>
-                설정
-              </button>
-            </div>
-          </article>
-        </div>
-        <div v-if="tripStore.hasMoreTrips && !tripStore.loading" class="load-more-row">
-          <div>
-            <p v-if="tripStore.loadMoreError" class="load-more-error" aria-live="polite">{{ tripStore.loadMoreError }}</p>
-            <button class="btn ghost" type="button" :disabled="tripStore.loadingMore" @click="tripStore.fetchNextPage">
-              {{ tripStore.loadingMore ? '불러오는 중...' : tripStore.loadMoreError ? '다시 시도' : '여행 더 보기' }}
-            </button>
+
+              <div v-if="upcomingTrips.length > 1" class="next-trip-nav">
+                <button class="carousel-btn prev-btn" type="button" aria-label="이전 여행" @click="prevCarousel">
+                  <span class="material-symbols-rounded">chevron_left</span>
+                </button>
+                <button class="carousel-btn next-btn" type="button" aria-label="다음 여행" @click="nextCarousel">
+                  <span class="material-symbols-rounded">chevron_right</span>
+                </button>
+              </div>
+            </section>
+
+            <section>
+              <div class="section-title compact-title trip-list-head">
+                <div>
+                  <p class="eyebrow">Trips</p>
+                  <h2>여행 목록</h2>
+                </div>
+                <div class="trip-toolbar">
+                  <div class="trip-tabs" aria-label="여행 필터">
+                    <button
+                      v-for="filter in filters"
+                      :key="filter.value"
+                      :class="{ active: activeFilter === filter.value }"
+                      type="button"
+                      :aria-pressed="activeFilter === filter.value"
+                      @click="activeFilter = filter.value"
+                    >
+                      {{ filter.label }}
+                    </button>
+                  </div>
+                  <div class="search-box trip-search" role="search">
+                    <label class="sr-only" for="trip-search-input">여행 검색</label>
+                    <input
+                      id="trip-search-input"
+                      v-model="searchQuery"
+                      type="search"
+                      placeholder="여행명 또는 목적지 검색"
+                    >
+                    <span class="material-symbols-rounded" aria-hidden="true" style="position: absolute; top: 50%; right: 16px; transform: translateY(-50%); color: var(--muted);">search</span>
+                  </div>
+                </div>
+              </div>
+
+              <LoadingState v-if="tripStore.loading" />
+              <ErrorState
+                v-else-if="tripStore.error"
+                :message="tripStore.error"
+                @retry="loadTrips"
+              />
+              <EmptyState
+                v-else-if="filteredTrips.length === 0"
+                icon="luggage"
+                :message="tripStore.trips.length === 0 ? '아직 만든 여행이 없습니다.' : '조건에 맞는 여행이 없습니다.'"
+              />
+              <div v-else class="trip-view-panel active">
+                <div class="my-trips-timeline-wrapper">
+                  <button
+                    v-if="filteredTrips.length > 2"
+                    type="button"
+                    class="timeline-scroll-btn timeline-scroll-btn--prev"
+                    aria-label="이전 여행 보기"
+                    @click="scrollTimeline(-1)"
+                  >
+                    <span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
+                  </button>
+                  <div ref="timelineEl" class="my-trips-timeline">
+                    <article
+                      v-for="trip in filteredTrips"
+                      :key="trip.id"
+                      class="timeline-card"
+                      :class="[getStatusCls(trip), { 'has-actions': true }]"
+                      tabindex="0"
+                      role="button"
+                      @click="goTripDetail(trip.id)"
+                      @keydown.enter="goTripDetail(trip.id)"
+                    >
+                      <div class="timeline-card-header">
+                        <span class="timeline-card-status-badge" :class="getStatusCls(trip)">{{ getTripStatus(trip) }}</span>
+                        <span class="timeline-card-role">{{ trip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
+                      </div>
+                      <div class="timeline-card-body">
+                        <div class="timeline-card-avatar-wrapper timeline-card-avatar-wrapper--placeholder">
+                          <span class="material-symbols-rounded" aria-hidden="true">travel_explore</span>
+                        </div>
+                        <div class="timeline-card-info">
+                          <h3 class="timeline-card-title">{{ trip.title }}</h3>
+                          <div class="timeline-card-meta-row">
+                            <span class="timeline-route-badge">SEL ✈ {{ getDestCode(trip) }}</span>
+                            <p class="timeline-card-date">
+                              <span class="material-symbols-rounded">calendar_month</span>
+                              <span>{{ formatCreatedAt(trip.createdAt) }}</span>
+                            </p>
+                          </div>
+                          <p v-if="trip.displayDestination" class="timeline-card-destination">{{ trip.displayDestination }}</p>
+                        </div>
+                      </div>
+                      <div class="timeline-card-actions" @click.stop>
+                        <button class="timeline-card-action" type="button" @click="openTripAccess(trip)">
+                          <span class="material-symbols-rounded" aria-hidden="true">group</span>
+                          <span class="sr-only">{{ trip.myRole === 'OWNER' ? '멤버 및 초대' : '멤버 보기' }}</span>
+                        </button>
+                        <button v-if="trip.myRole === 'OWNER'" class="timeline-card-action" type="button" @click="openTripSettings(trip)">
+                          <span class="material-symbols-rounded" aria-hidden="true">settings</span>
+                          <span class="sr-only">설정</span>
+                        </button>
+                      </div>
+                    </article>
+                  </div>
+                  <button
+                    v-if="filteredTrips.length > 2"
+                    type="button"
+                    class="timeline-scroll-btn timeline-scroll-btn--next"
+                    aria-label="다음 여행 보기"
+                    @click="scrollTimeline(1)"
+                  >
+                    <span class="material-symbols-rounded" aria-hidden="true">chevron_right</span>
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="tripStore.hasMoreTrips && !tripStore.loading" class="load-more-row">
+                <div>
+                  <p v-if="tripStore.loadMoreError" class="load-more-error" aria-live="polite">{{ tripStore.loadMoreError }}</p>
+                  <button class="btn ghost" type="button" :disabled="tripStore.loadingMore" @click="tripStore.fetchNextPage">
+                    {{ tripStore.loadingMore ? '불러오는 중...' : tripStore.loadMoreError ? '다시 시도' : '여행 더 보기' }}
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </section>
@@ -295,114 +502,104 @@ watch(activeFilter, loadTrips)
   margin: 36px 0 24px;
 }
 
-.trip-card-grid {
-  display: grid;
+.trip-toolbar {
+  align-items: center;
+  display: flex;
   gap: 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex-wrap: wrap;
 }
 
-.travel-card {
+/* 보딩패스 placeholder 배경 (커버 이미지 없을 때) */
+.boarding-pass-card--placeholder {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.98)) !important;
+}
+
+/* stub 내 액션 버튼 영역 */
+.stub-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.stub-action-btn {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 4px;
+  padding: 6px 10px;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.stub-action-btn:hover {
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  color: #111827;
-  display: flex;
-  flex-direction: column;
-  min-height: 210px;
-  overflow: hidden;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-  width: 100%;
+  border-color: var(--violet);
 }
 
-.travel-card:hover,
-.travel-card:focus-visible {
-  border-color: #7c3aed;
-  box-shadow: 0 8px 24px rgb(17 24 39 / 10%);
-  outline: none;
-  transform: translateY(-2px);
+.stub-action-btn .material-symbols-rounded {
+  font-size: 15px;
 }
 
-.travel-card__main {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  cursor: pointer;
-  display: flex;
-  flex: 1;
-  gap: 16px;
-  justify-content: space-between;
-  padding: 24px;
-  text-align: left;
-  width: 100%;
-}
-
-.travel-card__main:focus-visible,
-.travel-card__access:focus-visible,
-.travel-card__settings:focus-visible {
-  outline: 2px solid #7c3aed;
-  outline-offset: -2px;
-}
-
-.travel-card__actions {
-  border-top: 1px solid #e5e7eb;
-  display: grid;
-  grid-auto-columns: 1fr;
-  grid-auto-flow: column;
-}
-
-.travel-card__access,
-.travel-card__settings {
-  align-items: center;
-  background: #f9fafb;
-  border: 0;
-  color: #4b5563;
-  cursor: pointer;
-  display: flex;
+/* 타임라인 카드 추가 요소 */
+.timeline-card-role {
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 700;
-  gap: 8px;
-  justify-content: center;
-  padding: 12px 16px;
-  width: 100%;
+  letter-spacing: 0.02em;
 }
 
-.travel-card__settings {
-  border-left: 1px solid #e5e7eb;
+.timeline-card-destination {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 0 0;
 }
 
-.travel-card__body {
-  min-width: 0;
+.timeline-card-avatar-wrapper--placeholder {
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  color: #fff;
+  display: grid;
+  place-items: center;
 }
 
-.travel-card__header {
-  align-items: center;
+.timeline-card-avatar-wrapper--placeholder .material-symbols-rounded {
+  font-size: 22px;
+}
+
+.timeline-card-actions {
   display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
+  gap: 4px;
+  margin-top: 10px;
+  position: relative;
+  z-index: 2;
 }
 
-.travel-card__role {
-  color: #6b7280;
-  font-size: 13px;
-  font-weight: 600;
+.timeline-card-action {
+  align-items: center;
+  background: rgba(124, 58, 237, 0.06);
+  border: 0;
+  border-radius: 999px;
+  color: var(--violet);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 4px;
+  padding: 5px 10px;
+  transition: background 160ms ease;
 }
 
-.travel-card h2 {
-  font-size: 20px;
-  letter-spacing: 0;
-  margin: 0 0 8px;
-  overflow-wrap: anywhere;
+.timeline-card-action:hover {
+  background: rgba(124, 58, 237, 0.14);
 }
 
-.travel-card p {
-  color: #4b5563;
-  margin: 0 0 18px;
-  overflow-wrap: anywhere;
-}
-
-.travel-card__date {
-  color: #9ca3af;
-  font-size: 13px;
+.timeline-card-action .material-symbols-rounded {
+  font-size: 15px;
 }
 
 .load-more-row {
@@ -421,28 +618,15 @@ watch(activeFilter, loadTrips)
   margin: 0 0 8px;
 }
 
-@media (max-width: 960px) {
-  .trip-card-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 640px) {
   .trip-list-head {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .trip-card-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .travel-card {
-    min-height: 184px;
-  }
-
-  .travel-card__main {
-    padding: 20px;
+  .trip-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

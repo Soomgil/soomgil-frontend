@@ -22,7 +22,7 @@ export function communityPostToStory(post: CommunityPostSummary): Story {
     authorProfileImageUrl: post.publishedBy?.profileImageUrl ?? null,
     location: post.hashtags?.[0] ?? '여행 기록',
     title: post.title,
-    image: post.coverMedia?.publicUrl ?? fallbackImage(post.id),
+    image: post.coverMedia?.servingUrl ?? post.coverMedia?.publicUrl ?? fallbackImage(post.id),
     likes: post.likeCount ?? 0,
     comments: post.commentCount ?? 0,
     tags: post.hashtags ?? [],

@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { communityApi } from '@/api/community.api'
 import type { CommunityComment, CommunityPostSummary } from '@/types/community'
 import AppShell from '@/components/layout/AppShell.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import { useToast } from '@/composables/useToast'
 
+const router = useRouter()
 const toast = useToast()
 const posts = ref<CommunityPostSummary[]>([])
 const apiComments = ref<CommunityComment[]>([])
 const activePostId = ref('')
+const loading = ref(false)
+const error = ref('')
 const stories = computed(() => posts.value.map((post) => ({
   id: post.id,
-  image: post.coverMedia?.publicUrl ?? '/images/랜딩페이지/korea_hero.png',
+  image: post.coverMedia?.servingUrl ?? post.coverMedia?.publicUrl ?? '/images/랜딩페이지/korea_hero.png',
   title: post.title,
   avatar: (post.publishedBy?.displayName ?? '?').slice(0, 1),
   profileImageUrl: post.publishedBy?.profileImageUrl ?? null,
@@ -47,13 +54,17 @@ const hashtags = computed(() => {
 const feedComment = ref('')
 
 async function loadFeed() {
+  loading.value = true
+  error.value = ''
   try {
     const response = await communityApi.getPosts({ page: 0, size: 100 })
     posts.value = response.items
     activePostId.value = response.items[0]?.id ?? ''
     if (activePostId.value) apiComments.value = (await communityApi.getComments(activePostId.value)).items
   } catch {
-    toast.error('커뮤니티 피드를 불러오지 못했습니다.')
+    error.value = '커뮤니티 피드를 불러오지 못했습니다.'
+  } finally {
+    loading.value = false
   }
 }
 
@@ -106,31 +117,43 @@ onMounted(loadFeed)
             </div>
 
             <div class="story-feed-window" aria-label="스크롤 가능한 여행기 피드" data-community-stories>
-              <div
-                v-for="story in stories"
-                :key="story.id"
-                class="story-post"
-              >
-                <img :src="story.image" :alt="story.title" style="width: 100%; border-radius: 18px;" />
-                <div style="padding: 24px;">
-                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-                    <div class="fc-avatar" :style="{ background: 'var(--violet)' }">
-                      <img v-if="story.profileImageUrl" :src="story.profileImageUrl" :alt="`${story.author} 프로필 사진`" />
-                      <template v-else>{{ story.avatar }}</template>
+              <LoadingState v-if="loading" />
+              <ErrorState v-else-if="error" :message="error" @retry="loadFeed" />
+              <EmptyState
+                v-else-if="stories.length === 0"
+                icon="dynamic_feed"
+                title="아직 피드에 게시글이 없어요"
+                description="다른 여행자들의 생생한 여행 이야기가 곧 채워질 거예요. 첫 여행기를 공유해보세요."
+                action-label="여행기 작성하기"
+                @action="router.push('/stories/new')"
+              />
+              <template v-else>
+                <div
+                  v-for="story in stories"
+                  :key="story.id"
+                  class="story-post"
+                >
+                  <img :src="story.image" :alt="story.title" style="width: 100%; border-radius: 18px;" />
+                  <div style="padding: 24px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                      <div class="fc-avatar" :style="{ background: 'var(--violet)' }">
+                        <img v-if="story.profileImageUrl" :src="story.profileImageUrl" :alt="`${story.author} 프로필 사진`" />
+                        <template v-else>{{ story.avatar }}</template>
+                      </div>
+                      <div>
+                        <span class="fc-name">{{ story.author }}</span>
+                        <span class="fc-time">{{ story.location }}</span>
+                      </div>
                     </div>
-                    <div>
-                      <span class="fc-name">{{ story.author }}</span>
-                      <span class="fc-time">{{ story.location }}</span>
+                    <h3 style="font-size: 20px; font-weight: 800; margin: 0 0 8px;">{{ story.title }}</h3>
+                    <p style="font-size: 14px; line-height: 1.7; color: var(--muted);">{{ story.content }}</p>
+                    <div v-if="story.tip" style="margin-top: 12px; padding: 12px 16px; background: rgba(255, 200, 87, 0.1); border-radius: 14px;">
+                      <p style="font-size: 12px; font-weight: 800; color: #ffc857; margin: 0 0 4px;">꿀팁</p>
+                      <p style="font-size: 13px; margin: 0; line-height: 1.6;">{{ story.tip }}</p>
                     </div>
-                  </div>
-                  <h3 style="font-size: 20px; font-weight: 800; margin: 0 0 8px;">{{ story.title }}</h3>
-                  <p style="font-size: 14px; line-height: 1.7; color: var(--muted);">{{ story.content }}</p>
-                  <div v-if="story.tip" style="margin-top: 12px; padding: 12px 16px; background: rgba(255, 200, 87, 0.1); border-radius: 14px;">
-                    <p style="font-size: 12px; font-weight: 800; color: #ffc857; margin: 0 0 4px;">꿀팁</p>
-                    <p style="font-size: 13px; margin: 0; line-height: 1.6;">{{ story.tip }}</p>
                   </div>
                 </div>
-              </div>
+              </template>
             </div>
 
             <div class="feed-scroll-guide" data-scroll-guide>
@@ -152,6 +175,7 @@ onMounted(loadFeed)
                 <span class="material-symbols-rounded">tag</span>인기 해시태그
               </h3>
               <div class="tag-cloud">
+                <p v-if="hashtags.length === 0" class="widget-empty">아직 인기 해시태그가 없어요.</p>
                 <a
                   v-for="tag in hashtags"
                   :key="tag"
@@ -173,38 +197,41 @@ onMounted(loadFeed)
               </div>
 
               <div class="feed-comment-scroll" id="feed-comment-scroll">
-                <div
-                  v-for="comment in comments"
-                  :key="comment.id"
-                  class="fc-item"
-                  :class="{ 'is-featured': comment.featured }"
-                >
-                  <div class="fc-avatar" :style="{ background: comment.color }">
-                    <img v-if="comment.profileImageUrl" :src="comment.profileImageUrl" :alt="`${comment.name} 프로필 사진`" />
-                    <template v-else>{{ comment.avatar }}</template>
-                  </div>
-                  <div class="fc-body">
-                    <div class="fc-meta">
-                      <div>
-                        <span class="fc-name">{{ comment.name }}</span>
-                        <span v-if="comment.featured" class="fc-author-badge">인기</span>
+                <p v-if="comments.length === 0" class="feed-comment-empty">아직 댓글이 없어요. 첫 댓글을 남겨보세요.</p>
+                <template v-else>
+                  <div
+                    v-for="comment in comments"
+                    :key="comment.id"
+                    class="fc-item"
+                    :class="{ 'is-featured': comment.featured }"
+                  >
+                    <div class="fc-avatar" :style="{ background: comment.color }">
+                      <img v-if="comment.profileImageUrl" :src="comment.profileImageUrl" :alt="`${comment.name} 프로필 사진`" />
+                      <template v-else>{{ comment.avatar }}</template>
+                    </div>
+                    <div class="fc-body">
+                      <div class="fc-meta">
+                        <div>
+                          <span class="fc-name">{{ comment.name }}</span>
+                          <span v-if="comment.featured" class="fc-author-badge">인기</span>
+                        </div>
+                        <span class="fc-time">{{ comment.time }}</span>
                       </div>
-                      <span class="fc-time">{{ comment.time }}</span>
-                    </div>
-                    <p class="fc-text">{{ comment.text }}</p>
-                    <div v-if="comment.reply" class="fc-reply">
-                      <strong>{{ comment.reply.split(' ')[0] }}</strong> {{ comment.reply.split(' ').slice(1).join(' ') }}
-                    </div>
-                    <div class="fc-actions">
-                      <button>
-                        <span class="material-symbols-rounded">favorite</span><span>{{ comment.likes }}</span>
-                      </button>
-                      <button>
-                        <span class="material-symbols-rounded">reply</span>답글
-                      </button>
+                      <p class="fc-text">{{ comment.text }}</p>
+                      <div v-if="comment.reply" class="fc-reply">
+                        <strong>{{ comment.reply.split(' ')[0] }}</strong> {{ comment.reply.split(' ').slice(1).join(' ') }}
+                      </div>
+                      <div class="fc-actions">
+                        <button>
+                          <span class="material-symbols-rounded">favorite</span><span>{{ comment.likes }}</span>
+                        </button>
+                        <button>
+                          <span class="material-symbols-rounded">reply</span>답글
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </template>
               </div>
 
               <div class="feed-comment-input-area">
@@ -234,6 +261,25 @@ onMounted(loadFeed)
 </template>
 
 <style scoped>
+.widget-empty {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  padding: 8px 0;
+}
+.feed-comment-empty {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 13px;
+  font-weight: 600;
+  height: 100%;
+  justify-content: center;
+  margin: 0;
+  min-height: 120px;
+  padding: 16px;
+  text-align: center;
+}
 .feed-comment-header {
   padding: 18px 20px 14px;
   background: #f8fbff;

@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { userApi } from '@/api/user.api'
 import { mediaApi } from '@/api/media.api'
 import { communityApi } from '@/api/community.api'
+import { tripApi } from '@/api/trip.api'
 import { communityPostToStory } from '@/utils/community'
 import type { UpdateMeRequest, UserSummary } from '@/types/auth'
 import type { Place } from '@/types/place'
@@ -28,6 +29,16 @@ const displayBio = computed(() => displayUser.value.bio ?? '')
 
 // 데이터 로딩 상태
 const isLoading = ref(true)
+const myTripCount = ref(0)
+
+async function loadMyTripCount() {
+  try {
+    const res = await tripApi.getTrips({ page: 0, size: 1 })
+    myTripCount.value = res.page.totalElements ?? res.items.length
+  } catch {
+    myTripCount.value = 0
+  }
+}
 
 // onMounted에서 최신 /me로 동기화 (토큰 있을 때만)
 onMounted(async () => {
@@ -37,7 +48,7 @@ onMounted(async () => {
   }
   try {
     await auth.fetchUser()
-    await Promise.allSettled([loadFollowData(), loadMyStories(), loadLikedPlaces()])
+    await Promise.allSettled([loadFollowData(), loadMyStories(), loadLikedPlaces(), loadMyTripCount()])
   } catch {
     // fetch 실패해도 페이지는 노출
   } finally {
@@ -219,9 +230,9 @@ async function saveProfile() {
   }
 }
 
-// Stats for profile card — 도메인 연동 후 실 데이터 반영
+// Stats for profile card
 const profileStats = computed(() => [
-  { icon: 'luggage', value: '0', label: '내 여행' },
+  { icon: 'luggage', value: String(myTripCount.value), label: '내 여행' },
   { icon: 'favorite', value: String(likedPlacesSource.value.length), label: '좋아요' },
   { icon: 'auto_stories', value: String(myStories.value.length), label: '여행기' },
   { icon: 'group', value: String(followers.value.length), label: '팔로워' },

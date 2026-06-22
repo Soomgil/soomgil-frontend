@@ -46,6 +46,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/search',
+      name: 'Search',
+      component: () => import('@/pages/SearchResultsPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/my-trips',
       name: 'MyTrips',
       component: () => import('@/pages/MyTripsPage.vue'),

@@ -479,6 +479,15 @@ onBeforeUnmount(() => {
           />
           <div v-else class="record-masonry" data-record-masonry>
             <button
+              class="record-masonry-item record-masonry-add"
+              type="button"
+              aria-label="사진 추가"
+              @click="openUploadModal"
+            >
+              <span class="material-symbols-rounded record-masonry-add-icon">add_a_photo</span>
+              <span class="record-masonry-add-text">사진 추가</span>
+            </button>
+            <button
               v-for="(photo, i) in visiblePhotos"
               :key="`${photo.recordId}-${photo.media.id}`"
               class="record-masonry-item"
@@ -1001,6 +1010,33 @@ onBeforeUnmount(() => {
   width: 100%;
   object-fit: cover;
   display: block;
+}
+.record-masonry-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: 32px 16px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 2px dashed rgba(0, 0, 0, 0.15);
+  box-shadow: none;
+  color: var(--muted);
+  gap: 8px;
+}
+.record-masonry-add:hover {
+  background: rgba(123, 104, 238, 0.08);
+  border-color: var(--violet);
+  color: var(--violet);
+  transform: translateY(-2px);
+}
+.record-masonry-add-icon {
+  font-size: 44px;
+  color: var(--violet);
+}
+.record-masonry-add-text {
+  font-size: 14px;
+  font-weight: 800;
 }
 .record-masonry-overlay {
   position: absolute;

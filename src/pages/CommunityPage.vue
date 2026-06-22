@@ -11,6 +11,9 @@ import type {
   ReportReasonCode,
 } from '@/types/community'
 import AppShell from '@/components/layout/AppShell.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import StoryWriteModal from '@/components/community/StoryWriteModal.vue'
 import { useModal } from '@/composables/useModal'
 import { useToast } from '@/composables/useToast'
@@ -409,7 +412,11 @@ function onFeedScroll(e: Event) {
 }
 
 watch(searchQuery, () => { currentPage.value = 1 })
-onMounted(loadPosts)
+onMounted(async () => {
+  const q = typeof route.query.q === 'string' ? route.query.q.trim() : ''
+  if (q) searchQuery.value = q
+  await loadPosts()
+})
 </script>
 
 <template>
@@ -438,12 +445,16 @@ onMounted(loadPosts)
         <div class="community-content-container" style="background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(246, 249, 255, 0.85)); backdrop-filter: blur(24px); border: 1px solid rgba(227, 231, 244, 0.8); border-radius: 40px; box-shadow: 0 32px 64px rgba(0, 50, 150, 0.08), 0 8px 24px rgba(0, 102, 255, 0.04), inset 0 2px 4px rgba(255, 255, 255, 0.8);">
 
           <!-- 인기 여행기 (Popular Travelogues) Carousel Section -->
-          <p v-if="loading" class="muted" role="status">커뮤니티 게시글을 불러오는 중입니다...</p>
-          <div v-else-if="loadError" style="text-align:center; padding:48px 0;">
-            <p class="muted">{{ loadError }}</p>
-            <button class="btn ghost" type="button" @click="loadPosts">다시 시도</button>
-          </div>
-          <p v-else-if="stories.length === 0" class="muted" style="text-align:center; padding:48px 0;">아직 공개된 여행기가 없습니다.</p>
+          <LoadingState v-if="loading" />
+          <ErrorState v-else-if="loadError" :message="loadError" @retry="loadPosts" />
+          <EmptyState
+            v-else-if="stories.length === 0"
+            icon="auto_stories"
+            title="아직 공개된 여행기가 없어요"
+            description="다녀온 여행을 기록하고 다른 여행자들과 나눠보세요."
+            action-label="첫 여행기 작성하기"
+            @action="storyWriteModal.open()"
+          />
 
           <section v-if="popularStories.length" class="popular-stories-section" style="margin-bottom: 56px; border-bottom: 1px solid var(--line); padding-bottom: 56px;">
             <div class="popular-story-column" style="width: 100%; height: 560px; position: relative;">
