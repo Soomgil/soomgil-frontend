@@ -52,3 +52,20 @@ export interface PagedItems<T> {
   items: T[]
   page: PageMeta
 }
+
+export interface OffsetPageMeta {
+  offset: number
+  limit: number
+  nextOffset: number | null
+  hasMore: boolean
+  sort: string[]
+}
+
+export interface OffsetPagedItems<T> {
+  items: T[]
+  page: OffsetPageMeta
+}
+
+export interface BulkUpdateResult {
+  updatedCount: number
+}

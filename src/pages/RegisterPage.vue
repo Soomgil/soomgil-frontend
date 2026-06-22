@@ -9,7 +9,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 
 const router = useRouter()
 const route = useRoute()
-const { register } = useAuth()
+const { register, loginWithOAuth } = useAuth()
 const authStore = useAuthStore()
 
 const name = ref('')
@@ -56,8 +56,14 @@ onMounted(async () => {
   }
 })
 
-function notifyOAuthUnsupported() {
-  alert('OAuth 로그인은 준비 중입니다.')
+async function handleOAuthRegister(provider: 'kakao' | 'google') {
+  if (submitting.value) return
+  submitting.value = true
+  try {
+    await loginWithOAuth(provider)
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function handleRegister() {
@@ -109,9 +115,8 @@ async function handleRegister() {
 
           <template v-if="!isOAuthOnboarding">
             <div class="oauth-row" aria-label="간편 가입">
-              <button class="oauth-btn google" type="button" @click="notifyOAuthUnsupported"><span>G</span>Google</button>
-              <button class="oauth-btn kakao" type="button" @click="notifyOAuthUnsupported"><span>K</span>Kakao</button>
-              <button class="oauth-btn naver" type="button" @click="notifyOAuthUnsupported"><span>N</span>Naver</button>
+              <button class="oauth-btn google" type="button" @click="handleOAuthRegister('google')"><span>G</span>Google</button>
+              <button class="oauth-btn kakao" type="button" @click="handleOAuthRegister('kakao')"><span>K</span>Kakao</button>
             </div>
 
             <div class="divider"><span>또는 이메일로 가입</span></div>

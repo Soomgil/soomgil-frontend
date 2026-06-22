@@ -6,6 +6,8 @@ import type {
   User,
   UserSettings,
   UserSummary,
+  UserSession,
+  SecurityEvent,
 } from '@/types/auth'
 import type { PagedItems } from '@/types/api'
 import { mapBackendUser } from '@/types/auth'
@@ -40,6 +42,25 @@ export const userApi = {
     return res.data
   },
 
+  getSessions: async (page = 0, size = 20): Promise<PagedItems<UserSession>> => {
+    const res = await http.get<PagedItems<UserSession>>('/me/sessions', { params: { page, size } })
+    return res.data
+  },
+
+  revokeSession: async (sessionId: string): Promise<void> => {
+    await http.delete(`/me/sessions/${sessionId}`)
+  },
+
+  getSecurityEvents: async (page = 0, size = 20): Promise<PagedItems<SecurityEvent>> => {
+    const res = await http.get<PagedItems<SecurityEvent>>('/me/security-events', { params: { page, size } })
+    return res.data
+  },
+
+  searchUsers: async (query = '', page = 0, size = 20): Promise<PagedItems<UserSummary>> => {
+    const res = await http.get<PagedItems<UserSummary>>('/users', { params: { q: query || undefined, page, size } })
+    return res.data
+  },
+
   /** 사용자 팔로우 */
   follow: async (userId: string): Promise<any> => {
     const res = await http.put(`/users/${userId}/follow`)
@@ -67,8 +88,8 @@ export const userApi = {
     return res.data.items
   },
   /** 특정 사용자 프로필 조회 (GET /users/{userId}) */
-  getUserProfile: async (userId: string): Promise<any> => {
-    const res = await http.get(`/users/${userId}`)
+  getUserProfile: async (userId: string): Promise<import('@/types/user').PublicUserProfile> => {
+    const res = await http.get<import('@/types/user').PublicUserProfile>(`/users/${userId}`)
     return res.data
   },
 }
