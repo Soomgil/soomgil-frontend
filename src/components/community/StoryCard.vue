@@ -16,8 +16,9 @@ defineEmits<{ click: [] }>()
     </div>
     <div class="p-4">
       <div class="flex items-center gap-2 mb-2">
-        <div class="w-6 h-6 rounded-full bg-brand-violet flex items-center justify-center text-white text-[10px] font-bold">
-          {{ story.avatar }}
+        <div class="w-6 h-6 rounded-full bg-brand-violet flex items-center justify-center overflow-hidden text-white text-[10px] font-bold">
+          <img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" :alt="`${story.author} 프로필 사진`" class="w-full h-full object-cover" />
+          <template v-else>{{ story.avatar }}</template>
         </div>
         <span class="text-xs font-semibold text-muted">{{ story.author }}</span>
         <span class="text-xs text-muted/60 ml-auto">{{ story.location }}</span>

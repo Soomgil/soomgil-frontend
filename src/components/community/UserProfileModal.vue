@@ -75,8 +75,9 @@ const profileTags = computed(() => {
         <!-- Profile card -->
         <div class="user-profile-card" style="display: flex; flex-direction: column; gap: 20px; padding: 28px; border: 1px solid var(--line); border-radius: 24px; background: rgba(255,255,255,0.88); box-shadow: var(--soft-shadow); margin-bottom: 32px;">
           <div style="display: flex; align-items: center; gap: 16px;">
-            <span style="width: 64px; height: 64px; min-width: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--violet); color: #fff; font-size: 26px; font-weight: 800;">
-              {{ user.displayName.charAt(0) }}
+            <span style="width: 64px; height: 64px; min-width: 64px; overflow:hidden; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--violet); color: #fff; font-size: 26px; font-weight: 800;">
+              <img v-if="user.profileImageUrl" :src="user.profileImageUrl" :alt="`${user.displayName} 프로필 사진`" style="width:100%;height:100%;object-fit:cover;" />
+              <template v-else>{{ user.displayName.charAt(0) }}</template>
             </span>
             <div style="flex: 1; min-width: 0;">
               <h2 style="font-size: 22px; font-weight: 850; color: var(--ink); margin: 0;">{{ user.displayName }}</h2>

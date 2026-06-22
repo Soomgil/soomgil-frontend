@@ -174,6 +174,7 @@ export interface Story {
   author: string
   authorUserId?: string
   avatar: string
+  authorProfileImageUrl?: string | null
   location: string
   title: string
   image: string

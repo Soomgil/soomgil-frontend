@@ -7,6 +7,7 @@ import { communityApi } from '@/api/community.api'
 import { mediaApi } from '@/api/media.api'
 import type { PageMeta } from '@/types/community'
 import type { TripRecordPhoto } from '@/types/media'
+import type { MediaFile } from '@/types/media'
 import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
@@ -28,10 +29,17 @@ const publishing = ref(false)
 const content = ref('성심당문화원에서 커피 마시고 은행동 거리를 걷는데 분위기가 진짜 좋았습니다. 저녁에는 중앙시장까지 걸어갔는데 사람도 많고 먹거리도 다양해서 예상보다 훨씬 재밌었어요.')
 const recordPhotos = ref<TripRecordPhoto[]>([])
 const selectedMediaIds = ref<Set<string>>(new Set())
+const localPhotos = ref<MediaFile[]>([])
+const localPhotoInput = ref<HTMLInputElement | null>(null)
+const uploadingLocalPhotos = ref(false)
 const loadingRecordPhotos = ref(false)
 const previewImageIndex = ref(0)
 const selectedPhotos = computed(() => recordPhotos.value.filter((photo) => selectedMediaIds.value.has(photo.media.id)))
-const addedPhotos = computed(() => selectedPhotos.value.flatMap((photo) => photo.media.servingUrl ?? photo.media.publicUrl ? [photo.media.servingUrl ?? photo.media.publicUrl ?? ''] : []))
+const selectedMedia = computed(() => [...selectedPhotos.value.map((photo) => photo.media), ...localPhotos.value])
+const addedPhotos = computed(() => selectedMedia.value.flatMap((media) => {
+  const url = media.servingUrl ?? media.publicUrl
+  return url ? [url] : []
+}))
 
 // Char counter
 const charCount = computed(() => content.value.length)
@@ -92,8 +100,8 @@ function handleSave() {
 
 async function handlePublish() {
   const trip = myTrips.value.find((item) => item.id === selectedTripId.value)
-  if (!trip || !title.value.trim() || selectedPhotos.value.length === 0) {
-    toast.info('여행계획, 제목, 기록 사진을 한 장 이상 선택해주세요.')
+  if (!trip || !title.value.trim() || selectedMedia.value.length === 0) {
+    toast.info('여행계획, 제목, 사진을 한 장 이상 선택해주세요.')
     return
   }
   publishing.value = true
@@ -105,8 +113,8 @@ async function handlePublish() {
       title: title.value.trim(),
       summary: content.value.trim() || null,
       hashtags: previewTags.value.map((tag) => tag.replace(/^#/, '')),
-      mediaFileIds: selectedPhotos.value.map((photo) => photo.media.id),
-      coverMediaFileId: selectedPhotos.value[0]?.media.id ?? null,
+      mediaFileIds: selectedMedia.value.map((media) => media.id),
+      coverMediaFileId: selectedMedia.value[0]?.id ?? null,
     })
     toast.success('여행기가 등록되었습니다.')
     router.push('/community/stories')
@@ -137,6 +145,41 @@ function toggleRecordPhoto(photo: TripRecordPhoto) {
   if (next.has(photo.media.id)) next.delete(photo.media.id)
   else next.add(photo.media.id)
   selectedMediaIds.value = next
+  if (previewImageIndex.value >= addedPhotos.value.length) previewImageIndex.value = 0
+}
+
+function triggerLocalPhotoPicker() {
+  localPhotoInput.value?.click()
+}
+
+async function addLocalPhotos(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = [...(input.files ?? [])]
+  if (files.length === 0) return
+  uploadingLocalPhotos.value = true
+  try {
+    for (const file of files) {
+      if (selectedMedia.value.length >= 30) {
+        toast.info('사진은 최대 30장까지 추가할 수 있습니다.')
+        break
+      }
+      localPhotos.value.push(await mediaApi.uploadFile(file, 'COMMUNITY_POST'))
+    }
+  } catch {
+    toast.error('로컬 사진을 업로드하지 못했습니다. JPG 또는 PNG 파일을 확인해주세요.')
+  } finally {
+    uploadingLocalPhotos.value = false
+    input.value = ''
+  }
+}
+
+async function removeLocalPhoto(media: MediaFile) {
+  localPhotos.value = localPhotos.value.filter((photo) => photo.id !== media.id)
+  try {
+    await mediaApi.delete(media.id)
+  } catch {
+    // 작성 화면에서는 제거하되, 서버 정리는 재시도 가능한 soft-delete 작업으로 남긴다.
+  }
   if (previewImageIndex.value >= addedPhotos.value.length) previewImageIndex.value = 0
 }
 
@@ -242,8 +285,16 @@ watch(selectedTripId, (tripId) => {
 
                 <div class="form-group" style="display: grid; gap: 10px;">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-                    <label style="font-weight: 800; font-size: 15px; color: var(--ink);">여행 기록에서 사진 선택</label>
-                    <span class="small muted">{{ selectedPhotos.length }}장 선택 · 첫 사진이 커버</span>
+                    <label style="font-weight: 800; font-size: 15px; color: var(--ink);">사진 선택</label>
+                    <span class="small muted">{{ selectedMedia.length }}장 선택 · 첫 사진이 커버</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <input ref="localPhotoInput" type="file" accept="image/jpeg,image/png" multiple hidden @change="addLocalPhotos" />
+                    <button type="button" class="btn ghost" :disabled="uploadingLocalPhotos" @click="triggerLocalPhotoPicker">
+                      <span class="material-symbols-rounded">add_photo_alternate</span>
+                      {{ uploadingLocalPhotos ? '업로드 중...' : '내 기기에서 추가' }}
+                    </button>
+                    <span class="small muted">JPG·PNG, 파일당 최대 10MB</span>
                   </div>
                   <div class="upload-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
                     <div v-if="!selectedTripId" style="grid-column:1/-1; padding:30px; border:2px dashed var(--line); border-radius:16px; text-align:center; color:var(--muted);">먼저 여행계획을 선택해주세요.</div>
@@ -262,6 +313,17 @@ watch(selectedTripId, (tripId) => {
                       <span v-if="selectedMediaIds.has(photo.media.id)" style="position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:50%; background:var(--violet); color:#fff; display:grid; place-items:center;"><span class="material-symbols-rounded" style="font-size:18px;">check</span></span>
                       <span v-if="selectedPhotos[0]?.media.id === photo.media.id" style="position:absolute; left:8px; bottom:8px; padding:4px 8px; border-radius:8px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; font-weight:900;">커버</span>
                     </button>
+                    <div
+                      v-for="(media, idx) in localPhotos"
+                      :key="media.id"
+                      style="position:relative; height:120px; border:3px solid var(--violet); border-radius:16px; overflow:hidden; box-shadow:var(--soft-shadow);"
+                    >
+                      <img :src="media.servingUrl ?? media.publicUrl ?? ''" :alt="`로컬 사진 ${idx + 1}`" style="width:100%; height:100%; object-fit:cover; display:block;" />
+                      <button type="button" aria-label="로컬 사진 제거" style="position:absolute; top:7px; right:7px; width:28px; height:28px; border:0; border-radius:50%; background:rgba(0,0,0,.65); color:#fff; display:grid; place-items:center; cursor:pointer;" @click="removeLocalPhoto(media)">
+                        <span class="material-symbols-rounded" style="font-size:18px;">close</span>
+                      </button>
+                      <span v-if="selectedMedia[0]?.id === media.id" style="position:absolute; left:8px; bottom:8px; padding:4px 8px; border-radius:8px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; font-weight:900;">커버</span>
+                    </div>
                   </div>
                 </div>
               </form>

@@ -126,7 +126,10 @@ async function removeMember(userId: string) {
           <EmptyState v-if="tripStore.members.length === 0" icon="group" message="표시할 멤버가 없습니다." />
           <ul v-else class="access-list">
             <li v-for="member in tripStore.members" :key="member.id">
-              <span class="member-avatar" aria-hidden="true">{{ member.user.displayName.charAt(0) }}</span>
+              <span class="member-avatar" aria-hidden="true">
+                <img v-if="member.user.profileImageUrl" :src="member.user.profileImageUrl" alt="" />
+                <template v-else>{{ member.user.displayName.charAt(0) }}</template>
+              </span>
               <div class="access-list__body">
                 <strong>{{ member.user.displayName }}</strong>
                 <span>{{ member.accessRole === 'OWNER' ? '방장' : '멤버' }}</span>
@@ -268,6 +271,7 @@ async function removeMember(userId: string) {
   height: 40px;
   justify-content: center;
 }
+.member-avatar img { width:100%; height:100%; object-fit:cover; }
 
 .access-list__body {
   display: flex;

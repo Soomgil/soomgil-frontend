@@ -19,6 +19,7 @@ export function communityPostToStory(post: CommunityPostSummary): Story {
     author: post.publishedBy?.displayName ?? '숨길 여행자',
     authorUserId: post.publishedBy?.id,
     avatar: (post.publishedBy?.displayName ?? '?').slice(0, 1),
+    authorProfileImageUrl: post.publishedBy?.profileImageUrl ?? null,
     location: post.hashtags?.[0] ?? '여행 기록',
     title: post.title,
     image: post.coverMedia?.publicUrl ?? fallbackImage(post.id),

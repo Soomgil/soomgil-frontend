@@ -7,9 +7,9 @@ import type {
 } from '@/types/planning'
 
 export const planningApi = {
-  async getNote(tripId: string, scope: PlanningScope): Promise<Note> {
+  async getNote(tripId: string, scope: PlanningScope): Promise<Note | null> {
     const response = await http.get<Note>(`/trips/${tripId}/planning/notes`, { params: scope })
-    return response.data
+    return response.status === 204 ? null : response.data
   },
 
   async saveNote(tripId: string, scope: PlanningScope, content: string): Promise<PlanningMutationResponse> {

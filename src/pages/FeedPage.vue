@@ -14,6 +14,7 @@ const stories = computed(() => posts.value.map((post) => ({
   image: post.coverMedia?.publicUrl ?? '/images/랜딩페이지/korea_hero.png',
   title: post.title,
   avatar: (post.publishedBy?.displayName ?? '?').slice(0, 1),
+  profileImageUrl: post.publishedBy?.profileImageUrl ?? null,
   author: post.publishedBy?.displayName ?? '숨길 여행자',
   location: post.hashtags?.[0] ?? '여행 기록',
   content: post.summary ?? '',
@@ -24,6 +25,7 @@ const stories = computed(() => posts.value.map((post) => ({
 const comments = computed(() => apiComments.value.map((comment) => ({
   id: comment.id,
   avatar: (comment.author?.displayName ?? '?').slice(0, 1),
+  profileImageUrl: comment.author?.profileImageUrl ?? null,
   name: comment.author?.displayName ?? '사용자',
   color: 'var(--violet)',
   time: new Intl.DateTimeFormat('ko-KR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(comment.createdAt)),
@@ -112,7 +114,10 @@ onMounted(loadFeed)
                 <img :src="story.image" :alt="story.title" style="width: 100%; border-radius: 18px;" />
                 <div style="padding: 24px;">
                   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-                    <div class="fc-avatar" :style="{ background: 'var(--violet)' }">{{ story.avatar }}</div>
+                    <div class="fc-avatar" :style="{ background: 'var(--violet)' }">
+                      <img v-if="story.profileImageUrl" :src="story.profileImageUrl" :alt="`${story.author} 프로필 사진`" />
+                      <template v-else>{{ story.avatar }}</template>
+                    </div>
                     <div>
                       <span class="fc-name">{{ story.author }}</span>
                       <span class="fc-time">{{ story.location }}</span>
@@ -174,7 +179,10 @@ onMounted(loadFeed)
                   class="fc-item"
                   :class="{ 'is-featured': comment.featured }"
                 >
-                  <div class="fc-avatar" :style="{ background: comment.color }">{{ comment.avatar }}</div>
+                  <div class="fc-avatar" :style="{ background: comment.color }">
+                    <img v-if="comment.profileImageUrl" :src="comment.profileImageUrl" :alt="`${comment.name} 프로필 사진`" />
+                    <template v-else>{{ comment.avatar }}</template>
+                  </div>
                   <div class="fc-body">
                     <div class="fc-meta">
                       <div>

@@ -228,7 +228,10 @@ async function handleLogout() {
               <article v-for="notification in notifications" :key="notification.id" :style="{background: notification.readAt ? '#fff' : 'var(--bg)', padding:'10px', borderRadius:'12px', border:'1px solid var(--line)'}">
                 <button type="button" style="display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:0" @click="openNotification(notification)">
                   <strong style="font-size:13px;display:block;color:var(--ink)">{{ notification.title }}</strong>
-                  <span v-if="notification.actor" style="font-size:11px;color:var(--violet)">{{ notification.actor.displayName }}</span>
+                  <span v-if="notification.actor" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--violet)">
+                    <img v-if="notification.actor.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover;" />
+                    {{ notification.actor.displayName }}
+                  </span>
                   <p v-if="notification.body" style="font-size:12px;color:var(--muted);margin:3px 0 0">{{ notification.body }}</p>
                 </button>
                 <button type="button" aria-label="알림 삭제" style="margin-top:6px;border:0;background:transparent;color:var(--muted);font-size:11px;cursor:pointer" @click="dismissNotification(notification.id)">삭제</button>
@@ -239,8 +242,9 @@ async function handleLogout() {
 
         <!-- Profile -->
         <div class="profile-dropdown" style="position:relative;">
-          <button type="button" id="header-profile-btn" class="btn ghost" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-weight:800; color:var(--violet); font-size:14px; cursor:pointer;" title="내 프로필" @click.stop="toggleProfile">
-            {{ auth.user?.displayName?.charAt(0) || 'U' }}
+          <button type="button" id="header-profile-btn" class="btn ghost" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; background:var(--surface-2); display:flex; align-items:center; justify-content:center; overflow:hidden; font-weight:800; color:var(--violet); font-size:14px; cursor:pointer;" title="내 프로필" @click.stop="toggleProfile">
+            <img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="내 프로필 사진" style="width:100%;height:100%;object-fit:cover;" />
+            <template v-else>{{ auth.user?.displayName?.charAt(0) || 'U' }}</template>
           </button>
           <div id="header-profile-panel" class="header-dropdown-panel" :class="{ 'is-open': showProfile }">
             <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--line);">

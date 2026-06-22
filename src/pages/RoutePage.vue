@@ -84,7 +84,11 @@ const trip = computed(() => {
     endDate: '',
     members: (detail?.members ?? [])
       .filter((member) => member.status === 'ACTIVE')
-      .map((member) => ({ id: member.id, displayName: member.user.displayName })),
+      .map((member) => ({
+        id: member.id,
+        displayName: member.user.displayName,
+        profileImageUrl: member.user.profileImageUrl,
+      })),
   }
 })
 const dayPlans = ref<DayPlan[]>([])
@@ -774,7 +778,7 @@ async function loadNote(tag = activeMemoDay.value) {
   try {
     const note = await planningApi.getNote(tripId, scope)
     notes.value[tag] = note
-    memoTextDisplay.value = note.content
+    memoTextDisplay.value = note?.content ?? ''
   } catch (error: any) {
     if (error?.response?.status === 404) {
       notes.value[tag] = null
@@ -841,6 +845,7 @@ const currentTodos = computed(() => (activeChecklist.value?.items ?? []).map((it
   id: item.id,
   text: item.content,
   done: item.memberStatuses.some((status) => status.user.id === currentUserId.value && status.isCompleted),
+  completedBy: item.memberStatuses.filter((status) => status.isCompleted).map((status) => status.user),
 })))
 const completedCount = computed(() => currentTodos.value.filter(t => t.done).length)
 const totalCount = computed(() => currentTodos.value.length)
@@ -1290,7 +1295,10 @@ function textAvatarStyle(index: unknown) {
                 <div class="trip-card-footer">
                   <div class="avatars-group">
                     <div class="avatars">
-                      <span v-for="m in (trip.members ?? [])" :key="m.id" class="avatar" :style="{ backgroundColor: 'var(--violet)' }">{{ (m.displayName ?? '?').charAt(0) }}</span>
+                      <span v-for="m in (trip.members ?? [])" :key="m.id" class="avatar" :style="{ backgroundColor: 'var(--violet)', overflow: 'hidden' }">
+                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="`${m.displayName} 프로필 사진`" style="width:100%;height:100%;object-fit:cover;" />
+                        <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
+                      </span>
                     </div>
                     <span class="members-count">+{{ (trip.members ?? []).length }}명</span>
                   </div>
@@ -1813,7 +1821,10 @@ function textAvatarStyle(index: unknown) {
               </template>
               <template v-else>
                 <div v-for="msg in chatMessages" :key="msg.id" :class="['ai-message', msg.sender.id === currentUserId ? 'user' : 'assistant']">
-                  <div v-if="msg.sender.id !== currentUserId" class="ai-message-avatar">{{ msg.sender.displayName.charAt(0) }}</div>
+                  <div v-if="msg.sender.id !== currentUserId" class="ai-message-avatar" style="overflow:hidden;">
+                    <img v-if="msg.sender.profileImageUrl" :src="msg.sender.profileImageUrl" :alt="`${msg.sender.displayName} 프로필 사진`" style="width:100%;height:100%;object-fit:cover;" />
+                    <template v-else>{{ msg.sender.displayName.charAt(0) }}</template>
+                  </div>
                   <div class="ai-message-bubble">
                     <strong v-if="msg.sender.id !== currentUserId" style="display:block;font-size:11px;margin-bottom:3px">{{ msg.sender.displayName }}</strong>
                     <span style="white-space:pre-wrap">{{ msg.deletedAt ? '삭제된 메시지입니다.' : msg.content }}</span>
@@ -1928,6 +1939,12 @@ function textAvatarStyle(index: unknown) {
                     <input type="checkbox" :checked="todo.done" :disabled="todoLoading" @change="toggleTodo(todo.id)" style="width:18px;height:18px;accent-color:var(--violet);" />
                     <span :style="{ textDecoration: todo.done ? 'line-through' : 'none', color: todo.done ? 'var(--muted)' : 'var(--ink)', fontSize: '14px' }">{{ todo.text }}</span>
                   </label>
+                  <div v-if="todo.completedBy.length" class="todo-completed-members" :aria-label="`완료한 멤버 ${todo.completedBy.map(member => member.displayName).join(', ')}`">
+                    <span v-for="member in todo.completedBy" :key="member.id" class="todo-member-avatar" :title="`${member.displayName} 완료`">
+                      <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" />
+                      <template v-else>{{ member.displayName.charAt(0) }}</template>
+                    </span>
+                  </div>
                   <button type="button" aria-label="할 일 삭제" class="icon-btn" :disabled="todoLoading" @click="deleteTodo(todo.id)"><span class="material-symbols-rounded">delete</span></button>
                 </li>
               </ul>
@@ -2029,7 +2046,10 @@ function textAvatarStyle(index: unknown) {
               </div>
               <ul class="member-list" id="invite-member-list">
                 <li v-for="member in (trip.members ?? [])" :key="member.id" class="member-item">
-                  <div class="member-avatar" :style="{ backgroundColor: 'var(--violet)' }">{{ (member.displayName ?? '?').charAt(0) }}</div>
+                  <div class="member-avatar" :style="{ backgroundColor: 'var(--violet)', overflow: 'hidden' }">
+                    <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="`${member.displayName} 프로필 사진`" style="width:100%;height:100%;object-fit:cover;" />
+                    <template v-else>{{ (member.displayName ?? '?').charAt(0) }}</template>
+                  </div>
                   <div class="member-info"><span class="member-name">{{ member.displayName ?? '알 수 없음' }}</span></div>
                 </li>
               </ul>
@@ -2430,6 +2450,10 @@ function textAvatarStyle(index: unknown) {
 
 .member-item { display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line); }
 .member-avatar { width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:13px;font-weight:800; }
+.todo-completed-members { display:flex; align-items:center; padding-left:6px; }
+.todo-member-avatar { width:24px; height:24px; margin-left:-6px; border:2px solid #fff; border-radius:50%; overflow:hidden; display:grid; place-items:center; background:var(--violet); color:#fff; font-size:10px; font-weight:800; }
+.todo-member-avatar:first-child { margin-left:0; }
+.todo-member-avatar img { width:100%; height:100%; object-fit:cover; }
 .member-name { font-size:14px;font-weight:700;color:var(--ink); }
 
 /* Members header */
