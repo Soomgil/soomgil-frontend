@@ -59,6 +59,10 @@ const stops = [
   { id: 'item-1', placeId: 'place-1', title: '첫 장소', dayIndex: 1, index: 1, lat: 36.35, lng: 127.38 },
   { id: 'item-2', placeId: 'place-2', title: '둘째 장소', dayIndex: 1, index: 2, lat: 36.36, lng: 127.39 },
 ]
+const routes = [{
+	id: 'route-1',
+	geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
+}]
 
 describe('MapboxItineraryMap', () => {
   beforeEach(() => {
@@ -83,7 +87,7 @@ describe('MapboxItineraryMap', () => {
 
   it('일정 좌표로 마커와 경로선을 그리고 변경된 좌표도 즉시 반영한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
-    const wrapper = mount(MapboxItineraryMap, { props: { stops } })
+	const wrapper = mount(MapboxItineraryMap, { props: { stops, routes } })
     await flushPromises()
     mapbox.handlers.get('load')?.()
     mapbox.handlers.get('idle')?.()
@@ -91,8 +95,8 @@ describe('MapboxItineraryMap', () => {
 
     expect(mapbox.Map).toHaveBeenCalledOnce()
     expect(mapbox.Marker).toHaveBeenCalledTimes(2)
-    expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-day-1', expect.objectContaining({ type: 'geojson' }))
-    expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'itinerary-day-1', type: 'line' }))
+	expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
+	expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'itinerary-route-route-1', type: 'line' }))
     expect(mapbox.map.fitBounds).toHaveBeenCalledOnce()
     expect(wrapper.emitted('viewportChange')).toEqual([[
       { minLng: 126.9, minLat: 37.4, maxLng: 127.2, maxLat: 37.7 },

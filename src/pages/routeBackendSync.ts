@@ -16,7 +16,11 @@ export function getAiRefreshTargets(
 
   return {
     itinerary: successfulTools.some((name) => (
-      name === 'addPlaceToItinerary' || name === 'moveItineraryItem'
+      name === 'addPlaceToItinerary'
+      || name === 'deleteItineraryItem'
+      || name === 'moveItineraryItem'
+      || name === 'removeItineraryItemsByCondition'
+      || name === 'optimizeRoute'
     )) || (
       response.itineraryVersion != null
       && response.itineraryVersion !== currentItineraryVersion

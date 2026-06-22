@@ -8,6 +8,7 @@ import type { LngLat, Viewport } from '@/types/geo'
 
 export interface ItineraryMapStop {
   id: string
+  placeProvider?: string
   placeId?: string
   title: string
   dayIndex: number
@@ -17,8 +18,15 @@ export interface ItineraryMapStop {
   image?: string | null
 }
 
+export interface ItineraryMapRoute {
+  id: string
+  geometry: Record<string, unknown>
+}
+
 const props = withDefaults(defineProps<{
   stops: ItineraryMapStop[]
+  routes?: ItineraryMapRoute[]
+  routeDisplay?: 'route' | 'dashed' | 'hidden'
   drawings?: MapDrawingStroke[]
   drawingTool?: MapDrawingTool
   drawingColor?: string
@@ -26,6 +34,8 @@ const props = withDefaults(defineProps<{
   drawingsVisible?: boolean
 }>(), {
   drawings: () => [],
+  routes: () => [],
+  routeDisplay: 'route',
   drawingTool: 'cursor',
   drawingColor: '#1f2937',
   drawingWidth: 6,
@@ -52,11 +62,6 @@ let lineLayerIds: string[] = []
 let styleReady = false
 let initializationSequence = 0
 let lastEmittedViewport = ''
-
-function dayColor(dayIndex: number) {
-  const colors = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
-  return dayIndex <= 0 ? colors[4] : colors[(dayIndex - 1) % colors.length]
-}
 
 function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? 'day-color-5' : `day-color-${((dayIndex - 1) % 5) + 1}`
@@ -131,28 +136,28 @@ function renderStops() {
       .addTo(map!))
   })
 
-  const grouped = new Map<number, ItineraryMapStop[]>()
-  props.stops.forEach((stop) => {
-    const stops = grouped.get(stop.dayIndex) ?? []
-    stops.push(stop)
-    grouped.set(stop.dayIndex, stops)
-  })
-  grouped.forEach((stops, dayIndex) => {
-    if (stops.length < 2) return
-    const id = `itinerary-day-${dayIndex <= 0 ? 'unscheduled' : dayIndex}`
-    map!.addSource(id, {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'LineString', coordinates: stops.map((stop) => [stop.lng, stop.lat]) },
-      },
-    })
-    map!.addLayer({
+	if (props.routeDisplay !== 'hidden') props.routes.forEach((route, index) => {
+		const geometry = route.geometry as { type?: string; coordinates?: unknown }
+		if (geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) return
+		const id = `itinerary-route-${route.id}`
+		map!.addSource(id, {
+			type: 'geojson',
+			data: {
+				type: 'Feature',
+				properties: { routeIndex: index },
+				geometry: route.geometry as { type: 'LineString'; coordinates: number[][] },
+			},
+		})
+		map!.addLayer({
       id,
       type: 'line',
       source: id,
-      paint: { 'line-color': dayColor(dayIndex), 'line-width': 4, 'line-opacity': 0.8 },
+			paint: {
+				'line-color': '#6d4aff',
+				'line-width': 4,
+				'line-opacity': 0.85,
+				...(props.routeDisplay === 'dashed' ? { 'line-dasharray': [2, 2] } : {}),
+			},
       layout: { 'line-cap': 'round', 'line-join': 'round' },
     })
     lineLayerIds.push(id)
@@ -273,6 +278,7 @@ function retry() {
 }
 
 watch(() => props.stops, renderStops, { deep: true })
+watch(() => [props.routes, props.routeDisplay], renderStops, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {
   initializationSequence++

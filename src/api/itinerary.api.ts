@@ -2,8 +2,10 @@ import http from './http'
 import type {
   CreateItineraryDayRequest,
   CreateItineraryItemRequest,
+  CreateMapDrawingRequest,
   Itinerary,
   ItineraryMutationResponse,
+  MapMatchRouteRequest,
   ReorderItineraryRequest,
   UpdateItineraryDayRequest,
   UpdateItineraryItemRequest,
@@ -51,6 +53,30 @@ export const itineraryApi = {
 
   reorder: async (tripId: string, request: ReorderItineraryRequest): Promise<ItineraryMutationResponse> => {
     const response = await http.put<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/order`, request)
+    return response.data
+  },
+
+  mapMatchRoute: async (tripId: string, request: MapMatchRouteRequest): Promise<ItineraryMutationResponse> => {
+    const response = await http.post<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/routes/map-match`, request)
+    return response.data
+  },
+
+  deleteRoute: async (tripId: string, routeId: string, baseVersion: number): Promise<ItineraryMutationResponse> => {
+    const response = await http.delete<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/routes/${routeId}`, {
+      data: { baseVersion },
+    })
+    return response.data
+  },
+
+  createDrawing: async (tripId: string, request: CreateMapDrawingRequest): Promise<ItineraryMutationResponse> => {
+    const response = await http.post<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/drawings`, request)
+    return response.data
+  },
+
+  deleteDrawing: async (tripId: string, drawingId: string, baseVersion: number): Promise<ItineraryMutationResponse> => {
+    const response = await http.delete<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/drawings/${drawingId}`, {
+      data: { baseVersion },
+    })
     return response.data
   },
 }

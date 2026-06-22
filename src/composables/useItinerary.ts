@@ -6,7 +6,9 @@ import type {
   ItineraryDay,
   ItineraryItem,
   ItineraryMutationResponse,
+  MapMatchRouteInput,
   MapDrawing,
+  CreateMapDrawingInput,
   ReorderItineraryInput,
   TripRoute,
   UpdateItineraryDayInput,
@@ -213,6 +215,48 @@ export function useItinerary(tripId: string) {
     })
   }
 
+  async function mapMatchRoute(input: MapMatchRouteInput) {
+    return runMutation(async () => {
+      const response = await itineraryApi.mapMatchRoute(tripId, {
+        ...input,
+        baseVersion: itineraryVersion.value,
+      })
+      if (!response.route) throw new Error('Matched route is missing.')
+      routes.value = [...routes.value.filter((route) => route.id !== response.route!.id), response.route]
+      applyMutation(response)
+      return response.route
+    })
+  }
+
+  async function deleteRoute(routeId: string) {
+    return runMutation(async () => {
+      const response = await itineraryApi.deleteRoute(tripId, routeId, itineraryVersion.value)
+      routes.value = routes.value.filter((route) => route.id !== routeId)
+      applyMutation(response)
+    })
+  }
+
+  async function createDrawing(input: CreateMapDrawingInput) {
+    return runMutation(async () => {
+      const response = await itineraryApi.createDrawing(tripId, {
+        ...input,
+        baseVersion: itineraryVersion.value,
+      })
+      if (!response.drawing) throw new Error('Created map drawing is missing.')
+      mapDrawings.value = [...mapDrawings.value, response.drawing]
+      applyMutation(response)
+      return response.drawing
+    })
+  }
+
+  async function deleteDrawing(drawingId: string) {
+    return runMutation(async () => {
+      const response = await itineraryApi.deleteDrawing(tripId, drawingId, itineraryVersion.value)
+      mapDrawings.value = mapDrawings.value.filter((drawing) => drawing.id !== drawingId)
+      applyMutation(response)
+    })
+  }
+
   return {
     itineraryVersion,
     days,
@@ -233,5 +277,9 @@ export function useItinerary(tripId: string) {
     updateItem,
     deleteItem,
     reorder,
+    mapMatchRoute,
+    deleteRoute,
+    createDrawing,
+    deleteDrawing,
   }
 }

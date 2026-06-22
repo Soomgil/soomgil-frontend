@@ -141,8 +141,30 @@ export interface ReorderItineraryRequest {
   days: ItineraryDayOrderRequest[]
 }
 
+export interface MapMatchRouteRequest {
+  baseVersion: number
+  originItineraryItemId: string
+  destinationItineraryItemId: string
+  mode: RouteMode
+  coordinates: Array<{ lng: number; lat: number }>
+  radiuses?: number[] | null
+  tidy?: boolean | null
+}
+
+export interface CreateMapDrawingRequest {
+  baseVersion: number
+  itineraryDayId?: string | null
+  drawingType: DrawingType
+  geometry: Record<string, unknown>
+  style?: Record<string, unknown> | null
+  label?: string | null
+  sortOrder?: number | null
+}
+
 export type CreateItineraryDayInput = Omit<CreateItineraryDayRequest, 'baseVersion'>
 export type UpdateItineraryDayInput = Omit<UpdateItineraryDayRequest, 'baseVersion'>
 export type CreateItineraryItemInput = Omit<CreateItineraryItemRequest, 'baseVersion'>
 export type UpdateItineraryItemInput = Omit<UpdateItineraryItemRequest, 'baseVersion'>
 export type ReorderItineraryInput = Omit<ReorderItineraryRequest, 'baseVersion'>
+export type MapMatchRouteInput = Omit<MapMatchRouteRequest, 'baseVersion'>
+export type CreateMapDrawingInput = Omit<CreateMapDrawingRequest, 'baseVersion'>

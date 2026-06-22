@@ -2,6 +2,7 @@ import type { ItineraryDay } from '@/types/itinerary'
 
 export interface RouteStopViewModel {
   id: string
+  placeProvider: string
   placeExternalId: string
   title: string
   time: string
@@ -35,6 +36,7 @@ export function toDayPlans(days: ItineraryDay[]): DayPlanViewModel[] {
           .sort((left, right) => left.sortOrder - right.sortOrder)
           .map((item) => ({
             id: item.id,
+            placeProvider: item.place?.provider ?? '',
             placeExternalId: item.place?.externalPlaceId ?? '',
             title: item.placeName,
             time: item.address ?? '시간 미정',

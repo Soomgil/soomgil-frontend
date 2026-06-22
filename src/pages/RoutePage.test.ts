@@ -28,11 +28,17 @@ const connectedApis = vi.hoisted(() => ({
     updateMyItemStatus: vi.fn(),
     deleteChecklistItem: vi.fn(),
   },
+	trip: {
+		getInvites: vi.fn(),
+		createInvite: vi.fn(),
+		updateTrip: vi.fn(),
+	},
 }))
 
 vi.mock('@/api/ai.api', () => ({ aiApi: connectedApis.ai }))
 vi.mock('@/api/chat.api', () => ({ chatApi: connectedApis.chat }))
 vi.mock('@/api/planning.api', () => ({ planningApi: connectedApis.planning }))
+vi.mock('@/api/trip.api', () => ({ tripApi: connectedApis.trip }))
 
 vi.mock('@/components/place/PlaceDiscoveryPanel.vue', () => ({
   default: {
@@ -89,6 +95,10 @@ vi.mock('@/composables/useItinerary', async () => {
     createItem: vi.fn(),
     deleteItem: vi.fn(),
     reorder: vi.fn(),
+		mapMatchRoute: vi.fn(),
+		deleteRoute: vi.fn(),
+		createDrawing: vi.fn(),
+		deleteDrawing: vi.fn(),
     unscheduledDay: computed(() => days.value.find((day) => day.groupType === 'UNSCHEDULED') ?? null),
   }
   return { useItinerary: () => holder.state }
@@ -130,6 +140,12 @@ describe('RoutePage itinerary integration', () => {
     })
     connectedApis.planning.getNote.mockRejectedValue({ response: { status: 404 } })
     connectedApis.planning.getChecklists.mockResolvedValue([])
+		connectedApis.trip.getInvites.mockResolvedValue([])
+		connectedApis.trip.createInvite.mockResolvedValue({
+			id: 'invite-1', tripId: 'trip-1', inviteCode: 'CODE', inviteUrl: 'https://soomgil.test/invite/CODE',
+			inviteeUserId: null, status: 'PENDING', expiresAt: null, createdAt: '2026-06-20',
+		})
+		holder.state.createDrawing.mockResolvedValue({ id: 'drawing-1' })
     holder.tripStore = reactive({
       currentTrip: null,
       fetchTrip: vi.fn(async () => {
@@ -244,6 +260,61 @@ describe('RoutePage itinerary integration', () => {
       'trip-1', 'checklist-1', '여권 챙기기', 0,
     )
   })
+
+	it('실제 여행 멤버와 체크리스트 완료자의 프로필 이미지를 표시한다', async () => {
+		connectedApis.planning.getChecklists.mockResolvedValue([{
+			id: 'checklist-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+			title: '전체 체크리스트',
+			items: [{
+				id: 'todo-1', checklistId: 'checklist-1', sortOrder: 0, content: '여권 챙기기', deletedAt: null,
+				memberStatuses: [{
+					user: { id: 'user-1', displayName: '김지훈', profileImageUrl: 'https://cdn.example.com/user-1.jpg' },
+					isCompleted: true, completedAt: '2026-06-22T00:00:00Z', updatedAt: '2026-06-22T00:00:00Z',
+				}],
+			}],
+		}])
+		holder.tripStore.fetchTrip.mockImplementationOnce(async () => {
+			holder.tripStore.currentTrip = {
+				id: 'trip-1', title: '대전 여행', displayDestination: '대전광역시', status: 'ACTIVE',
+				myRole: 'OWNER', itineraryVersion: 3, createdAt: '2026-06-20', ownerUserId: 'user-1',
+				regions: [], retrippedFromPostId: null,
+				members: [{
+					id: 'member-1', tripId: 'trip-1', role: 'OWNER', accessRole: 'OWNER', status: 'ACTIVE',
+					joinedAt: '2026-06-20',
+					user: { id: 'user-1', displayName: '김지훈', profileImageUrl: 'https://cdn.example.com/user-1.jpg' },
+				}],
+			}
+		})
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+
+		expect(wrapper.get('.avatars .avatar-img').attributes('src')).toBe('https://cdn.example.com/user-1.jpg')
+		await wrapper.get('#todo-fab').trigger('click')
+		await flushPromises()
+		expect(wrapper.get('.todo-member-avatar img').attributes('src')).toBe('https://cdn.example.com/user-1.jpg')
+		expect(wrapper.get('.todo-member-avatar').attributes('title')).toContain('김지훈')
+	})
+
+	it('일정 장소를 다른 일차로 드래그하면 전체 재정렬 API를 호출한다', async () => {
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+		const dataTransfer = { setData: vi.fn(), effectAllowed: '' }
+
+		await wrapper.get('.stop').trigger('dragstart', { dataTransfer })
+		await wrapper.findAll('.day-separator')[1].trigger('drop')
+		await flushPromises()
+
+		expect(holder.state.reorder).toHaveBeenCalledWith({
+			days: [
+				{ dayId: 'day-1', sortOrder: 0, itemOrders: [] },
+				{ dayId: 'unscheduled', sortOrder: 1, itemOrders: [{ itemId: 'item-1', sortOrder: 0 }] },
+			],
+		})
+	})
 
   it('route의 trip 일정과 일차 미정을 실제 상태에서 표시한다', async () => {
     const wrapper = mount(RoutePage, {
@@ -371,15 +442,16 @@ describe('RoutePage itinerary integration', () => {
 
     expect(geo.simplifyCoordinates).toHaveBeenCalledWith({ coordinates: draft.coordinates, maxPoints: 100 })
     expect(map.props('drawings')).toEqual([{
-      id: 'local-drawing-1',
+      id: 'drawing-1',
       coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
       color: '#ef4444',
       width: 6,
     }])
 
-    map.vm.$emit('drawingErase', 'local-drawing-1')
-    await nextTick()
+    map.vm.$emit('drawingErase', 'drawing-1')
+    await flushPromises()
     expect(map.props('drawings')).toEqual([])
+		expect(holder.state.deleteDrawing).toHaveBeenCalledWith('drawing-1')
   })
 
   it('지도 drawing preview를 전송하고 다른 사용자의 preview를 표시한다', async () => {
@@ -456,8 +528,8 @@ describe('RoutePage itinerary integration', () => {
     await redoButton.trigger('click')
     expect(map.props('drawings')).toHaveLength(1)
 
-    map.vm.$emit('drawingErase', 'local-drawing-1')
-    await nextTick()
+    map.vm.$emit('drawingErase', 'drawing-1')
+    await flushPromises()
     expect(map.props('drawings')).toEqual([])
 
     await undoButton.trigger('click')

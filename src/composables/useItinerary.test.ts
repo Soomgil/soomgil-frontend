@@ -13,6 +13,10 @@ vi.mock('@/api/itinerary.api', () => ({
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
     reorder: vi.fn(),
+		mapMatchRoute: vi.fn(),
+		deleteRoute: vi.fn(),
+		createDrawing: vi.fn(),
+		deleteDrawing: vi.fn(),
   },
 }))
 

@@ -9,6 +9,7 @@ import { geoApi } from '@/api/geo.api'
 import { aiApi } from '@/api/ai.api'
 import { chatApi } from '@/api/chat.api'
 import { planningApi } from '@/api/planning.api'
+import { tripApi } from '@/api/trip.api'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
 import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
@@ -80,11 +81,13 @@ const trip = computed(() => {
     title: detail?.title ?? '여행',
     destinationName: detail?.displayDestination ?? '',
     statusLabel: detail?.status === 'ARCHIVED' ? '보관된 여행' : '진행 중인 여행',
-    startDate: '',
-    endDate: '',
     members: (detail?.members ?? [])
       .filter((member) => member.status === 'ACTIVE')
-      .map((member) => ({ id: member.id, displayName: member.user.displayName })),
+      .map((member) => ({
+        id: member.id,
+        displayName: member.user.displayName,
+        profileImageUrl: member.user.profileImageUrl,
+      })),
   }
 })
 const dayPlans = ref<DayPlan[]>([])
@@ -95,6 +98,7 @@ const mapStops = computed<ItineraryMapStop[]>(() => {
     if (item.lat == null || item.lng == null) return []
     return [{
       id: item.id,
+      placeProvider: item.placeProvider,
       placeId: item.placeExternalId,
       title: item.title,
       dayIndex: day.day,
@@ -290,6 +294,14 @@ function handleKeydown(e: KeyboardEvent) {
 const routeLinks = ref<RouteLink[]>([])
 const pendingRouteFrom = ref<string | null>(null)
 
+watch(itinerary.routes, (routes) => {
+	routeLinks.value = routes.map(route => ({
+		id: route.id,
+		fromItemId: route.originItineraryItemId,
+		toItemId: route.destinationItineraryItemId,
+	}))
+}, { deep: true, immediate: true })
+
 function getLinkedPartner(itemId: string): string | null {
   const link = routeLinks.value.find(l => l.fromItemId === itemId || l.toItemId === itemId)
   if (!link) return null
@@ -304,17 +316,21 @@ function hasRouteLinkBetween(id1: string | undefined, id2: string | undefined): 
   )
 }
 
-function removeRouteLinkBetween(id1: string, id2: string) {
-  pushUndoState('route-links')
-  routeLinks.value = routeLinks.value.filter(l =>
-    !((l.fromItemId === id1 && l.toItemId === id2) ||
-      (l.fromItemId === id2 && l.toItemId === id1))
-  )
-  showToast('경로 연결이 해제되었습니다')
-  nextTick(initDragDrop)
+async function removeRouteLinkBetween(id1: string, id2: string) {
+	const link = routeLinks.value.find(l =>
+		(l.fromItemId === id1 && l.toItemId === id2) || (l.fromItemId === id2 && l.toItemId === id1)
+	)
+	if (!link || itinerary.mutating.value) return
+	pushUndoState('route-links')
+	try {
+		await itinerary.deleteRoute(link.id)
+		showToast('경로 연결이 해제되었습니다')
+	} catch {
+		itineraryActionError.value = '경로 연결을 해제하지 못했습니다.'
+	}
 }
 
-function handleRoutePenClick(item: RouteStop) {
+async function handleRoutePenClick(item: RouteStop) {
   if (!pendingRouteFrom.value) {
     pendingRouteFrom.value = item.id
     showToast('연결할 도착 지점을 선택하세요')
@@ -329,20 +345,31 @@ function handleRoutePenClick(item: RouteStop) {
     pendingRouteFrom.value = null
     return
   }
-  pushUndoState('route-links')
-  routeLinks.value.push({
-    id: `link_${Date.now()}`,
-    fromItemId: pendingRouteFrom.value!,
-    toItemId: item.id,
-  })
-  pendingRouteFrom.value = null
-  showToast('경로가 연결되었습니다')
-  nextTick(initDragDrop)
+	const origin = dayPlans.value.flatMap(day => day.items).find(candidate => candidate.id === pendingRouteFrom.value)
+	if (!origin || origin.lat == null || origin.lng == null || item.lat == null || item.lng == null) {
+		showToast('좌표가 있는 두 장소만 경로로 연결할 수 있습니다')
+		pendingRouteFrom.value = null
+		return
+	}
+	pushUndoState('route-links')
+	try {
+		await itinerary.mapMatchRoute({
+			originItineraryItemId: origin.id,
+			destinationItineraryItemId: item.id,
+			mode: 'WALKING',
+			coordinates: [{ lng: origin.lng, lat: origin.lat }, { lng: item.lng, lat: item.lat }],
+			tidy: true,
+		})
+		showToast('경로가 연결되었습니다')
+	} catch {
+		itineraryActionError.value = '경로를 계산하지 못했습니다.'
+	}
+	pendingRouteFrom.value = null
 }
 
 function handleStopClick(item: RouteStop) {
   if (activeTool.value === 'route-pen') {
-    handleRoutePenClick(item)
+		void handleRoutePenClick(item)
     return
   }
   if (item.placeExternalId) selectPlace(item.placeExternalId)
@@ -625,20 +652,46 @@ async function persistItineraryOrder() {
 
 /* 드래그앤드롭 초기화 */
 function initDragDrop() {
-  nextTick(() => {
-    if (!itineraryRef.value) return
-    const stops = itineraryRef.value.querySelectorAll('.stop')
-    stops.forEach(stop => {
-      stop.addEventListener('pointerdown', onPointerDown as EventListener)
-    })
-    // 전체 보기일 때 구분선도 드래그 가능
-    if (activeDay.value === 0) {
-      const seps = itineraryRef.value.querySelectorAll('.day-separator')
-      seps.forEach(sep => {
-        sep.addEventListener('pointerdown', onPointerDown as EventListener)
-      })
-    }
-  })
+	// Vue template의 pointer/drag 이벤트로 직접 연결한다.
+}
+
+const nativeDragSource = ref<{ dayId: string; itemId: string } | null>(null)
+
+function startNativeStopDrag(event: DragEvent, dayId: string, itemId: string) {
+	if (itinerary.mutating.value) {
+		event.preventDefault()
+		return
+	}
+	nativeDragSource.value = { dayId, itemId }
+	event.dataTransfer?.setData('text/plain', itemId)
+	if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+
+function finishNativeStopDrag() {
+	nativeDragSource.value = null
+}
+
+function dropNativeStop(targetDayId: string, targetItemId?: string) {
+	const source = nativeDragSource.value
+	if (!source || itinerary.mutating.value) return
+	const sourceDay = dayPlans.value.find(day => day.id === source.dayId)
+	const targetDay = dayPlans.value.find(day => day.id === targetDayId)
+	const moved = sourceDay?.items.find(item => item.id === source.itemId)
+	if (!sourceDay || !targetDay || !moved) return
+	if (source.dayId === targetDayId && source.itemId === targetItemId) return
+
+	pushUndoState('itinerary')
+	sourceDay.items = sourceDay.items.filter(item => item.id !== source.itemId)
+	const targetIndex = targetItemId
+		? Math.max(0, targetDay.items.findIndex(item => item.id === targetItemId))
+		: targetDay.items.length
+	targetDay.items.splice(targetIndex, 0, { ...moved, day: targetDay.day })
+	dayPlans.value = dayPlans.value.map(day => ({
+		...day,
+		items: day.items.map((item, index) => ({ ...item, day: day.day, order: index + 1 })),
+	}))
+	nativeDragSource.value = null
+	void persistItineraryOrder()
 }
 
 /* activeDay 변경 시 드래그 재초기화 + 지도 다시 그리기 */
@@ -846,9 +899,12 @@ const activeChecklist = computed(() => {
   )) ?? null
 })
 const currentTodos = computed(() => (activeChecklist.value?.items ?? []).map((item) => ({
-  id: item.id,
-  text: item.content,
-  done: item.memberStatuses.some((status) => status.user.id === currentUserId.value && status.isCompleted),
+	id: item.id,
+	text: item.content,
+	done: item.memberStatuses.some((status) => status.user.id === currentUserId.value && status.isCompleted),
+	completedMembers: item.memberStatuses
+		.filter((status) => status.isCompleted)
+		.map((status) => status.user),
 })))
 const completedCount = computed(() => currentTodos.value.filter(t => t.done).length)
 const totalCount = computed(() => currentTodos.value.length)
@@ -948,6 +1004,25 @@ const mapDrawings = computed(() => [
 ])
 let localDrawingSequence = 0
 
+watch(itinerary.mapDrawings, (drawings) => {
+	localDrawings.value = drawings.flatMap((drawing) => {
+		const geometry = drawing.geometry as { type?: string; coordinates?: unknown }
+		if (geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) return []
+		const coordinates = geometry.coordinates.flatMap((coordinate) => (
+			Array.isArray(coordinate) && typeof coordinate[0] === 'number' && typeof coordinate[1] === 'number'
+				? [{ lng: coordinate[0], lat: coordinate[1] }]
+				: []
+		))
+		if (coordinates.length < 2) return []
+		return [{
+			id: drawing.id,
+			coordinates,
+			color: typeof drawing.style?.color === 'string' ? drawing.style.color : '#1f2937',
+			width: typeof drawing.style?.width === 'number' ? drawing.style.width : 6,
+		}]
+	})
+}, { deep: true, immediate: true })
+
 onMounted(() => {
   if (tripId && localStorage.getItem('accessToken')) drawingPreviewChannel.connect()
 })
@@ -968,9 +1043,23 @@ async function simplifyLocalDrawing(drawingId: string) {
     })
     simplifiedDrawingCoordinates.set(drawingId, simplified.coordinates)
     const index = localDrawings.value.findIndex((candidate) => candidate.id === drawingId)
-    if (index >= 0) {
-      localDrawings.value[index] = { ...localDrawings.value[index], coordinates: simplified.coordinates }
-    }
+		if (index >= 0) {
+			localDrawings.value[index] = { ...localDrawings.value[index], coordinates: simplified.coordinates }
+		}
+		if (drawingId.startsWith('local-drawing-')) {
+			const created = await itinerary.createDrawing({
+				itineraryDayId: activePlan.value?.id ?? null,
+				drawingType: 'FREEHAND',
+				geometry: {
+					type: 'LineString',
+					coordinates: simplified.coordinates.map(coordinate => [coordinate.lng, coordinate.lat]),
+				},
+				style: { color: drawing.color, width: drawing.width },
+				sortOrder: itinerary.mapDrawings.value.length,
+			})
+			const currentIndex = localDrawings.value.findIndex(candidate => candidate.id === drawingId)
+			if (currentIndex >= 0) localDrawings.value[currentIndex] = { ...localDrawings.value[currentIndex], id: created.id }
+		}
   } catch {
     if (localDrawings.value.some((candidate) => candidate.id === drawingId)) {
       if (!drawingRetryIds.value.includes(drawingId)) {
@@ -992,11 +1081,19 @@ function createLocalDrawing(draft: MapDrawingDraft) {
   void simplifyLocalDrawing(drawing.id)
 }
 
-function eraseLocalDrawing(drawingId: string) {
-  if (!localDrawings.value.some((drawing) => drawing.id === drawingId)) return
-  pushUndoState('drawing')
-  localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
-  drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+async function eraseLocalDrawing(drawingId: string) {
+	if (!localDrawings.value.some((drawing) => drawing.id === drawingId)) return
+	pushUndoState('drawing')
+	localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
+	drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+	if (!drawingId.startsWith('local-drawing-')) {
+		try {
+			await itinerary.deleteDrawing(drawingId)
+		} catch {
+			itineraryActionError.value = '지도 그림을 삭제하지 못했습니다.'
+			await loadItinerary()
+		}
+	}
 }
 
 function publishDrawingPreview(event: DrawingPreviewEvent) {
@@ -1107,15 +1204,66 @@ async function removeItineraryItem(item: RouteStop) {
 /* ── Modals ── */
 const isInviteModalOpen = ref(false)
 const inviteTab = ref('tab-settings')
+const inviteLink = ref('')
+const inviteLoading = ref(false)
+const inviteError = ref('')
+
+async function openTripManagement() {
+	isInviteModalOpen.value = true
+	inviteError.value = ''
+	if (inviteLink.value || !tripId) return
+	inviteLoading.value = true
+	try {
+		const invites = await tripApi.getInvites(tripId)
+		const activeInvite = invites.find(invite => invite.status === 'PENDING' && invite.inviteUrl)
+		const invite = activeInvite ?? await tripApi.createInvite(tripId)
+		inviteLink.value = invite.inviteUrl ?? `${window.location.origin}/trip-invites/${invite.inviteCode}`
+	} catch {
+		inviteError.value = '초대 링크를 준비하지 못했습니다.'
+	} finally {
+		inviteLoading.value = false
+	}
+}
+
+async function copyInviteLink() {
+	if (!inviteLink.value) return
+	try {
+		await navigator.clipboard.writeText(inviteLink.value)
+		showToast('초대 링크를 복사했습니다')
+	} catch {
+		inviteError.value = '초대 링크를 복사하지 못했습니다.'
+	}
+}
 const sidebarTheme = ref('theme-violet')
 const isCustomEventModalOpen = ref(false)
 
-/* ── Trip departure/destination ── */
-const editDeparture = ref('서울 (SEL)')
+/* ── Trip settings ── */
+const editTitle = ref('')
 const editDestination = ref('')
-watch(() => trip.value.destinationName, (destination) => {
-  editDestination.value = destination
+const tripSettingsLoading = ref(false)
+const tripSettingsError = ref('')
+watch(trip, (value) => {
+	editTitle.value = value.title
+	editDestination.value = value.destinationName
 }, { immediate: true })
+
+async function saveTripSettings() {
+	if (!editTitle.value.trim() || tripSettingsLoading.value) return
+	tripSettingsLoading.value = true
+	tripSettingsError.value = ''
+	try {
+		await tripApi.updateTrip(tripId, {
+			title: editTitle.value.trim(),
+			displayDestination: editDestination.value.trim(),
+		})
+		await loadTrip()
+		showToast('여행 정보를 저장했습니다')
+	} catch {
+		tripSettingsError.value = '여행 정보를 저장하지 못했습니다.'
+	} finally {
+		tripSettingsLoading.value = false
+	}
+}
 
 /* ── Detailbar ── */
 const isDetailbarOpen = ref(false)
@@ -1305,7 +1453,7 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <span class="members-count">{{ (trip.members ?? []).length }}명</span>
                   </div>
-                  <button class="btn ghost compact-settings-btn" type="button" @click="isInviteModalOpen = true">
+				<button class="btn ghost compact-settings-btn" type="button" @click="openTripManagement">
                     <span class="material-symbols-rounded" style="font-size:14px;">settings</span>
                     <span>관리</span>
                   </button>
@@ -1359,7 +1507,8 @@ function textAvatarStyle(index: unknown) {
                 <!-- 전체 보기 -->
                 <template v-else-if="activeDay === 0">
                   <template v-for="day in dayPlans" :key="day.day">
-                    <div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day">
+					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day"
+						@pointerdown="onPointerDown" @dragover.prevent @drop.prevent="dropNativeStop(day.id)">
                       <span class="day-pill">{{ dayPlanLabel(day) }}</span>
                       <span class="line"></span>
                       <button
@@ -1376,7 +1525,12 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <template v-for="(item, idx) in day.items" :key="item.id">
                       <div :class="['stop', getDayColorClass(day.day), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id) }]"
-                        :data-step-id="item.id" :data-place-id="item.placeExternalId"
+						:data-step-id="item.id" :data-place-id="item.placeExternalId" draggable="true"
+						@pointerdown="onPointerDown"
+						@dragstart="startNativeStopDrag($event, day.id, item.id)"
+						@dragend="finishNativeStopDrag"
+						@dragover.prevent
+						@drop.prevent="dropNativeStop(day.id, item.id)"
                         @click.stop="handleStopClick(item)">
                         <span class="stop-num">{{ idx + 1 }}</span>
                         <div>
@@ -1402,7 +1556,8 @@ function textAvatarStyle(index: unknown) {
                 </template>
                 <!-- 특정 일차 -->
                 <template v-else-if="activePlan">
-                  <div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay">
+				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay"
+					@pointerdown="onPointerDown" @dragover.prevent @drop.prevent="dropNativeStop(activePlan.id)">
                     <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
                     <span class="line"></span>
                     <button
@@ -1418,7 +1573,12 @@ function textAvatarStyle(index: unknown) {
                   </div>
                   <template v-for="(item, idx) in activePlan.items" :key="item.id">
                     <div :class="['stop', getDayColorClass(activeDay), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id) }]"
-                      :data-step-id="item.id" :data-place-id="item.placeExternalId"
+					:data-step-id="item.id" :data-place-id="item.placeExternalId" draggable="true"
+					@pointerdown="onPointerDown"
+					@dragstart="startNativeStopDrag($event, activePlan.id, item.id)"
+					@dragend="finishNativeStopDrag"
+					@dragover.prevent
+					@drop.prevent="dropNativeStop(activePlan.id, item.id)"
                       @click.stop="handleStopClick(item)">
                       <span class="stop-num">{{ idx + 1 }}</span>
                       <div>
@@ -1513,15 +1673,17 @@ function textAvatarStyle(index: unknown) {
           </aside>
 
           <!-- ═══ MAP CANVAS ═══ -->
-          <div class="map-canvas" aria-label="대전 여행 지도">
-            <MapboxItineraryMap
-              :stops="mapStops"
+          <div class="map-canvas" :aria-label="`${trip.title} 지도`">
+			<MapboxItineraryMap
+				:stops="mapStops"
+				:routes="itinerary.routes.value"
+				:route-display="routeState"
               :drawings="mapDrawings"
               :drawing-tool="activeTool"
               :drawing-color="penColor"
               :drawing-width="penSize"
               :drawings-visible="drawingOn"
-              @select-place="selectPlace"
+              @select-place="(_provider, placeId) => selectPlace(placeId)"
               @viewport-change="mapViewport.updateViewport"
               @drawing-create="createLocalDrawing"
               @drawing-erase="eraseLocalDrawing"
@@ -1937,9 +2099,16 @@ function textAvatarStyle(index: unknown) {
                 <li v-for="todo in currentTodos" :key="todo.id" class="todo-item">
                   <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">
                     <input type="checkbox" :checked="todo.done" :disabled="todoLoading" @change="toggleTodo(todo.id)" style="width:18px;height:18px;accent-color:var(--violet);" />
-                    <span :style="{ textDecoration: todo.done ? 'line-through' : 'none', color: todo.done ? 'var(--muted)' : 'var(--ink)', fontSize: '14px' }">{{ todo.text }}</span>
-                  </label>
-                  <button type="button" aria-label="할 일 삭제" class="icon-btn" :disabled="todoLoading" @click="deleteTodo(todo.id)"><span class="material-symbols-rounded">delete</span></button>
+					<span :style="{ textDecoration: todo.done ? 'line-through' : 'none', color: todo.done ? 'var(--muted)' : 'var(--ink)', fontSize: '14px' }">{{ todo.text }}</span>
+				</label>
+				<div v-if="todo.completedMembers.length" class="todo-completed-members" :aria-label="`${todo.completedMembers.map(member => member.displayName).join(', ')} 완료`">
+					<span v-for="member in todo.completedMembers.slice(0, 5)" :key="member.id" class="todo-member-avatar" :title="`${member.displayName} 완료`">
+						<img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" />
+						<template v-else>{{ member.displayName.charAt(0) }}</template>
+					</span>
+					<span v-if="todo.completedMembers.length > 5" class="todo-member-more">+{{ todo.completedMembers.length - 5 }}</span>
+				</div>
+				<button type="button" aria-label="할 일 삭제" class="icon-btn" :disabled="todoLoading" @click="deleteTodo(todo.id)"><span class="material-symbols-rounded">delete</span></button>
                 </li>
               </ul>
             </div>
@@ -1976,61 +2145,29 @@ function textAvatarStyle(index: unknown) {
         <div class="modal-body">
           <!-- TAB 1: Settings -->
           <div :class="['modal-tab-content', { active: inviteTab === 'tab-settings' }]" id="tab-settings">
-            <form id="trip-settings-form" class="modal-form" @submit.prevent>
+            <form id="trip-settings-form" class="modal-form" @submit.prevent="saveTripSettings">
               <label class="form-label">
                 <span class="form-label-text">여행 방 이름</span>
-                <input class="field" type="text" id="edit-trip-name" :value="trip.title" placeholder="여행 방 이름을 입력하세요">
+                <input class="field" type="text" id="edit-trip-name" v-model="editTitle" placeholder="여행 방 이름을 입력하세요">
               </label>
-              <div class="form-row-dates">
-                <label class="form-label">
-                  <span class="form-label-text">출발일</span>
-                  <input class="field" type="date" id="edit-trip-start" :value="trip.startDate">
-                </label>
-                <label class="form-label">
-                  <span class="form-label-text">귀국일</span>
-                  <input class="field" type="date" id="edit-trip-end" :value="trip.endDate">
-                </label>
-              </div>
-              <div class="form-row-dates">
-                <label class="form-label">
-                  <span class="form-label-text">출발지</span>
-                  <input class="field" type="text" id="edit-trip-departure" v-model="editDeparture" placeholder="예: 서울 (SEL)">
-                </label>
-                <label class="form-label">
-                  <span class="form-label-text">도착지</span>
-                  <input class="field" type="text" id="edit-trip-destination" v-model="editDestination" placeholder="예: 부산 (PUS)">
-                </label>
-              </div>
               <label class="form-label">
-                <span class="form-label-text">사이드바 테마색</span>
-                <div class="theme-picker">
-                  <button type="button" :class="['theme-option', { active: sidebarTheme === 'theme-violet' }]" data-theme="theme-violet" style="background:linear-gradient(135deg,#6366f1,#3b82f6);" @click="sidebarTheme = 'theme-violet'"></button>
-                  <button type="button" :class="['theme-option', { active: sidebarTheme === 'theme-sunset' }]" data-theme="theme-sunset" style="background:linear-gradient(135deg,#f97316,#ef4444);" @click="sidebarTheme = 'theme-sunset'"></button>
-                  <button type="button" :class="['theme-option', { active: sidebarTheme === 'theme-emerald' }]" data-theme="theme-emerald" style="background:linear-gradient(135deg,#10b981,#059669);" @click="sidebarTheme = 'theme-emerald'"></button>
-                  <button type="button" :class="['theme-option', { active: sidebarTheme === 'theme-dark' }]" data-theme="theme-dark" style="background:linear-gradient(135deg,#1e293b,#0f172a);" @click="sidebarTheme = 'theme-dark'"></button>
-                </div>
+                <span class="form-label-text">대표 여행지</span>
+                <input class="field" type="text" id="edit-trip-destination" v-model="editDestination" placeholder="예: 부산">
               </label>
-              <button type="submit" class="btn primary" style="width:100%;margin-top:16px;">설정 저장하기</button>
+              <p v-if="tripSettingsError" class="text-sm" style="color:var(--rose);">{{ tripSettingsError }}</p>
+              <button type="submit" class="btn primary" :disabled="tripSettingsLoading || !editTitle.trim()" style="width:100%;margin-top:16px;">{{ tripSettingsLoading ? '저장 중…' : '설정 저장하기' }}</button>
             </form>
           </div>
 
           <!-- TAB 2: Members -->
           <div :class="['modal-tab-content', { active: inviteTab === 'tab-members' }]" id="tab-members" v-show="inviteTab === 'tab-members'">
-            <!-- Email Invite Form -->
-            <div class="email-invite-section" style="margin-bottom:20px;">
-              <span class="form-label-text" style="display:block;margin-bottom:8px;">이메일로 친구 초대</span>
-              <div class="email-invite-box">
-                <input class="field" type="email" id="invite-email-input" placeholder="invite@example.com">
-                <button id="btn-email-invite" class="btn primary small" style="min-height:42px;margin-bottom:0;" type="button">초대</button>
-              </div>
-            </div>
-
             <!-- Share Link Section -->
             <span class="form-label-text" style="display:block;margin-bottom:8px;">초대 링크 공유</span>
             <div class="invite-link-box" style="margin-bottom:20px;">
-              <input type="text" readonly value="https://soomgil.com/invite/eu-summer24" id="invite-link-input">
-              <button id="copy-link-btn" style="padding:8px 16px;font-size:14px;border-radius:12px;border:none;background:var(--violet);color:white;font-weight:700;cursor:pointer;">복사</button>
+              <input type="text" readonly :value="inviteLink" :placeholder="inviteLoading ? '초대 링크 생성 중…' : ''" id="invite-link-input">
+              <button id="copy-link-btn" type="button" :disabled="inviteLoading || !inviteLink" @click="copyInviteLink" style="padding:8px 16px;font-size:14px;border-radius:12px;border:none;background:var(--violet);color:white;font-weight:700;cursor:pointer;">복사</button>
             </div>
+            <p v-if="inviteError" class="text-sm" style="color:var(--rose);margin-top:-12px;margin-bottom:20px;">{{ inviteError }}</p>
 
             <!-- Members Section -->
             <div class="modal-members-section">
@@ -2039,8 +2176,11 @@ function textAvatarStyle(index: unknown) {
                 <span class="member-count">{{ (trip.members ?? []).length }}명</span>
               </div>
               <ul class="member-list" id="invite-member-list">
-                <li v-for="member in (trip.members ?? [])" :key="member.id" class="member-item">
-                  <div class="member-avatar" :style="{ backgroundColor: 'var(--violet)' }">{{ (member.displayName ?? '?').charAt(0) }}</div>
+				<li v-for="member in (trip.members ?? [])" :key="member.id" class="member-item">
+					<div class="member-avatar" :style="{ backgroundColor: 'var(--violet)' }">
+						<img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" />
+						<template v-else>{{ (member.displayName ?? '?').charAt(0) }}</template>
+					</div>
                   <div class="member-info"><span class="member-name">{{ member.displayName ?? '알 수 없음' }}</span></div>
                 </li>
               </ul>
@@ -2470,7 +2610,13 @@ function textAvatarStyle(index: unknown) {
 
 .member-item { display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line); }
 .member-avatar { width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:13px;font-weight:800; }
+.member-avatar img { width:100%;height:100%;object-fit:cover;border-radius:inherit; }
 .member-name { font-size:14px;font-weight:700;color:var(--ink); }
+.todo-completed-members { display:flex;align-items:center;margin-left:auto;padding-left:8px; }
+.todo-member-avatar { width:24px;height:24px;margin-left:-6px;border:2px solid #fff;border-radius:50%;display:grid;place-items:center;overflow:hidden;background:var(--violet);color:#fff;font-size:10px;font-weight:800; }
+.todo-member-avatar:first-child { margin-left:0; }
+.todo-member-avatar img { width:100%;height:100%;object-fit:cover; }
+.todo-member-more { margin-left:4px;color:var(--muted);font-size:11px;font-weight:700; }
 
 /* Members header */
 .members-header {
