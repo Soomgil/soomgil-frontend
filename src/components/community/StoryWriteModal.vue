@@ -30,7 +30,7 @@ const selectedMediaIds = ref<Set<string>>(new Set())
 const loadingRecordPhotos = ref(false)
 const previewImageIndex = ref(0)
 const selectedPhotos = computed(() => recordPhotos.value.filter((photo) => selectedMediaIds.value.has(photo.media.id)))
-const addedPhotos = computed(() => selectedPhotos.value.flatMap((photo) => photo.media.publicUrl ? [photo.media.publicUrl] : []))
+const addedPhotos = computed(() => selectedPhotos.value.flatMap((photo) => photo.media.servingUrl ?? photo.media.publicUrl ? [photo.media.servingUrl ?? photo.media.publicUrl ?? ''] : []))
 const representativePhoto = computed(() => addedPhotos.value[0] ?? '')
 
 // Char counter
@@ -110,7 +110,7 @@ async function loadRecordPhotos(tripId: string) {
   previewImageIndex.value = 0
   try {
     const response = await mediaApi.getRecordPhotos(tripId)
-    recordPhotos.value = response.items.filter((photo) => Boolean(photo.media.publicUrl))
+    recordPhotos.value = response.items.filter((photo) => Boolean(photo.media.servingUrl ?? photo.media.publicUrl))
   } catch {
     toast.error('선택한 여행의 기록 사진을 불러오지 못했습니다.')
   } finally {
@@ -261,7 +261,7 @@ watch(selectedTripId, (tripId) => {
                     :style="{ border: selectedMediaIds.has(photo.media.id) ? '3px solid var(--violet)' : '3px solid transparent' }"
                     @click="toggleRecordPhoto(photo)"
                   >
-                    <img :src="photo.media.publicUrl ?? ''" :alt="`여행 기록 사진 ${idx + 1}`" style="width: 100%; height: 100%; object-fit: cover; display:block;" />
+                    <img :src="photo.media.servingUrl ?? photo.media.publicUrl ?? ''" :alt="`여행 기록 사진 ${idx + 1}`" style="width: 100%; height: 100%; object-fit: cover; display:block;" />
                     <span v-if="selectedMediaIds.has(photo.media.id)" style="position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:50%; background:var(--violet); color:#fff; display:grid; place-items:center;"><span class="material-symbols-rounded" style="font-size:18px;">check</span></span>
                     <span v-if="selectedPhotos[0]?.media.id === photo.media.id" style="position:absolute; left:8px; bottom:8px; padding:4px 8px; border-radius:8px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; font-weight:900;">커버</span>
                   </button>

@@ -20,14 +20,46 @@ describe('media API', () => {
     vi.unstubAllGlobals()
   })
 
-  it('filters record photos through the contract collection endpoint', async () => {
+  it('loads photos for one trip through the nested record endpoint', async () => {
     const payload = { items: [], page: { page: 0, size: 100, totalElements: 0, totalPages: 0 } }
     get.mockResolvedValue({ data: payload })
 
     await expect(mediaApi.getRecordPhotos('trip-1')).resolves.toEqual(payload)
-    expect(get).toHaveBeenCalledWith('/records/photos', {
-      params: { tripId: 'trip-1', page: 0, size: 100 },
+    expect(get).toHaveBeenCalledWith('/trips/trip-1/records/photos', {
+      params: { page: 0, size: 100 },
     })
+  })
+
+  it('loads photos across the current users trips through the global endpoint', async () => {
+    const payload = { items: [], page: { page: 0, size: 100, totalElements: 0, totalPages: 0 } }
+    get.mockResolvedValue({ data: payload })
+
+    await expect(mediaApi.getAllRecordPhotos()).resolves.toEqual(payload)
+    expect(get).toHaveBeenCalledWith('/records/photos', { params: { page: 0, size: 100 } })
+  })
+
+  it('loads photo summaries for multiple trips in one request', async () => {
+    const payload = { items: [{ tripId: 'trip-1', photoCount: 3, coverMediaFileId: null, coverUrl: null, coverUrlExpiresAt: null }] }
+    post.mockResolvedValue({ data: payload })
+
+    await expect(mediaApi.getRecordPhotoSummaries(['trip-1'])).resolves.toEqual(payload)
+    expect(post).toHaveBeenCalledWith('/records/photo-summaries', { tripIds: ['trip-1'] })
+  })
+
+  it('refreshes one record photo read URL', async () => {
+    const payload = { mediaFileId: 'media-1', url: 'https://storage.example.com/read', expiresAt: null }
+    get.mockResolvedValue({ data: payload })
+
+    await expect(mediaApi.refreshRecordPhotoReadUrl('media-1')).resolves.toEqual(payload)
+    expect(get).toHaveBeenCalledWith('/records/photos/media-1/read-url')
+  })
+
+  it('loads paged record entries from the backend', async () => {
+    const payload = { items: [], page: { page: 1, size: 20, totalElements: 0, totalPages: 0 } }
+    get.mockResolvedValue({ data: payload })
+
+    await expect(mediaApi.getRecords('trip-1', { page: 1, size: 20 })).resolves.toEqual(payload)
+    expect(get).toHaveBeenCalledWith('/trips/trip-1/records', { params: { page: 1, size: 20 } })
   })
 
   it('uploads a file directly to storage and registers its metadata', async () => {

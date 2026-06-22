@@ -1,71 +1,292 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { mockRecords } from '@/mocks/mockRecords'
-import { mockTrips } from '@/mocks/mockTrips'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import { mediaApi } from '@/api/media.api'
+import { tripApi } from '@/api/trip.api'
+import { useRecordPhotoUrlRefresh } from '@/composables/useRecordPhotoUrlRefresh'
+import type { PagedItems } from '@/types/api'
+import type { TripRecordPhoto } from '@/types/media'
+import type { TripSummary } from '@/types/trip'
 
-const selectedTripId = ref<string | null>(null)
+const route = useRoute()
+const PHOTO_PAGE_SIZE = 30
+const PHOTO_SUMMARY_BATCH_SIZE = 100
+const routeTripId = typeof route.query.tripId === 'string' ? route.query.tripId : null
+const selectedTripId = ref<string | null>(routeTripId)
 const isUploadModalOpen = ref(false)
 const uploadTripId = ref('')
 const uploadPreview = ref<string | null>(null)
+const uploadFile = ref<File | null>(null)
 const uploadError = ref('')
-
-const trips = mockTrips
-const sliderRef = ref<HTMLElement | null>(null)
-
-// Photo viewer modal
+const uploadingPhoto = ref(false)
+const trips = ref<TripSummary[]>([])
+const photos = ref<TripRecordPhoto[]>([])
+const globalPhotoCount = ref(0)
+const photoCounts = ref<Record<string, number>>({})
+interface TripCover { mediaFileId: string; url: string; expiresAt: string | null }
+const tripCovers = ref<Record<string, TripCover>>({})
+const loading = ref(false)
+const loadingMore = ref(false)
+const hasMore = ref(true)
+const nextPhotoPage = ref(0)
+const error = ref<string | null>(null)
+const loadMoreError = ref<string | null>(null)
+const loadMoreSentinel = ref<HTMLElement | null>(null)
+let requestSequence = 0
+let tripMetadataSequence = 0
+let loadMoreObserver: IntersectionObserver | null = null
+const tripPhotoStateVersions: Record<string, number> = {}
 const viewerOpen = ref(false)
 const viewerSrc = ref('')
 const viewerAlt = ref('')
+const viewerMediaId = ref<string | null>(null)
+const { refreshPhotoUrl, refreshPhotoUrlById } = useRecordPhotoUrlRefresh(photos, (refreshed) => {
+  tripCovers.value = Object.fromEntries(Object.entries(tripCovers.value).map(([tripId, cover]) => [
+    tripId,
+    cover.mediaFileId === refreshed.mediaFileId
+      ? { mediaFileId: refreshed.mediaFileId, url: refreshed.url, expiresAt: refreshed.expiresAt }
+      : cover,
+  ]))
+  if (viewerMediaId.value === refreshed.mediaFileId) viewerSrc.value = refreshed.url
+})
+const sliderRef = ref<HTMLElement | null>(null)
 
-function openViewer(src: string, alt: string) {
-  viewerSrc.value = src
-  viewerAlt.value = alt
+function openViewer(photo: TripRecordPhoto) {
+  viewerSrc.value = photoSource(photo)
+  viewerAlt.value = photoLabel(photo)
+  viewerMediaId.value = photo.media.id
   viewerOpen.value = true
 }
+
 function closeViewer() {
   viewerOpen.value = false
+  viewerMediaId.value = null
 }
 
-function heightForAspect(ratio: string): number {
-  switch (ratio) {
-    case 'portrait': return 340
-    case 'landscape': return 220
-    case 'square': return 280
-    default: return 280
-  }
+function heightForPhoto(photo: TripRecordPhoto): number {
+  const width = photo.media.width
+  const height = photo.media.height
+  if (!width || !height) return 280
+  const ratio = width / height
+  if (ratio > 1.2) return 220
+  if (ratio < 0.8) return 340
+  return 280
 }
 
 const avatarColors = ['var(--rose)', 'var(--blue)', 'var(--cyan)', 'var(--violet)']
+const visiblePhotos = computed(() => photos.value.filter((photo) => Boolean(photoSource(photo))))
 
-const filteredRecords = computed(() => {
-  if (!selectedTripId.value) return mockRecords
-  return mockRecords.filter((r) => r.tripId === selectedTripId.value)
-})
+function photoSource(photo: TripRecordPhoto): string {
+  return photo.media.servingUrl ?? photo.media.publicUrl ?? ''
+}
 
-function selectTrip(tripId: string | null) {
-  selectedTripId.value = selectedTripId.value === tripId ? null : tripId
+function photoLabel(photo: TripRecordPhoto): string {
+  return photo.tripTitle || '여행 기록'
+}
+
+function uploaderName(photo: TripRecordPhoto): string {
+  return photo.uploadedBy?.displayName || '여행 멤버'
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(value))
+}
+
+function photoCountForTrip(tripId: string): number | null {
+  return photoCounts.value[tripId] ?? null
+}
+
+function coverForTrip(tripId: string): string | null {
+  return tripCovers.value[tripId]?.url ?? null
+}
+
+function rememberPhotoCovers(items: TripRecordPhoto[]) {
+  const nextCovers = { ...tripCovers.value }
+  for (const photo of items) {
+    const source = photoSource(photo)
+    if (!nextCovers[photo.tripId] && source) {
+      nextCovers[photo.tripId] = {
+        mediaFileId: photo.media.id,
+        url: source,
+        expiresAt: photo.media.servingUrlExpiresAt,
+      }
+      tripPhotoStateVersions[photo.tripId] = (tripPhotoStateVersions[photo.tripId] ?? 0) + 1
+    }
+  }
+  tripCovers.value = nextCovers
+}
+
+function photoErrorMessage(cause: unknown): string {
+  const status = typeof cause === 'object' && cause !== null && 'response' in cause
+    ? (cause as { response?: { status?: number } }).response?.status
+    : undefined
+  if (status === 403) return '이 여행 기록을 볼 권한이 없습니다.'
+  if (status === 404) return '요청한 여행을 찾을 수 없습니다.'
+  return '여행 기록을 불러오지 못했습니다.'
+}
+
+function resetPhotoFeed() {
+  photos.value = []
+  loadingMore.value = false
+  nextPhotoPage.value = 0
+  hasMore.value = true
+  loadMoreError.value = null
+}
+
+function fetchPhotoPage(tripId: string | null, page: number): Promise<PagedItems<TripRecordPhoto>> {
+  return tripId
+    ? mediaApi.getRecordPhotos(tripId, page, PHOTO_PAGE_SIZE)
+    : mediaApi.getAllRecordPhotos(page, PHOTO_PAGE_SIZE)
+}
+
+function applyPhotoPage(result: PagedItems<TripRecordPhoto>, tripId: string | null, reset: boolean) {
+  const knownIds = new Set((reset ? [] : photos.value).map((photo) => `${photo.recordId}-${photo.media.id}`))
+  const nextItems = result.items.filter((photo) => !knownIds.has(`${photo.recordId}-${photo.media.id}`))
+  photos.value = reset ? nextItems : [...photos.value, ...nextItems]
+  nextPhotoPage.value = result.page.page + 1
+  hasMore.value = nextPhotoPage.value < result.page.totalPages
+  if (tripId) {
+    photoCounts.value = { ...photoCounts.value, [tripId]: result.page.totalElements }
+    tripPhotoStateVersions[tripId] = (tripPhotoStateVersions[tripId] ?? 0) + 1
+  } else {
+    globalPhotoCount.value = result.page.totalElements
+  }
+  rememberPhotoCovers(result.items)
+}
+
+async function loadTripPhotoMetadata(items: TripSummary[], metadataRequestId: number) {
+  for (let index = 0; index < items.length; index += PHOTO_SUMMARY_BATCH_SIZE) {
+    const batch = items.slice(index, index + PHOTO_SUMMARY_BATCH_SIZE)
+    const stateVersions = new Map(batch.map((trip) => [trip.id, tripPhotoStateVersions[trip.id] ?? 0]))
+    try {
+      const summaries = await mediaApi.getRecordPhotoSummaries(batch.map((trip) => trip.id))
+      if (metadataRequestId !== tripMetadataSequence) return
+      const batchCounts: Record<string, number> = {}
+      const nextCovers = { ...tripCovers.value }
+      summaries.items.forEach((summary) => {
+        if ((tripPhotoStateVersions[summary.tripId] ?? 0) !== stateVersions.get(summary.tripId)) return
+        batchCounts[summary.tripId] = summary.photoCount
+        if (summary.coverUrl && summary.coverMediaFileId) {
+          nextCovers[summary.tripId] = {
+            mediaFileId: summary.coverMediaFileId,
+            url: summary.coverUrl,
+            expiresAt: summary.coverUrlExpiresAt,
+          }
+        } else if (!summary.coverUrl) {
+          delete nextCovers[summary.tripId]
+        }
+      })
+      photoCounts.value = { ...photoCounts.value, ...batchCounts }
+      tripCovers.value = nextCovers
+    } catch {
+      continue
+    }
+  }
+}
+
+async function fetchAllTrips(): Promise<TripSummary[]> {
+  const tripsById = new Map<string, TripSummary>()
+  let page = 0
+  let totalPages = 1
+  do {
+    const result = await tripApi.getTrips({ page, size: 100 })
+    result.items.forEach((trip) => tripsById.set(trip.id, trip))
+    totalPages = result.page.totalPages
+    page += 1
+  } while (page < totalPages)
+  return [...tripsById.values()]
+}
+
+async function loadPage() {
+  const requestId = ++requestSequence
+  const metadataRequestId = ++tripMetadataSequence
+  resetPhotoFeed()
+  loading.value = true
+  error.value = null
+  try {
+    const tripId = selectedTripId.value
+    const [tripItems, photoResult, globalResult] = await Promise.all([
+      fetchAllTrips(),
+      fetchPhotoPage(tripId, 0),
+      tripId ? mediaApi.getAllRecordPhotos(0, 1) : Promise.resolve(null),
+    ])
+    if (requestId !== requestSequence) return
+    trips.value = tripItems
+    applyPhotoPage(photoResult, tripId, true)
+    if (globalResult) globalPhotoCount.value = globalResult.page.totalElements
+    void loadTripPhotoMetadata(tripItems, metadataRequestId)
+  } catch (cause) {
+    if (requestId === requestSequence) error.value = photoErrorMessage(cause)
+  } finally {
+    if (requestId === requestSequence) loading.value = false
+  }
+}
+
+async function showTrip(nextTripId: string | null) {
+  selectedTripId.value = nextTripId
+  const requestId = ++requestSequence
+  resetPhotoFeed()
+  loading.value = true
+  error.value = null
+  try {
+    const result = await fetchPhotoPage(nextTripId, 0)
+    if (requestId !== requestSequence) return
+    applyPhotoPage(result, nextTripId, true)
+  } catch (cause) {
+    if (requestId === requestSequence) error.value = photoErrorMessage(cause)
+  } finally {
+    if (requestId === requestSequence) loading.value = false
+  }
+}
+
+async function selectTrip(tripId: string | null) {
+  await showTrip(selectedTripId.value === tripId ? null : tripId)
+}
+
+async function loadNextPhotoPage() {
+  if (loading.value || loadingMore.value || !hasMore.value) return
+  const requestId = requestSequence
+  const tripId = selectedTripId.value
+  const page = nextPhotoPage.value
+  loadingMore.value = true
+  loadMoreError.value = null
+  try {
+    const result = await fetchPhotoPage(tripId, page)
+    if (requestId !== requestSequence || tripId !== selectedTripId.value) return
+    applyPhotoPage(result, tripId, false)
+  } catch {
+    if (requestId === requestSequence) loadMoreError.value = '사진을 더 불러오지 못했습니다.'
+  } finally {
+    if (requestId === requestSequence) loadingMore.value = false
+  }
 }
 
 function scrollSlider(direction: 'prev' | 'next') {
   if (!sliderRef.value) return
-  const scrollAmount = 200
-  sliderRef.value.scrollBy({
-    left: direction === 'next' ? scrollAmount : -scrollAmount,
-    behavior: 'smooth',
-  })
+  sliderRef.value.scrollBy({ left: direction === 'next' ? 200 : -200, behavior: 'smooth' })
+}
+
+function clearUploadSelection() {
+  if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
+  uploadPreview.value = null
+  uploadFile.value = null
 }
 
 function openUploadModal() {
-  uploadPreview.value = null
+  clearUploadSelection()
   uploadError.value = ''
   uploadTripId.value = ''
   isUploadModalOpen.value = true
 }
 
 function closeUploadModal() {
+  if (uploadingPhoto.value) return
   isUploadModalOpen.value = false
-  uploadPreview.value = null
+  clearUploadSelection()
   uploadError.value = ''
 }
 
@@ -77,14 +298,88 @@ function handleFileSelect(event: Event) {
       uploadError.value = '이미지 파일만 업로드할 수 있습니다.'
       return
     }
+    if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
+    uploadFile.value = file
     uploadPreview.value = URL.createObjectURL(file)
     uploadError.value = ''
   }
 }
 
 function removePreview() {
-  uploadPreview.value = null
+  clearUploadSelection()
 }
+
+async function submitPhoto() {
+  if (!uploadTripId.value || !uploadFile.value || uploadingPhoto.value) {
+    uploadError.value = '여행과 사진을 모두 선택해주세요.'
+    return
+  }
+  uploadingPhoto.value = true
+  uploadError.value = ''
+  let uploadedMediaId: string | null = null
+  try {
+    const media = await mediaApi.uploadFile(uploadFile.value, 'TRIP_RECORD')
+    uploadedMediaId = media.id
+    const idempotencyKey = crypto.randomUUID()
+    try {
+      await mediaApi.createRecord(uploadTripId.value, { mediaFileIds: [media.id] }, idempotencyKey)
+    } catch (cause) {
+      const status = typeof cause === 'object' && cause !== null && 'response' in cause
+        ? (cause as { response?: { status?: number } }).response?.status
+        : undefined
+      if (status != null && status < 500) throw cause
+      await mediaApi.createRecord(uploadTripId.value, { mediaFileIds: [media.id] }, idempotencyKey)
+    }
+    const tripId = uploadTripId.value
+    uploadingPhoto.value = false
+    closeUploadModal()
+    selectedTripId.value = tripId
+    await loadPage()
+  } catch (cause) {
+    const status = typeof cause === 'object' && cause !== null && 'response' in cause
+      ? (cause as { response?: { status?: number } }).response?.status
+      : undefined
+    if (uploadedMediaId && status != null && status < 500) {
+      await mediaApi.delete(uploadedMediaId).catch(() => undefined)
+    }
+    uploadError.value = '사진을 추가하지 못했습니다. 잠시 후 다시 시도해주세요.'
+  } finally {
+    uploadingPhoto.value = false
+  }
+}
+
+watch(loadMoreSentinel, (current, previous) => {
+  if (previous) loadMoreObserver?.unobserve(previous)
+  if (current) loadMoreObserver?.observe(current)
+})
+
+watch(() => route.query.tripId, (value) => {
+  const nextTripId = typeof value === 'string' ? value : null
+  if (nextTripId === selectedTripId.value) return
+  if (trips.value.length === 0) {
+    selectedTripId.value = nextTripId
+    void loadPage()
+    return
+  }
+  void showTrip(nextTripId)
+})
+
+onMounted(() => {
+  if (typeof IntersectionObserver !== 'undefined') {
+    loadMoreObserver = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) void loadNextPhotoPage()
+    }, { rootMargin: '300px' })
+    if (loadMoreSentinel.value) loadMoreObserver.observe(loadMoreSentinel.value)
+  }
+  void loadPage()
+})
+
+onBeforeUnmount(() => {
+  requestSequence += 1
+  tripMetadataSequence += 1
+  loadMoreObserver?.disconnect()
+  clearUploadSelection()
+})
 </script>
 
 <template>
@@ -125,45 +420,46 @@ function removePreview() {
             </button>
             <div class="record-trip-slider" ref="sliderRef" data-record-trip-slider>
               <!-- "전체 보기" card -->
-              <div
+              <button
                 class="record-trip-card is-all"
+                type="button"
                 :class="{ 'is-selected': selectedTripId === null }"
                 @click="selectTrip(null)"
               >
                 <div class="record-trip-card-body">
                   <span class="material-symbols-rounded">photo_library</span>
                   <h3>전체 기록</h3>
-                  <p>{{ mockRecords.length }}장</p>
+                  <p>{{ globalPhotoCount }}장</p>
                 </div>
-              </div>
+              </button>
               <!-- Trip cards -->
-              <div
+              <button
                 v-for="trip in trips"
                 :key="trip.id"
                 class="record-trip-card"
+                type="button"
                 :class="{ 'is-selected': selectedTripId === trip.id }"
                 @click="selectTrip(trip.id)"
               >
-                <img class="record-trip-card-cover" :src="trip.coverImageUrl" :alt="trip.title" />
+                <img
+                  v-if="coverForTrip(trip.id)"
+                  class="record-trip-card-cover"
+                  :src="coverForTrip(trip.id) || ''"
+                  :alt="trip.title"
+                  @error="tripCovers[trip.id] && refreshPhotoUrlById(tripCovers[trip.id].mediaFileId, tripCovers[trip.id].url)"
+                />
+                <div v-else class="record-trip-card-cover record-trip-card-cover-placeholder" aria-hidden="true">
+                  <span class="material-symbols-rounded">landscape</span>
+                </div>
                 <div class="record-trip-card-body">
                   <h3>{{ trip.title }}</h3>
-                  <p>{{ trip.startDate }}</p>
+                  <p>{{ trip.displayDestination || formatDate(trip.createdAt) }}</p>
                   <div class="record-trip-card-meta">
                     <span class="material-symbols-rounded">photo_camera</span>
-                    {{ mockRecords.filter(r => r.tripId === trip.id).length }}장
-                  </div>
-                  <div class="record-trip-card-avatars">
-                    <div
-                      v-for="(member, idx) in (trip.members ?? [])"
-                      :key="member.id"
-                      class="avatar"
-                      :style="{ background: 'var(--violet)', zIndex: (trip.members ?? []).length - idx }"
-                    >
-                      {{ member.displayName?.charAt(0) ?? '?' }}
-                    </div>
+                    {{ photoCountForTrip(trip.id) == null ? '기록 보기' : `${photoCountForTrip(trip.id)}장` }}
                   </div>
                 </div>
-              </div>
+              </button>
             </div>
             <button class="record-trip-slider-btn next" type="button" aria-label="다음 기록 카드" @click="scrollSlider('next')">
               <span class="material-symbols-rounded">chevron_right</span>
@@ -174,24 +470,48 @@ function removePreview() {
           <hr class="record-divider">
 
           <!-- 3. Masonry photo feed -->
-          <div class="record-masonry" data-record-masonry>
+          <LoadingState v-if="loading" />
+          <ErrorState v-else-if="error" :message="error" @retry="loadPage" />
+          <EmptyState
+            v-else-if="visiblePhotos.length === 0"
+            icon="photo_library"
+            message="아직 등록된 여행 기록 사진이 없습니다."
+          />
+          <div v-else class="record-masonry" data-record-masonry>
             <button
-              v-for="(record, i) in filteredRecords"
-              :key="record.id"
+              v-for="(photo, i) in visiblePhotos"
+              :key="`${photo.recordId}-${photo.media.id}`"
               class="record-masonry-item"
               type="button"
-              :aria-label="record.location + ' 사진 확대 보기'"
-              @click="openViewer(record.src, record.location)"
+              :aria-label="photoLabel(photo) + ' 사진 확대 보기'"
+              @click="openViewer(photo)"
             >
-              <img :src="record.src" :alt="record.location" loading="lazy" :style="{ height: heightForAspect(record.aspectRatio) + 'px' }" />
+              <img
+                :src="photoSource(photo)"
+                :alt="photoLabel(photo)"
+                loading="lazy"
+                :style="{ height: heightForPhoto(photo) + 'px' }"
+                @error="refreshPhotoUrl(photo)"
+              />
               <div class="record-masonry-overlay">
-                <p class="overlay-schedule">{{ record.scheduleName }}</p>
+                <p class="overlay-schedule">{{ photoLabel(photo) }}</p>
                 <p class="overlay-uploader">
-                  <span class="avatar" :style="{ width: '20px', height: '20px', fontSize: '9px', background: avatarColors[i % avatarColors.length] }">{{ record.uploader.avatar }}</span>
-                  {{ record.uploader.name }}
+                  <span class="avatar" :style="{ width: '20px', height: '20px', fontSize: '9px', background: avatarColors[i % avatarColors.length] }">{{ uploaderName(photo).charAt(0) }}</span>
+                  {{ uploaderName(photo) }}
                 </p>
               </div>
             </button>
+          </div>
+          <div
+            v-if="!loading && !error && hasMore"
+            ref="loadMoreSentinel"
+            class="record-load-more-sentinel"
+            aria-hidden="true"
+          />
+          <p v-if="loadingMore" class="record-load-more-status" role="status">사진을 더 불러오는 중입니다.</p>
+          <div v-if="loadMoreError" class="record-load-more-error" role="alert">
+            <span>{{ loadMoreError }}</span>
+            <button class="btn ghost" type="button" @click="loadNextPhotoPage">다시 불러오기</button>
           </div>
         </div>
 
@@ -211,12 +531,12 @@ function removePreview() {
             <p class="eyebrow">New Moment</p>
             <h3 id="record-photo-title">사진 추가</h3>
           </div>
-          <button class="icon-btn" type="button" @click="closeUploadModal" aria-label="닫기">
+          <button class="icon-btn" type="button" :disabled="uploadingPhoto" @click="closeUploadModal" aria-label="닫기">
             <span class="material-symbols-rounded">close</span>
           </button>
         </div>
 
-        <form class="record-photo-form" @submit.prevent>
+        <form class="record-photo-form" @submit.prevent="submitPhoto">
           <label class="form-label">
             <span class="form-label-text">여행 선택</span>
             <select class="field" v-model="uploadTripId" required>
@@ -242,9 +562,9 @@ function removePreview() {
           <p class="trip-create-error" aria-live="polite">{{ uploadError }}</p>
 
           <div class="trip-create-actions">
-            <button class="btn ghost" type="button" @click="closeUploadModal">취소</button>
-            <button class="btn primary" type="submit">
-              <span class="material-symbols-rounded">check</span>사진 추가
+            <button class="btn ghost" type="button" :disabled="uploadingPhoto" @click="closeUploadModal">취소</button>
+            <button class="btn primary" type="submit" :disabled="uploadingPhoto">
+              <span class="material-symbols-rounded">check</span>{{ uploadingPhoto ? '추가 중...' : '사진 추가' }}
             </button>
           </div>
         </form>
@@ -257,7 +577,13 @@ function removePreview() {
     <button class="record-viewer-close" type="button" aria-label="닫기" @click="closeViewer">
       <span class="material-symbols-rounded">close</span>
     </button>
-    <img class="record-viewer-img" :src="viewerSrc" :alt="viewerAlt" @click.stop />
+    <img
+      class="record-viewer-img"
+      :src="viewerSrc"
+      :alt="viewerAlt"
+      @error="viewerMediaId && refreshPhotoUrlById(viewerMediaId, viewerSrc)"
+      @click.stop
+    />
   </div>
 </template>
 
@@ -384,10 +710,18 @@ function removePreview() {
   cursor: pointer;
   transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 .record-trip-card:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow);
+}
+.record-trip-card:focus-visible {
+  outline: 3px solid rgba(124, 58, 237, 0.38);
+  outline-offset: 3px;
 }
 .record-trip-card-cover {
   position: absolute;
@@ -399,6 +733,16 @@ function removePreview() {
   border-radius: 18px 18px 0 0;
   transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 1;
+}
+.record-trip-card-cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.18), rgba(37, 99, 235, 0.24));
+  color: var(--violet);
+}
+.record-trip-card-cover-placeholder .material-symbols-rounded {
+  font-size: 34px;
 }
 .record-trip-card-body {
   position: absolute;
@@ -606,6 +950,23 @@ function removePreview() {
 .record-masonry {
   column-count: 4;
   column-gap: 16px;
+}
+.record-load-more-sentinel {
+  width: 100%;
+  height: 1px;
+}
+.record-load-more-status {
+  margin: 20px 0 0;
+  color: var(--muted);
+  text-align: center;
+}
+.record-load-more-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+  color: var(--muted);
 }
 .record-masonry-item {
   break-inside: avoid;
