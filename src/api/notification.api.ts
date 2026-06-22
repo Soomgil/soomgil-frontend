@@ -1,21 +1,27 @@
 import http from './http'
-import type { ApiResponse, PaginatedResponse, PaginationParams } from '@/types/api'
+import type { BulkUpdateResult, PagedItems } from '@/types/api'
 import type { Notification } from '@/types/notification'
 
 export const notificationApi = {
   /** 알림 목록 */
-  getNotifications: async (params?: PaginationParams): Promise<ApiResponse<PaginatedResponse<Notification>>> => {
-    // TODO: return http.get('/notifications', { params })
-    return { status: 200, message: 'ok', data: { content: [], totalPages: 0, totalElements: 0, page: 0, size: 20 } }
+  getNotifications: async (params?: { unreadOnly?: boolean; page?: number; size?: number }): Promise<PagedItems<Notification>> => {
+    const response = await http.get<PagedItems<Notification>>('/notifications', { params })
+    return response.data
   },
 
   /** 알림 읽음 처리 */
-  markAsRead: async (notificationId: string): Promise<ApiResponse<void>> => {
-    return http.patch(`/notifications/${notificationId}/read`)
+  markAsRead: async (notificationId: string): Promise<Notification> => {
+    const response = await http.patch<Notification>(`/notifications/${notificationId}/read`)
+    return response.data
   },
 
   /** 전체 읽음 처리 */
-  markAllAsRead: async (): Promise<ApiResponse<void>> => {
-    return http.patch('/notifications/read-all')
+  markAllAsRead: async (): Promise<BulkUpdateResult> => {
+    const response = await http.patch<BulkUpdateResult>('/notifications/read-all')
+    return response.data
+  },
+
+  deleteNotification: async (notificationId: string): Promise<void> => {
+    await http.delete(`/notifications/${notificationId}`)
   },
 }

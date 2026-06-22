@@ -8,6 +8,31 @@ import RoutePage from './RoutePage.vue'
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any }))
 const geo = vi.hoisted(() => ({ simplifyCoordinates: vi.fn() }))
 const realtime = vi.hoisted(() => ({ instances: [] as any[] }))
+const connectedApis = vi.hoisted(() => ({
+  ai: {
+    getSession: vi.fn(),
+    getMessages: vi.fn(),
+    sendMessage: vi.fn(),
+  },
+  chat: {
+    getMessages: vi.fn(),
+    sendMessage: vi.fn(),
+  },
+  planning: {
+    getNote: vi.fn(),
+    saveNote: vi.fn(),
+    deleteNote: vi.fn(),
+    getChecklists: vi.fn(),
+    saveChecklist: vi.fn(),
+    addChecklistItem: vi.fn(),
+    updateMyItemStatus: vi.fn(),
+    deleteChecklistItem: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/ai.api', () => ({ aiApi: connectedApis.ai }))
+vi.mock('@/api/chat.api', () => ({ chatApi: connectedApis.chat }))
+vi.mock('@/api/planning.api', () => ({ planningApi: connectedApis.planning }))
 
 vi.mock('@/components/place/PlaceDiscoveryPanel.vue', () => ({
   default: {
@@ -94,6 +119,17 @@ describe('RoutePage itinerary integration', () => {
     vi.clearAllMocks()
     localStorage.clear()
     realtime.instances.length = 0
+    connectedApis.ai.getSession.mockResolvedValue({
+      id: 'ai-session-1', tripId: 'trip-1', status: 'ACTIVE', summaryUpdatedAt: null, createdAt: null,
+    })
+    connectedApis.ai.getMessages.mockResolvedValue({
+      items: [], page: { offset: 0, limit: 50, nextOffset: null, hasMore: false, sort: [] },
+    })
+    connectedApis.chat.getMessages.mockResolvedValue({
+      items: [], page: { offset: 0, limit: 50, nextOffset: null, hasMore: false, sort: [] },
+    })
+    connectedApis.planning.getNote.mockRejectedValue({ response: { status: 404 } })
+    connectedApis.planning.getChecklists.mockResolvedValue([])
     holder.tripStore = reactive({
       currentTrip: null,
       fetchTrip: vi.fn(async () => {
@@ -138,6 +174,75 @@ describe('RoutePage itinerary integration', () => {
         },
       ]
     })
+  })
+
+  it('지도 화면 진입 시 AI·메모·체크리스트를 백엔드에서 불러온다', async () => {
+    mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(connectedApis.ai.getSession).toHaveBeenCalledWith('trip-1')
+    expect(connectedApis.ai.getMessages).toHaveBeenCalledWith('trip-1')
+    expect(connectedApis.planning.getNote).toHaveBeenCalledWith('trip-1', {
+      scopeType: 'TRIP', itineraryDayId: null,
+    })
+    expect(connectedApis.planning.getChecklists).toHaveBeenCalledWith('trip-1')
+  })
+
+  it('지도 패널에서 여행 메모와 체크리스트 항목을 바로 저장한다', async () => {
+    connectedApis.planning.saveNote.mockResolvedValue({
+      note: {
+        id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+        content: '렌터카 예약 확인', deletedAt: null,
+      },
+    })
+    connectedApis.planning.saveChecklist.mockResolvedValue({
+      checklist: {
+        id: 'checklist-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+        title: '전체 체크리스트', items: [],
+      },
+    })
+    connectedApis.planning.addChecklistItem.mockResolvedValue({ item: { id: 'item-1' } })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('렌터카 예약 확인')
+    await wrapper.get('#memo-copy-btn').trigger('click')
+    await flushPromises()
+    expect(connectedApis.planning.saveNote).toHaveBeenCalledWith('trip-1', {
+      scopeType: 'TRIP', itineraryDayId: null,
+    }, '렌터카 예약 확인')
+
+    await wrapper.get('#todo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#todo-input').setValue('여권 챙기기')
+    await wrapper.get('#todo-add-btn').trigger('click')
+    await flushPromises()
+    expect(connectedApis.planning.saveChecklist).toHaveBeenCalledWith('trip-1', {
+      scopeType: 'TRIP', itineraryDayId: null,
+    }, '전체 체크리스트')
+    expect(connectedApis.planning.addChecklistItem).toHaveBeenCalledWith(
+      'trip-1', 'checklist-1', '여권 챙기기', 0,
+    )
   })
 
   it('route의 trip 일정과 일차 미정을 실제 상태에서 표시한다', async () => {

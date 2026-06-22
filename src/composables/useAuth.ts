@@ -32,8 +32,8 @@ export function useAuth() {
   }
 
   /** 로그아웃 → 서버 무효화 + 로컬 정리 후 루트로 */
-  async function logout() {
-    await auth.logout()
+  async function logout(allDevices = false) {
+    await auth.logout(allDevices)
     router.push('/')
   }
 

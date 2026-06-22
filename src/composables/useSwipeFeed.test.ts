@@ -69,4 +69,34 @@ describe('useSwipeFeed', () => {
     expect(feed.finished.value).toBe(true)
     expect(feed.completedCount.value).toBe(0)
   })
+
+  it('keeps one current card and nine waiting cards, then refills only the missing space', async () => {
+    const firstItems = Array.from({ length: 10 }, (_, index) => ({
+      ...item,
+      place: { ...item.place, externalPlaceId: `place-${index}` },
+    }))
+    const nextItems = Array.from({ length: 10 }, (_, index) => ({
+      ...item,
+      place: { ...item.place, externalPlaceId: `next-${index}` },
+    }))
+    const gateway: SwipeFeedGateway = {
+      getFeed: vi.fn()
+        .mockResolvedValueOnce({ items: firstItems, nextSeed: 'page-2' })
+        .mockResolvedValueOnce({ items: nextItems, nextSeed: 'page-3' }),
+      react: vi.fn().mockResolvedValue({}),
+    }
+    const feed = useSwipeFeed(gateway)
+
+    await feed.load()
+    expect(gateway.getFeed).toHaveBeenCalledWith(expect.objectContaining({ limit: 10 }))
+    expect(feed.currentItem.value?.place.externalPlaceId).toBe('place-0')
+    expect(feed.items.value).toHaveLength(10)
+
+    feed.advance()
+    await vi.waitFor(() => expect(gateway.getFeed).toHaveBeenCalledTimes(2))
+
+    expect(gateway.getFeed).toHaveBeenLastCalledWith(expect.objectContaining({ seed: 'page-2', limit: 1 }))
+    expect(feed.currentItem.value?.place.externalPlaceId).toBe('place-1')
+    expect(feed.items.value).toHaveLength(10)
+  })
 })

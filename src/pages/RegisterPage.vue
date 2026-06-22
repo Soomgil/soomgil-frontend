@@ -6,10 +6,12 @@ import { useAuthStore } from '@/stores/auth.store'
 import { authApi } from '@/api/auth.api'
 import type { PolicyDocument } from '@/types/auth'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import OAuthButtons from '@/components/auth/OAuthButtons.vue'
+import { getAuthErrorMessage } from '@/utils/auth-error'
 
 const router = useRouter()
 const route = useRoute()
-const { register } = useAuth()
+const { register, loginWithOAuth } = useAuth()
 const authStore = useAuthStore()
 
 const name = ref('')
@@ -18,6 +20,9 @@ const password = ref('')
 const submitting = ref(false)
 const policies = ref<PolicyDocument[]>([])
 const acceptedIds = ref<Set<string>>(new Set())
+const submitError = ref<string | null>(null)
+const policyError = ref<string | null>(null)
+const loadingPolicies = ref(true)
 
 const heroImg = '/images/랜딩페이지/jeonju.png'
 
@@ -47,22 +52,34 @@ function toggleAll(checked: boolean) {
   }
 }
 
-onMounted(async () => {
+async function loadPolicies() {
+  loadingPolicies.value = true
+  policyError.value = null
   try {
     policies.value = await authApi.getPolicyDocuments('ko', true)
   } catch {
-    // 정책 로드 실패 시 빈 배열 → allAccepted=false → 가입 불가
     policies.value = []
+    policyError.value = '약관을 불러오지 못했습니다. 서버 연결을 확인하고 다시 시도해 주세요.'
+  } finally {
+    loadingPolicies.value = false
   }
-})
+}
 
-function notifyOAuthUnsupported() {
-  alert('OAuth 로그인은 준비 중입니다.')
+onMounted(loadPolicies)
+
+async function handleOAuthLogin(provider: 'kakao' | 'google') {
+  submitError.value = null
+  try {
+    await loginWithOAuth(provider)
+  } catch (error) {
+    submitError.value = getAuthErrorMessage(error, 'oauth')
+  }
 }
 
 async function handleRegister() {
   if (!allAccepted.value || submitting.value) return
   submitting.value = true
+  submitError.value = null
   try {
     if (isOAuthOnboarding.value) {
       await authStore.onboard(name.value, Array.from(acceptedIds.value))
@@ -75,8 +92,8 @@ async function handleRegister() {
         acceptedPolicyDocumentIds: Array.from(acceptedIds.value),
       })
     }
-  } catch {
-    // 에러는 인터셉터에서 처리
+  } catch (error) {
+    submitError.value = getAuthErrorMessage(error, isOAuthOnboarding.value ? 'oauth' : 'register')
   } finally {
     submitting.value = false
   }
@@ -133,30 +150,40 @@ async function handleRegister() {
             </label>
           </template>
 
-          <!-- 약관 동의 -->
-          <div v-if="policies.length" class="auth-terms-check" style="margin-top: 12px;">
-            <label class="auth-check">
-              <input type="checkbox" :checked="allAccepted" @change="toggleAll(($event.target as HTMLInputElement).checked)">
-              <strong>전체 약관 동의</strong>
-            </label>
-            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-              <label v-for="p in policies" :key="p.id" class="auth-check">
-                <input
-                  type="checkbox"
-                  :checked="acceptedIds.has(p.id)"
-                  @change="togglePolicy(p.id, ($event.target as HTMLInputElement).checked)"
-                >
-                <a v-if="p.contentUrl" :href="p.contentUrl" target="_blank" style="text-decoration: underline;">{{ p.title }}</a>
-                <span v-else>{{ p.title }}</span>
-                <span class="small muted" style="margin-left: 4px;">(필수)</span>
+          <div class="auth-policy-slot">
+            <div v-if="policies.length" class="auth-terms-check" style="margin-top: 12px;">
+              <label class="auth-check">
+                <input type="checkbox" :checked="allAccepted" @change="toggleAll(($event.target as HTMLInputElement).checked)">
+                <strong>전체 약관 동의</strong>
               </label>
+              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                <label v-for="p in policies" :key="p.id" class="auth-check">
+                  <input
+                    type="checkbox"
+                    :checked="acceptedIds.has(p.id)"
+                    @change="togglePolicy(p.id, ($event.target as HTMLInputElement).checked)"
+                  >
+                  <a v-if="p.contentUrl" :href="p.contentUrl" target="_blank" style="text-decoration: underline;">{{ p.title }}</a>
+                  <span v-else>{{ p.title }}</span>
+                  <span class="small muted" style="margin-left: 4px;">(필수)</span>
+                </label>
+              </div>
+            </div>
+            <p v-else-if="loadingPolicies" class="small muted" style="margin-top: 12px;">약관을 불러오는 중...</p>
+            <div v-else-if="policyError" class="auth-submit-error" role="alert">
+              <span>{{ policyError }}</span>
+              <button data-testid="retry-policies" class="auth-error-retry" type="button" @click="loadPolicies">다시 시도</button>
             </div>
           </div>
-          <p v-else class="small muted" style="margin-top: 12px;">약관을 불러오는 중… (실패 시 가입 불가)</p>
+
+          <div class="auth-feedback-slot" data-testid="auth-feedback" aria-live="polite">
+            <p v-if="submitError" class="auth-submit-error" role="alert">{{ submitError }}</p>
+          </div>
 
           <button class="btn primary auth-main-action" type="submit" :disabled="submitting || !allAccepted">
             <span class="material-symbols-rounded">arrow_forward</span>{{ isOAuthOnboarding ? '동의하고 시작하기' : '가입하고 취향 수집 시작' }}
           </button>
+
           <p v-if="!isOAuthOnboarding" class="small muted auth-switch">이미 계정이 있나요? <a href="#" @click.prevent="router.push('/login')">로그인</a></p>
         </form>
       </section>

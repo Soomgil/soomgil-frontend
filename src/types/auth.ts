@@ -42,6 +42,9 @@ export interface User {
   bio: string | null
   profileVisibility: UserProfileVisibility
   status: UserStatus
+  statusReason?: string | null
+  deletionRequestedAt?: string | null
+  deletionScheduledAt?: string | null
   displayLanguage: string
   timezone: string
   marketingEmailOptIn: boolean
@@ -61,6 +64,9 @@ export function mapBackendUser(b: BackendUser): User {
     bio: b.profile.bio,
     profileVisibility: b.profile.profileVisibility,
     status: b.status,
+    statusReason: b.statusReason,
+    deletionRequestedAt: b.deletionRequestedAt,
+    deletionScheduledAt: b.deletionScheduledAt,
     displayLanguage: b.settings.displayLanguage,
     timezone: b.settings.timezone,
     marketingEmailOptIn: b.settings.marketingEmailOptIn,
@@ -173,6 +179,27 @@ export interface UserSettings {
   marketingEmailOptedInAt: string | null
   marketingEmailOptedOutAt: string | null
   tripInviteEmailOptIn: boolean
+}
+
+export interface UserSession {
+  id: string
+  refreshTokenFamilyId: string
+  refreshTokenVersion: number
+  deviceName: string | null
+  deviceOs: string | null
+  lastUsedAt: string | null
+  lastRefreshedAt: string | null
+  expiresAt: string
+  revokedAt: string | null
+  revocationReason: string | null
+}
+
+export interface SecurityEvent {
+  id: number
+  eventType: string
+  success: boolean
+  failureReason: string | null
+  createdAt: string
 }
 
 export interface UserSummary {

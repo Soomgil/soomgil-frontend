@@ -1,17 +1,18 @@
 /* ── Notification ── */
 export interface Notification {
   id: string
-  recipientUserId: string
-  actorUserId: string | null
+  actor: import('./auth').UserSummary | null
   tripId: string | null
   type: string
   title: string
   body: string | null
-  payload: Record<string, unknown> | null
+  payload: {
+    tripId: string
+    inviteId: string
+    inviteCode: string
+    route: string | null
+  } | null
   readAt: string | null
   createdAt: string
 
-  /** UI 표시용 (API에서 join) */
-  actorDisplayName?: string
-  actorProfileImageUrl?: string
 }

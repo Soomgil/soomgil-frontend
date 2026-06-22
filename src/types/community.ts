@@ -136,6 +136,37 @@ export interface ContentReport extends CreateContentReportRequest {
   resolutionNote: string | null
 }
 
+export type ModerationActionType = 'HIDE' | 'RESTORE' | 'DELETE'
+
+export interface CommunityPostShareToken {
+  postId: string
+  shareToken: string
+  shareUrl: string
+  rotatedAt: string
+}
+
+export interface ModerationAction {
+  id: string
+  moderator: UserSummary | null
+  targetType: 'POST' | 'POST_COMMENT'
+  targetId: string
+  action: ModerationActionType
+  moderationStatus: ModerationStatus | null
+  moderationReason: string | null
+  createdAt: string
+}
+
+export interface ResolveReportRequest {
+  status: 'RESOLVED' | 'REJECTED'
+  resolutionNote?: string | null
+  moderationAction?: {
+    targetType: 'POST' | 'POST_COMMENT'
+    targetId: string
+    action: ModerationActionType
+    moderationReason?: string | null
+  } | null
+}
+
 /** 기존 목업 기반 화면의 점진적 전환 동안만 유지하는 UI 타입입니다. */
 export interface Story {
   id: string

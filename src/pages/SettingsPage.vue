@@ -4,6 +4,7 @@ import AppShell from '@/components/layout/AppShell.vue'
 import { useAuth } from '@/composables/useAuth'
 import { userApi } from '@/api/user.api'
 import type { UpdateMeRequest, UpdateUserSettingsRequest } from '@/types/auth'
+import type { SecurityEvent, UserSession } from '@/types/auth'
 
 const { logout, user } = useAuth()
 
@@ -25,11 +26,21 @@ const settingsForm = ref({
 const timezones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul']
 
 const message = ref('')
+const errorMessage = ref('')
+const sessions = ref<UserSession[]>([])
+const securityEvents = ref<SecurityEvent[]>([])
+const accountLoading = ref(false)
 
 onMounted(async () => {
   loading.value = true
   try {
-    const settings = await userApi.getSettings()
+    const [settings, sessionPage, eventPage] = await Promise.all([
+      userApi.getSettings(),
+      userApi.getSessions(),
+      userApi.getSecurityEvents(),
+    ])
+    sessions.value = sessionPage.items
+    securityEvents.value = eventPage.items
     settingsForm.value = {
       displayLanguage: settings.displayLanguage || 'ko',
       timezone: settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -41,7 +52,7 @@ onMounted(async () => {
       profileForm.value.bio = user.bio ?? ''
     }
   } catch {
-    // 에러는 인터셉터에서 처리
+    errorMessage.value = '계정 설정을 불러오지 못했습니다.'
   } finally {
     loading.value = false
   }
@@ -60,6 +71,44 @@ async function saveProfile() {
     // 에러는 인터셉터에서 처리
   } finally {
     saving.value = false
+  }
+}
+
+async function revokeSession(sessionId: string) {
+  accountLoading.value = true
+  errorMessage.value = ''
+  try {
+    await userApi.revokeSession(sessionId)
+    sessions.value = sessions.value.filter((session) => session.id !== sessionId)
+    message.value = '선택한 로그인 세션을 해제했습니다.'
+  } catch {
+    errorMessage.value = '세션을 해제하지 못했습니다.'
+  } finally {
+    accountLoading.value = false
+  }
+}
+
+async function logoutAllDevices() {
+  if (!window.confirm('모든 기기에서 로그아웃할까요?')) return
+  accountLoading.value = true
+  try {
+    await logout(true)
+  } finally {
+    accountLoading.value = false
+  }
+}
+
+async function requestAccountDeletion() {
+  if (!window.confirm('계정 삭제를 예약할까요? 활성 여행방의 소유자는 요청이 제한될 수 있습니다.')) return
+  accountLoading.value = true
+  errorMessage.value = ''
+  try {
+    await userApi.deleteMe()
+    message.value = '계정 삭제가 예약되었습니다. 상태를 다시 확인하려면 재로그인해 주세요.'
+  } catch (error: any) {
+    errorMessage.value = error?.response?.data?.detail || '계정 삭제를 예약하지 못했습니다.'
+  } finally {
+    accountLoading.value = false
   }
 }
 
@@ -89,6 +138,7 @@ async function saveSettings() {
 
       <p v-if="loading" class="text-muted">불러오는 중…</p>
       <p v-if="message" class="text-sm mb-4" style="color: var(--blue);">{{ message }}</p>
+      <p v-if="errorMessage" class="text-sm mb-4" style="color: var(--rose);">{{ errorMessage }}</p>
 
       <!-- Profile Section -->
       <section class="p-6 rounded-3xl bg-surface border border-line mb-6">
@@ -117,6 +167,38 @@ async function saveSettings() {
         >
           프로필 저장
         </button>
+      </section>
+
+      <section class="p-6 rounded-3xl bg-surface border border-line mb-6">
+        <h2 class="font-bold text-ink mb-4">로그인 기기</h2>
+        <p v-if="sessions.length === 0" class="text-sm text-muted">활성 로그인 세션이 없습니다.</p>
+        <ul v-else class="space-y-3">
+          <li v-for="session in sessions" :key="session.id" class="flex items-center justify-between gap-4 p-3 rounded-xl border border-line">
+            <div>
+              <strong class="text-sm text-ink">{{ session.deviceName || '알 수 없는 기기' }}</strong>
+              <p class="text-xs text-muted mt-1">{{ session.deviceOs || '운영체제 정보 없음' }} · 만료 {{ new Date(session.expiresAt).toLocaleString('ko-KR') }}</p>
+            </div>
+            <button type="button" class="px-3 py-2 rounded-lg border border-line text-xs text-brand-rose" :disabled="accountLoading" @click="revokeSession(session.id)">해제</button>
+          </li>
+        </ul>
+        <button type="button" class="mt-4 px-4 py-2 rounded-xl border border-line text-sm font-semibold" :disabled="accountLoading" @click="logoutAllDevices">모든 기기 로그아웃</button>
+      </section>
+
+      <section class="p-6 rounded-3xl bg-surface border border-line mb-6">
+        <h2 class="font-bold text-ink mb-4">보안 활동</h2>
+        <p v-if="securityEvents.length === 0" class="text-sm text-muted">최근 보안 활동이 없습니다.</p>
+        <ul v-else class="space-y-2">
+          <li v-for="event in securityEvents" :key="event.id" class="flex justify-between gap-4 text-sm py-2 border-b border-line last:border-0">
+            <span><strong>{{ event.eventType }}</strong><small v-if="event.failureReason" class="block text-brand-rose">{{ event.failureReason }}</small></span>
+            <time class="text-xs text-muted">{{ new Date(event.createdAt).toLocaleString('ko-KR') }}</time>
+          </li>
+        </ul>
+      </section>
+
+      <section class="p-6 rounded-3xl bg-surface border border-brand-rose/20 mb-6">
+        <h2 class="font-bold text-brand-rose mb-2">계정 삭제</h2>
+        <p class="text-sm text-muted mb-4">삭제 요청은 서버 정책에 따라 예약 처리됩니다. 활성 여행방을 소유 중이면 요청이 거절될 수 있습니다.</p>
+        <button type="button" class="px-4 py-2 rounded-xl border border-brand-rose/30 text-brand-rose text-sm font-semibold" :disabled="accountLoading" @click="requestAccountDeletion">계정 삭제 예약</button>
       </section>
 
       <!-- Settings Section -->
@@ -154,7 +236,7 @@ async function saveSettings() {
       <!-- Logout -->
       <button
         class="w-full py-4 rounded-2xl border border-brand-rose/30 text-brand-rose font-bold hover:bg-brand-rose/5 transition-colors"
-        @click="logout"
+        @click="() => logout()"
       >
         로그아웃
       </button>

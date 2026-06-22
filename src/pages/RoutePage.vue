@@ -6,18 +6,25 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import { geoApi } from '@/api/geo.api'
+import { aiApi } from '@/api/ai.api'
+import { chatApi } from '@/api/chat.api'
+import { planningApi } from '@/api/planning.api'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
 import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/components/map/MapDrawingOverlay.vue'
 import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
+import { getAiRefreshTargets } from './routeBackendSync'
 import { useItinerary } from '@/composables/useItinerary'
 import { useMapViewport } from '@/composables/useMapViewport'
 import { placeApi } from '@/api/place.api'
 import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
+import type { AiChatMessage } from '@/types/ai'
+import type { TripChatMessage } from '@/types/chat'
+import type { Checklist, Note, PlanningScope } from '@/types/planning'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { Place } from '@/types/place'
 
@@ -56,6 +63,17 @@ const tripId = Array.isArray(tripIdParam) ? tripIdParam[0] ?? '' : tripIdParam ?
 const itinerary = useItinerary(tripId)
 const mapViewport = useMapViewport()
 const tripStore = useTripStore()
+const currentUserId = computed(() => {
+  const token = localStorage.getItem('accessToken')
+  if (!token) return null
+  try {
+    const payload = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/') ?? ''
+    const claims = JSON.parse(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '='))) as { sub?: string; userId?: string }
+    return claims.userId ?? claims.sub ?? null
+  } catch {
+    return null
+  }
+})
 const trip = computed(() => {
   const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
   return {
@@ -145,6 +163,9 @@ watch(itinerary.days, (days) => {
 onMounted(() => {
   void loadTrip()
   void loadItinerary()
+  void loadConversations()
+  void loadNote()
+  void loadChecklists()
   nextTick(() => {
     initDragDrop()
   })
@@ -623,69 +644,272 @@ watch(activeDay, () => {
 const isAiChatOpen = ref(false)
 const isMemoOpen = ref(false)
 const isTodoOpen = ref(false)
+const activeConversation = ref<'ai' | 'chat'>('ai')
 
 function togglePanel(panel: 'ai' | 'memo' | 'todo') {
-  if (panel === 'ai') { isAiChatOpen.value = !isAiChatOpen.value; isMemoOpen.value = false; isTodoOpen.value = false }
-  else if (panel === 'memo') { isMemoOpen.value = !isMemoOpen.value; isAiChatOpen.value = false; isTodoOpen.value = false }
-  else { isTodoOpen.value = !isTodoOpen.value; isAiChatOpen.value = false; isMemoOpen.value = false }
+  if (panel === 'ai') {
+    isAiChatOpen.value = !isAiChatOpen.value
+    isMemoOpen.value = false
+    isTodoOpen.value = false
+    if (isAiChatOpen.value) void loadConversations()
+  } else if (panel === 'memo') {
+    isMemoOpen.value = !isMemoOpen.value
+    isAiChatOpen.value = false
+    isTodoOpen.value = false
+    if (isMemoOpen.value) void loadNote()
+  } else {
+    isTodoOpen.value = !isTodoOpen.value
+    isAiChatOpen.value = false
+    isMemoOpen.value = false
+    if (isTodoOpen.value) void loadChecklists()
+  }
 }
 
-/* ── AI Chat ── */
+/* ── AI / trip chat ── */
 const aiMessage = ref('')
-const aiMessages = ref<{ role: 'user' | 'ai'; text: string }[]>([
-  { role: 'ai', text: '안녕하세요! 김지훈 님. ✈️ <strong>여름 유럽 여행</strong>의 동선을 분석 중인 AI 비서입니다.<br><br>현재 <strong>12개 코스</strong>가 등록되어 있으며, 멤버들의 의견 일치율은 <strong>58%</strong>입니다. 일정을 더 완벽하게 다듬기 위해 무엇을 도와드릴까요?' },
-])
+const aiMessages = ref<AiChatMessage[]>([])
+const chatMessages = ref<TripChatMessage[]>([])
+const aiSessionStatus = ref('')
+const conversationLoading = ref(false)
+const conversationError = ref('')
 
-function sendAiMessage() {
-  if (!aiMessage.value.trim()) return
-  aiMessages.value.push({ role: 'user', text: aiMessage.value })
+function oldestFirst<T extends { createdAt: string }>(messages: T[]) {
+  return [...messages].sort((left, right) => (
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+  ))
+}
+
+async function loadConversations() {
+  if (!tripId) return
+  conversationLoading.value = true
+  conversationError.value = ''
+  try {
+    const [sessionResult, aiResult, chatResult] = await Promise.allSettled([
+      aiApi.getSession(tripId),
+      aiApi.getMessages(tripId),
+      chatApi.getMessages(tripId),
+    ])
+    if (sessionResult.status === 'fulfilled') aiSessionStatus.value = sessionResult.value.status
+    if (aiResult.status === 'fulfilled') aiMessages.value = oldestFirst(aiResult.value.items)
+    if (chatResult.status === 'fulfilled') chatMessages.value = oldestFirst(chatResult.value.items)
+    if (aiResult.status === 'rejected' || chatResult.status === 'rejected') {
+      conversationError.value = '일부 대화 내역을 불러오지 못했습니다.'
+    }
+  } finally {
+    conversationLoading.value = false
+  }
+}
+
+async function sendAiMessage() {
+  const content = aiMessage.value.trim()
+  if (!content || conversationLoading.value) return
   aiMessage.value = ''
-  setTimeout(() => {
-    aiMessages.value.push({ role: 'ai', text: '좋은 질문이네요! 해당 장소 근처의 맛집과 포토스팟을 추천해 드릴게요.' })
-  }, 600)
+  conversationLoading.value = true
+  conversationError.value = ''
+  try {
+    if (activeConversation.value === 'ai') {
+      const response = await aiApi.sendMessage(tripId, {
+        content,
+        baseVersion: itinerary.itineraryVersion.value,
+        viewport: mapViewport.viewport.value,
+      })
+      await syncAfterAiResponse(response)
+      await loadConversations()
+      if (!aiMessages.value.some((message) => message.id === response.message.id)) {
+        aiMessages.value.push(response.message)
+      }
+    } else {
+      chatMessages.value.push(await chatApi.sendMessage(tripId, content))
+    }
+  } catch (error: any) {
+    const code = error?.response?.data?.code ?? error?.response?.data?.errorCode
+    conversationError.value = code === 'AI_PROVIDER_UNAVAILABLE'
+      ? 'AI 모델 연결 설정이 필요합니다. 관리자에게 문의해 주세요.'
+      : '메시지를 보내지 못했습니다. 다시 시도해 주세요.'
+  } finally {
+    conversationLoading.value = false
+  }
+}
+
+async function syncAfterAiResponse(response: import('@/types/ai').AiMessageResponse) {
+  const targets = getAiRefreshTargets(response, itinerary.itineraryVersion.value)
+
+  const refreshes: Promise<unknown>[] = []
+  if (targets.itinerary) refreshes.push(itinerary.fetchItinerary())
+  if (targets.note) refreshes.push(loadNote())
+  if (targets.checklist) refreshes.push(loadChecklists())
+  await Promise.allSettled(refreshes)
 }
 
 /* ── Memo (day-filtered) ── */
-const dayTagLabels = ['전체', '1일차', '2일차', '3일차']
+const dayTagLabels = computed(() => [
+  '전체',
+  ...dayPlans.value.filter((day) => day.groupType === 'DAY').map((day) => `${day.day}일차`),
+])
 const activeMemoDay = ref('전체')
-const memoData = ref<Record<string, string>>({ '전체': '', '1일차': '', '2일차': '', '3일차': '' })
+const notes = ref<Record<string, Note | null>>({})
+const memoLoading = ref(false)
+const memoStatus = ref('')
 
-function switchMemoDay(tag: string) {
-  memoData.value[activeMemoDay.value] = memoTextDisplay.value
+function scopeForTag(tag: string): PlanningScope {
+  if (tag === '전체') return { scopeType: 'TRIP', itineraryDayId: null }
+  const dayNumber = Number.parseInt(tag, 10)
+  const day = dayPlans.value.find((candidate) => candidate.groupType === 'DAY' && candidate.day === dayNumber)
+  return { scopeType: 'DAY', itineraryDayId: day?.id ?? null }
+}
+
+async function switchMemoDay(tag: string) {
   activeMemoDay.value = tag
-  memoTextDisplay.value = memoData.value[tag] || ''
+  await loadNote(tag)
 }
 
 const memoTextDisplay = ref('')
 
+async function loadNote(tag = activeMemoDay.value) {
+  if (!tripId) return
+  const scope = scopeForTag(tag)
+  if (scope.scopeType === 'DAY' && !scope.itineraryDayId) return
+  memoLoading.value = true
+  memoStatus.value = ''
+  try {
+    const note = await planningApi.getNote(tripId, scope)
+    notes.value[tag] = note
+    memoTextDisplay.value = note.content
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      notes.value[tag] = null
+      memoTextDisplay.value = ''
+    } else {
+      memoStatus.value = '불러오기 실패'
+    }
+  } finally {
+    memoLoading.value = false
+  }
+}
+
+async function saveNote() {
+  const content = memoTextDisplay.value.trim()
+  const scope = scopeForTag(activeMemoDay.value)
+  if (!content || (scope.scopeType === 'DAY' && !scope.itineraryDayId)) return
+  memoLoading.value = true
+  memoStatus.value = '저장 중…'
+  try {
+    const result = await planningApi.saveNote(tripId, scope, content)
+    notes.value[activeMemoDay.value] = result.note
+    memoStatus.value = '저장됨'
+  } catch {
+    memoStatus.value = '저장 실패'
+  } finally {
+    memoLoading.value = false
+  }
+}
+
+async function clearNote() {
+  const note = notes.value[activeMemoDay.value]
+  if (!note) {
+    memoTextDisplay.value = ''
+    return
+  }
+  if (!window.confirm('이 메모를 삭제할까요?')) return
+  memoLoading.value = true
+  try {
+    await planningApi.deleteNote(tripId, note.id)
+    notes.value[activeMemoDay.value] = null
+    memoTextDisplay.value = ''
+    memoStatus.value = '삭제됨'
+  } catch {
+    memoStatus.value = '삭제 실패'
+  } finally {
+    memoLoading.value = false
+  }
+}
+
 /* ── Todo (day-filtered) ── */
 const activeTodoDay = ref('전체')
-const allTodos = ref<Record<string, { id: string; text: string; done: boolean }[]>>({
-  '전체': [
-    { id: 't1', text: '숙소 예약 확인', done: true },
-    { id: 't2', text: '교통카드 충전', done: false },
-    { id: 't3', text: '카메라 배터리 충전', done: false },
-  ],
-  '1일차': [],
-  '2일차': [],
-  '3일차': [],
-})
+const checklists = ref<Checklist[]>([])
+const todoLoading = ref(false)
+const todoError = ref('')
 const newTodo = ref('')
 
-const currentTodos = computed(() => allTodos.value[activeTodoDay.value] || [])
+const activeChecklist = computed(() => {
+  const scope = scopeForTag(activeTodoDay.value)
+  return checklists.value.find((list) => (
+    list.scopeType === scope.scopeType && (list.itineraryDayId ?? null) === (scope.itineraryDayId ?? null)
+  )) ?? null
+})
+const currentTodos = computed(() => (activeChecklist.value?.items ?? []).map((item) => ({
+  id: item.id,
+  text: item.content,
+  done: item.memberStatuses.some((status) => status.user.id === currentUserId.value && status.isCompleted),
+})))
 const completedCount = computed(() => currentTodos.value.filter(t => t.done).length)
 const totalCount = computed(() => currentTodos.value.length)
 const progressPercent = computed(() => totalCount.value === 0 ? 0 : Math.round((completedCount.value / totalCount.value) * 100))
 
-function addTodo() {
-  if (!newTodo.value.trim()) return
-  allTodos.value[activeTodoDay.value].push({ id: `t${Date.now()}`, text: newTodo.value, done: false })
-  newTodo.value = ''
+async function loadChecklists() {
+  if (!tripId) return
+  todoLoading.value = true
+  todoError.value = ''
+  try {
+    checklists.value = await planningApi.getChecklists(tripId)
+  } catch {
+    todoError.value = '체크리스트를 불러오지 못했습니다.'
+  } finally {
+    todoLoading.value = false
+  }
 }
 
-function toggleTodo(id: string) {
-  const todo = currentTodos.value.find(t => t.id === id)
-  if (todo) todo.done = !todo.done
+async function addTodo() {
+  const content = newTodo.value.trim()
+  if (!content || todoLoading.value) return
+  todoLoading.value = true
+  todoError.value = ''
+  try {
+    let checklist = activeChecklist.value
+    if (!checklist) {
+      const created = await planningApi.saveChecklist(tripId, scopeForTag(activeTodoDay.value), `${activeTodoDay.value} 체크리스트`)
+      checklist = created.checklist
+    }
+    if (!checklist) throw new Error('Checklist was not returned')
+    await planningApi.addChecklistItem(tripId, checklist.id, content, checklist.items.length)
+    newTodo.value = ''
+    await loadChecklists()
+  } catch {
+    todoError.value = '할 일을 추가하지 못했습니다.'
+  } finally {
+    todoLoading.value = false
+  }
+}
+
+async function toggleTodo(id: string) {
+  const checklist = activeChecklist.value
+  const todo = currentTodos.value.find((item) => item.id === id)
+  if (!checklist || !todo || todoLoading.value) return
+  todoLoading.value = true
+  todoError.value = ''
+  try {
+    await planningApi.updateMyItemStatus(tripId, checklist.id, id, !todo.done)
+    await loadChecklists()
+  } catch {
+    todoError.value = '완료 상태를 변경하지 못했습니다.'
+  } finally {
+    todoLoading.value = false
+  }
+}
+
+async function deleteTodo(id: string) {
+  const checklist = activeChecklist.value
+  if (!checklist || todoLoading.value) return
+  todoLoading.value = true
+  todoError.value = ''
+  try {
+    await planningApi.deleteChecklistItem(tripId, checklist.id, id)
+    await loadChecklists()
+  } catch {
+    todoError.value = '할 일을 삭제하지 못했습니다.'
+  } finally {
+    todoLoading.value = false
+  }
 }
 
 /* ── Map tools ── */
@@ -1567,24 +1791,43 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded ai-spark-icon">auto_awesome</span>
                 <div>
                   <h4>숨길 AI 가이드</h4>
-                  <span class="ai-status">온라인 · 실시간 분석 중</span>
+                  <span class="ai-status">{{ conversationLoading ? '불러오는 중…' : (aiSessionStatus || '백엔드 연결됨') }}</span>
                 </div>
               </div>
               <button id="ai-chat-close-btn" class="icon-btn" aria-label="닫기" @click="isAiChatOpen = false"><span class="material-symbols-rounded">close</span></button>
             </div>
 
+            <div class="panel-tabs">
+              <button type="button" :class="['panel-tab-tag', { 'active-memo': activeConversation === 'ai' }]" @click="activeConversation = 'ai'">AI 가이드</button>
+              <button type="button" :class="['panel-tab-tag', { 'active-memo': activeConversation === 'chat' }]" @click="activeConversation = 'chat'">여행방 채팅</button>
+            </div>
+
             <div class="ai-chat-messages-container" id="ai-chat-messages">
-              <div v-for="(msg, idx) in aiMessages" :key="idx" :class="['ai-message', msg.role === 'ai' ? 'assistant' : 'user']">
-                <div v-if="msg.role === 'ai'" class="ai-message-avatar">&#10024;</div>
-                <div class="ai-message-bubble" v-html="msg.text"></div>
-              </div>
+              <p v-if="conversationError" class="text-sm" style="color:var(--rose)">{{ conversationError }}</p>
+              <template v-if="activeConversation === 'ai'">
+                <div v-for="msg in aiMessages" :key="msg.id" :class="['ai-message', msg.role === 'ASSISTANT' || msg.role === 'TOOL' ? 'assistant' : 'user']">
+                  <div v-if="msg.role === 'ASSISTANT' || msg.role === 'TOOL'" class="ai-message-avatar">&#10024;</div>
+                  <div class="ai-message-bubble" style="white-space:pre-wrap">{{ msg.content }}</div>
+                </div>
+                <p v-if="!conversationLoading && aiMessages.length === 0" class="text-sm text-muted">AI에게 첫 질문을 보내보세요.</p>
+              </template>
+              <template v-else>
+                <div v-for="msg in chatMessages" :key="msg.id" :class="['ai-message', msg.sender.id === currentUserId ? 'user' : 'assistant']">
+                  <div v-if="msg.sender.id !== currentUserId" class="ai-message-avatar">{{ msg.sender.displayName.charAt(0) }}</div>
+                  <div class="ai-message-bubble">
+                    <strong v-if="msg.sender.id !== currentUserId" style="display:block;font-size:11px;margin-bottom:3px">{{ msg.sender.displayName }}</strong>
+                    <span style="white-space:pre-wrap">{{ msg.deletedAt ? '삭제된 메시지입니다.' : msg.content }}</span>
+                  </div>
+                </div>
+                <p v-if="!conversationLoading && chatMessages.length === 0" class="text-sm text-muted">여행 멤버에게 첫 메시지를 보내보세요.</p>
+              </template>
             </div>
 
             <!-- Quick Suggestions -->
             <div class="ai-chat-suggestions">
-              <button class="suggestion-chip" data-query="route-opt">&#9889; 경로 최적화 추천</button>
-              <button class="suggestion-chip" data-query="food-recommend">&#127869; 대전 근처 맛집</button>
-              <button class="suggestion-chip" data-query="schedule-check">&#128197; 일정 겹침 확인</button>
+              <button class="suggestion-chip" type="button" @click="aiMessage = '현재 일정의 이동 경로를 최적화해줘'">&#9889; 경로 최적화 추천</button>
+              <button class="suggestion-chip" type="button" @click="aiMessage = '현재 지도 주변의 맛집을 추천해줘'">&#127869; 근처 맛집</button>
+              <button class="suggestion-chip" type="button" @click="aiMessage = '일정이 겹치는 부분이 있는지 확인해줘'">&#128197; 일정 겹침 확인</button>
             </div>
 
             <div class="ai-chat-input-row">
@@ -1597,7 +1840,7 @@ function textAvatarStyle(index: unknown) {
                 <div class="voice-wave-bar"></div>
                 <span class="voice-wave-text">듣고 있습니다...</span>
               </div>
-              <input type="text" id="ai-chat-input" aria-label="AI 가이드에게 질문하기" placeholder="AI에게 일정에 관해 물어보세요..." v-model="aiMessage" @keydown.enter="sendAiMessage" />
+              <input type="text" id="ai-chat-input" :aria-label="activeConversation === 'ai' ? 'AI 가이드에게 질문하기' : '여행방 메시지 입력'" :placeholder="activeConversation === 'ai' ? 'AI에게 일정에 관해 물어보세요...' : '여행 멤버에게 메시지를 보내세요...'" v-model="aiMessage" @keydown.enter="sendAiMessage" />
               <button id="ai-chat-mic-btn" class="compact-mic-btn" type="button" aria-label="음성 인식">
                 <span class="material-symbols-rounded">mic</span>
               </button>
@@ -1614,7 +1857,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded panel-icon">sticky_note_2</span>
                 <div>
                   <h4>여행 메모</h4>
-                  <span class="panel-status" id="memo-status">자동 저장됨</span>
+                  <span class="panel-status" id="memo-status">{{ memoStatus || (memoLoading ? '불러오는 중…' : '백엔드 연결됨') }}</span>
                 </div>
               </div>
               <button id="memo-close-btn" class="icon-btn" aria-label="닫기" @click="isMemoOpen = false"><span class="material-symbols-rounded">close</span></button>
@@ -1640,15 +1883,15 @@ function textAvatarStyle(index: unknown) {
             </div>
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">
-                <button id="memo-clear-btn" class="btn text-danger-btn" type="button" @click="memoTextDisplay = ''">
+                <button id="memo-clear-btn" class="btn text-danger-btn" type="button" @click="clearNote">
                   <span class="material-symbols-rounded">delete</span>
                   초기화
                 </button>
                 <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
               </div>
-              <button id="memo-copy-btn" class="btn primary small" type="button">
-                <span class="material-symbols-rounded">content_copy</span>
-                복사하기
+              <button id="memo-copy-btn" class="btn primary small" type="button" :disabled="memoLoading || !memoTextDisplay.trim()" @click="saveNote">
+                <span class="material-symbols-rounded">save</span>
+                저장하기
               </button>
             </div>
           </div>
@@ -1677,12 +1920,15 @@ function textAvatarStyle(index: unknown) {
               </div>
             </div>
             <div class="panel-body todo-body">
+              <p v-if="todoError" class="text-sm" style="color:var(--rose)">{{ todoError }}</p>
+              <p v-else-if="todoLoading && currentTodos.length === 0" class="text-sm text-muted">불러오는 중…</p>
               <ul class="todo-list" id="todo-list-items">
                 <li v-for="todo in currentTodos" :key="todo.id" class="todo-item">
                   <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">
-                    <input type="checkbox" :checked="todo.done" @change="toggleTodo(todo.id)" style="width:18px;height:18px;accent-color:var(--violet);" />
+                    <input type="checkbox" :checked="todo.done" :disabled="todoLoading" @change="toggleTodo(todo.id)" style="width:18px;height:18px;accent-color:var(--violet);" />
                     <span :style="{ textDecoration: todo.done ? 'line-through' : 'none', color: todo.done ? 'var(--muted)' : 'var(--ink)', fontSize: '14px' }">{{ todo.text }}</span>
                   </label>
+                  <button type="button" aria-label="할 일 삭제" class="icon-btn" :disabled="todoLoading" @click="deleteTodo(todo.id)"><span class="material-symbols-rounded">delete</span></button>
                 </li>
               </ul>
             </div>

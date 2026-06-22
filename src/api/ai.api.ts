@@ -1,27 +1,28 @@
 import http from './http'
-import type { ApiResponse } from '@/types/api'
-import type { AiChatSession, AiChatMessage, AiRouteDraftRequest, AiChatRequest } from '@/types/ai'
+import type { OffsetPagedItems } from '@/types/api'
+import type { AiChatSession, AiMessageResponse, AiChatMessage, AiChatRequest } from '@/types/ai'
 
 export const aiApi = {
   /** 채팅 세션 조회/생성 (trip당 1개) */
-  getOrCreateSession: async (tripId: string): Promise<ApiResponse<AiChatSession>> => {
-    // TODO: return http.post(`/trips/${tripId}/ai/sessions`)
-    return { status: 200, message: 'ok', data: { id: 'ai_session_1', tripId, status: 'ACTIVE', summary: null, summaryUpdatedAt: null, createdAt: '', updatedAt: '' } }
+  getSession: async (tripId: string): Promise<AiChatSession> => {
+    const response = await http.get<AiChatSession>(`/trips/${tripId}/ai/session`)
+    return response.data
   },
 
   /** 채팅 메시지 전송 */
-  sendMessage: async (tripId: string, data: AiChatRequest): Promise<ApiResponse<AiChatMessage>> => {
-    return http.post(`/trips/${tripId}/ai/chat`, data)
+  sendMessage: async (tripId: string, data: AiChatRequest): Promise<AiMessageResponse> => {
+    const response = await http.post<AiMessageResponse>(`/trips/${tripId}/ai/messages`, data, {
+      // 모델 응답과 tool calling은 일반 REST 요청보다 오래 걸릴 수 있다.
+      timeout: 60_000,
+    })
+    return response.data
   },
 
   /** 채팅 히스토리 조회 */
-  getChatHistory: async (tripId: string): Promise<ApiResponse<AiChatMessage[]>> => {
-    // TODO: return http.get(`/trips/${tripId}/ai/chat`)
-    return { status: 200, message: 'ok', data: [] }
-  },
-
-  /** AI 경로 초안 생성 */
-  generateRouteDraft: async (tripId: string, data?: AiRouteDraftRequest): Promise<ApiResponse<{ message: AiChatMessage }>> => {
-    return http.post(`/trips/${tripId}/ai/route-draft`, data)
+  getMessages: async (tripId: string, offset = 0, limit = 50): Promise<OffsetPagedItems<AiChatMessage>> => {
+    const response = await http.get<OffsetPagedItems<AiChatMessage>>(`/trips/${tripId}/ai/messages`, {
+      params: { offset, limit },
+    })
+    return response.data
   },
 }
