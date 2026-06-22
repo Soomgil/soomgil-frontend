@@ -9,6 +9,7 @@ import type {
 } from '@/types/auth'
 import type { PagedItems } from '@/types/api'
 import { mapBackendUser } from '@/types/auth'
+import type { Place } from '@/types/place'
 
 export const userApi = {
   /** 현재 사용자 조회 (GET /me) */
@@ -62,6 +63,14 @@ export const userApi = {
   /** 팔로잉 목록 조회 */
   getFollowing: async (userId: string): Promise<UserSummary[]> => {
     const res = await http.get<PagedItems<UserSummary>>(`/users/${userId}/following`, {
+      params: { page: 0, size: 100 },
+    })
+    return res.data.items
+  },
+
+  /** 내 저장 장소 조회 */
+  getSavedPlaces: async (): Promise<Place[]> => {
+    const res = await http.get<PagedItems<Place>>('/me/saved-places', {
       params: { page: 0, size: 100 },
     })
     return res.data.items
