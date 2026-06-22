@@ -158,6 +158,32 @@ describe('trip store', () => {
     expect(store.trips).toEqual([archivedTrip])
   })
 
+  it('이전 필터의 더 보기 완료가 새 필터의 더 보기 상태를 해제하지 않는다', async () => {
+    let resolveOldPage!: (value: PagedTripSummary) => void
+    let resolveNewPage!: (value: PagedTripSummary) => void
+    const oldPageRequest = new Promise<PagedTripSummary>((resolve) => { resolveOldPage = resolve })
+    const newPageRequest = new Promise<PagedTripSummary>((resolve) => { resolveNewPage = resolve })
+    const archivedTrip = { ...trip, id: 'trip-archived', status: 'ARCHIVED' as const }
+    vi.mocked(tripApi.getTrips)
+      .mockResolvedValueOnce({ items: [trip], page: { ...page.page, totalPages: 2 } })
+      .mockReturnValueOnce(oldPageRequest)
+      .mockResolvedValueOnce({ items: [archivedTrip], page: { ...page.page, totalPages: 2 } })
+      .mockReturnValueOnce(newPageRequest)
+    const store = useTripStore()
+    await store.fetchTrips({ status: 'ACTIVE', size: 1 })
+    const oldLoadMore = store.fetchNextPage()
+    await store.fetchTrips({ status: 'ARCHIVED', size: 1 })
+    const newLoadMore = store.fetchNextPage()
+
+    resolveOldPage({ items: [], page: { ...page.page, page: 1, totalPages: 2 } })
+    await oldLoadMore
+    expect(store.loadingMore).toBe(true)
+
+    resolveNewPage({ items: [], page: { ...page.page, page: 1, totalPages: 2 } })
+    await newLoadMore
+    expect(store.loadingMore).toBe(false)
+  })
+
   it('다음 페이지 조회 실패를 현재 목록을 유지한 채 표시한다', async () => {
     vi.mocked(tripApi.getTrips)
       .mockResolvedValueOnce({
@@ -173,6 +199,31 @@ describe('trip store', () => {
     expect(store.trips).toEqual([trip])
     expect(store.loadMoreError).toBe('다음 여행을 불러오지 못했습니다.')
     expect(store.loadingMore).toBe(false)
+  })
+
+  it('목록 변경 동기화가 진행 중인 더 보기 요청을 종료하고 이전 응답을 무시한다', async () => {
+    let resolveNextPage!: (value: PagedTripSummary) => void
+    const nextPageRequest = new Promise<PagedTripSummary>((resolve) => { resolveNextPage = resolve })
+    const createdTrip = { ...trip, id: 'trip-created', title: '새 여행' }
+    vi.mocked(tripApi.getTrips)
+      .mockResolvedValueOnce({ items: [trip], page: { ...page.page, totalPages: 2 } })
+      .mockReturnValueOnce(nextPageRequest)
+      .mockResolvedValueOnce({ items: [createdTrip, trip], page: page.page })
+    vi.mocked(tripApi.createTrip).mockResolvedValue(createdTrip)
+    const store = useTripStore()
+    await store.fetchTrips({ size: 1 })
+    const loadMore = store.fetchNextPage()
+
+    await store.createTrip({ title: createdTrip.title })
+    expect(store.loadingMore).toBe(false)
+
+    resolveNextPage({
+      items: [{ ...trip, id: 'trip-stale' }],
+      page: { ...page.page, page: 1, totalPages: 2 },
+    })
+    await loadMore
+
+    expect(store.trips).toEqual([createdTrip, trip])
   })
 
   it('멤버와 초대 목록을 함께 불러온다', async () => {

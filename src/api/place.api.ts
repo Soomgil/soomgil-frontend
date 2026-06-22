@@ -68,4 +68,10 @@ export const placeApi = {
     const response = await http.get<PlaceDetailDto>(`/places/${provider}/${externalPlaceId}`)
     return mapPlace(response.data)
   },
+
+  async getPopularPlaces(limit = 3): Promise<Place[]> {
+    const response = await http.get<PlaceSummaryDto[] | PagedPlaceDto>('/places/popular', { params: { limit } })
+    const data = Array.isArray(response.data) ? response.data : response.data.items
+    return data.map(mapPlace)
+  },
 }

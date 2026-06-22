@@ -48,6 +48,17 @@ const filteredTrips = computed(() => {
   })
 })
 
+const emptyMessage = computed(() => {
+  if (searchQuery.value.trim()) {
+    return tripStore.hasMoreTrips
+      ? '현재 불러온 여행 중 검색 조건에 맞는 여행이 없습니다.'
+      : '검색 조건에 맞는 여행이 없습니다.'
+  }
+  if (activeFilter.value === 'upcoming') return '진행 중인 여행이 없습니다.'
+  if (activeFilter.value === 'past') return '보관한 여행이 없습니다.'
+  return '아직 만든 여행이 없습니다.'
+})
+
 function formatCreatedAt(value: string) {
   return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(value))
 }
@@ -177,7 +188,7 @@ watch(activeFilter, loadTrips)
         <EmptyState
           v-else-if="filteredTrips.length === 0"
           icon="luggage"
-          :message="tripStore.trips.length === 0 ? '아직 만든 여행이 없습니다.' : '조건에 맞는 여행이 없습니다.'"
+          :message="emptyMessage"
         />
         <div v-else class="trip-card-grid">
           <article

@@ -15,6 +15,7 @@ import { tripApi } from '@/api/trip.api'
 
 export const useTripStore = defineStore('trip', () => {
   let listRequestSequence = 0
+  let loadMoreRequestSequence = 0
   const currentTrip = ref<TripDetail | null>(null)
   const trips = ref<TripSummary[]>([])
   const page = ref<PageMeta | null>(null)
@@ -35,8 +36,10 @@ export const useTripStore = defineStore('trip', () => {
 
   async function fetchTrips(params?: TripListParams) {
     const requestId = ++listRequestSequence
+    loadMoreRequestSequence += 1
     const requestParams = { ...params, page: params?.page ?? 0 }
     loading.value = true
+    loadingMore.value = false
     error.value = null
     loadMoreError.value = null
     listParams.value = requestParams
@@ -58,22 +61,25 @@ export const useTripStore = defineStore('trip', () => {
     if (!hasMoreTrips.value || loadingMore.value || !page.value) return
 
     const requestId = listRequestSequence
+    const loadMoreRequestId = ++loadMoreRequestSequence
     loadingMore.value = true
     loadMoreError.value = null
     try {
       const nextParams = { ...listParams.value, page: page.value.page + 1 }
       const result = await tripApi.getTrips(nextParams)
-      if (requestId !== listRequestSequence) return
+      if (requestId !== listRequestSequence || loadMoreRequestId !== loadMoreRequestSequence) return
       const knownIds = new Set(trips.value.map((trip) => trip.id))
       trips.value.push(...result.items.filter((trip) => !knownIds.has(trip.id)))
       page.value = result.page
       listParams.value = nextParams
     } catch {
-      if (requestId === listRequestSequence) {
+      if (requestId === listRequestSequence && loadMoreRequestId === loadMoreRequestSequence) {
         loadMoreError.value = '다음 여행을 불러오지 못했습니다.'
       }
     } finally {
-      loadingMore.value = false
+      if (requestId === listRequestSequence && loadMoreRequestId === loadMoreRequestSequence) {
+        loadingMore.value = false
+      }
     }
   }
 
@@ -149,7 +155,10 @@ export const useTripStore = defineStore('trip', () => {
 
   async function syncFirstPageAfterMutation() {
     const requestId = ++listRequestSequence
+    loadMoreRequestSequence += 1
     const requestParams = { ...listParams.value, page: 0 }
+    loadingMore.value = false
+    loadMoreError.value = null
     listParams.value = requestParams
     try {
       const result = await tripApi.getTrips(requestParams)

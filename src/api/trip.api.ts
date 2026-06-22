@@ -10,12 +10,27 @@ import type {
   TripUpdateRequest,
 } from '@/types/trip'
 
+export interface NearestTripDto {
+  id: string
+  title: string
+  displayDestination: string
+  startDate: string | null
+  memberCount: number
+  memberThumbnails: string[]
+  coverImageUrl?: string | null
+}
+
 export const tripApi = {
   getTrips: async (params?: TripListParams): Promise<PagedTripSummary> => {
     const response = await http.get<PagedTripSummary>('/trips', {
       params,
       paramsSerializer: { indexes: null },
     })
+    return response.data
+  },
+
+  getNearestTrip: async (): Promise<NearestTripDto> => {
+    const response = await http.get<NearestTripDto>('/trips/nearest')
     return response.data
   },
 

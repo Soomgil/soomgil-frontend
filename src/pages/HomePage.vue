@@ -2,11 +2,16 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
-import { mockTrips } from '@/mocks/mockTrips'
-import { mockPlaces } from '@/mocks/mockPlaces'
-import { mockCommunityStories } from '@/mocks/mockCommunity'
+import { tripApi, type NearestTripDto } from '@/api/trip.api'
+import { communityApi } from '@/api/community.api'
+import { placeApi } from '@/api/place.api'
+import { useAuthStore } from '@/stores/auth.store'
+import type { TripSummary, TripDetailMember } from '@/types/trip'
+import type { CommunityPostSummary } from '@/types/community'
+import type { Place } from '@/types/place'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 /* ── Search ────────────────────────────────────────────── */
 const searchCategories: { key: string; icon: string; isNew?: boolean }[] = [
@@ -81,6 +86,7 @@ function resetCarouselTimer() {
 
 onMounted(() => {
   resetCarouselTimer()
+  fetchHomeData()
 })
 
 onUnmounted(() => {
@@ -88,25 +94,53 @@ onUnmounted(() => {
 })
 
 /* ── Super-like Top 3 ────────────────────────────────── */
-const topPlaces = computed(() =>
-  [...mockPlaces]
-    .slice(0, 3),
-)
+const topPlaces = ref<Place[]>([])
+const topPlacesLoading = ref(true)
 
 /* ── Nearest Trip ────────────────────────────────────── */
-const nearestTrip = computed(() => {
-  const now = new Date()
-  return (
-    mockTrips
-      .filter((t) => t.status === 'ACTIVE' && t.startDate && new Date(t.startDate.replace(/\./g, '-')) >= now)
-      .sort((a, b) => new Date((a.startDate ?? '').replace(/\./g, '-')).getTime() - new Date((b.startDate ?? '').replace(/\./g, '-')).getTime())[0] ?? null
-  )
-})
+const nearestTrip = ref<NearestTripDto | null>(null)
+const nearestTripLoading = ref(true)
 
 /* ── Community Stories (Top 3) ───────────────────────── */
-const featuredStories = computed(() =>
-  [...mockCommunityStories].sort((a, b) => b.likes - a.likes).slice(0, 3),
-)
+const featuredStories = ref<CommunityPostSummary[]>([])
+const featuredStoriesLoading = ref(true)
+
+async function fetchHomeData() {
+  try {
+    const [placesRes, storiesRes] = await Promise.allSettled([
+      placeApi.getPopularPlaces(3),
+      communityApi.getPosts({ size: 3, sort: ['likes,desc'] })
+    ])
+
+    if (placesRes.status === 'fulfilled') {
+      topPlaces.value = placesRes.value
+    } else {
+      console.error('Failed to load top places', placesRes.reason)
+    }
+
+    if (authStore.isAuthenticated) {
+      try {
+        nearestTrip.value = await tripApi.getNearestTrip()
+      } catch (e) {
+        console.error('Failed to load nearest trip', e)
+      }
+    } else {
+      nearestTrip.value = null
+    }
+
+    if (storiesRes.status === 'fulfilled') {
+      featuredStories.value = storiesRes.value.items
+    } else {
+      console.error('Failed to load stories', storiesRes.reason)
+    }
+  } catch (error) {
+    console.error('Failed to fetch home data', error)
+  } finally {
+    topPlacesLoading.value = false
+    nearestTripLoading.value = false
+    featuredStoriesLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -259,12 +293,19 @@ const featuredStories = computed(() =>
               <a href="#">더보기 <span class="material-symbols-rounded" style="font-size:16px;">arrow_forward</span></a>
             </div>
             <div class="home-toplikes-list">
-              <div v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item">
+              <div v-if="topPlacesLoading" style="text-align: center; padding: 20px; color: var(--muted);">
+                로딩 중...
+              </div>
+              <div v-else-if="topPlaces.length === 0" style="text-align: center; padding: 20px; color: var(--muted);">
+                인기 장소가 없습니다.
+              </div>
+              <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" @click="router.push({ name: 'PlaceDetail', params: { provider: place.provider, id: place.externalPlaceId } })">
                 <span class="home-toplikes-rank">{{ idx + 1 }}</span>
-                <img class="home-toplikes-img" :src="place.thumbnailUrl ?? ''" :alt="place.placeName" />
+                <img v-if="place.thumbnailUrl" class="home-toplikes-img" :src="place.thumbnailUrl" :alt="place.placeName" />
+                <div v-else class="home-toplikes-img" style="background: var(--bg); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">image</span></div>
                 <div class="home-toplikes-info">
                   <h4>{{ place.placeName }}</h4>
-                  <p>{{ place.summary }}</p>
+                  <p>{{ place.summary ?? place.address }}</p>
                 </div>
                 <span class="home-toplikes-badge">
                   <span class="material-symbols-rounded" style="font-size:14px;">favorite</span>
@@ -274,23 +315,35 @@ const featuredStories = computed(() =>
           </div>
 
           <!-- Right: Nearest Trip -->
-          <a v-if="nearestTrip" class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
+          <div v-if="nearestTripLoading" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted);">
+            로딩 중...
+          </div>
+          <div v-else-if="!nearestTrip" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted); cursor: pointer;" @click="router.push({ name: 'Route' })">
+            <div style="text-align: center;">
+              <span class="material-symbols-rounded" style="font-size: 32px; margin-bottom: 8px;">add_circle</span>
+              <p style="margin: 0;">새로운 여행을 계획해보세요</p>
+            </div>
+          </div>
+          <a v-else class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
             <div class="home-nearest-bg">
-              <img :src="nearestTrip.coverImageUrl" :alt="nearestTrip.title" />
+              <img :src="nearestTrip.coverImageUrl || (nearestTrip.displayDestination ? '/images/랜딩페이지/jeju.png' : '/images/랜딩페이지/busan.png')" :alt="nearestTrip.title" />
             </div>
             <div class="home-nearest-content">
-              <span class="home-nearest-dday">D-14</span>
+              <span class="home-nearest-dday">{{ nearestTrip.startDate ? nearestTrip.startDate : '곧 출발' }}</span>
               <h3>{{ nearestTrip.title }}</h3>
               <div class="home-nearest-members">
                 <div class="avatars">
                   <span
-                    v-for="(member, idx) in (nearestTrip.members ?? []).slice(0, 3)"
+                    v-for="(thumb, idx) in nearestTrip.memberThumbnails"
                     :key="idx"
                     class="avatar"
                     :style="{ background: 'var(--violet)' }"
-                  >{{ (member.displayName ?? '?').charAt(0) }}</span>
+                  >
+                    <img v-if="thumb" :src="thumb" alt="member avatar" style="width:100%; height:100%; border-radius:50%; object-fit:cover;"/>
+                    <span v-else>{{ '?' }}</span>
+                  </span>
                 </div>
-                <span class="member-count">{{ (nearestTrip.members ?? []).length }}명</span>
+                <span class="member-count">{{ nearestTrip.memberCount }}명</span>
               </div>
               <span class="home-nearest-link">
                 여행 계획 보기 <span class="material-symbols-rounded" style="font-size:18px;">arrow_forward</span>
@@ -307,21 +360,32 @@ const featuredStories = computed(() =>
           </div>
           <a class="section-link" href="#" @click.prevent="router.push('/community')">더보기 <span class="material-symbols-rounded" style="font-size:18px">arrow_forward</span></a>
         </div>
-        <div class="home-community-grid">
-          <div v-for="story in featuredStories" :key="story.id" class="home-community-card">
+        <div v-if="featuredStoriesLoading" style="text-align: center; padding: 40px; color: var(--muted);">
+          로딩 중...
+        </div>
+        <div v-else-if="featuredStories.length === 0" style="text-align: center; padding: 40px; color: var(--muted);">
+          등록된 여행기가 없습니다.
+        </div>
+        <div v-else class="home-community-grid">
+          <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push(`/community/${story.id}`)">
             <div class="home-community-card-img">
-              <img :src="story.image" :alt="story.title" />
+              <img v-if="story.coverMedia?.publicUrl" :src="story.coverMedia.publicUrl" :alt="story.title" />
+              <div v-else style="width: 100%; height: 100%; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--muted);">
+                <span class="material-symbols-rounded">image</span>
+              </div>
             </div>
             <div class="home-community-card-body">
-              <span class="cmn-tag">{{ story.tags[0] }}</span>
+              <span class="cmn-tag">{{ (story.hashtags && story.hashtags.length > 0) ? story.hashtags[0] : '커뮤니티' }}</span>
               <h3>{{ story.title }}</h3>
               <div class="home-community-card-meta">
                 <div class="home-community-author">
-                  <span class="avatar" :style="{ background: 'var(--violet)', width: '26px', height: '26px', fontSize: '10px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800 }">{{ story.avatar }}</span>
-                  <span>{{ story.author }}</span>
+                  <span class="avatar" :style="{ background: 'var(--violet)', width: '26px', height: '26px', fontSize: '10px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800 }">
+                    {{ (story.publishedBy?.displayName ?? '?').charAt(0) }}
+                  </span>
+                  <span>{{ story.publishedBy?.displayName ?? '알 수 없음' }}</span>
                 </div>
                 <div class="home-community-stats">
-                  <span class="material-symbols-rounded" style="font-size:14px;">favorite</span> {{ story.likes }}
+                  <span class="material-symbols-rounded" style="font-size:14px;">favorite</span> {{ story.likeCount ?? 0 }}
                 </div>
               </div>
             </div>

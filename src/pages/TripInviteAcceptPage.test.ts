@@ -26,6 +26,7 @@ const store = vi.hoisted(() => ({
 }))
 
 vi.mock('@/stores/trip.store', () => ({ useTripStore: () => store }))
+vi.mock('@/composables/useAuth', () => ({ useAuth: () => ({ isAuthenticated: true }) }))
 vi.mock('vue-router', async () => {
   const { reactive } = await import('vue')
   route.current = reactive({ params: { inviteCode: 'JOIN-ME' } })
@@ -120,3 +121,4 @@ describe('TripInviteAcceptPage', () => {
     expect(wrapper.text()).not.toContain('부산 여행')
   })
 })
+
