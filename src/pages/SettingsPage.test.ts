@@ -1,15 +1,17 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getSettings, updateMe, updateSettings, logout } = vi.hoisted(() => ({
+const { getSettings, getSessions, getSecurityEvents, updateMe, updateSettings, logout } = vi.hoisted(() => ({
   getSettings: vi.fn(),
+  getSessions: vi.fn(),
+  getSecurityEvents: vi.fn(),
   updateMe: vi.fn(),
   updateSettings: vi.fn(),
   logout: vi.fn(),
 }))
 
 vi.mock('@/api/user.api', () => ({
-  userApi: { getSettings, updateMe, updateSettings },
+  userApi: { getSettings, getSessions, getSecurityEvents, updateMe, updateSettings },
 }))
 
 vi.mock('@/composables/useAuth', () => ({
@@ -24,6 +26,8 @@ import SettingsPage from './SettingsPage.vue'
 describe('SettingsPage', () => {
   beforeEach(() => {
     getSettings.mockReset()
+    getSessions.mockReset()
+    getSecurityEvents.mockReset()
     updateMe.mockReset()
     updateSettings.mockReset()
     logout.mockReset()
@@ -34,6 +38,8 @@ describe('SettingsPage', () => {
       marketingEmailOptIn: true,
       tripInviteEmailOptIn: true,
     })
+    getSessions.mockResolvedValue({ items: [] })
+    getSecurityEvents.mockResolvedValue({ items: [] })
   })
 
   it('loads user profile and settings on mount', async () => {
@@ -69,7 +75,7 @@ describe('SettingsPage', () => {
     await flushPromises()
 
     await wrapper.findAll('input[type="text"]')[0].setValue('새이름')
-    await wrapper.findAll('button')[0].trigger('click') // Profile Save button
+    await wrapper.findAll('button').find((button) => button.text() === '프로필 저장')!.trigger('click')
 
     expect(updateMe).toHaveBeenCalledWith({
       displayName: '새이름',
@@ -88,7 +94,7 @@ describe('SettingsPage', () => {
     await flushPromises()
 
     await wrapper.findAll('input[type="checkbox"]')[0].setValue(false) // toggle marketing
-    await wrapper.findAll('button')[1].trigger('click') // Settings Save button
+    await wrapper.findAll('button').find((button) => button.text() === '설정 저장')!.trigger('click')
 
     expect(updateSettings).toHaveBeenCalledWith({
       displayLanguage: 'ko',
@@ -107,9 +113,8 @@ describe('SettingsPage', () => {
     })
     await flushPromises()
 
-    await wrapper.findAll('button')[2].trigger('click') // Logout button
+    await wrapper.findAll('button').find((button) => button.text() === '로그아웃')!.trigger('click')
     expect(logout).toHaveBeenCalled()
   })
 })
-
 

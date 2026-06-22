@@ -479,15 +479,6 @@ onBeforeUnmount(() => {
           />
           <div v-else class="record-masonry" data-record-masonry>
             <button
-              class="record-masonry-item record-masonry-add"
-              type="button"
-              aria-label="사진 추가"
-              @click="openUploadModal"
-            >
-              <span class="material-symbols-rounded record-masonry-add-icon">add_a_photo</span>
-              <span class="record-masonry-add-text">사진 추가</span>
-            </button>
-            <button
               v-for="(photo, i) in visiblePhotos"
               :key="`${photo.recordId}-${photo.media.id}`"
               class="record-masonry-item"
@@ -509,6 +500,15 @@ onBeforeUnmount(() => {
                   {{ uploaderName(photo) }}
                 </p>
               </div>
+            </button>
+            <button
+              class="record-masonry-item record-masonry-add"
+              type="button"
+              aria-label="사진 추가"
+              @click="openUploadModal"
+            >
+              <span class="material-symbols-rounded record-masonry-add-icon">add_a_photo</span>
+              <span class="record-masonry-add-text">사진 추가</span>
             </button>
           </div>
           <div

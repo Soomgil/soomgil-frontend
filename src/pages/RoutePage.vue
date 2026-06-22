@@ -835,7 +835,7 @@ async function loadNote(tag = activeMemoDay.value) {
   try {
     const note = await planningApi.getNote(tripId, scope)
     notes.value[tag] = note
-    memoTextDisplay.value = note.content
+    memoTextDisplay.value = note?.content ?? ''
   } catch (error: any) {
     if (error?.response?.status === 404) {
       notes.value[tag] = null
@@ -2698,7 +2698,6 @@ function textAvatarStyle(index: unknown) {
   opacity: 1;
 }
 </style>
-
 
 
 

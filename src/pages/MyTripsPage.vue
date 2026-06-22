@@ -10,13 +10,11 @@ import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
-import { useAuthStore } from '@/stores/auth.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
 import type { LegalRegion } from '@/types/geo'
 
 const router = useRouter()
 const tripStore = useTripStore()
-const auth = useAuthStore()
 const createModal = useModal()
 const activeFilter = ref<TripFilter>('all')
 const searchQuery = ref('')
@@ -56,6 +54,13 @@ const filteredTrips = computed(() => {
 
     return matchesStatus && matchesQuery
   })
+})
+
+const emptyMessage = computed(() => {
+  if (searchQuery.value.trim()) return '검색 조건에 맞는 여행이 없습니다.'
+  if (activeFilter.value === 'upcoming') return '진행 중인 여행이 없습니다.'
+  if (activeFilter.value === 'past') return '보관한 여행이 없습니다.'
+  return '아직 만든 여행이 없습니다.'
 })
 
 function formatCreatedAt(value: string) {
@@ -258,9 +263,7 @@ watch(activeFilter, loadTrips)
                   <div class="ticket-members-wrapper" aria-label="여행 권한">
                     <span class="label">ROLE</span>
                     <div class="next-trip-members">
-                      <span class="avatar" :style="auth.user?.profileImageUrl ? { backgroundImage: `url(${auth.user.profileImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
-                        <template v-if="!auth.user?.profileImageUrl">{{ currentTrip.myRole === 'OWNER' ? '방장' : '멤버' }}</template>
-                      </span>
+                      <span class="avatar">{{ currentTrip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
                     </div>
                   </div>
                 </div>
@@ -358,7 +361,7 @@ watch(activeFilter, loadTrips)
               <EmptyState
                 v-else-if="filteredTrips.length === 0"
                 icon="luggage"
-                :message="tripStore.trips.length === 0 ? '아직 만든 여행이 없습니다.' : '조건에 맞는 여행이 없습니다.'"
+                :message="emptyMessage"
               />
               <div v-else class="trip-view-panel active">
                 <div class="my-trips-timeline-wrapper">
