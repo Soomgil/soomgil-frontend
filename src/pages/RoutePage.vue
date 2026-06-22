@@ -14,7 +14,7 @@ import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/compon
 import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
 import { useItinerary } from '@/composables/useItinerary'
 import { useMapViewport } from '@/composables/useMapViewport'
-import { mockPlaces } from '@/mocks/mockPlaces'
+import { placeApi } from '@/api/place.api'
 import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
@@ -75,7 +75,6 @@ const mapStops = computed<ItineraryMapStop[]>(() => {
   return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
     const currentIndex = index++
     if (item.lat == null || item.lng == null) return []
-    const place = mockPlaces.find((candidate) => candidate.externalPlaceId === item.placeExternalId)
     return [{
       id: item.id,
       placeId: item.placeExternalId,
@@ -84,7 +83,7 @@ const mapStops = computed<ItineraryMapStop[]>(() => {
       index: currentIndex,
       lat: item.lat,
       lng: item.lng,
-      image: item.thumbnailUrl ?? place?.thumbnailUrl,
+      image: item.thumbnailUrl ?? '',
     }]
   }))
 })
@@ -894,7 +893,7 @@ const detailbarMainImg = ref('')
 // Make selectPlace available globally for map marker onclick
 ;(window as any).selectPlace = selectPlace
 
-function selectPlace(placeId: string) {
+async function selectPlace(placeId: string) {
   // Route-pen mode: link stops instead of opening detailbar
   if (activeTool.value === 'route-pen') {
     for (const day of dayPlans.value) {
@@ -903,31 +902,28 @@ function selectPlace(placeId: string) {
     }
     return
   }
-  // 일정에 이미 들어간 장소는 기존 상세 데이터를 사용한다.
-  const itineraryPlace = mockPlaces.find(p => p.externalPlaceId === placeId)
-
-  if (itineraryPlace) {
-    const p = itineraryPlace as any
+  try {
+    const place = await placeApi.getPlace('KTO', placeId)
     selectedPlace.value = {
-      id: p.id,
-      title: p.title,
-      description: p.description,
-      image: p.image,
-      likes: p.likes || '1.2k',
-      location: p.location,
-      hours: p.hours,
-      closed: p.closed,
-      parking: p.parking,
-      photos: p.photos || [p.image],
-      accessibility: p.accessibility,
-      contact: p.contact,
-      admission: p.admission,
-      featuredMenu: p.featuredMenu,
-      likedBy: p.likedBy,
-      travelStories: p.travelStories,
+      id: place.externalPlaceId,
+      title: place.placeName,
+      description: place.description || place.summary,
+      image: place.thumbnailUrl || '',
+      likes: '',
+      location: place.address || '',
+      hours: '',
+      closed: '',
+      parking: '',
+      photos: place.photos || (place.thumbnailUrl ? [place.thumbnailUrl] : []),
+      accessibility: '',
+      contact: place.contact,
+      admission: '',
+      featuredMenu: '',
+      likedBy: [],
+      travelStories: [],
     }
-    detailbarMainImg.value = p.image
-  } else {
+    detailbarMainImg.value = selectedPlace.value.image
+  } catch (e) {
     return
   }
 
@@ -943,9 +939,9 @@ function selectDiscoveredPlace(place: Place) {
     image,
     likes: place.likedBy?.length ?? 0,
     location: place.address ?? '',
-    hours: place.hours,
-    closed: place.closed,
-    parking: place.parking,
+    hours: '',
+    closed: '',
+    parking: '',
     photos: place.photos ?? (image ? [image] : []),
     accessibility: place.accessibility,
     contact: place.contact,
@@ -1437,7 +1433,7 @@ function textAvatarStyle(index: unknown) {
               <div class="detailbar-header-info">
                 <div class="detailbar-category-row">
                   <span class="detailbar-category-pill">&#128161; 상세 정보</span>
-                  <span class="detailbar-likes-badge"><span class="material-symbols-rounded">favorite</span> {{ selectedPlace.likes }}</span>
+                  <span class="detailbar-likes-badge" v-if="selectedPlace.likes"><span class="material-symbols-rounded">favorite</span> {{ selectedPlace.likes }}</span>
                 </div>
                 <h2 class="detailbar-main-title">{{ selectedPlace.title }}</h2>
                 <div class="detailbar-address-row">
@@ -1478,7 +1474,7 @@ function textAvatarStyle(index: unknown) {
               </div>
 
               <!-- Quick Info -->
-              <div class="detailbar-info-card">
+              <div class="detailbar-info-card" v-if="selectedPlace.hours || selectedPlace.closed || selectedPlace.parking || selectedPlace.accessibility">
                 <h4 class="section-title">이용 안내</h4>
                 <div class="detailbar-info-grid">
                   <div class="info-item">
@@ -2270,3 +2266,7 @@ function textAvatarStyle(index: unknown) {
   opacity: 1;
 }
 </style>
+
+
+
+

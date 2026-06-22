@@ -4,9 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import { useTripStore } from '@/stores/trip.store'
+import { useAuth } from '@/composables/useAuth'
 import type { TripDetail } from '@/types/trip'
 
-type AcceptState = 'loading' | 'success' | 'expired' | 'unavailable' | 'already-member' | 'forbidden' | 'not-found' | 'error'
+type AcceptState = 'loading' | 'success' | 'expired' | 'unavailable' | 'already-member' | 'forbidden' | 'not-found' | 'error' | 'unauthorized'
 
 interface InviteProblem {
   response?: {
@@ -21,6 +22,7 @@ interface InviteProblem {
 const route = useRoute()
 const router = useRouter()
 const tripStore = useTripStore()
+const auth = useAuth()
 const state = ref<AcceptState>('loading')
 const acceptedTrip = ref<TripDetail | null>(null)
 let acceptAttempt = 0
@@ -38,6 +40,7 @@ const errorContent = computed(() => {
     forbidden: { icon: 'lock', title: '다른 사용자에게 발급된 초대입니다', message: '초대를 받은 계정으로 로그인해 주세요.' },
     'not-found': { icon: 'search_off', title: '초대를 찾을 수 없습니다', message: '링크가 정확한지 확인하거나 방장에게 다시 요청해 주세요.' },
     error: { icon: 'error', title: '초대를 처리하지 못했습니다', message: '잠시 후 다시 시도해 주세요.' },
+    unauthorized: { icon: 'login', title: '로그인이 필요합니다', message: '초대받은 여행에 참여하려면 먼저 로그인해 주세요.' },
   }
   return state.value === 'loading' || state.value === 'success' ? null : content[state.value]
 })
@@ -79,8 +82,16 @@ function goToTrip() {
   router.push({ name: 'Route', params: { tripId: acceptedTrip.value.id } })
 }
 
+function goToLogin() {
+  router.push({ name: 'Login', query: { returnTo: route.fullPath } })
+}
+
 watch(inviteCode, () => {
   acceptedTrip.value = null
+  if (!auth.isAuthenticated) {
+    state.value = 'unauthorized'
+    return
+  }
   void acceptInvite()
 }, { immediate: true })
 </script>
@@ -113,7 +124,10 @@ watch(inviteCode, () => {
           <h1>{{ errorContent.title }}</h1>
           <p>{{ errorContent.message }}</p>
           <div class="invite-actions">
-            <button class="btn ghost" type="button" @click="router.push({ name: 'MyTrips' })">내 여행으로 이동</button>
+            <button v-if="state !== 'unauthorized'" class="btn ghost" type="button" @click="router.push({ name: 'MyTrips' })">내 여행으로 이동</button>
+            <button v-if="state === 'unauthorized'" class="btn primary" type="button" @click="goToLogin">
+              로그인하고 참여하기
+            </button>
             <button v-if="state === 'error'" class="btn primary" type="button" data-testid="retry-invite" @click="acceptInvite">
               다시 시도
             </button>
@@ -181,3 +195,4 @@ watch(inviteCode, () => {
   }
 }
 </style>
+

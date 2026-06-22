@@ -17,10 +17,12 @@ const profileForm = ref({
 
 const settingsForm = ref({
   displayLanguage: 'ko',
-  timezone: 'Asia/Seoul',
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul',
   marketingEmailOptIn: false,
   tripInviteEmailOptIn: true,
 })
+
+const timezones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul']
 
 const message = ref('')
 
@@ -29,8 +31,8 @@ onMounted(async () => {
   try {
     const settings = await userApi.getSettings()
     settingsForm.value = {
-      displayLanguage: settings.displayLanguage,
-      timezone: settings.timezone,
+      displayLanguage: settings.displayLanguage || 'ko',
+      timezone: settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
       marketingEmailOptIn: settings.marketingEmailOptIn,
       tripInviteEmailOptIn: settings.tripInviteEmailOptIn,
     }
@@ -127,7 +129,9 @@ async function saveSettings() {
           </label>
           <label class="block">
             <span class="text-sm text-ink font-semibold block mb-1">타임존</span>
-            <input v-model="settingsForm.timezone" type="text" class="w-full px-4 py-2 rounded-xl border border-line" />
+            <select v-model="settingsForm.timezone" class="w-full px-4 py-2 rounded-xl border border-line bg-white">
+              <option v-for="tz in timezones" :key="tz" :value="tz">{{ tz }}</option>
+            </select>
           </label>
           <label class="flex items-center justify-between">
             <span class="text-sm text-ink">마케팅 이메일 수신</span>

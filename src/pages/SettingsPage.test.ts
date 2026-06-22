@@ -48,16 +48,17 @@ describe('SettingsPage', () => {
     // Check if the input models are populated properly
     const inputs = wrapper.findAll('input[type="text"]')
     // displayName, displayLanguage, timezone
-    expect(inputs[0].element.value).toBe('테스터')
-    expect(inputs[1].element.value).toBe('ko')
-    expect(inputs[2].element.value).toBe('Asia/Seoul')
+    expect((inputs[0].element as HTMLInputElement).value).toBe('테스터')
+    expect((inputs[1].element as HTMLInputElement).value).toBe('ko')
+    const selects = wrapper.findAll('select')
+    expect((selects[0].element as HTMLSelectElement).value).toBe('Asia/Seoul')
 
     const textareas = wrapper.findAll('textarea')
-    expect(textareas[0].element.value).toBe('안녕하세요')
+    expect((textareas[0].element as HTMLTextAreaElement).value).toBe('안녕하세요')
 
     const checkboxes = wrapper.findAll('input[type="checkbox"]')
-    expect(checkboxes[0].element.checked).toBe(true) // marketing
-    expect(checkboxes[1].element.checked).toBe(true) // trip invite
+    expect((checkboxes[0].element as HTMLInputElement).checked).toBe(true) // marketing
+    expect((checkboxes[1].element as HTMLInputElement).checked).toBe(true) // trip invite
   })
 
   it('saves profile correctly and shows success message', async () => {
@@ -110,3 +111,5 @@ describe('SettingsPage', () => {
     expect(logout).toHaveBeenCalled()
   })
 })
+
+
