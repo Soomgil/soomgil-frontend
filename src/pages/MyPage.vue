@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import '@/styles/mypage.css'
 import AppShell from '@/components/layout/AppShell.vue'
-import { mockUser, mockFollowers, mockFollowing } from '@/mocks/mockUser'
 import { useModal } from '@/composables/useModal'
 import { useAuthStore } from '@/stores/auth.store'
 import { userApi } from '@/api/user.api'
@@ -20,28 +19,44 @@ import FollowListModal from '@/components/common/FollowListModal.vue'
 const router = useRouter()
 const auth = useAuthStore()
 
-// store.user가 있으면 우선, 없으면 mockUser fallback (community 도메인은 미연동)
-const displayUser = computed(() => auth.user ?? mockUser)
+// store.user가 있으면 우선
+const displayUser = computed(() => auth.user ?? {} as any)
 const displayName = computed(() => displayUser.value.displayName || '사용자')
 const displayEmail = computed(() => displayUser.value.email || '')
 // bio가 없으면 빈 문자열 (빈 경우 템플릿에서 v-if로 숨김)
 const displayBio = computed(() => displayUser.value.bio ?? '')
 
+// 데이터 로딩 상태
+const isLoading = ref(true)
+
 // onMounted에서 최신 /me로 동기화 (토큰 있을 때만)
 onMounted(async () => {
-  if (!auth.isAuthenticated) return
+  if (!auth.isAuthenticated) {
+    router.replace('/login')
+    return
+  }
   try {
     await auth.fetchUser()
-    await Promise.all([loadFollowData(), loadMyStories()])
+    await Promise.allSettled([loadFollowData(), loadMyStories(), loadLikedPlaces()])
   } catch {
     // fetch 실패해도 페이지는 노출
+  } finally {
+    isLoading.value = false
   }
 })
 
-// 좋아요한 장소 — place 도메인 연동 전까지 빈 배열.
-// TODO(place-domain): userApi.getLikedPlaces()로 교체
+// 좋아요한 장소
 const likedPlacesSource = ref<Place[]>([])
 const placeSearchQuery = ref('')
+
+async function loadLikedPlaces() {
+  if (!auth.user?.id) return
+  try {
+    likedPlacesSource.value = await userApi.getSavedPlaces()
+  } catch (err) {
+    console.error('Failed to load liked places', err)
+  }
+}
 
 const likedPlaces = computed(() => {
   if (!placeSearchQuery.value.trim()) return likedPlacesSource.value
@@ -57,10 +72,12 @@ const myStories = ref<Story[]>([])
 
 async function loadMyStories() {
   if (!auth.user?.id) return
-  const response = await communityApi.getPosts({ page: 0, size: 100 })
-  myStories.value = response.items
-    .filter((post) => post.publishedBy?.id === auth.user?.id)
-    .map(communityPostToStory)
+  try {
+    const response = await communityApi.getPosts({ page: 0, size: 100, authorId: auth.user.id })
+    myStories.value = response.items.map(communityPostToStory)
+  } catch (err) {
+    console.error('Failed to load my stories', err)
+  }
 }
 
 function openCommunityStory(storyId: string) {
@@ -126,7 +143,7 @@ const profileEditModal = useModal()
 const profileForm = ref({
   displayName: '',
   intro: '',
-  visibility: 'public',
+  visibility: 'public' as 'public' | 'followers',
 })
 
 // 사진 변경 — signed URL로 storage에 직접 업로드한 뒤 media metadata를 등록한다.
@@ -161,6 +178,7 @@ async function onPhotoSelected(e: Event) {
 function syncProfileForm() {
   profileForm.value.displayName = displayUser.value.displayName
   profileForm.value.intro = displayBio.value
+  profileForm.value.visibility = displayUser.value.profileVisibility === 'PRIVATE' ? 'followers' : 'public'
 }
 
 // 모달이 열릴 때만 폼 초기값 동기화.
@@ -181,6 +199,7 @@ async function saveProfile() {
     const payload: UpdateMeRequest = {
       displayName: profileForm.value.displayName,
       bio: profileForm.value.intro,
+      profileVisibility: profileForm.value.visibility === 'followers' ? 'PRIVATE' : 'PUBLIC',
     }
     await userApi.updateMe(payload)
     await auth.fetchUser()
@@ -200,10 +219,10 @@ async function saveProfile() {
   }
 }
 
-// Stats for profile card — 도메인 미연동 상태면 0 표시 (거짓 데이터 노출 금지)
+// Stats for profile card — 도메인 연동 후 실 데이터 반영
 const profileStats = computed(() => [
   { icon: 'luggage', value: '0', label: '내 여행' },
-  { icon: 'favorite', value: '0', label: '좋아요' },
+  { icon: 'favorite', value: String(likedPlacesSource.value.length), label: '좋아요' },
   { icon: 'auto_stories', value: String(myStories.value.length), label: '여행기' },
   { icon: 'group', value: String(followers.value.length), label: '팔로워' },
   { icon: 'person_add', value: String(following.value.length), label: '팔로잉' },
@@ -288,13 +307,19 @@ function handleUserClick(userId: string) {
 
               <!-- Stats -->
               <div class="mypage-profile-minimal-stats">
-                <div v-for="stat in profileStats" :key="stat.label" class="minimal-stat-item"
-                  style="cursor: pointer;"
-                  @click="onStatClick(stat.label)">
-                  <span class="material-symbols-rounded minimal-stat-icon">{{ stat.icon }}</span>
-                  <span class="minimal-stat-value">{{ stat.value }}</span>
-                  <span class="minimal-stat-label">{{ stat.label }}</span>
+                <div v-if="isLoading" class="minimal-stat-item" style="color: var(--muted); opacity: 0.5;">
+                  <span class="material-symbols-rounded minimal-stat-icon" style="animation: spin 1s linear infinite;">sync</span>
+                  <span class="minimal-stat-label">불러오는 중...</span>
                 </div>
+                <template v-else>
+                  <div v-for="stat in profileStats" :key="stat.label" class="minimal-stat-item"
+                    style="cursor: pointer;"
+                    @click="onStatClick(stat.label)">
+                    <span class="material-symbols-rounded minimal-stat-icon">{{ stat.icon }}</span>
+                    <span class="minimal-stat-value">{{ stat.value }}</span>
+                    <span class="minimal-stat-label">{{ stat.label }}</span>
+                  </div>
+                </template>
               </div>
 
               <!-- Actions -->
