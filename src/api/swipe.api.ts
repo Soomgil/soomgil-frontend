@@ -1,8 +1,8 @@
 import http from './http'
 import { mapPlace } from './place.api'
 import type { PageMeta, PagedItems } from '@/types/api'
-import type { PlaceProvider, PlaceRecommendation, SavedPlace, UserSummary } from '@/types/place'
-import type { RecommendationTab, SwipeAction, SwipeFeed, SwipeReactionResult } from '@/types/swipe'
+import type { PlaceProvider, PlaceRecommendation, SavedPlace, TagPreparationStatus, UserSummary } from '@/types/place'
+import type { RecommendationTab, SwipeAction, SwipeFeed, SwipeReactionResult, SwipeTagStatus } from '@/types/swipe'
 
 interface PlaceSummaryDto {
   provider: PlaceProvider
@@ -17,6 +17,7 @@ interface PlaceSummaryDto {
   description?: string | null
   photos?: string[] | null
   tags?: string[] | null
+  tagStatus?: TagPreparationStatus | null
 }
 
 interface SwipeFeedDto {
@@ -77,6 +78,13 @@ export const swipeApi = {
       `/places/${provider}/${externalPlaceId}/swipe-reaction`,
       { reaction, source: 'swipe-feed' },
     )
+    return response.data
+  },
+
+  async getTagStatuses(externalPlaceIds: string[]): Promise<SwipeTagStatus[]> {
+    const response = await http.get<SwipeTagStatus[]>('/swipe/tags', {
+      params: { externalPlaceIds: externalPlaceIds.join(',') },
+    })
     return response.data
   },
 

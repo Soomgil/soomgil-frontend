@@ -53,9 +53,13 @@ describe('place and preference APIs', () => {
     put.mockResolvedValue({ data: { place: { provider: 'KTO', externalPlaceId: '126508' }, reaction: 'SUPER_LIKE', savedPlaceEligible: true, updatedAt: '2026-06-21T00:00:00Z' } })
 
     const feed = await swipeApi.getFeed({ limit: 20, excludeRecent: true })
+    get.mockResolvedValueOnce({ data: [{ externalPlaceId: '126508', tags: ['바다'], status: 'READY' }] })
+    const tagStatuses = await swipeApi.getTagStatuses(['126508', '999999'])
     const reaction = await swipeApi.react('KTO', '126508', 'SUPER_LIKE')
 
     expect(get).toHaveBeenCalledWith('/swipe/feed', { params: { limit: 20, excludeRecent: true } })
+    expect(get).toHaveBeenCalledWith('/swipe/tags', { params: { externalPlaceIds: '126508,999999' } })
+    expect(tagStatuses[0]?.status).toBe('READY')
     expect(put).toHaveBeenCalledWith('/places/KTO/126508/swipe-reaction', { reaction: 'SUPER_LIKE', source: 'swipe-feed' })
     expect(feed.items[0].place.placeName).toBe('해운대해수욕장')
     expect(feed.items[0].place.description).toBe('넓은 백사장이 있는 해수욕장')

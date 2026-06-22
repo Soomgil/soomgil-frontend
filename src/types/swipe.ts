@@ -28,6 +28,12 @@ export interface SwipeFeed {
   nextSeed: string | null
 }
 
+export interface SwipeTagStatus {
+  externalPlaceId: string
+  tags: string[]
+  status: import('./place').TagPreparationStatus
+}
+
 export interface SwipeReactionResult {
   place: { provider: import('./place').PlaceProvider; externalPlaceId: string }
   reaction: SwipeAction
