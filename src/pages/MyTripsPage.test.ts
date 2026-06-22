@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MyTripsPage from './MyTripsPage.vue'
+import type { TripSummary } from '@/types/trip'
 
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
 
@@ -15,12 +16,12 @@ const trip = {
 }
 
 const store = vi.hoisted(() => ({
-  trips: [],
+  trips: [] as TripSummary[],
   loading: false,
-  error: null,
+  error: null as string | null,
   creating: false,
   loadingMore: false,
-  loadMoreError: null,
+  loadMoreError: null as string | null,
   hasMoreTrips: false,
   fetchTrips: vi.fn().mockResolvedValue(undefined),
   fetchNextPage: vi.fn().mockResolvedValue(undefined),
@@ -34,6 +35,12 @@ vi.mock('@/api/geo.api', () => ({ geoApi: geo }))
 describe('MyTripsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    store.trips = []
+    store.loading = false
+    store.error = null
+    store.loadingMore = false
+    store.loadMoreError = null
+    store.hasMoreTrips = false
     store.createTrip.mockResolvedValue(trip)
     geo.searchLegalRegions.mockResolvedValue({
       items: [],
@@ -121,5 +128,71 @@ describe('MyTripsPage', () => {
       legalRegionCodes: ['2600000000'],
     })
     wrapper.unmount()
+  })
+
+  it('첫 진입에서 실제 여행 목록의 첫 페이지를 요청한다', async () => {
+    mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await flushPromises()
+
+    expect(store.fetchTrips).toHaveBeenCalledWith({
+      page: 0,
+      size: 20,
+      status: undefined,
+      sort: ['createdAt,desc'],
+    })
+  })
+
+  it('목록 실패를 표시하고 다시 시도한다', async () => {
+    store.error = '여행 목록을 불러오지 못했습니다.'
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await flushPromises()
+    store.fetchTrips.mockClear()
+
+    expect(wrapper.text()).toContain('여행 목록을 불러오지 못했습니다.')
+    const retryButton = wrapper.findAll('button').find((button) => button.text() === '다시 시도')
+    await retryButton!.trigger('click')
+    expect(store.fetchTrips).toHaveBeenCalledWith({
+      page: 0,
+      size: 20,
+      status: undefined,
+      sort: ['createdAt,desc'],
+    })
+  })
+
+  it('목록을 불러오는 동안 로딩 상태를 표시한다', () => {
+    store.loading = true
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+  })
+
+  it('다음 페이지가 있으면 여행 더 보기를 요청한다', async () => {
+    store.trips = [trip]
+    store.hasMoreTrips = true
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+
+    const loadMoreButton = wrapper.findAll('button').find((button) => button.text() === '여행 더 보기')
+    await loadMoreButton!.trigger('click')
+
+    expect(store.fetchNextPage).toHaveBeenCalledOnce()
+  })
+
+  it('필터에 맞는 빈 상태 문구를 표시한다', async () => {
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '보관됨')
+    await archivedFilter!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('보관한 여행이 없습니다.')
   })
 })
