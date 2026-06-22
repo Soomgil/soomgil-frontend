@@ -32,7 +32,7 @@ const props = withDefaults(defineProps<{
   drawingsVisible: true,
 })
 const emit = defineEmits<{
-  selectPlace: [placeId: string]
+  selectPlace: [placeProvider: string | undefined, placeId: string]
   viewportChange: [viewport: Viewport]
   drawingCreate: [drawing: MapDrawingDraft]
   drawingErase: [drawingId: string]
@@ -102,7 +102,7 @@ function createMarkerElement(stop: ItineraryMapStop) {
   badge.className = 'map-pin-badge'
   badge.textContent = String(stop.index)
   marker.append(imageWrapper, info, badge)
-  if (stop.placeId) marker.addEventListener('click', () => emit('selectPlace', stop.placeId!))
+  if (stop.placeId) marker.addEventListener('click', () => emit('selectPlace', stop.placeProvider, stop.placeId!))
   return marker
 }
 
