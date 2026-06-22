@@ -2,14 +2,16 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
-import { tripApi } from '@/api/trip.api'
+import { tripApi, type NearestTripDto } from '@/api/trip.api'
 import { communityApi } from '@/api/community.api'
 import { placeApi } from '@/api/place.api'
+import { useAuthStore } from '@/stores/auth.store'
 import type { TripSummary, TripDetailMember } from '@/types/trip'
 import type { CommunityPostSummary } from '@/types/community'
 import type { Place } from '@/types/place'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 /* ── Search ────────────────────────────────────────────── */
 const searchCategories: { key: string; icon: string; isNew?: boolean }[] = [
@@ -96,7 +98,7 @@ const topPlaces = ref<Place[]>([])
 const topPlacesLoading = ref(true)
 
 /* ── Nearest Trip ────────────────────────────────────── */
-const nearestTrip = ref<{ trip: TripSummary; members: TripDetailMember[] } | null>(null)
+const nearestTrip = ref<NearestTripDto | null>(null)
 const nearestTripLoading = ref(true)
 
 /* ── Community Stories (Top 3) ───────────────────────── */
@@ -105,9 +107,8 @@ const featuredStoriesLoading = ref(true)
 
 async function fetchHomeData() {
   try {
-    const [placesRes, tripsRes, storiesRes] = await Promise.allSettled([
+    const [placesRes, storiesRes] = await Promise.allSettled([
       placeApi.getPopularPlaces(3),
-      tripApi.getTrips({ status: 'ACTIVE', size: 1, sort: ['createdAt,desc'] }),
       communityApi.getPosts({ size: 3, sort: ['likes,desc'] })
     ])
 
@@ -117,12 +118,14 @@ async function fetchHomeData() {
       console.error('Failed to load top places', placesRes.reason)
     }
 
-    if (tripsRes.status === 'fulfilled' && tripsRes.value.items.length > 0) {
-      const trip = tripsRes.value.items[0]
-      const members = await tripApi.getMembers(trip.id).catch(() => [])
-      nearestTrip.value = { trip, members }
-    } else if (tripsRes.status === 'rejected') {
-      console.error('Failed to load nearest trip', tripsRes.reason)
+    if (authStore.isAuthenticated) {
+      try {
+        nearestTrip.value = await tripApi.getNearestTrip()
+      } catch (e) {
+        console.error('Failed to load nearest trip', e)
+      }
+    } else {
+      nearestTrip.value = null
     }
 
     if (storiesRes.status === 'fulfilled') {
@@ -321,23 +324,26 @@ async function fetchHomeData() {
               <p style="margin: 0;">새로운 여행을 계획해보세요</p>
             </div>
           </div>
-          <a v-else class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.trip.id } })" style="text-decoration:none;">
+          <a v-else class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
             <div class="home-nearest-bg">
-              <img :src="nearestTrip.trip.displayDestination ? '/images/랜딩페이지/jeju.png' : '/images/랜딩페이지/busan.png'" :alt="nearestTrip.trip.title" />
+              <img :src="nearestTrip.coverImageUrl || (nearestTrip.displayDestination ? '/images/랜딩페이지/jeju.png' : '/images/랜딩페이지/busan.png')" :alt="nearestTrip.title" />
             </div>
             <div class="home-nearest-content">
-              <span class="home-nearest-dday">곧 출발</span>
-              <h3>{{ nearestTrip.trip.title }}</h3>
+              <span class="home-nearest-dday">{{ nearestTrip.startDate ? nearestTrip.startDate : '곧 출발' }}</span>
+              <h3>{{ nearestTrip.title }}</h3>
               <div class="home-nearest-members">
                 <div class="avatars">
                   <span
-                    v-for="(member, idx) in nearestTrip.members.slice(0, 3)"
-                    :key="member.id"
+                    v-for="(thumb, idx) in nearestTrip.memberThumbnails"
+                    :key="idx"
                     class="avatar"
                     :style="{ background: 'var(--violet)' }"
-                  >{{ (member.user.displayName ?? '?').charAt(0) }}</span>
+                  >
+                    <img v-if="thumb" :src="thumb" alt="member avatar" style="width:100%; height:100%; border-radius:50%; object-fit:cover;"/>
+                    <span v-else>{{ '?' }}</span>
+                  </span>
                 </div>
-                <span class="member-count">{{ nearestTrip.members.length }}명</span>
+                <span class="member-count">{{ nearestTrip.memberCount }}명</span>
               </div>
               <span class="home-nearest-link">
                 여행 계획 보기 <span class="material-symbols-rounded" style="font-size:18px;">arrow_forward</span>
