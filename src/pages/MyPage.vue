@@ -73,10 +73,8 @@ const myStories = ref<Story[]>([])
 async function loadMyStories() {
   if (!auth.user?.id) return
   try {
-    const response = await communityApi.getPosts({ page: 0, size: 100 })
-    myStories.value = response.items
-      .filter((post) => post.publishedBy?.id === auth.user?.id)
-      .map(communityPostToStory)
+    const response = await communityApi.getPosts({ page: 0, size: 100, authorId: auth.user.id })
+    myStories.value = response.items.map(communityPostToStory)
   } catch (err) {
     console.error('Failed to load my stories', err)
   }

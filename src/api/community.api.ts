@@ -19,6 +19,7 @@ export interface CommunityPostQuery {
   page?: number
   size?: number
   sort?: string[]
+  authorId?: string
 }
 
 export const communityApi = {
