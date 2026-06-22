@@ -111,7 +111,7 @@ describe('MapboxItineraryMap', () => {
     expect(getComputedStyle(markerElement.querySelector('.map-pin-info')!).display).toBe('block')
     markerElement.click()
     await nextTick()
-    expect(wrapper.emitted('selectPlace')).toEqual([['place-1']])
+    expect(wrapper.emitted('selectPlace')).toEqual([[undefined, 'place-1']])
   })
 
   it('초기 오류 후 load가 성공하면 오류를 해제하고 재시도 시 observer를 정리한다', async () => {
