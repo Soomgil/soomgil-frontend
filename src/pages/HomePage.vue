@@ -80,17 +80,8 @@ function submitSearch() {
   router.push({ path: '/search', query: { q, tab: activeSearchTab.value } })
 }
 
-<<<<<<< HEAD
 function showAlert(msg: string) {
   toast.info(msg)
-=======
-function openTripCreation(intent: 'route' | 'ai' = 'route') {
-  void router.push({ path: '/my-trips', query: { create: '1', intent } })
-}
-
-function openTripSelection(intent: 'invite' | 'share') {
-  void router.push({ path: '/my-trips', query: { intent } })
->>>>>>> origin/develop
 }
 
 function openTripSelection(intent: 'invite' | 'share') {
@@ -306,20 +297,7 @@ async function fetchHomeData() {
 
         <!-- 3. Quick Actions -->
         <div class="home-action-row">
-<<<<<<< HEAD
           <a class="home-action-card" href="#" @click.prevent="router.push({ name: 'Route' })">
-=======
-          <a class="home-action-card" href="#" @click.prevent="router.push({ name: 'Swipe' })">
-            <div class="home-action-icon icon-violet">
-              <span class="material-symbols-rounded">swipe</span>
-            </div>
-            <div class="home-action-text">
-              <h3>내 취향 수집</h3>
-              <p>취향 카드 넘기기</p>
-            </div>
-          </a>
-          <a class="home-action-card" href="#" @click.prevent="openTripCreation('route')">
->>>>>>> origin/develop
             <div class="home-action-icon icon-blue">
               <span class="material-symbols-rounded">map</span>
             </div>
@@ -328,11 +306,7 @@ async function fetchHomeData() {
               <p>일정 설계하기</p>
             </div>
           </a>
-<<<<<<< HEAD
           <a class="home-action-card" href="#" @click.prevent="createAndCopyInviteLink">
-=======
-          <a class="home-action-card" href="#" @click.prevent="openTripSelection('invite')">
->>>>>>> origin/develop
             <div class="home-action-icon icon-rose">
               <span class="material-symbols-rounded">group_add</span>
             </div>
@@ -341,11 +315,7 @@ async function fetchHomeData() {
               <p>함께하면 더 즐거워요</p>
             </div>
           </a>
-<<<<<<< HEAD
           <a class="home-action-card" href="#" @click.prevent="openAiRecommendation">
-=======
-          <a class="home-action-card" href="#" @click.prevent="openTripCreation('ai')">
->>>>>>> origin/develop
             <div class="home-action-icon icon-cyan">
               <span class="material-symbols-rounded">auto_awesome</span>
             </div>
@@ -392,18 +362,11 @@ async function fetchHomeData() {
           <div v-if="nearestTripLoading" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted);">
             로딩 중...
           </div>
-<<<<<<< HEAD
           <div v-else-if="!nearestTrip" class="home-nearest-card home-nearest-card--empty" @click="router.push({ name: 'Route' })">
             <div class="home-nearest-empty">
               <span class="material-symbols-rounded home-nearest-empty-icon">add_circle</span>
               <p class="home-nearest-empty-title">새로운 여행을 계획해보세요</p>
               <p class="home-nearest-empty-sub">첫 여행을 만들면 이곳에 표시돼요.</p>
-=======
-          <div v-else-if="!nearestTrip" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted); cursor: pointer;" @click="openTripCreation('route')">
-            <div style="text-align: center;">
-              <span class="material-symbols-rounded" style="font-size: 32px; margin-bottom: 8px;">add_circle</span>
-              <p style="margin: 0;">새로운 여행을 계획해보세요</p>
->>>>>>> origin/develop
             </div>
           </div>
           <a v-else class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
@@ -460,17 +423,10 @@ async function fetchHomeData() {
         <div v-else class="home-community-grid">
           <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push({ path: '/community', query: { story: story.id } })">
             <div class="home-community-card-img">
-<<<<<<< HEAD
               <img v-if="story.coverMedia?.publicUrl" :src="story.coverMedia.publicUrl" :alt="story.title" />
               <div v-else class="home-community-card-placeholder">
                 <span class="material-symbols-rounded">image</span>
                 <p>등록된 사진이 없어요</p>
-=======
-              <img v-if="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl" :src="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl ?? ''" :alt="story.title" />
-              <div v-else class="home-community-placeholder">
-                <span class="material-symbols-rounded">auto_stories</span>
-                <span>여행 사진 준비 중</span>
->>>>>>> origin/develop
               </div>
             </div>
             <div class="home-community-card-body">
@@ -510,11 +466,7 @@ async function fetchHomeData() {
             </div>
           </div>
           <div class="home-invite-cta-actions">
-<<<<<<< HEAD
             <button class="btn primary home-invite-primary-action" type="button" :disabled="creatingInvite" @click="createAndCopyInviteLink">
-=======
-            <button class="btn primary home-invite-primary-action" type="button" @click="openTripSelection('invite')">
->>>>>>> origin/develop
               <span class="material-symbols-rounded" aria-hidden="true">person_add</span>
               {{ creatingInvite ? '링크 생성 중…' : '초대 링크 만들기' }}
             </button>

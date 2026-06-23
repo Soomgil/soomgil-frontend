@@ -194,14 +194,10 @@ async function openStory(story: StoryView) {
     await Promise.all([enrichPostAuthors([post]), enrichCommentAuthors(commentPage.items)]);
     selectedPost.value = post;
     apiComments.value = commentPage.items;
-<<<<<<< HEAD
     visibleStoryIdx.value = Math.max(
       0,
       stories.value.findIndex((item) => item.id === story.id),
     );
-=======
-    visibleStoryIdx.value = Math.max(0, stories.value.findIndex((item) => item.id === story.id));
->>>>>>> origin/develop
   } catch {
     toast.error("여행기 상세를 불러오지 못했습니다.");
   }
@@ -2016,23 +2012,10 @@ watch(
   scroll-behavior: smooth;
   max-height: calc(94vh - 160px);
   scrollbar-width: none;
-<<<<<<< HEAD
   -ms-overflow-style: none;
 }
 .story-overlay .story-feed-window::-webkit-scrollbar {
   display: none;
-=======
-}
-.story-overlay .story-feed-window::-webkit-scrollbar {
-  display: none;
-}
-.story-overlay .story-feed-window::-webkit-scrollbar-track {
-  background: transparent;
-}
-.story-overlay .story-feed-window::-webkit-scrollbar-thumb {
-  background: rgba(0, 102, 255, 0.16);
-  border-radius: 10px;
->>>>>>> origin/develop
 }
 .story-overlay .feed-sidebar {
   --feed-panel-offset: 82px;

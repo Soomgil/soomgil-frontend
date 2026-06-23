@@ -101,11 +101,7 @@ function goTripDetail(tripId: string) {
 }
 
 /* ── Carousel (다음 여행) ───────────────────────────── */
-<<<<<<< HEAD
 const upcomingTrips = computed(() => filteredTrips.value.filter((trip) => effectiveStatus(trip) === 'ACTIVE'))
-=======
-const featuredTrips = computed(() => filteredTrips.value)
->>>>>>> origin/develop
 const carouselIndex = ref(0)
 const currentTrip = computed(() => featuredTrips.value[carouselIndex.value] ?? featuredTrips.value[0] ?? null)
 
