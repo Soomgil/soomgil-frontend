@@ -9,6 +9,8 @@ import { userApi } from '@/api/user.api'
 import { mediaApi } from '@/api/media.api'
 import { communityApi } from '@/api/community.api'
 import { tripApi } from '@/api/trip.api'
+import { swipeApi } from '@/api/swipe.api'
+import { useToast } from '@/composables/useToast'
 import { communityPostToStory } from '@/utils/community'
 import type { UpdateMeRequest, UserSummary } from '@/types/auth'
 import type { Place } from '@/types/place'
@@ -20,6 +22,7 @@ import FollowListModal from '@/components/common/FollowListModal.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
+const toast = useToast()
 
 // store.user가 있으면 우선
 const displayUser = computed(() => auth.user ?? {} as any)
@@ -61,6 +64,7 @@ onMounted(async () => {
 const likedPlacesSource = ref<Place[]>([])
 const placeSearchQuery = ref('')
 const failedPlaceImages = ref(new Set<string>())
+const removingPlaceKeys = ref(new Set<string>())
 
 function placeKey(place: Place) {
   return `${place.provider}:${place.externalPlaceId}`
@@ -68,6 +72,23 @@ function placeKey(place: Place) {
 
 function markPlaceImageFailed(place: Place) {
   failedPlaceImages.value = new Set(failedPlaceImages.value).add(placeKey(place))
+}
+
+async function removeLikedPlace(place: Place) {
+  const key = placeKey(place)
+  if (removingPlaceKeys.value.has(key)) return
+  removingPlaceKeys.value = new Set(removingPlaceKeys.value).add(key)
+  try {
+    await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
+    likedPlacesSource.value = likedPlacesSource.value.filter((item) => placeKey(item) !== key)
+    toast.success('좋아요한 장소에서 제거했습니다.')
+  } catch {
+    toast.error('좋아요를 취소하지 못했습니다.')
+  } finally {
+    const next = new Set(removingPlaceKeys.value)
+    next.delete(key)
+    removingPlaceKeys.value = next
+  }
 }
 
 async function loadLikedPlaces() {
@@ -429,7 +450,7 @@ function handleUserClick(userId: string) {
                   <div class="place-img-wrap">
                     <img v-if="place.thumbnailUrl && !failedPlaceImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markPlaceImageFailed(place)" />
                     <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
-                    <button type="button" class="place-heart-btn" aria-label="좋아요 취소">
+                    <button type="button" class="place-heart-btn" aria-label="좋아요 취소" :disabled="removingPlaceKeys.has(placeKey(place))" @click="removeLikedPlace(place)">
                       <span class="material-symbols-rounded">favorite</span>
                     </button>
                   </div>
@@ -473,7 +494,7 @@ function handleUserClick(userId: string) {
               <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
               <div class="story-magazine-body">
                 <h3 class="story-magazine-title">
-                  <a href="#" @click.prevent>{{ story.title }}</a>
+                  <span>{{ story.title }}</span>
                 </h3>
                 <div class="story-magazine-meta">
                   <span class="story-date">{{ story.location }}</span>
@@ -531,7 +552,7 @@ function handleUserClick(userId: string) {
     </main>
 
     <!-- Modals -->
-    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" @close="likedPlacesModal.close()" />
+    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" @remove="removeLikedPlace" @close="likedPlacesModal.close()" />
     <MyStoriesModal v-if="myStoriesModal.isOpen.value" :stories="myStories" @close="myStoriesModal.close()" @story-click="openCommunityStory" />
     <MyStoryDetailModal v-if="selectedStoryId" :story-id="selectedStoryId" @close="selectedStoryId = null" />
     <FollowListModal v-if="followersModal.isOpen.value" title="팔로워" :users="followers" :followingIds="followingIds" @close="followersModal.close()" @toggle-follow="toggleFollow" @user-click="handleUserClick" />

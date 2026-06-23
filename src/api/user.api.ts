@@ -12,6 +12,7 @@ import type {
 import type { PagedItems } from '@/types/api'
 import { mapBackendUser } from '@/types/auth'
 import type { Place } from '@/types/place'
+import { mapPlace } from './place.api'
 
 export const userApi = {
   /** 현재 사용자 조회 (GET /me) */
@@ -91,10 +92,10 @@ export const userApi = {
 
   /** 내 저장 장소 조회 */
   getSavedPlaces: async (): Promise<Place[]> => {
-    const res = await http.get<PagedItems<Place>>('/me/saved-places', {
+    const res = await http.get<PagedItems<{ place: Parameters<typeof mapPlace>[0] }>>('/me/saved-places', {
       params: { page: 0, size: 100 },
     })
-    return res.data.items
+    return res.data.items.map((saved) => mapPlace(saved.place))
   },
   /** 특정 사용자 프로필 조회 (GET /users/{userId}) */
   getUserProfile: async (userId: string): Promise<import('@/types/user').PublicUserProfile> => {

@@ -89,7 +89,7 @@ const router = createRouter({
     {
       path: '/community/feed',
       name: 'Feed',
-      component: () => import('@/pages/FeedPage.vue'),
+      redirect: { name: 'Community' },
     },
     {
       path: '/community/stories',

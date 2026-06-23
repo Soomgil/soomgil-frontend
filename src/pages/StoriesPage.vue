@@ -66,9 +66,9 @@ onMounted(loadPosts)
             :key="story.id"
             class="story-list-card"
             href="#"
-            @click.prevent
+            @click.prevent="router.push({ path: '/community', query: { story: story.id } })"
           >
-            <img :alt="story.title + ' 스토리'" :src="story.coverMedia?.publicUrl ?? '/images/랜딩페이지/korea_hero.png'" />
+            <img :alt="story.title + ' 스토리'" :src="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl ?? '/images/랜딩페이지/korea_hero.png'" />
             <div>
               <span class="post-type story">여행기</span>
               <h3>{{ story.title }}</h3>

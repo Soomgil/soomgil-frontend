@@ -8,6 +8,7 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import TripAccessModal from '@/components/trip/TripAccessModal.vue'
 import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
+import BoardingPassCard from '@/components/trip/BoardingPassCard.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
@@ -235,7 +236,15 @@ watch(filteredTrips, () => {
               class="next-trip-panel boarding-pass-container"
               aria-label="다음 여행"
             >
-              <div class="boarding-pass-card boarding-pass-card--placeholder">
+              <BoardingPassCard
+                :trip="currentTrip"
+                :position="carouselIndex"
+                :count="featuredTrips.length"
+                @detail="goTripDetail(currentTrip.id)"
+                @access="openTripAccess(currentTrip)"
+                @settings="openTripSettings(currentTrip)"
+              />
+              <div v-if="false" class="boarding-pass-card boarding-pass-card--placeholder" aria-hidden="true">
                 <div class="ticket-main">
                   <div class="ticket-header">
                     <div class="ticket-logo">

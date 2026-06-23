@@ -1,16 +1,17 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { search, getPlace, getRecommendations, savePlace, unsavePlace } = vi.hoisted(() => ({
+const { search, getPlace, getRecommendations, react, savePlace, unsavePlace } = vi.hoisted(() => ({
   search: vi.fn(),
   getPlace: vi.fn(),
   getRecommendations: vi.fn(),
+  react: vi.fn(),
   savePlace: vi.fn(),
   unsavePlace: vi.fn(),
 }))
 
 vi.mock('@/api/place.api', () => ({ placeApi: { search, getPlace } }))
-vi.mock('@/api/swipe.api', () => ({ swipeApi: { getRecommendations, savePlace, unsavePlace } }))
+vi.mock('@/api/swipe.api', () => ({ swipeApi: { getRecommendations, react, savePlace, unsavePlace } }))
 
 import PlaceDiscoveryPanel from './PlaceDiscoveryPanel.vue'
 
@@ -31,6 +32,7 @@ describe('PlaceDiscoveryPanel', () => {
     search.mockReset()
     getPlace.mockReset()
     getRecommendations.mockReset()
+    react.mockReset()
     savePlace.mockReset()
     unsavePlace.mockReset()
     getRecommendations.mockResolvedValue({
@@ -42,6 +44,7 @@ describe('PlaceDiscoveryPanel', () => {
       page: { page: 0, size: 20, totalElements: 1, totalPages: 1, sort: [] },
     })
     getPlace.mockResolvedValue({ ...place, description: '부산을 대표하는 해변입니다.' })
+    react.mockResolvedValue({ reaction: 'SUPER_LIKE', savedPlaceEligible: true })
     savePlace.mockResolvedValue({ id: 'saved-1', place, createdAt: '2026-06-21T00:00:00Z' })
     unsavePlace.mockResolvedValue(undefined)
   })
@@ -76,6 +79,7 @@ describe('PlaceDiscoveryPanel', () => {
 
     await wrapper.get('button[aria-label="해운대해수욕장 저장"]').trigger('click')
     await flushPromises()
+    expect(react).toHaveBeenCalledWith('KTO', '126508', 'SUPER_LIKE')
     expect(savePlace).toHaveBeenCalledWith('KTO', '126508')
     expect(wrapper.find('button[aria-label="해운대해수욕장 저장 취소"]').exists()).toBe(true)
   })

@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import type { Place } from '@/types/place'
 
 const props = defineProps<{ places: Place[] }>()
-defineEmits<{ close: [] }>()
+defineEmits<{ close: []; remove: [place: Place] }>()
 
 const searchQuery = ref('')
 const failedImages = ref(new Set<string>())
@@ -50,7 +50,7 @@ const filteredPlaces = computed(() => {
               <div class="place-img-wrap">
                 <img v-if="place.thumbnailUrl && !failedImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markImageFailed(place)" />
                 <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
-                <button type="button" class="place-heart-btn" aria-label="좋아요 취소">
+                <button type="button" class="place-heart-btn" aria-label="좋아요 취소" @click="$emit('remove', place)">
                   <span class="material-symbols-rounded">favorite</span>
                 </button>
               </div>

@@ -342,7 +342,7 @@ watch(selectedTripId, (tripId) => {
                             <span class="small muted" style="display: block; font-size: 12px; margin-top: 2px;">{{ previewRegion }}</span>
                           </div>
                         </div>
-                        <button type="button" class="btn ghost" style="border:0; padding:0; min-height:0; background: transparent; cursor: pointer; color: var(--muted); display: inline-flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">more_horiz</span></button>
+                        <span aria-hidden="true" class="btn ghost" style="border:0; padding:0; min-height:0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">more_horiz</span></span>
                       </div>
                     </div>
 
@@ -350,9 +350,9 @@ watch(selectedTripId, (tripId) => {
                     <div class="feed-photo-frame" v-if="addedPhotos.length > 0" style="position: relative; overflow: hidden; display: block;">
                       <button class="feed-photo-nav carousel-btn prev-btn prev" type="button" aria-label="이전 사진" :disabled="addedPhotos.length < 2" @click="carouselPrev"><span class="material-symbols-rounded">chevron_left</span></button>
 
-                      <button class="feed-photo-open" type="button" aria-label="사진 확대">
+                      <div class="feed-photo-open">
                         <img alt="여행기 미리보기 사진" :src="addedPhotos[previewImageIndex]">
-                      </button>
+                      </div>
 
                       <button class="feed-photo-nav carousel-btn next-btn next" type="button" aria-label="다음 사진" :disabled="addedPhotos.length < 2" @click="carouselNext"><span class="material-symbols-rounded">chevron_right</span></button>
                       <span class="feed-photo-count">{{ previewImageIndex + 1 }} / {{ addedPhotos.length }}</span>

@@ -26,7 +26,7 @@ defineEmits<{ close: []; storyClick: [storyId: string] }>()
               <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
               <div class="story-magazine-body">
                 <h3 class="story-magazine-title">
-                  <a href="#" @click.prevent>{{ story.title }}</a>
+                  <span>{{ story.title }}</span>
                 </h3>
                 <div class="story-magazine-meta">
                   <span class="story-date">{{ story.location }}</span>

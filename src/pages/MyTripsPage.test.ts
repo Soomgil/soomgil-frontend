@@ -211,7 +211,7 @@ describe('MyTripsPage', () => {
     await archivedFilter.trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('.boarding-pass-card').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="trip-ticket"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('지난 부산 여행')
   })
 })
