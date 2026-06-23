@@ -8,7 +8,7 @@ import type { RecommendationTab } from '@/types/swipe'
 type DiscoveryMode = 'search' | 'basic' | 'super-like'
 type DiscoveryItem = { place: Place; recommendation?: PlaceRecommendation }
 
-const props = defineProps<{ tripId: string; bbox: string }>()
+const props = defineProps<{ tripId: string; bbox: string; scheduledPlaceKeys?: string[] }>()
 const emit = defineEmits<{ select: [place: Place]; add: [place: Place] }>()
 
 const mode = ref<DiscoveryMode>('basic')
@@ -21,6 +21,7 @@ const savingKeys = ref(new Set<string>())
 const detailLoadingKey = ref<string | null>(null)
 
 const emptyMessage = computed(() => mode.value === 'search' ? '검색 결과가 없습니다.' : '추천 장소가 아직 없습니다.')
+const scheduledKeys = computed(() => new Set(props.scheduledPlaceKeys ?? []))
 
 function placeKey(place: Place) {
   return `${place.provider}:${place.externalPlaceId}`
@@ -45,6 +46,15 @@ async function loadRecommendations(tab: RecommendationTab) {
     error.value = '추천 장소를 불러오지 못했습니다.'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadSavedPlaces() {
+  try {
+    const response = await swipeApi.listSaved(0, 100)
+    savedKeys.value = new Set(response.items.map((item) => placeKey(item.place)))
+  } catch {
+    // 저장 목록 실패가 추천 장소 자체를 가리지 않도록 조용히 비워 둔다.
   }
 }
 
@@ -120,7 +130,7 @@ async function selectPlace(place: Place) {
 }
 
 onMounted(() => {
-  void loadRecommendations('BASIC')
+  void Promise.all([loadRecommendations('BASIC'), loadSavedPlaces()])
 })
 </script>
 
@@ -174,6 +184,7 @@ onMounted(() => {
             <span v-if="item.recommendation?.distanceMeters != null">{{ Math.round(item.recommendation.distanceMeters) }}m</span>
           </div>
           <strong>{{ item.place.placeName }}</strong>
+          <span v-if="scheduledKeys.has(placeKey(item.place))" class="discovery-scheduled"><span class="material-symbols-rounded">check_circle</span>일정에 추가됨</span>
           <p>{{ item.place.address || '주소 정보 없음' }}</p>
           <p v-if="item.recommendation?.recommendationReason" class="discovery-reason">
             {{ item.recommendation.recommendationReason }}
@@ -197,8 +208,9 @@ onMounted(() => {
           </button>
           <button
             type="button"
+            :disabled="scheduledKeys.has(placeKey(item.place))"
             :aria-label="`${item.place.placeName} 일정에 추가`"
-            title="일정에 추가"
+            :title="scheduledKeys.has(placeKey(item.place)) ? '이미 일정에 있는 장소' : '일정에 추가'"
             @click.stop="emit('add', item.place)"
           >
             <span class="material-symbols-rounded">add</span>
@@ -230,9 +242,12 @@ onMounted(() => {
 .discovery-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 14px; }
 .discovery-copy p { margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
 .discovery-copy .discovery-reason { color: var(--violet); font-weight: 700; }
+.discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; color: #059669; font-size: 10px; font-weight: 850; }
+.discovery-scheduled .material-symbols-rounded { font-size: 14px; }
 .discovery-meta { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .discovery-actions { display: flex; flex-direction: column; gap: 6px; }
 .discovery-actions button { width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 6px; display: grid; place-items: center; background: #fff; color: var(--violet); cursor: pointer; }
+.discovery-actions button:disabled { cursor: default; color: #059669; background: #ecfdf5; opacity: .75; }
 .discovery-actions .material-symbols-rounded { font-size: 18px; }
 .discovery-members { display: flex; margin-top: 6px; }
 .discovery-members > span { width: 22px; height: 22px; margin-left: -5px; border: 2px solid #fff; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--violet); color: #fff; font-size: 9px; font-weight: 800; }

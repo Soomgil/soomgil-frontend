@@ -467,6 +467,14 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.swipe-card { display: grid; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
+.swipe-card > img { min-height: 0; object-fit: cover; }
+.swipe-body { min-width: 0; max-height: 230px; overflow-y: auto; overscroll-behavior: contain; }
+.swipe-body h2 { overflow-wrap: anywhere; line-height: 1.2; }
+.swipe-body .muted { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; }
+.swipe-body .tag-row { max-height: 62px; overflow: hidden; }
+.swipe-body .meta-row span { min-width: 0; }
+.swipe-body .meta-row span span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .swipe-place-placeholder {
   position: absolute;
   inset: 0;

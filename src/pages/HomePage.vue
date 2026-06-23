@@ -35,49 +35,26 @@ function showAlert(msg: string) {
 }
 
 /* ── Hero Carousel ───────────────────────────────────── */
-const slides = [
-  {
-    image: '/images/랜딩페이지/busan.png',
-    title: '부산 바다 여행',
-    subtitle: '바다 향기 가득한 항구 도시',
+const slides = computed(() => {
+  const storySlides = featuredStories.value.flatMap((story) => {
+    const image = story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl
+    return image ? [{ image, title: story.title, subtitle: story.summary ?? '여행자의 새로운 이야기', tag: 'story', tagLabel: '여행기' }] : []
+  })
+  const placeSlides = topPlaces.value.flatMap((place) => place.thumbnailUrl ? [{
+    image: place.thumbnailUrl,
+    title: place.placeName,
+    subtitle: place.summary ?? place.address ?? '이번 주 인기 여행지',
     tag: 'place',
-    tagLabel: '여행지',
-  },
-  {
-    image: '/images/랜딩페이지/jeju.png',
-    title: '제주도 힐링 코스',
-    subtitle: '자연이 빚어낸 완벽한 휴양지',
-    tag: 'story',
-    tagLabel: '여행기',
-  },
-  {
-    image: '/images/랜딩페이지/gyeongju.png',
-    title: '경주 문화유산 답사',
-    subtitle: '천년 역사가 숨 쉬는 문화 유산 도시',
-    tag: 'column',
-    tagLabel: '칼럼',
-  },
-  {
-    image: '/images/랜딩페이지/jeonju.png',
-    title: '전주 한옥마을 미식 여행',
-    subtitle: '전통과 미식이 어우러진 한옥 마을',
-    tag: 'place',
-    tagLabel: '여행지',
-  },
-  {
-    image: '/images/랜딩페이지/daejeon.png',
-    title: '대전 빵지순례 코스',
-    subtitle: '과학과 미식의 중심 도시',
-    tag: 'story',
-    tagLabel: '여행기',
-  },
-]
+    tagLabel: '인기 장소',
+  }] : [])
+  return [...storySlides, ...placeSlides].slice(0, 5)
+})
 
 const currentSlide = ref(0)
 let carouselTimer: ReturnType<typeof setInterval> | null = null
 
 function nextSlide() {
-  currentSlide.value = (currentSlide.value + 1) % slides.length
+  if (slides.value.length > 1) currentSlide.value = (currentSlide.value + 1) % slides.value.length
 }
 
 function goToSlide(index: number) {
@@ -87,7 +64,7 @@ function goToSlide(index: number) {
 
 function resetCarouselTimer() {
   if (carouselTimer) clearInterval(carouselTimer)
-  carouselTimer = setInterval(nextSlide, 4500)
+  if (slides.value.length > 1) carouselTimer = setInterval(nextSlide, 4500)
 }
 
 onMounted(() => {
@@ -139,6 +116,8 @@ async function fetchHomeData() {
     } else {
       console.error('Failed to load stories', storiesRes.reason)
     }
+    currentSlide.value = 0
+    resetCarouselTimer()
   } catch (error) {
     console.error('Failed to fetch home data', error)
   } finally {
@@ -217,6 +196,10 @@ async function fetchHomeData() {
             </div>
           </div>
           <div class="home-hero-content">
+            <div v-if="slides.length === 0" class="home-section-state home-section-state--wide">
+              <span class="material-symbols-rounded home-section-state-icon">landscape</span>
+              <p>추천 콘텐츠를 준비하고 있어요.</p>
+            </div>
             <div
               v-for="(slide, i) in slides"
               :key="i"
@@ -232,7 +215,7 @@ async function fetchHomeData() {
             </div>
 
             <!-- Carousel dots -->
-            <div class="home-hero-dots" style="position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2;">
+            <div v-if="slides.length > 1" class="home-hero-dots" style="position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2;">
               <button
                 v-for="(_, i) in slides"
                 :key="i"
@@ -308,7 +291,7 @@ async function fetchHomeData() {
                 <span class="material-symbols-rounded home-section-state-icon">place</span>
                 <p>아직 인기 장소가 없어요.</p>
               </div>
-              <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" @click="router.push({ name: 'PlaceDetail', params: { provider: place.provider, id: place.externalPlaceId } })">
+              <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" role="link" tabindex="0" @click="router.push({ path: '/search', query: { q: place.placeName, tab: '여행지' } })" @keydown.enter="router.push({ path: '/search', query: { q: place.placeName, tab: '여행지' } })">
                 <span class="home-toplikes-rank">{{ idx + 1 }}</span>
                 <img v-if="place.thumbnailUrl" class="home-toplikes-img" :src="place.thumbnailUrl" :alt="place.placeName" />
                 <div v-else class="home-toplikes-img" style="background: var(--bg); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">image</span></div>

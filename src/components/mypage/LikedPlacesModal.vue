@@ -6,6 +6,11 @@ const props = defineProps<{ places: Place[] }>()
 defineEmits<{ close: [] }>()
 
 const searchQuery = ref('')
+const failedImages = ref(new Set<string>())
+const placeKey = (place: Place) => `${place.provider}:${place.externalPlaceId}`
+function markImageFailed(place: Place) {
+  failedImages.value = new Set(failedImages.value).add(placeKey(place))
+}
 const filteredPlaces = computed(() => {
   if (!searchQuery.value.trim()) return props.places
   const q = searchQuery.value.trim().toLowerCase()
@@ -43,7 +48,8 @@ const filteredPlaces = computed(() => {
           <div class="mypage-places-grid">
             <div v-for="place in filteredPlaces" :key="place.externalPlaceId" class="mypage-place-card">
               <div class="place-img-wrap">
-                <img :src="(place.thumbnailUrl ?? '')" :alt="place.placeName" />
+                <img v-if="place.thumbnailUrl && !failedImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markImageFailed(place)" />
+                <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
                 <button type="button" class="place-heart-btn" aria-label="좋아요 취소">
                   <span class="material-symbols-rounded">favorite</span>
                 </button>
@@ -104,4 +110,6 @@ const filteredPlaces = computed(() => {
   font-weight: 700;
   white-space: nowrap;
 }
+.place-image-placeholder { width: 100%; height: 100%; display: grid; place-items: center; background: linear-gradient(135deg, #eef2ff, #f8fafc); color: var(--muted); }
+.place-image-placeholder .material-symbols-rounded { font-size: 36px; }
 </style>

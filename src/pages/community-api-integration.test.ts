@@ -87,7 +87,7 @@ describe('커뮤니티 API 화면 연동', () => {
   it('CommunityPage에서 여행기 상세와 댓글을 API로 조회한다', async () => {
     const wrapper = mount(CommunityPage, { global: { stubs } })
     await flushPromises()
-    await wrapper.get('.story-list-card').trigger('click')
+    await wrapper.get('.story-tile').trigger('click')
     await flushPromises()
 
     expect(mocks.communityApi.getPost).toHaveBeenCalledWith('post-1')
