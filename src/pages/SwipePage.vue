@@ -20,6 +20,7 @@ const {
   error,
   finished: isFinished,
   load,
+  ensureLoaded,
   persistReaction,
   advance,
 } = useSwipeFeed()
@@ -270,7 +271,7 @@ function onPointerCancel() {
 }
 
 onMounted(() => {
-  void load()
+  void ensureLoaded()
 })
 </script>
 

@@ -1,0 +1,255 @@
+import { defineStore } from 'pinia'
+import { computed, getCurrentScope, onScopeDispose, ref } from 'vue'
+import { swipeApi } from '@/api/swipe.api'
+import type { SwipeFeedParams } from '@/api/swipe.api'
+import type { PlaceProvider } from '@/types/place'
+import type {
+  SwipeAction,
+  SwipeFeed,
+  SwipeFeedItem,
+  SwipeReactionResult,
+  SwipeTagStatus,
+} from '@/types/swipe'
+
+const QUEUE_CAPACITY = 10
+const TAG_POLL_INTERVAL_MS = 750
+
+export interface SwipeFeedGateway {
+  getFeed(params?: SwipeFeedParams): Promise<SwipeFeed>
+  react(provider: PlaceProvider, externalPlaceId: string, reaction: SwipeAction): Promise<SwipeReactionResult>
+  getTagStatuses?(externalPlaceIds: string[]): Promise<SwipeTagStatus[]>
+}
+
+export function createSwipeFeedQueue(gateway: SwipeFeedGateway) {
+  const items = ref<SwipeFeedItem[]>([])
+  const currentIndex = ref(0)
+  const nextSeed = ref<string | null>(null)
+  const loading = ref(false)
+  const warming = ref(false)
+  const initialized = ref(false)
+  const prefetching = ref(false)
+  const submitting = ref(false)
+  const error = ref<string | null>(null)
+  const lastParams = ref<SwipeFeedParams>({ limit: QUEUE_CAPACITY, excludeRecent: true })
+  let tagPollTimer: ReturnType<typeof setTimeout> | null = null
+  let activeLoad: Promise<void> | null = null
+  let sessionVersion = 0
+
+  const activeQueue = computed(() => items.value.slice(0, QUEUE_CAPACITY))
+  const queueDepth = computed(() => activeQueue.value.length)
+  const currentItem = computed(() => activeQueue.value[0] ?? null)
+  const completedCount = computed(() => currentIndex.value)
+  const finished = computed(() => (
+    initialized.value
+    && !loading.value
+    && !warming.value
+    && !prefetching.value
+    && items.value.length === 0
+    && !nextSeed.value
+  ))
+
+  function load(params: SwipeFeedParams = lastParams.value, silent = false): Promise<void> {
+    if (activeLoad) return activeLoad
+    const pending = runLoad(params, silent)
+    activeLoad = pending
+    return pending.finally(() => {
+      if (activeLoad === pending) activeLoad = null
+    })
+  }
+
+  async function runLoad(params: SwipeFeedParams, silent: boolean) {
+    const requestVersion = sessionVersion
+    lastParams.value = { ...params, limit: QUEUE_CAPACITY, excludeRecent: params.excludeRecent ?? true }
+    if (silent) warming.value = true
+    else loading.value = true
+    error.value = null
+    currentIndex.value = 0
+    items.value = []
+    nextSeed.value = null
+    try {
+      const response = await gateway.getFeed(lastParams.value)
+      if (requestVersion !== sessionVersion) return
+      append(response)
+      initialized.value = true
+      scheduleTagRefresh()
+      await maintainBuffer()
+    } catch {
+      if (requestVersion !== sessionVersion) return
+      items.value = []
+      initialized.value = !silent
+      if (!silent) error.value = '장소를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
+    } finally {
+      if (requestVersion === sessionVersion) {
+        loading.value = false
+        warming.value = false
+      }
+    }
+  }
+
+  async function warm() {
+    if (initialized.value || items.value.length > 0) return
+    if (activeLoad) return activeLoad
+    await load(lastParams.value, true)
+  }
+
+  async function ensureLoaded() {
+    if (initialized.value || items.value.length > 0) return
+    if (activeLoad) return activeLoad
+    await load()
+  }
+
+  function append(response: SwipeFeed) {
+    const known = new Set(items.value.map((item) => keyOf(item)))
+    const additions = response.items
+      .filter((item) => !known.has(keyOf(item)))
+      .sort((left, right) => tagPriority(left) - tagPriority(right))
+    const availableSpace = Math.max(QUEUE_CAPACITY - items.value.length, 0)
+    items.value.push(...additions.slice(0, availableSpace))
+    nextSeed.value = response.nextSeed
+  }
+
+  async function maintainBuffer(attempt = 0) {
+    const requestVersion = sessionVersion
+    const missingCount = QUEUE_CAPACITY - items.value.length
+    if (missingCount <= 0 || !nextSeed.value || prefetching.value) return
+    prefetching.value = true
+    const seed = nextSeed.value
+    try {
+      const response = await gateway.getFeed({ ...lastParams.value, limit: missingCount, seed })
+      if (requestVersion !== sessionVersion) return
+      append(response)
+      scheduleTagRefresh()
+    } catch {
+      // 현재 큐는 그대로 사용하고 다음 swipe 때 다시 보충한다.
+    } finally {
+      if (requestVersion === sessionVersion) {
+        prefetching.value = false
+        if (items.value.length < QUEUE_CAPACITY && nextSeed.value && attempt < 2) {
+          await maintainBuffer(attempt + 1)
+        }
+      }
+    }
+  }
+
+  async function persistReaction(action: SwipeAction): Promise<boolean> {
+    const item = currentItem.value
+    if (!item || submitting.value) return false
+    submitting.value = true
+    error.value = null
+    try {
+      await gateway.react(item.place.provider, item.place.externalPlaceId, action)
+      return true
+    } catch {
+      error.value = '반응을 저장하지 못했습니다. 다시 시도해 주세요.'
+      return false
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  function advance() {
+    if (items.value.length === 0) return
+    items.value.shift()
+    currentIndex.value += 1
+    void maintainBuffer()
+    scheduleTagRefresh()
+  }
+
+  async function react(action: SwipeAction): Promise<boolean> {
+    const saved = await persistReaction(action)
+    if (saved) advance()
+    return saved
+  }
+
+  function scheduleTagRefresh() {
+    if (!gateway.getTagStatuses || tagPollTimer) return
+    const pending = items.value.filter((item) => item.place.tagStatus && item.place.tagStatus !== 'READY')
+    if (pending.length === 0) return
+    tagPollTimer = setTimeout(() => {
+      tagPollTimer = null
+      void refreshTags()
+    }, TAG_POLL_INTERVAL_MS)
+  }
+
+  async function refreshTags() {
+    if (!gateway.getTagStatuses) return
+    const ids = items.value
+      .filter((item) => item.place.tagStatus && item.place.tagStatus !== 'READY')
+      .slice(0, 50)
+      .map((item) => item.place.externalPlaceId)
+    if (ids.length === 0) return
+    try {
+      const statuses = await gateway.getTagStatuses(ids)
+      const byId = new Map(statuses.map((status) => [status.externalPlaceId, status]))
+      items.value = items.value.map((item) => {
+        const status = byId.get(item.place.externalPlaceId)
+        if (!status) return item
+        return { ...item, place: { ...item.place, tags: status.tags, tagStatus: status.status } }
+      })
+    } catch {
+      // 태그 갱신 실패는 현재 큐 사용을 막지 않는다.
+    } finally {
+      scheduleTagRefresh()
+    }
+  }
+
+  function reset() {
+    sessionVersion += 1
+    activeLoad = null
+    if (tagPollTimer) clearTimeout(tagPollTimer)
+    tagPollTimer = null
+    items.value = []
+    currentIndex.value = 0
+    nextSeed.value = null
+    loading.value = false
+    warming.value = false
+    initialized.value = false
+    prefetching.value = false
+    submitting.value = false
+    error.value = null
+    lastParams.value = { limit: QUEUE_CAPACITY, excludeRecent: true }
+  }
+
+  function keyOf(item: SwipeFeedItem) {
+    return `${item.place.provider}:${item.place.externalPlaceId}`
+  }
+
+  function tagPriority(item: SwipeFeedItem) {
+    if (!item.place.tagStatus || item.place.tagStatus === 'READY') return 0
+    if (item.place.tagStatus === 'REFRESHING') return 1
+    return 2
+  }
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      if (tagPollTimer) clearTimeout(tagPollTimer)
+    })
+  }
+
+  return {
+    items,
+    currentIndex,
+    nextSeed,
+    loading,
+    warming,
+    initialized,
+    prefetching,
+    submitting,
+    error,
+    activeQueue,
+    queueDepth,
+    currentItem,
+    completedCount,
+    finished,
+    load,
+    warm,
+    ensureLoaded,
+    persistReaction,
+    advance,
+    react,
+    refreshTags,
+    reset,
+  }
+}
+
+export const useSwipeStore = defineStore('swipe', () => createSwipeFeedQueue(swipeApi))

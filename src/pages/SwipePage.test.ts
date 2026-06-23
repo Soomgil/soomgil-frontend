@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getFeed, react, push } = vi.hoisted(() => ({
@@ -40,6 +41,7 @@ const feedItem = {
 
 describe('SwipePage', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     getFeed.mockReset()
     react.mockReset()
     push.mockReset()
