@@ -19,12 +19,12 @@ export interface TripSummary {
   id: string
   title: string
   displayDestination: string | null
+  startDate?: string | null
+  endDate?: string | null
   status: TripStatus
   myRole: TripAccessRole
   itineraryVersion: number
   createdAt: string
-  startDate?: string | null
-  endDate?: string | null
 }
 
 export interface TripDetail extends TripSummary {

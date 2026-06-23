@@ -104,7 +104,7 @@ describe('MapboxItineraryMap', () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
 	const wrapper = mount(MapboxItineraryMap, { props: { stops, routes } })
     await flushPromises()
-    mapbox.handlers.get('load')?.()
+    mapbox.handlers.get('style.load')?.()
     mapbox.handlers.get('idle')?.()
     await nextTick()
 
@@ -151,7 +151,7 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.map.remove).toHaveBeenCalledOnce()
     expect(mapbox.Map).toHaveBeenCalledTimes(2)
 
-    mapbox.handlers.get('load')?.()
+    mapbox.handlers.get('style.load')?.()
     await nextTick()
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
 
@@ -176,7 +176,7 @@ describe('MapboxItineraryMap', () => {
       props: { stops: [], drawings: [drawing], drawingTool: 'pen' },
     })
     await flushPromises()
-    mapbox.handlers.get('load')?.()
+    mapbox.handlers.get('style.load')?.()
     await nextTick()
 
     const overlay = wrapper.getComponent(MapDrawingOverlay)

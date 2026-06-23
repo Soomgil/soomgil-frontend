@@ -27,6 +27,12 @@ function placeKey(place: Place) {
   return `${place.provider}:${place.externalPlaceId}`
 }
 
+function matchText(item: DiscoveryItem) {
+  const count = item.recommendation?.matchedMembers.length ?? 0
+  if (count === 0) return item.recommendation?.recommendationReason || ''
+  return `${count}명의 멤버가 좋아하는 곳`
+}
+
 async function loadRecommendations(tab: RecommendationTab) {
   loading.value = true
   error.value = null
@@ -188,34 +194,36 @@ onMounted(() => {
           <strong>{{ item.place.placeName }}</strong>
           <span v-if="scheduledKeys.has(placeKey(item.place))" class="discovery-scheduled"><span class="material-symbols-rounded">check_circle</span>일정에 추가됨</span>
           <p>{{ item.place.address || '주소 정보 없음' }}</p>
-          <p v-if="item.recommendation?.recommendationReason" class="discovery-reason">
-            {{ item.recommendation.recommendationReason }}
-          </p>
-          <div v-if="item.recommendation?.matchedMembers.length" class="discovery-members">
-            <span v-for="member in item.recommendation.matchedMembers.slice(0, 3)" :key="member.id" :title="member.displayName">
-              <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" />
-              <span v-else>{{ member.displayName.slice(0, 1) }}</span>
-            </span>
+          <div v-if="item.recommendation?.matchedMembers?.length" class="discovery-match-row">
+            <div class="discovery-members">
+              <span v-for="member in item.recommendation.matchedMembers.slice(0, 3)" :key="member.id">
+                <img v-if="member.profileImageUrl" draggable="false" :src="member.profileImageUrl" alt="멤버 프로필" />
+                <span v-else class="material-symbols-rounded" style="font-size: 16px;">person</span>
+              </span>
+            </div>
           </div>
         </div>
         <div class="discovery-actions">
           <button
             type="button"
+            class="action-btn bookmark-btn btn-with-tooltip"
             :disabled="savingKeys.has(placeKey(item.place))"
             :aria-label="`${item.place.placeName} ${savedKeys.has(placeKey(item.place)) ? '저장 취소' : '저장'}`"
-            :title="savedKeys.has(placeKey(item.place)) ? '저장 취소' : '장소 저장'"
             @click.stop="toggleSaved(item.place)"
           >
             <span class="material-symbols-rounded">{{ savedKeys.has(placeKey(item.place)) ? 'bookmark' : 'bookmark_add' }}</span>
+            <div class="btn-tooltip">{{ savedKeys.has(placeKey(item.place)) ? '저장 취소' : '장소 저장' }}</div>
           </button>
           <button
             type="button"
+            class="action-btn add-btn btn-with-tooltip"
             :disabled="scheduledKeys.has(placeKey(item.place))"
             :aria-label="`${item.place.placeName} 일정에 추가`"
             :title="scheduledKeys.has(placeKey(item.place)) ? '이미 일정에 있는 장소' : '일정에 추가'"
             @click.stop="emit('add', item.place)"
           >
             <span class="material-symbols-rounded">add</span>
+            <div class="btn-tooltip">일정에 추가</div>
           </button>
         </div>
       </li>
@@ -224,37 +232,50 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.discovery-panel { display: grid; gap: 12px; min-width: 0; }
-.discovery-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.discovery-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; height: 100%; min-height: 0; }
+.discovery-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .discovery-tabs button { min-width: 0; height: 42px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
 .discovery-tabs button[aria-selected="true"] { color: var(--violet); border-bottom-color: var(--violet); }
 .discovery-tabs .material-symbols-rounded { font-size: 17px; }
-.discovery-search { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.discovery-search { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; flex-shrink: 0; }
 .discovery-search input { min-width: 0; border: 0; outline: 0; font-size: 13px; }
 .discovery-search button, .discovery-state button { border: 0; border-radius: 6px; padding: 7px 10px; background: var(--violet); color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; }
-.discovery-state { min-height: 150px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; text-align: center; }
+.discovery-state { flex: 1; min-height: 150px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; text-align: center; }
 .discovery-state--error { flex-direction: column; color: var(--rose); }
 .discovery-spinner { width: 20px; height: 20px; border: 2px solid var(--line); border-top-color: var(--violet); border-radius: 50%; animation: discovery-spin .8s linear infinite; }
-.discovery-results { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.discovery-result { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 10px; min-height: 92px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; }
-.discovery-result:hover { border-color: rgba(124, 58, 237, .35); }
-.discovery-thumb { width: 72px; height: 72px; border-radius: 6px; overflow: hidden; display: grid; place-items: center; background: #eef2f7; color: var(--muted); }
-.discovery-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.discovery-copy { min-width: 0; }
-.discovery-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 14px; }
-.discovery-copy p { margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
-.discovery-copy .discovery-reason { color: var(--violet); font-weight: 700; }
 .discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; color: #059669; font-size: 10px; font-weight: 850; }
 .discovery-scheduled .material-symbols-rounded { font-size: 14px; }
-.discovery-meta { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 700; }
-.discovery-actions { display: flex; flex-direction: column; gap: 6px; }
-.discovery-actions button { width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 6px; display: grid; place-items: center; background: #fff; color: var(--violet); cursor: pointer; }
-.discovery-actions button:disabled { cursor: default; color: #059669; background: #ecfdf5; opacity: .75; }
-.discovery-actions .material-symbols-rounded { font-size: 18px; }
-.discovery-members { display: flex; margin-top: 6px; }
-.discovery-members > span { width: 22px; height: 22px; margin-left: -5px; border: 2px solid #fff; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--violet); color: #fff; font-size: 9px; font-weight: 800; }
+.discovery-results { width: calc(100% + 80px); margin: 0 -80px 0 0; padding: 0 80px 20px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; flex: 1; overflow-y: auto; overflow-x: hidden; list-style: none; scrollbar-width: none; -ms-overflow-style: none; min-height: 0; }
+.discovery-results::-webkit-scrollbar { display: none; }
+.discovery-result { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 14px; min-height: 134px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease; }
+.discovery-result:hover { border-color: rgba(124, 58, 237, .4); box-shadow: 0 10px 24px rgb(15 23 42 / 10%); }
+.discovery-thumb { position: relative; width: 110px; height: 110px; border-radius: 8px; overflow: hidden; background: #eef2f7; color: var(--muted); align-self: center; flex-shrink: 0; }
+.discovery-thumb img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.discovery-copy { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.discovery-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+.discovery-copy p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.discovery-match-row { align-items: center; display: flex; gap: 8px; justify-content: space-between; margin-top: 10px; min-width: 0; }
+.discovery-copy .discovery-reason { color: var(--violet); flex: 1; font-weight: 800; font-size: 11px; margin: 0; min-width: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.discovery-meta { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.discovery-actions { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.discovery-actions .action-btn { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; cursor: pointer; transition: transform .14s ease, box-shadow .14s ease, background .14s ease, border-color .14s ease, color .14s ease; border: 1px solid var(--line); }
+.discovery-actions .action-btn.bookmark-btn { background: #fff; color: var(--violet); }
+.discovery-actions .action-btn.bookmark-btn:hover { border-color: rgba(99, 102, 241, .45); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.discovery-actions .action-btn.add-btn { background: var(--violet); border-color: var(--violet); color: #fff; box-shadow: 0 4px 10px rgba(124, 58, 237, 0.2); }
+.discovery-actions .action-btn.add-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(124, 58, 237, 0.3); background: #6d28d9; border-color: #6d28d9; }
+.discovery-actions .action-btn:disabled { cursor: default; color: #059669; background: #ecfdf5; border-color: #bbf7d0; box-shadow: none; opacity: .78; transform: none; }
+.discovery-actions .material-symbols-rounded { font-size: 20px; }
+
+/* Custom tooltips for action buttons */
+.btn-with-tooltip { position: relative; }
+.btn-tooltip { position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%) scale(0.95); background: var(--ink); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: all 0.15s ease; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.btn-tooltip::after { content: ''; position: absolute; top: 50%; right: 100%; transform: translateY(-50%); border-width: 4px; border-style: solid; border-color: transparent var(--ink) transparent transparent; }
+.btn-with-tooltip:hover .btn-tooltip { opacity: 1; visibility: visible; transform: translateY(-50%) scale(1); }
+.discovery-members { display: flex; flex: 0 0 auto; }
+.discovery-members > span { width: 26px; height: 26px; margin-left: -6px; border: 2px solid #fff; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--violet); color: #fff; font-size: 11px; font-weight: 800; }
+.discovery-members > span img { width: 100%; height: 100%; object-fit: cover; }
 .discovery-members > span:first-child { margin-left: 0; }
 .discovery-members img { width: 100%; height: 100%; object-fit: cover; }
 @keyframes discovery-spin { to { transform: rotate(360deg); } }
-@media (max-width: 520px) { .discovery-result { grid-template-columns: 60px minmax(0, 1fr) auto; } .discovery-thumb { width: 60px; height: 68px; } .discovery-tabs button { font-size: 11px; } }
+@media (max-width: 520px) { .discovery-result { grid-template-columns: 76px minmax(0, 1fr) auto; } .discovery-thumb { width: 76px; height: 86px; } .discovery-tabs button { font-size: 11px; } }
 </style>

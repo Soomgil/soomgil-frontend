@@ -145,11 +145,7 @@ onUnmounted(() => {
               보관됨
             </button>
           </div>
-<<<<<<< HEAD
-          <p class="status-hint">여행 종료일이 지나면 자동으로 '보관됨'으로 전환돼요. 직접 상태를 바꿀 수도 있어요.</p>
-=======
           <small class="status-help">여행이 끝났다면 직접 ‘보관됨’으로 바꿀 수 있습니다. 언제든 다시 진행 중으로 되돌릴 수 있어요.</small>
->>>>>>> origin/develop
         </fieldset>
 
         <p v-if="error" class="settings-error" aria-live="polite">{{ error }}</p>
@@ -202,10 +198,7 @@ onUnmounted(() => {
 
 .settings-modal {
   background: #fff;
-<<<<<<< HEAD
-=======
   border: 1px solid rgba(227, 234, 244, .9);
->>>>>>> origin/develop
   border-radius: 24px;
   box-shadow: 0 24px 64px rgb(0 0 0 / 18%);
   max-height: min(760px, calc(100vh - 40px));

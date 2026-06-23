@@ -61,7 +61,6 @@ describe('SwipePage', () => {
     expect(wrapper.text()).toContain('장소 이야기')
     expect(wrapper.find('button[aria-label="LIKE"]').exists()).toBe(false)
 
-<<<<<<< HEAD
     const descriptionToggle = wrapper.get('.place-description-toggle')
     expect(descriptionToggle.attributes('aria-expanded')).toBe('false')
     await descriptionToggle.trigger('click')
@@ -69,14 +68,9 @@ describe('SwipePage', () => {
     expect(descriptionToggle.text()).toContain('접기')
 
     const swipeCard = wrapper.get('.swipe-card')
-    swipeCard.element.dispatchEvent(new MouseEvent('pointerdown', { clientX: 0, clientY: 0, bubbles: true }))
+    swipeCard.element.dispatchEvent(new MouseEvent('pointerdown', { clientX: 0, clientY: 0, button: 0, bubbles: true }))
     swipeCard.element.dispatchEvent(new MouseEvent('pointermove', { clientX: 120, clientY: 0, bubbles: true }))
     swipeCard.element.dispatchEvent(new MouseEvent('pointerup', { clientX: 120, clientY: 0, bubbles: true }))
-=======
-    const card = wrapper.get('.swipe-card')
-    card.element.dispatchEvent(new MouseEvent('pointerdown', { clientX: 0, clientY: 0, button: 0, bubbles: true }))
-    card.element.dispatchEvent(new MouseEvent('pointerup', { clientX: 120, clientY: 0, bubbles: true }))
->>>>>>> origin/develop
     await flushPromises()
     expect(react).toHaveBeenCalledWith('KTO', '126508', 'LIKE')
 

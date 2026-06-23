@@ -18,7 +18,14 @@
     }
 
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    html {
+      scroll-behavior: smooth;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    html::-webkit-scrollbar, body::-webkit-scrollbar {
+      display: none;
+    }
     body {
       margin: 0;
       color: var(--ink);
@@ -2749,7 +2756,7 @@
     .sidebar {
       position: relative;
       background: rgba(250, 251, 255, .96);
-      z-index: 10;
+      z-index: 9999;
       border-right: 1px solid var(--line);
       transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
@@ -2768,13 +2775,14 @@
     .sidebar-content {
       height: 100%;
       min-height: 0;
-      overflow: hidden;
+      overflow: visible;
       padding: 24px;
       display: flex;
       flex-direction: column;
       box-sizing: border-box;
       transition: padding 0.4s ease;
       width: 100%;
+      position: relative;
     }
 
     .sidebar.is-collapsed .sidebar-content {
@@ -4397,10 +4405,13 @@
 
     .trip-view-panel {
       display: none;
+      flex-direction: column;
+      height: 100%;
+      position: relative;
     }
 
     .trip-view-panel.active {
-      display: block;
+      display: flex;
     }
 
     .trip-tabs {
@@ -4829,7 +4840,6 @@
       position: relative;
       width: 100%;
       margin-bottom: 16px;
-      overflow: hidden;
     }
 
     .day-tabs-container::after {
@@ -4838,18 +4848,70 @@
       top: 0;
       right: 0;
       bottom: 0;
-      width: 24px;
-      background: linear-gradient(90deg, transparent, rgba(250, 251, 255, 0.96));
+      width: 32px;
+      background: linear-gradient(90deg, transparent, rgba(250, 251, 255, 1));
       pointer-events: none;
+      z-index: 2;
+    }
+
+    .day-tabs-container::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 32px;
+      background: linear-gradient(270deg, transparent, rgba(250, 251, 255, 1));
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .day-scroll-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #fff;
+      border: 1.5px solid var(--violet);
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 5;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      color: var(--violet);
+    }
+
+    .day-scroll-btn:hover {
+      background: var(--violet);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(124, 58, 237, 0.4);
+      transform: translateY(-50%) scale(1.05);
+    }
+
+    .day-scroll-btn.prev {
+      left: -4px;
+    }
+
+    .day-scroll-btn.next {
+      right: -4px;
+    }
+
+    .day-scroll-btn[disabled] {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateY(-50%) scale(0.9);
     }
 
     .day-tabs {
       display: flex;
-      gap: 6px;
+      gap: 8px;
       overflow-x: auto;
-      padding: 5px;
-      background: rgba(0, 0, 0, 0.04);
-      border-radius: 16px;
+      padding: 4px 0;
       scrollbar-width: none;
     }
 
@@ -4858,33 +4920,38 @@
     }
 
     .day-tab {
-      flex: 1;
+      flex: 0 0 auto;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 10px 14px;
+      padding: 2px 10px;
       border: none;
-      border-radius: 12px;
+      border-radius: 999px;
       background: transparent;
       cursor: pointer;
       white-space: nowrap;
       transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-      min-height: 52px;
+      min-height: 28px;
+      min-width: 40px;
+    }
+
+    .day-tab:hover {
+      background: rgba(0, 0, 0, 0.04);
     }
 
     .day-tab .day-title {
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 700;
       color: var(--muted);
       transition: color 0.2s;
     }
 
     .day-tab .day-date {
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 500;
       color: var(--muted);
-      margin-top: 2px;
+      margin-top: 1px;
       opacity: 0.8;
       transition: color 0.2s;
     }
@@ -4895,18 +4962,17 @@
     }
 
     .day-tab.active {
-      background: linear-gradient(90deg, rgba(250, 251, 255, 0.98), rgba(244, 249, 255, 0.86));
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.02);
+      background: var(--violet);
+      border-radius: 999px;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
     }
 
     .day-tab.active .day-title {
-      color: var(--violet);
+      color: #fff;
     }
 
     .day-tab.active .day-date {
-      color: var(--violet);
-      opacity: 0.9;
+      color: rgba(255, 255, 255, 0.85);
     }
 
     .add-stop-dashed {
@@ -4953,9 +5019,15 @@
       flex-direction: column;
       gap: 12px;
       padding-right: 4px;
-      margin-bottom: 12px;
+      margin-bottom: 0;
+      padding-bottom: 80px;
       justify-content: flex-start;
       align-items: stretch;
+    }
+
+    .itinerary.dragging-stop,
+    .itinerary.dragging-separator {
+      overflow: visible !important;
     }
         .stop {
       display: grid;
@@ -4993,6 +5065,7 @@
       box-shadow: 0 12px 32px rgba(99, 102, 241, .2) !important;
       transition: none;
       transform: scale(1.03);
+      z-index: 99999 !important;
     }
 
     /* Dynamic Insertion Indicators */
@@ -7730,40 +7803,7 @@
       margin-bottom: 16px;
     }
 
-    .day-scroll-btn {
-      position: absolute;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.9);
-      border: 1px solid var(--line);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 5;
-      transition: opacity 0.2s, background 0.2s;
-      color: var(--ink);
-    }
 
-    .day-scroll-btn:hover {
-      background: #ffffff;
-      color: var(--violet);
-    }
-
-    .day-scroll-btn.prev {
-      left: -8px;
-    }
-
-    .day-scroll-btn.next {
-      right: -8px;
-    }
-
-    .day-scroll-btn[disabled] {
-      opacity: 0;
-      pointer-events: none;
-    }
 
     /* Header card theme color variations */
     .trip-header-card {
@@ -7903,7 +7943,7 @@
     .search-panel-body {
       flex: 1;
       padding: 20px;
-      overflow: hidden;
+      overflow: visible;
       display: flex;
       flex-direction: column;
       gap: 16px;
@@ -8366,19 +8406,25 @@
       transform: scale(1.02);
       border-radius: 8px;
       padding: 8px 12px;
+      z-index: 99999 !important;
     }
 
     /* Add Stop Popover Menu */
     .add-stop-container {
-      position: relative;
-      width: 100%;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #fff;
+      padding: 12px 24px 24px;
+      z-index: 100;
     }
 
     .add-stop-popover {
       position: absolute;
-      bottom: calc(100% + 8px);
-      left: 12px;
-      right: 0;
+      bottom: calc(100% - 4px);
+      left: 24px;
+      right: 24px;
       background: rgba(255, 255, 255, 0.95);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
@@ -8463,6 +8509,7 @@
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
       border: 2px solid var(--day-color, var(--violet));
       transition: box-shadow 0.25s ease, border-color 0.25s;
+      overflow: hidden;
     }
 
     .map-pin-card:hover {
@@ -8472,7 +8519,6 @@
     }
 
     .map-pin-img-wrapper {
-      padding: 4px;
       overflow: hidden;
       border-radius: 12px 12px 0 0;
       background: #ffffff;

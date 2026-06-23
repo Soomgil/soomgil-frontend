@@ -96,9 +96,11 @@ vi.mock('@/composables/useItinerary', async () => {
     error: ref(null),
     fetchItinerary: vi.fn(),
     createDay: vi.fn(),
+    updateDay: vi.fn(),
     ensureUnscheduledDay: vi.fn(),
     deleteDay: vi.fn(),
     createItem: vi.fn(),
+    updateItem: vi.fn(),
     deleteItem: vi.fn(),
     reorder: vi.fn(),
 		mapMatchRoute: vi.fn(),
@@ -152,6 +154,12 @@ describe('RoutePage itinerary integration', () => {
 			id: 'invite-1', tripId: 'trip-1', inviteCode: 'CODE', inviteUrl: 'https://soomgil.test/invite/CODE',
 			inviteeUserId: null, status: 'PENDING', expiresAt: null, createdAt: '2026-06-20',
 		})
+		connectedApis.trip.updateTrip.mockResolvedValue({})
+		holder.state.createDay.mockResolvedValue({})
+		holder.state.updateDay.mockResolvedValue({})
+		holder.state.updateItem.mockResolvedValue({})
+		holder.state.deleteDay.mockResolvedValue({})
+		holder.state.ensureUnscheduledDay.mockResolvedValue({})
 		holder.state.createDrawing.mockResolvedValue({ id: 'drawing-1' })
     holder.tripStore = reactive({
       currentTrip: null,
@@ -357,16 +365,256 @@ describe('RoutePage itinerary integration', () => {
 			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
 		})
 		await flushPromises()
-		const dataTransfer = { setData: vi.fn(), effectAllowed: '' }
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separators = wrapper.findAll('.day-separator')
+		const stop = wrapper.get('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 320, width: 320, height: 320,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[0].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[1].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 72, top: 72, left: 0, right: 320, bottom: 104, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(stop.element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 112, top: 112, left: 12, right: 300, bottom: 152, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
 
-		await wrapper.get('.stop').trigger('dragstart', { dataTransfer })
-		await wrapper.findAll('.day-separator')[1].trigger('drop')
+		stop.find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 122 }))
+		stop.element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 76 }))
+		stop.element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 76 }))
 		await flushPromises()
 
 		expect(holder.state.reorder).toHaveBeenCalledWith({
 			days: [
-				{ dayId: 'day-1', sortOrder: 0, itemOrders: [] },
-				{ dayId: 'unscheduled', sortOrder: 1, itemOrders: [{ itemId: 'item-1', sortOrder: 0 }] },
+				{ dayId: 'unscheduled', sortOrder: 0, itemOrders: [{ itemId: 'item-1', sortOrder: 0 }] },
+				{ dayId: 'day-1', sortOrder: 1, itemOrders: [] },
+			],
+		})
+	})
+
+	it('순서 저장이 stale snapshot으로 실패하면 최신 전체 일정으로 보강해 한 번 재시도한다', async () => {
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+		holder.state.reorder
+			.mockRejectedValueOnce(new Error('stale itinerary version'))
+			.mockResolvedValueOnce({})
+		holder.state.fetchItinerary.mockImplementationOnce(async () => {
+			holder.state.days.value = [
+				{
+					id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+					date: '2026-07-01', title: null, sortOrder: 0,
+					items: [
+						{
+							id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+							itemType: 'CUSTOM_PLACE', place: null, placeName: '자유 시간',
+							address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null,
+							sourceStatus: 'AVAILABLE',
+						},
+						{
+							id: 'item-extra', itineraryDayId: 'day-1', sortOrder: 1,
+							itemType: 'CUSTOM_PLACE', place: null, placeName: '새로 추가된 일정',
+							address: null, lat: null, lng: null, thumbnailUrl: null,
+							sourceStatus: 'AVAILABLE',
+						},
+					],
+				},
+				{
+					id: 'unscheduled', tripId: 'trip-1', groupType: 'UNSCHEDULED', dayNumber: null,
+					date: null, title: null, sortOrder: 1, items: [],
+				},
+			]
+		})
+
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separators = wrapper.findAll('.day-separator')
+		const stop = wrapper.get('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 320, width: 320, height: 320,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[0].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[1].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 72, top: 72, left: 0, right: 320, bottom: 104, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(stop.element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 112, top: 112, left: 12, right: 300, bottom: 152, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
+
+		stop.find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 122 }))
+		stop.element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 76 }))
+		stop.element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 76 }))
+		await flushPromises()
+
+		expect(holder.state.reorder).toHaveBeenCalledTimes(2)
+		expect(holder.state.reorder).toHaveBeenNthCalledWith(2, {
+			days: [
+				{ dayId: 'unscheduled', sortOrder: 0, itemOrders: [{ itemId: 'item-1', sortOrder: 0 }] },
+				{ dayId: 'day-1', sortOrder: 1, itemOrders: [{ itemId: 'item-extra', sortOrder: 0 }] },
+			],
+		})
+		expect(wrapper.text()).not.toContain('일정 순서를 저장하지 못해 최신 상태로 되돌렸습니다.')
+	})
+
+	it('전체 보기에서 일차 구분선을 드래그하면 해당 일차 블록을 함께 이동한다', async () => {
+		holder.state.fetchItinerary.mockImplementationOnce(async () => {
+			holder.state.days.value = [
+				{
+					id: 'unscheduled', tripId: 'trip-1', groupType: 'UNSCHEDULED', dayNumber: null,
+					date: null, title: null, sortOrder: 0, items: [],
+				},
+				{
+					id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+					date: '2026-07-01', title: null, sortOrder: 1,
+					items: [{
+						id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '첫째 날 장소',
+						address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					}],
+				},
+				{
+					id: 'day-2', tripId: 'trip-1', groupType: 'DAY', dayNumber: 2,
+					date: '2026-07-02', title: null, sortOrder: 2,
+					items: [{
+						id: 'item-2', itineraryDayId: 'day-2', sortOrder: 0,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '둘째 날 장소',
+						address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					}],
+				},
+			]
+		})
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separators = wrapper.findAll('.day-separator')
+		const stops = wrapper.findAll('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 360, width: 320, height: 360,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[0].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[1].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 48, top: 48, left: 0, right: 320, bottom: 80, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(stops[0].element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 88, top: 88, left: 12, right: 300, bottom: 128, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[2].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 136, top: 136, left: 0, right: 320, bottom: 168, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(stops[1].element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 176, top: 176, left: 12, right: 300, bottom: 216, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
+
+		separators[2].find('.grip-icon').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 280, clientY: 146 }))
+		separators[2].element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 280, clientY: 54 }))
+		separators[2].element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 280, clientY: 54 }))
+		await flushPromises()
+
+		expect(holder.state.reorder).toHaveBeenCalledWith({
+			days: [
+				{ dayId: 'unscheduled', sortOrder: 0, itemOrders: [] },
+				{ dayId: 'day-2', sortOrder: 1, itemOrders: [{ itemId: 'item-2', sortOrder: 0 }] },
+				{ dayId: 'day-1', sortOrder: 2, itemOrders: [{ itemId: 'item-1', sortOrder: 0 }] },
+			],
+		})
+	})
+
+	it('특정 일차 보기에서 카드 순서를 위로 드래그하면 구분선을 제외하고 저장한다', async () => {
+		holder.state.fetchItinerary.mockImplementationOnce(async () => {
+			holder.state.days.value = [
+				{
+					id: 'unscheduled', tripId: 'trip-1', groupType: 'UNSCHEDULED', dayNumber: null,
+					date: null, title: null, sortOrder: 0, items: [],
+				},
+				{
+					id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+					date: '2026-07-01', title: null, sortOrder: 1,
+					items: [
+						{
+							id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+							itemType: 'CUSTOM_PLACE', place: null, placeName: '첫 번째 장소',
+							address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null,
+							sourceStatus: 'AVAILABLE',
+						},
+						{
+							id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+							itemType: 'CUSTOM_PLACE', place: null, placeName: '두 번째 장소',
+							address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null,
+							sourceStatus: 'AVAILABLE',
+						},
+					],
+				},
+			]
+		})
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+		const dayTab = wrapper.findAll('.day-tab').find((button) => button.text().includes('1일차'))
+		expect(dayTab).toBeTruthy()
+		await dayTab!.trigger('click')
+		await nextTick()
+
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separator = wrapper.get('.day-separator')
+		const stops = wrapper.findAll('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 260, width: 320, height: 260,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separator.element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(stops[0].element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 40, top: 40, left: 12, right: 300, bottom: 80, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(stops[1].element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 88, top: 88, left: 12, right: 300, bottom: 128, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
+
+		stops[1].find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 98 }))
+		stops[1].element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 48 }))
+		stops[1].element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 48 }))
+		await flushPromises()
+
+		expect(holder.state.reorder).toHaveBeenCalledWith({
+			days: [
+				{ dayId: 'unscheduled', sortOrder: 0, itemOrders: [] },
+				{
+					dayId: 'day-1',
+					sortOrder: 1,
+					itemOrders: [
+						{ itemId: 'item-2', sortOrder: 0 },
+						{ itemId: 'item-1', sortOrder: 1 },
+					],
+				},
 			],
 		})
 	})
@@ -394,14 +642,7 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.findComponent(MapboxItineraryMap).props('stops')).toEqual([
       expect.objectContaining({ id: 'item-1', title: '자유 시간', lat: 36.35, lng: 127.38 }),
     ])
-    expect(wrapper.get('button[aria-label="일차 추가"]').attributes('aria-label')).toBe('일차 추가')
-
-    await wrapper.get('button[aria-label="일차 추가"]').trigger('click')
-    expect(holder.state.createDay).toHaveBeenCalledWith({
-      groupType: 'DAY',
-      dayNumber: 2,
-      sortOrder: 2,
-    })
+    expect(wrapper.text()).toContain('일정 추가')
 
     await wrapper.get('.search-panel-custom-trigger').trigger('click')
     await wrapper.get('#inline-custom-title').setValue('점심 식사')
@@ -457,6 +698,41 @@ describe('RoutePage itinerary integration', () => {
         accessibility: expect.objectContaining({ flags: ['WHEELCHAIR'] }),
       }),
     ])
+  })
+
+  it('관리 모달에서 여행 날짜를 수정할 때 순서 저장을 다시 호출하지 않는다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    holder.state.reorder.mockClear()
+    holder.state.fetchItinerary.mockClear()
+
+    await wrapper.get('#edit-trip-start-date').setValue('2026-07-01')
+    await wrapper.get('#edit-trip-end-date').setValue('2026-07-02')
+    await wrapper.get('#trip-settings-form').trigger('submit')
+    await flushPromises()
+
+    expect(holder.state.updateDay).toHaveBeenCalledWith('day-1', {
+      dayNumber: 1,
+      date: '2026-07-01',
+      sortOrder: 1,
+    })
+    expect(holder.state.createDay).toHaveBeenCalledWith({
+      groupType: 'DAY',
+      dayNumber: 2,
+      date: '2026-07-02',
+      sortOrder: 2,
+    })
+    expect(holder.state.reorder).not.toHaveBeenCalled()
+    expect(holder.state.fetchItinerary).toHaveBeenCalled()
   })
 
   it('장소 탐색 결과를 실제 장소 참조로 일정에 추가한다', async () => {

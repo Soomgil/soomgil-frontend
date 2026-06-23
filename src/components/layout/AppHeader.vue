@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { notificationApi } from '@/api/notification.api'
 import { tripApi } from '@/api/trip.api'
 import { itineraryApi } from '@/api/itinerary.api'
+import { useTheme } from '@/composables/useTheme'
 import type { PageMeta } from '@/types/api'
 import type { Notification } from '@/types/notification'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
@@ -12,6 +13,7 @@ import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { isDarkMode, toggleTheme } = useTheme()
 
 /* ── Nav Items ── */
 const landingNavItems = [
@@ -46,9 +48,6 @@ const activeNavKey = computed(() => {
 const showBriefing = ref(false)
 const showNotif = ref(false)
 const showProfile = ref(false)
-const briefingItems = ref<Array<{ id: string; label: string; title: string; address: string | null }>>([])
-const briefingLoading = ref(false)
-const briefingError = ref('')
 const briefingTripId = ref<string | null>(null)
 const notifications = ref<Notification[]>([])
 const notificationsLoading = ref(false)
@@ -62,19 +61,14 @@ const hasMoreNotifications = computed(() => {
 
 /* ── Briefing ── */
 interface BriefingItem {
-  title: string
-  description: string
-}
-interface BriefingTrip {
   id: string
+  label: string
   title: string
-  destination: string
+  address: string | null
 }
-const briefingTrip = ref<BriefingTrip | null>(null)
 const briefingItems = ref<BriefingItem[]>([])
 const briefingLoading = ref(false)
 const briefingError = ref('')
-const briefingLoaded = ref(false)
 
 function closeAllDropdowns() {
   showBriefing.value = false
@@ -82,80 +76,11 @@ function closeAllDropdowns() {
   showProfile.value = false
 }
 
-<<<<<<< HEAD
-async function loadBriefing() {
-  briefingLoading.value = true
-  briefingError.value = ''
-  try {
-    const trip = await tripApi.getNearestTrip()
-    briefingTrip.value = {
-      id: trip.id,
-      title: trip.title,
-      destination: trip.displayDestination,
-    }
-    try {
-      const itinerary = await itineraryApi.getItinerary(trip.id)
-      const today = new Date().toISOString().slice(0, 10)
-      const todayDay =
-        itinerary.days.find((day) => day.date === today) ??
-        itinerary.days.find((day) => day.dayNumber === 1) ??
-        itinerary.days.find((day) => (day.items ?? []).length > 0) ??
-        null
-      briefingItems.value = (todayDay?.items ?? []).slice(0, 3).map((item) => ({
-        title: item.placeName,
-        description: item.address ?? '',
-      }))
-    } catch {
-      briefingItems.value = []
-    }
-    briefingLoaded.value = true
-  } catch {
-    briefingTrip.value = null
-    briefingItems.value = []
-    briefingError.value = '예정된 일정을 불러오지 못했어요.'
-    briefingLoaded.value = true
-  } finally {
-    briefingLoading.value = false
-  }
-}
-
-function toggleBriefing() {
-  const next = !showBriefing.value
-  closeAllDropdowns()
-  showBriefing.value = next
-  if (next && !briefingLoaded.value && !briefingLoading.value) {
-    void loadBriefing()
-=======
 async function toggleBriefing() {
   const next = !showBriefing.value
   closeAllDropdowns()
   showBriefing.value = next
   if (next) await loadBriefing()
-}
-
-async function loadBriefing() {
-  briefingLoading.value = true
-  briefingError.value = ''
-  try {
-    const nearest = await tripApi.getNearestTrip()
-    briefingTripId.value = nearest.id
-    const itinerary = await itineraryApi.getItinerary(nearest.id)
-    const today = new Date().toISOString().slice(0, 10)
-    const day = itinerary.days.find((item) => item.date === today)
-      ?? itinerary.days.find((item) => item.groupType === 'DAY')
-    briefingItems.value = (day?.items ?? []).slice(0, 4).map((item, index) => ({
-      id: item.id,
-      label: `${index + 1}번째`,
-      title: item.placeName,
-      address: item.address,
-    }))
-  } catch {
-    briefingItems.value = []
-    briefingError.value = '예정된 일정을 불러오지 못했습니다.'
-  } finally {
-    briefingLoading.value = false
->>>>>>> origin/develop
-  }
 }
 
 async function loadBriefing() {
@@ -321,6 +246,12 @@ async function handleLogout() {
 
     <!-- Right: Actions -->
     <div class="header-actions" style="min-width:220px; display:flex; justify-content:flex-end; align-items:center; gap:8px;">
+
+      <!-- Theme Toggle -->
+      <button type="button" class="btn ghost icon-btn" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; cursor:pointer;" :title="isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'" @click="toggleTheme">
+        <span class="material-symbols-rounded">{{ isDarkMode ? 'light_mode' : 'dark_mode' }}</span>
+      </button>
+
       <template v-if="auth.isAuthenticated">
 
         <!-- Briefing -->
@@ -333,24 +264,6 @@ async function handleLogout() {
               <span class="material-symbols-rounded" style="font-size:18px; color:var(--violet)">event_note</span>
               오늘 일정 브리핑
             </h4>
-<<<<<<< HEAD
-            <p v-if="briefingLoading" style="font-size:13px;color:var(--muted);margin:0 0 16px;">불러오는 중…</p>
-            <p v-else-if="briefingError" style="font-size:13px;color:var(--rose);margin:0 0 16px;">{{ briefingError }}</p>
-            <template v-else>
-              <p v-if="briefingTrip" style="font-size:12px;color:var(--violet);font-weight:800;margin:0 0 12px;">
-                {{ briefingTrip.title }}<span v-if="briefingTrip.destination"> · {{ briefingTrip.destination }}</span>
-              </p>
-              <div v-if="briefingItems.length > 0" class="compact-timeline" style="margin-bottom:20px;">
-                <div v-for="(item, idx) in briefingItems" :key="idx">
-                  <time>{{ String(idx + 1).padStart(2, '0') }}</time>
-                  <span></span>
-                  <p><strong>{{ item.title }}</strong>{{ item.description }}</p>
-                </div>
-              </div>
-              <p v-else style="font-size:13px;color:var(--muted);margin:0 0 16px;">예정된 일정이 없어요.</p>
-            </template>
-            <a href="#" class="btn ghost" style="display:flex; align-items:center; justify-content:center; width:100%; padding:8px 0; font-size:13px; min-height:0; height:auto; border-color:var(--line); border-radius:999px; text-decoration:none; color:var(--violet); font-weight:700;" @click.prevent="closeAllDropdowns(); router.push(briefingTrip ? `/trips/${briefingTrip.id}/route` : '/my-trips')">전체보기</a>
-=======
             <p v-if="briefingLoading" class="header-state">일정을 불러오는 중…</p>
             <p v-else-if="briefingError" class="header-state header-state--error">{{ briefingError }}</p>
             <p v-else-if="briefingItems.length === 0" class="header-state">다가오는 여행에 등록된 일정이 없습니다.</p>
@@ -362,7 +275,6 @@ async function handleLogout() {
               </div>
             </div>
             <a href="#" class="btn ghost" style="display:flex; align-items:center; justify-content:center; width:100%; padding:8px 0; font-size:13px; min-height:0; height:auto; border-color:var(--line); border-radius:999px; text-decoration:none; color:var(--violet); font-weight:700;" @click.prevent="closeAllDropdowns(); router.push(briefingTripId ? `/trips/${briefingTripId}/route` : '/my-trips')">전체보기</a>
->>>>>>> origin/develop
           </div>
         </div>
 
@@ -381,7 +293,6 @@ async function handleLogout() {
             <p v-else-if="notificationsError" style="font-size:13px;color:var(--rose)">{{ notificationsError }}</p>
             <p v-else-if="notifications.length === 0" style="font-size:13px;color:var(--muted)">새 알림이 없습니다.</p>
             <div v-else class="notification-list">
-<<<<<<< HEAD
               <article
                 v-for="notification in notifications"
                 :key="notification.id"
@@ -392,13 +303,6 @@ async function handleLogout() {
                   <strong class="notification-title">{{ notification.title }}</strong>
                   <span v-if="notification.actor" class="notification-actor">
                     <img v-if="notification.actor.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" />
-=======
-              <article v-for="notification in notifications" :key="notification.id" class="notification-item" :class="{ unread: !notification.readAt }">
-                <button type="button" style="display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:0" @click="openNotification(notification)">
-                  <strong style="font-size:13px;display:block;color:var(--ink)">{{ notification.title }}</strong>
-                  <span v-if="notification.actor" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--violet)">
-                    <img v-if="notification.actor.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover;" />
->>>>>>> origin/develop
                     {{ notification.actor.displayName }}
                   </span>
                   <p v-if="notification.body" class="notification-body">{{ notification.body }}</p>
@@ -412,10 +316,6 @@ async function handleLogout() {
                 >
                   <span class="material-symbols-rounded">close</span>
                 </button>
-<<<<<<< HEAD
-=======
-                <button type="button" class="notification-delete" aria-label="알림 삭제" title="알림 삭제" @click.stop="dismissNotification(notification.id)"><span class="material-symbols-rounded">close</span></button>
->>>>>>> origin/develop
               </article>
               <button
                 v-if="hasMoreNotifications"

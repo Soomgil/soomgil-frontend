@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch, computed } from 'vue'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import MapDrawingOverlay from './MapDrawingOverlay.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from './MapDrawingOverlay.vue'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { LngLat, Viewport } from '@/types/geo'
 import type { AccessibilityFlag, PlaceAccessibility } from '@/types/place'
+import { useTheme } from '@/composables/useTheme'
 
 export interface ItineraryMapStop {
   id: string
@@ -64,6 +65,24 @@ let lineLayerIds: string[] = []
 let styleReady = false
 let initializationSequence = 0
 let lastEmittedViewport = ''
+
+const { isDarkMode } = useTheme()
+
+const mapStyle = computed(() => {
+  const isNav = props.drawingTool === 'route-pen'
+  if (isDarkMode.value) {
+    return isNav ? 'mapbox://styles/mapbox/navigation-night-v1' : 'mapbox://styles/mapbox/dark-v11'
+  } else {
+    return isNav ? 'mapbox://styles/mapbox/navigation-day-v1' : 'mapbox://styles/mapbox/light-v11'
+  }
+})
+
+watch(mapStyle, (newStyle) => {
+  if (map && styleReady) {
+    styleReady = false
+    map.setStyle(newStyle)
+  }
+})
 
 function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? 'day-color-5' : `day-color-${((dayIndex - 1) % 5) + 1}`
@@ -263,21 +282,22 @@ async function initializeMap() {
     mapboxgl.accessToken = accessToken
     const createdMap = new mapboxgl.Map({
       container: container.value,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: mapStyle.value,
       center: DEFAULT_CENTER,
       zoom: 10,
     })
     map = createdMap
     createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right')
-    createdMap.on('load', () => {
+    createdMap.on('style.load', () => {
       if (sequence !== initializationSequence || map !== createdMap) return
       styleReady = true
       mapError.value = ''
       canRetry.value = false
+      lineLayerIds = []
       renderStops()
       updateDrawingProjection()
-      createdMap.once('idle', emitViewport)
     })
+    createdMap.once('idle', emitViewport)
     createdMap.on('error', () => {
       if (sequence !== initializationSequence || map !== createdMap || styleReady) return
       mapError.value = '지도를 불러오지 못했습니다.'

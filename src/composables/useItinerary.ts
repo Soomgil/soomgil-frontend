@@ -34,8 +34,9 @@ export function useItinerary(tripId: string) {
 
   function applyMutation(response: ItineraryMutationResponse) {
     itineraryVersion.value = response.itineraryVersion
-    if (response.affectedRouteIds.length > 0) {
-      const affectedIds = new Set(response.affectedRouteIds)
+    const affectedRouteIds = response.affectedRouteIds ?? []
+    if (affectedRouteIds.length > 0) {
+      const affectedIds = new Set(affectedRouteIds)
       routes.value = routes.value.filter((route) => !affectedIds.has(route.id))
     }
   }

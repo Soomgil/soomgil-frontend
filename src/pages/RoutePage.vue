@@ -28,6 +28,7 @@ import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, Note, PlanningScope } from '@/types/planning'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { ParkingType, Place, PlaceAccessibility } from '@/types/place'
+import type { ItineraryDay, ReorderItineraryInput } from '@/types/itinerary'
 
 /* ── RoutePage 내부 전용 타입 ── */
 type RouteStop = RouteStopViewModel
@@ -81,17 +82,19 @@ const trip = computed(() => {
     title: detail?.title ?? '여행',
     destinationName: detail?.displayDestination ?? '',
     statusLabel: detail?.status === 'ARCHIVED' ? '보관된 여행' : '진행 중인 여행',
+    startDate: detail?.startDate ?? '',
+    endDate: detail?.endDate ?? '',
     members: (detail?.members ?? [])
       .filter((member) => member.status === 'ACTIVE')
       .map((member) => ({
         id: member.id,
+        role: member.role,
         displayName: member.user.displayName,
         profileImageUrl: member.user.profileImageUrl,
       })),
   }
 })
 const dayPlans = ref<DayPlan[]>([])
-<<<<<<< HEAD
 const placeAccessibilityByKey = ref<Record<string, PlaceAccessibility>>({})
 let accessibilityRequestRevision = 0
 
@@ -119,11 +122,9 @@ async function loadRouteAccessibility(plans: DayPlan[]) {
   }
 }
 
-=======
 const scheduledPlaceKeys = computed(() => dayPlans.value.flatMap((day) => day.items.flatMap((item) =>
   item.placeProvider && item.placeExternalId ? [`${item.placeProvider}:${item.placeExternalId}`] : [],
 )))
->>>>>>> origin/develop
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
@@ -430,17 +431,27 @@ interface DragSource {
   dayNum: number
 }
 
+interface FlatItineraryNode {
+  type: 'separator' | 'stop'
+  dayId: string
+  itemId?: string
+}
+
 function onPointerDown(e: PointerEvent) {
   if ((e.target as HTMLElement).closest('button')) return
-  if (e.button !== 0 || !(e.currentTarget as HTMLElement).classList.contains('day-separator')) return
+  const target = e.currentTarget as HTMLElement
+  const isDraggableItineraryNode = target.classList.contains('day-separator') || target.classList.contains('stop')
+  if (e.button !== 0 || !isDraggableItineraryNode) return
   if (itinerary.mutating.value) return
 
-  const stop = (e.currentTarget as HTMLElement)
+  const stop = target
   const containerEl = itineraryRef.value
   if (!containerEl) return
   const dragContainer: HTMLElement = containerEl
 
-  stop.setPointerCapture(e.pointerId)
+  if (typeof stop.setPointerCapture === 'function') {
+    stop.setPointerCapture(e.pointerId)
+  }
 
   // Identify drag source from data attributes
   const isDraggingSeparator = stop.classList.contains('day-separator')
@@ -484,9 +495,19 @@ function onPointerDown(e: PointerEvent) {
 
   function onPointerMove(ev: PointerEvent) {
     let absoluteY = ev.clientY - containerRect.top - offsetY
-    const maxTop = containerRect.height - stopRect.height
+    const trashZone = document.getElementById('trash-drop-zone')
+    const trashHeight = trashZone ? trashZone.offsetHeight : 80
+    const maxTop = containerRect.height - stopRect.height + trashHeight + 20
     absoluteY = Math.max(0, Math.min(absoluteY, maxTop))
     stop.style.top = (absoluteY - originalY) + 'px'
+
+    const dx = ev.clientX - e.clientX
+    const dy = ev.clientY - e.clientY
+    // Prevent horizontal drag from firing vertical drag if we add swipe to delete later
+    if (Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 20) {
+      // It's a horizontal swipe, do nothing vertically
+      return
+    }
 
     const dragCenter = ev.clientY - offsetY + stopRect.height / 2
     let targetIdx = allItems.length
@@ -496,6 +517,17 @@ function onPointerDown(e: PointerEvent) {
       if (dragCenter < itemCenter) {
         targetIdx = i
         break
+      }
+    }
+
+    if (trashZone) {
+      const trashRect = trashZone.getBoundingClientRect()
+      const dragRect = stop.getBoundingClientRect()
+      if (dragRect.bottom >= trashRect.top && dragRect.top <= trashRect.bottom &&
+          dragRect.right >= trashRect.left && dragRect.left <= trashRect.right) {
+        trashZone.classList.add('is-drag-over-trash')
+      } else {
+        trashZone.classList.remove('is-drag-over-trash')
       }
     }
 
@@ -524,6 +556,23 @@ function onPointerDown(e: PointerEvent) {
       }
     }
 
+    const trashZone = document.getElementById('trash-drop-zone')
+    if (trashZone && trashZone.classList.contains('is-drag-over-trash')) {
+      trashZone.classList.remove('is-drag-over-trash')
+      stop.classList.remove('is-dragging')
+      stop.style.cssText = ''
+      dragContainer.classList.remove('dragging-separator', 'dragging-stop')
+      allItems.forEach((item) => item.classList.remove('is-drag-over-top', 'is-drag-over-bottom'))
+      if (source!.type === 'separator') {
+        const day = dayPlans.value[source!.dayIdx]
+        if (day) removeDay(day)
+      } else {
+        const item = dayPlans.value[source!.dayIdx]?.items[source!.itemIdx]
+        if (item) removeItineraryItem(item)
+      }
+      return
+    }
+
     // Reset visual state (no DOM reorder — let Vue handle it)
     stop.classList.remove('is-dragging')
     stop.style.zIndex = ''
@@ -537,12 +586,10 @@ function onPointerDown(e: PointerEvent) {
     })
 
     // Update data model directly
-    if (activeDay.value === 0) {
-      reorderAllDays(source!, targetIdx)
-    } else {
-      reorderSingleDay(source!, targetIdx)
-    }
-    void persistItineraryOrder()
+    const didReorder = activeDay.value === 0
+      ? reorderAllDays(source!, targetIdx)
+      : reorderSingleDay(source!, targetIdx)
+    if (didReorder) void persistItineraryOrder()
 
     nextTick(() => {
       initDragDrop()
@@ -553,134 +600,251 @@ function onPointerDown(e: PointerEvent) {
   stop.addEventListener('pointerup', onPointerUp)
 }
 
+function isSameFlatNode(left: FlatItineraryNode, right: FlatItineraryNode) {
+  return left.type === right.type && left.dayId === right.dayId && left.itemId === right.itemId
+}
+
+function flattenDayPlans(plans: DayPlan[]): FlatItineraryNode[] {
+  return plans.flatMap((day) => [
+    { type: 'separator' as const, dayId: day.id },
+    ...day.items.map((item) => ({ type: 'stop' as const, dayId: day.id, itemId: item.id })),
+  ])
+}
+
+function itineraryOrderSignature(plans: DayPlan[]) {
+  return JSON.stringify(plans.map((day) => ({
+    dayId: day.id,
+    items: day.items.map((item) => item.id),
+  })))
+}
+
+function normalizePlanOrder(plans: DayPlan[]): DayPlan[] {
+  let scheduledCount = 0
+  return plans.map((plan) => {
+    const dayNumber = plan.groupType === 'UNSCHEDULED' ? -1 : ++scheduledCount
+    return {
+      ...plan,
+      day: dayNumber,
+      items: plan.items.map((item, itemIndex) => ({
+        ...item,
+        day: dayNumber,
+        order: itemIndex + 1,
+      })),
+    }
+  })
+}
+
+function rebuildDayPlansFromFlatNodes(nodes: FlatItineraryNode[], originalPlans: DayPlan[]): DayPlan[] {
+  const plansById = new Map(originalPlans.map((plan) => [plan.id, plan]))
+  const itemsById = new Map(originalPlans.flatMap((plan) => plan.items.map((item) => [item.id, item])))
+  const rebuiltPlans: DayPlan[] = []
+  const pendingLeadingItems: RouteStop[] = []
+  let currentPlan: DayPlan | null = null
+
+  const pushCurrentPlan = () => {
+    if (!currentPlan) return
+    rebuiltPlans.push(currentPlan)
+    currentPlan = null
+  }
+
+  for (const node of nodes) {
+    if (node.type === 'separator') {
+      pushCurrentPlan()
+      const plan = plansById.get(node.dayId)
+      if (!plan) continue
+      currentPlan = { ...plan, items: [] }
+      if (rebuiltPlans.length === 0 && pendingLeadingItems.length > 0) {
+        currentPlan.items.push(...pendingLeadingItems.splice(0))
+      }
+      continue
+    }
+
+    if (!node.itemId) continue
+    const item = itemsById.get(node.itemId)
+    if (!item) continue
+    if (!currentPlan) {
+      pendingLeadingItems.push({ ...item })
+    } else {
+      currentPlan.items.push({ ...item })
+    }
+  }
+
+  pushCurrentPlan()
+  if (pendingLeadingItems.length > 0 && rebuiltPlans[0]) {
+    rebuiltPlans[0].items = [...pendingLeadingItems, ...rebuiltPlans[0].items]
+  }
+
+  return normalizePlanOrder(rebuiltPlans)
+}
+
 /** 전체 보기: flat list 기반 재배치 */
 function reorderAllDays(source: DragSource, targetIdx: number) {
+  const originalPlans = dayPlans.value
+  const flatNodes = flattenDayPlans(originalPlans)
+  const sourceDay = originalPlans[source.dayIdx]
+  const sourceItem = source.type === 'stop' ? sourceDay?.items[source.itemIdx] : null
+  const sourceNode: FlatItineraryNode | null = source.type === 'separator'
+    ? sourceDay ? { type: 'separator', dayId: sourceDay.id } : null
+    : sourceDay && sourceItem ? { type: 'stop', dayId: sourceDay.id, itemId: sourceItem.id } : null
+  if (!sourceNode) return false
+
+  const sourceNodeIndex = flatNodes.findIndex((node) => isSameFlatNode(node, sourceNode))
+  if (sourceNodeIndex < 0) return false
+
+  const visibleNodes = flatNodes.filter((node) => !isSameFlatNode(node, sourceNode))
+  const targetNode = visibleNodes[targetIdx] ?? null
+  let movingNodes: FlatItineraryNode[] = []
+
+  if (source.type === 'separator') {
+    const nextSeparatorIndex = flatNodes.findIndex((node, index) => (
+      index > sourceNodeIndex && node.type === 'separator'
+    ))
+    movingNodes = flatNodes.slice(
+      sourceNodeIndex,
+      nextSeparatorIndex === -1 ? flatNodes.length : nextSeparatorIndex,
+    )
+  } else {
+    const movingIndexes = [sourceNodeIndex]
+    const partnerId = sourceItem ? getLinkedPartner(sourceItem.id) : null
+    if (partnerId) {
+      const partnerIndex = flatNodes.findIndex((node) => node.type === 'stop' && node.itemId === partnerId)
+      if (partnerIndex >= 0) movingIndexes.push(partnerIndex)
+    }
+    movingNodes = [...new Set(movingIndexes)]
+      .sort((left, right) => left - right)
+      .map((index) => flatNodes[index])
+  }
+
+  if (targetNode && movingNodes.some((node) => isSameFlatNode(node, targetNode))) return false
+
+  const remainingNodes = flatNodes.filter((node) => (
+    !movingNodes.some((movingNode) => isSameFlatNode(movingNode, node))
+  ))
+  const insertAt = targetNode
+    ? remainingNodes.findIndex((node) => isSameFlatNode(node, targetNode))
+    : remainingNodes.length
+  if (insertAt < 0) return false
+
+  const nextNodes = [...remainingNodes]
+  nextNodes.splice(insertAt, 0, ...movingNodes)
+  const nextPlans = rebuildDayPlansFromFlatNodes(nextNodes, originalPlans)
+  if (itineraryOrderSignature(originalPlans) === itineraryOrderSignature(nextPlans)) return false
+
   pushUndoState('itinerary')
-  // Build flat ordered list from current data
-  const flatList: { type: 'separator' | 'stop'; dayIdx: number; itemIdx: number }[] = []
-  dayPlans.value.forEach((day, di) => {
-    flatList.push({ type: 'separator', dayIdx: di, itemIdx: -1 })
-    day.items.forEach((_, ii) => {
-      flatList.push({ type: 'stop', dayIdx: di, itemIdx: ii })
-    })
-  })
-
-  // Find source in flat list
-  const sourceFlatIdx = flatList.findIndex(item => {
-    if (source.type === 'separator') {
-      return item.type === 'separator' && item.dayIdx === source.dayIdx
-    }
-    return item.type === 'stop' && item.dayIdx === source.dayIdx && item.itemIdx === source.itemIdx
-  })
-  if (sourceFlatIdx === -1) return
-
-  // Find linked partner in flat list
-  const sourceItemId = source.type === 'stop' ? dayPlans.value[source.dayIdx]?.items[source.itemIdx]?.id : null
-  const partnerId = sourceItemId ? getLinkedPartner(sourceItemId) : null
-  let partnerFlatIdx = -1
-  if (partnerId) {
-    partnerFlatIdx = flatList.findIndex((fi, i) => {
-      if (i === sourceFlatIdx || fi.type !== 'stop') return false
-      return dayPlans.value[fi.dayIdx]?.items[fi.itemIdx]?.id === partnerId
-    })
-  }
-
-  // Remove source (and partner if linked)
-  const toRemoveIdxs = partnerFlatIdx === -1
-    ? [sourceFlatIdx]
-    : sourceFlatIdx < partnerFlatIdx ? [sourceFlatIdx, partnerFlatIdx] : [partnerFlatIdx, sourceFlatIdx]
-  const removed = toRemoveIdxs.map(i => flatList[i])
-  for (let i = toRemoveIdxs.length - 1; i >= 0; i--) flatList.splice(toRemoveIdxs[i], 1)
-
-  // Adjust targetIdx: it was relative to allItems (excluded source, included partner)
-  let adjustedTarget = targetIdx
-  if (partnerFlatIdx !== -1) {
-    const partnerInAllItems = sourceFlatIdx < partnerFlatIdx ? partnerFlatIdx - 1 : partnerFlatIdx
-    if (adjustedTarget > partnerInAllItems) adjustedTarget--
-  }
-
-  // Insert removed items at target
-  for (let i = 0; i < removed.length; i++) {
-    flatList.splice(adjustedTarget + i, 0, removed[i])
-  }
-
-  // Convert flat list back to dayPlans
-  const originalPlans = [...dayPlans.value]
-  const originalDates = originalPlans.map(d => d.date)
-  const newPlans: DayPlan[] = []
-  let currentItems: RouteStop[] = []
-
-  for (const item of flatList) {
-    if (item.type === 'separator') {
-      if (newPlans.length > 0 || currentItems.length > 0) {
-        const sourcePlan = originalPlans[newPlans.length]
-        const dayNum = sourcePlan?.day ?? newPlans.length + 1
-        newPlans.push({
-          id: sourcePlan?.id ?? `local-day-${dayNum}`,
-          groupType: sourcePlan?.groupType ?? 'DAY',
-          day: dayNum,
-          date: originalDates[newPlans.length] || '',
-          items: currentItems.map((it, idx) => ({ ...it, order: idx + 1, day: dayNum }))
-        })
-        currentItems = []
-      }
-    } else {
-      const originalItem = dayPlans.value[item.dayIdx]?.items[item.itemIdx]
-      if (originalItem) {
-        currentItems.push({ ...originalItem })
-      }
-    }
-  }
-  // Last day
-  if (currentItems.length > 0 || newPlans.length < originalDates.length) {
-    const sourcePlan = originalPlans[newPlans.length]
-    const dayNum = sourcePlan?.day ?? newPlans.length + 1
-    newPlans.push({
-      id: sourcePlan?.id ?? `local-day-${dayNum}`,
-      groupType: sourcePlan?.groupType ?? 'DAY',
-      day: dayNum,
-      date: originalDates[newPlans.length] || '',
-      items: currentItems.map((it, idx) => ({ ...it, order: idx + 1, day: dayNum }))
-    })
-  }
-
-  dayPlans.value = newPlans
+  dayPlans.value = nextPlans
+  return true
 }
 
 /** 특정 일차: 같은 날 내에서 순서만 변경 */
 function reorderSingleDay(source: DragSource, targetIdx: number) {
-  pushUndoState('itinerary')
+  if (source.type !== 'stop') return false
   const plan = dayPlans.value[source.dayIdx]
-  if (!plan) return
+  const moved = plan?.items[source.itemIdx]
+  if (!plan || !moved) return false
 
-  const items = [...plan.items]
-  const [moved] = items.splice(source.itemIdx, 1)
-  const insertAt = Math.min(targetIdx, items.length)
-  items.splice(insertAt, 0, moved)
-  plan.items = items.map((it, idx) => ({ ...it, order: idx + 1 }))
+  const visibleNodes: FlatItineraryNode[] = [
+    { type: 'separator', dayId: plan.id },
+    ...plan.items
+      .filter((item) => item.id !== moved.id)
+      .map((item) => ({ type: 'stop' as const, dayId: plan.id, itemId: item.id })),
+  ]
+  const targetNode = visibleNodes[targetIdx] ?? null
+  const remainingItems = plan.items.filter((item) => item.id !== moved.id)
+  let insertAt = remainingItems.length
+  if (targetNode?.type === 'separator') {
+    insertAt = 0
+  } else if (targetNode?.type === 'stop' && targetNode.itemId) {
+    const targetItemIndex = remainingItems.findIndex((item) => item.id === targetNode.itemId)
+    if (targetItemIndex >= 0) insertAt = targetItemIndex
+  }
+
+  const nextItems = [...remainingItems]
+  nextItems.splice(insertAt, 0, moved)
+  if (plan.items.map((item) => item.id).join(',') === nextItems.map((item) => item.id).join(',')) return false
+
+  pushUndoState('itinerary')
+  dayPlans.value = dayPlans.value.map((day, dayIndex) => (
+    dayIndex === source.dayIdx
+      ? { ...day, items: nextItems.map((item, itemIndex) => ({ ...item, order: itemIndex + 1 })) }
+      : day
+  ))
+  return true
+}
+
+function buildItineraryOrderSnapshot(
+  desiredPlans: DayPlan[],
+  sourceDays: ItineraryDay[] = itinerary.days.value,
+): ReorderItineraryInput {
+  const rawDays = [...sourceDays].sort((left, right) => left.sortOrder - right.sortOrder)
+  const rawDaysById = new Map(rawDays.map((day) => [day.id, day]))
+  const rawItemsById = new Map(rawDays.flatMap((day) => day.items.map((item) => [item.id, item])))
+  const desiredDayIds = desiredPlans.map((day) => day.id).filter((dayId) => rawDaysById.has(dayId))
+  const desiredDayIdSet = new Set(desiredDayIds)
+  const orderedDays = [
+    ...desiredDayIds.flatMap((dayId) => rawDaysById.get(dayId) ?? []),
+    ...rawDays.filter((day) => !desiredDayIdSet.has(day.id)),
+  ]
+
+  const desiredItemIdsByDayId = new Map<string, string[]>()
+  const desiredItemIds = new Set<string>()
+  desiredPlans.forEach((day) => {
+    if (!rawDaysById.has(day.id)) return
+    const itemIds = day.items
+      .map((item) => item.id)
+      .filter((itemId) => rawItemsById.has(itemId))
+    desiredItemIdsByDayId.set(day.id, itemIds)
+    itemIds.forEach((itemId) => desiredItemIds.add(itemId))
+  })
+
+  const usedItemIds = new Set<string>()
+  return {
+    days: orderedDays.map((day, dayIndex) => {
+      const orderedItemIds: string[] = []
+      for (const itemId of desiredItemIdsByDayId.get(day.id) ?? []) {
+        if (!usedItemIds.has(itemId)) {
+          orderedItemIds.push(itemId)
+          usedItemIds.add(itemId)
+        }
+      }
+      for (const item of day.items) {
+        if (usedItemIds.has(item.id) || desiredItemIds.has(item.id)) continue
+        orderedItemIds.push(item.id)
+        usedItemIds.add(item.id)
+      }
+      return {
+        dayId: day.id,
+        sortOrder: dayIndex,
+        itemOrders: orderedItemIds.map((itemId, itemIndex) => ({
+          itemId,
+          sortOrder: itemIndex,
+        })),
+      }
+    }),
+  }
+}
+
+async function submitItineraryOrder(desiredPlans: DayPlan[]) {
+  await itinerary.reorder(buildItineraryOrderSnapshot(desiredPlans))
 }
 
 let pendingOrderSave: Promise<void> = Promise.resolve()
 async function persistItineraryOrder() {
   if (dayPlans.value.length === 0) return
-  const order = dayPlans.value.map((day, dayIndex) => ({
-    dayId: day.id,
-    sortOrder: dayIndex,
-    itemOrders: day.items.map((item, itemIndex) => ({ itemId: item.id, sortOrder: itemIndex })),
-  }))
+  const desiredPlans = cloneHistoryValue(dayPlans.value)
   itineraryActionError.value = ''
-  pendingOrderSave = pendingOrderSave.then(async () => {
+  try {
+    await submitItineraryOrder(desiredPlans)
+  } catch {
     try {
-      await itinerary.reorder({ days: order })
-      showToast('일정 순서를 저장했습니다')
+      await itinerary.fetchItinerary()
+      await submitItineraryOrder(desiredPlans)
     } catch {
       itineraryActionError.value = '일정 순서를 저장하지 못해 최신 상태로 되돌렸습니다.'
       undoStack.value = []
       redoStack.value = []
       await loadItinerary()
     }
-  })
-  await pendingOrderSave
+  }
 }
 
 /* 드래그앤드롭 초기화 */
@@ -1266,6 +1430,8 @@ const inviteError = ref('')
 async function openTripManagement() {
 	isInviteModalOpen.value = true
 	inviteError.value = ''
+	editDayCount.value = dayPlans.value.filter((d) => d.groupType === 'DAY').length || 1
+
 	if (inviteLink.value || !tripId) return
 	inviteLoading.value = true
 	try {
@@ -1295,12 +1461,118 @@ const isCustomEventModalOpen = ref(false)
 /* ── Trip settings ── */
 const editTitle = ref('')
 const editDestination = ref('')
+const editDayCount = ref(1)
+const editStartDate = ref('')
+const editEndDate = ref('')
 const tripSettingsLoading = ref(false)
 const tripSettingsError = ref('')
 watch(trip, (value) => {
 	editTitle.value = value.title
 	editDestination.value = value.destinationName
+	if (value.startDate) {
+		editStartDate.value = value.startDate.slice(0, 10)
+	} else {
+		const today = new Date()
+		editStartDate.value = today.toISOString().slice(0, 10)
+	}
+	if (value.endDate) {
+		editEndDate.value = value.endDate.slice(0, 10)
+	} else {
+		const today = new Date()
+		editEndDate.value = today.toISOString().slice(0, 10)
+	}
 }, { immediate: true })
+
+watch([editStartDate, editEndDate], ([start, end]) => {
+  if (start && end) {
+    const s = new Date(start)
+    const e = new Date(end)
+    const diffTime = e.getTime() - s.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+    if (diffDays > 0) {
+      editDayCount.value = diffDays
+    }
+  }
+})
+
+function parseDateInput(value: string) {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  return new Date(year, month - 1, day)
+}
+
+function formatDateForInput(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+async function syncScheduledDaysWithDateRange() {
+  const start = parseDateInput(editStartDate.value)
+  const end = parseDateInput(editEndDate.value)
+  if (!start && !end) return
+  if (!start || !end || end < start) {
+    throw new Error('INVALID_DATE_RANGE')
+  }
+
+  const targetCount = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
+  const scheduledDays = dayPlans.value
+    .filter((day) => day.groupType === 'DAY')
+    .sort((left, right) => left.day - right.day)
+
+  let unscheduledDay = itinerary.unscheduledDay.value
+  const extraDays = scheduledDays.slice(targetCount)
+  const extraItems = extraDays.flatMap((day) => day.items)
+  if (extraItems.length > 0 && !unscheduledDay) {
+    unscheduledDay = await itinerary.ensureUnscheduledDay()
+  }
+
+  if (unscheduledDay && extraItems.length > 0) {
+    let sortOrder = unscheduledDay.items.length
+    for (const item of extraItems) {
+      await itinerary.updateItem(item.id, {
+        itineraryDayId: unscheduledDay.id,
+        sortOrder,
+      })
+      sortOrder += 1
+    }
+  }
+
+  for (let index = 0; index < Math.min(targetCount, scheduledDays.length); index += 1) {
+    const day = scheduledDays[index]
+    await itinerary.updateDay(day.id, {
+      dayNumber: index + 1,
+      date: formatDateForInput(addDays(start, index)),
+      sortOrder: index + 1,
+    })
+  }
+
+  for (let index = scheduledDays.length; index < targetCount; index += 1) {
+    await itinerary.createDay({
+      groupType: 'DAY',
+      dayNumber: index + 1,
+      date: formatDateForInput(addDays(start, index)),
+      sortOrder: index + 1,
+    })
+  }
+
+  for (const day of extraDays.reverse()) {
+    await itinerary.deleteDay(day.id)
+  }
+
+  if (!itinerary.unscheduledDay.value) {
+    await itinerary.ensureUnscheduledDay()
+  }
+  await loadItinerary()
+}
 
 async function saveTripSettings() {
 	if (!editTitle.value.trim() || tripSettingsLoading.value) return
@@ -1311,10 +1583,17 @@ async function saveTripSettings() {
 			title: editTitle.value.trim(),
 			displayDestination: editDestination.value.trim(),
 		})
+
+		await syncScheduledDaysWithDateRange()
+
 		await loadTrip()
+		isInviteModalOpen.value = false
 		showToast('여행 정보를 저장했습니다')
-	} catch {
-		tripSettingsError.value = '여행 정보를 저장하지 못했습니다.'
+	} catch (e: any) {
+		console.error(e)
+		tripSettingsError.value = e?.message === 'INVALID_DATE_RANGE'
+			? '종료 날짜는 시작 날짜 이후로 선택해 주세요.'
+			: '여행 정보를 저장하지 못했습니다.'
 	} finally {
 		tripSettingsLoading.value = false
 	}
@@ -1433,7 +1712,8 @@ async function addPlaceToItinerary(place: Place) {
     itineraryActionError.value = '실제 장소 검색 결과만 일정에 추가할 수 있습니다.'
     return
   }
-  const plan = targetPlan(activeDay.value === 0 ? (dayPlans.value[0]?.day ?? 1) : activeDay.value)
+  const defaultDay = dayPlans.value.find((day) => day.groupType === 'DAY')?.day ?? dayPlans.value[0]?.day ?? 1
+  const plan = targetPlan(activeDay.value === 0 ? defaultDay : activeDay.value)
   if (!plan) {
     itineraryActionError.value = '일정을 추가할 일차를 먼저 만들어 주세요.'
     return
@@ -1501,13 +1781,13 @@ function textAvatarStyle(index: unknown) {
               <!-- Trip header card -->
               <div :class="['trip-header-card', sidebarTheme]" id="trip-header-card-container">
                 <div class="trip-info-badge-row">
+                  <p v-if="trip.destinationName" class="trip-card-dates" style="margin: 0;">
+                    <span class="material-symbols-rounded" style="font-size:13px;vertical-align:middle;">location_on</span>
+                    <span style="vertical-align:middle;">{{ trip.destinationName }}</span>
+                  </p>
                   <span class="trip-status-badge">{{ trip.statusLabel }}</span>
                 </div>
                 <h3 class="trip-card-title">{{ trip.title }}</h3>
-                <p v-if="trip.destinationName" class="trip-card-dates">
-                  <span class="material-symbols-rounded" style="font-size:13px;vertical-align:middle;">location_on</span>
-                  <span style="vertical-align:middle;">{{ trip.destinationName }}</span>
-                </p>
                 <div class="trip-card-divider"></div>
                 <div class="trip-stats-grid">
                   <div class="trip-stat-item">
@@ -1522,9 +1802,12 @@ function textAvatarStyle(index: unknown) {
                 <div class="trip-card-footer">
                   <div class="avatars-group">
                     <div class="avatars">
-                      <span v-for="m in (trip.members ?? []).slice(0, 5)" :key="m.id" class="avatar" :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}" :title="m.displayName ?? ''">
-                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName ?? ''" class="avatar-img" />
+                      <span v-for="m in (trip.members ?? []).slice(0, 5)" :key="m.id" class="avatar avatar-with-tooltip" :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}">
+                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" />
                         <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
+                        <div class="avatar-tooltip">
+                          <span>{{ m.role === 'OWNER' ? '방장' : '멤버' }}</span>
+                        </div>
                       </span>
                     </div>
                     <span class="members-count">{{ (trip.members ?? []).length }}명</span>
@@ -1557,15 +1840,6 @@ function textAvatarStyle(index: unknown) {
                 </button>
               </div>
 
-              <div class="itinerary-day-actions" aria-label="일차 관리">
-                <button class="icon-btn" type="button" title="일차 추가" aria-label="일차 추가" :disabled="itineraryActionsDisabled" @click="createNextDay">
-                  <span class="material-symbols-rounded" aria-hidden="true">calendar_add_on</span>
-                </button>
-                <button class="icon-btn" type="button" title="일차 미정 추가" aria-label="일차 미정 추가" :disabled="itineraryActionsDisabled" @click="createUnscheduledDay">
-                  <span class="material-symbols-rounded" aria-hidden="true">pending</span>
-                </button>
-              </div>
-              <p v-if="itineraryActionError" class="itinerary-action-error" role="alert">{{ itineraryActionError }}</p>
 
               <!-- Itinerary -->
               <div class="itinerary" data-sidebar-itinerary ref="itineraryRef">
@@ -1584,38 +1858,21 @@ function textAvatarStyle(index: unknown) {
                 <template v-else-if="activeDay === 0">
                   <template v-for="day in dayPlans" :key="day.day">
 					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day"
-						@pointerdown="onPointerDown" @dragover.prevent @drop.prevent="dropNativeStop(day.id)">
+						@pointerdown="onPointerDown">
                       <span class="day-pill">{{ dayPlanLabel(day) }}</span>
                       <span class="line"></span>
-                      <button
-                        v-if="day.items.length === 0"
-                        class="itinerary-delete-btn"
-                        type="button"
-                        :aria-label="`${dayPlanLabel(day)} 삭제`"
-                        :disabled="itinerary.mutating.value"
-                        @click.stop="removeDay(day)"
-                      >
-                        <span class="material-symbols-rounded" aria-hidden="true">delete</span>
-                      </button>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <template v-for="(item, idx) in day.items" :key="item.id">
                       <div :class="['stop', getDayColorClass(day.day), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id) }]"
-						:data-step-id="item.id" :data-place-id="item.placeExternalId" draggable="true"
+						:data-step-id="item.id" :data-place-id="item.placeExternalId"
 						@pointerdown="onPointerDown"
-						@dragstart="startNativeStopDrag($event, day.id, item.id)"
-						@dragend="finishNativeStopDrag"
-						@dragover.prevent
-						@drop.prevent="dropNativeStop(day.id, item.id)"
                         @click.stop="handleStopClick(item)">
                         <span class="stop-num">{{ idx + 1 }}</span>
-                        <div>
+                        <div class="stop-content">
                           <strong>{{ item.title }}</strong>
                           <span class="small muted">{{ item.time }}</span>
                         </div>
-                        <button class="itinerary-delete-btn" type="button" :aria-label="`${item.title} 삭제`" :disabled="itinerary.mutating.value" @click.stop="removeItineraryItem(item)">
-                          <span class="material-symbols-rounded" aria-hidden="true">delete</span>
-                        </button>
                         <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                       </div>
                       <!-- Route connector between linked adjacent stops -->
@@ -1624,7 +1881,9 @@ function textAvatarStyle(index: unknown) {
                         @click.stop="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
                         :title="'경로 연결 해제: ' + item.title + ' → ' + day.items[idx + 1].title">
                         <div class="route-connector-line"></div>
+                        <div class="route-connector-line"></div>
                         <span class="material-symbols-rounded route-unlink-icon">link_off</span>
+                        <div class="route-connector-line"></div>
                         <div class="route-connector-line"></div>
                       </div>
                     </template>
@@ -1633,37 +1892,20 @@ function textAvatarStyle(index: unknown) {
                 <!-- 특정 일차 -->
                 <template v-else-if="activePlan">
 				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay"
-					@pointerdown="onPointerDown" @dragover.prevent @drop.prevent="dropNativeStop(activePlan.id)">
+					@pointerdown="onPointerDown">
                     <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
                     <span class="line"></span>
-                    <button
-                      v-if="activePlan.items.length === 0"
-                      class="itinerary-delete-btn"
-                      type="button"
-                      :aria-label="`${dayPlanLabel(activePlan)} 삭제`"
-                      :disabled="itinerary.mutating.value"
-                      @click.stop="removeDay(activePlan)"
-                    >
-                      <span class="material-symbols-rounded" aria-hidden="true">delete</span>
-                    </button>
                   </div>
                   <template v-for="(item, idx) in activePlan.items" :key="item.id">
                     <div :class="['stop', getDayColorClass(activeDay), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id) }]"
-					:data-step-id="item.id" :data-place-id="item.placeExternalId" draggable="true"
+					:data-step-id="item.id" :data-place-id="item.placeExternalId"
 					@pointerdown="onPointerDown"
-					@dragstart="startNativeStopDrag($event, activePlan.id, item.id)"
-					@dragend="finishNativeStopDrag"
-					@dragover.prevent
-					@drop.prevent="dropNativeStop(activePlan.id, item.id)"
                       @click.stop="handleStopClick(item)">
                       <span class="stop-num">{{ idx + 1 }}</span>
-                      <div>
+                      <div class="stop-content">
                         <strong>{{ item.title }}</strong>
                         <span class="small muted">{{ item.time }}</span>
                       </div>
-                      <button class="itinerary-delete-btn" type="button" :aria-label="`${item.title} 삭제`" :disabled="itinerary.mutating.value" @click.stop="removeItineraryItem(item)">
-                        <span class="material-symbols-rounded" aria-hidden="true">delete</span>
-                      </button>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <!-- Route connector between linked adjacent stops -->
@@ -1672,7 +1914,9 @@ function textAvatarStyle(index: unknown) {
                       @click.stop="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       :title="'경로 연결 해제'">
                       <div class="route-connector-line"></div>
+                      <div class="route-connector-line"></div>
                       <span class="material-symbols-rounded route-unlink-icon">link_off</span>
+                      <div class="route-connector-line"></div>
                       <div class="route-connector-line"></div>
                     </div>
                   </template>
@@ -1681,6 +1925,13 @@ function textAvatarStyle(index: unknown) {
 
               <!-- Add stop: 원본처럼 버튼 클릭 시 바로 검색 패널 열기 -->
               <div class="add-stop-container">
+                <p v-if="itineraryActionError" class="itinerary-action-error" role="alert" style="text-align: center; margin-bottom: 8px;">{{ itineraryActionError }}</p>
+
+                <div class="trash-drop-zone" id="trash-drop-zone">
+                  <span class="material-symbols-rounded">delete</span>
+                  <span>여기로 끌어서 삭제</span>
+                </div>
+
                 <button class="add-stop-dashed" type="button" :disabled="dayPlans.length === 0 || itinerary.mutating.value" @click="openSearchPanel">
                   <span class="material-symbols-rounded">add_circle</span>
                   <span>일정 추가</span>
@@ -1828,17 +2079,21 @@ function textAvatarStyle(index: unknown) {
             <!-- ===== Toolbox ===== -->
             <div class="map-tools">
               <!-- Drawing tools -->
-              <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" title="커서" @click="activeTool = 'cursor'">
+              <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" @click="activeTool = 'cursor'">
                 <span class="material-symbols-rounded">arrow_selector_tool</span>
+                <span class="tool-tip">기본 커서</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" title="여행 경로 그리기 (경로 펜)" data-tool="route-pen" @click="activeTool = 'route-pen'">
+              <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" data-tool="route-pen" @click="activeTool = 'route-pen'">
                 <span class="material-symbols-rounded">route</span>
+                <span class="tool-tip">여행 경로 그리기 (경로 펜)</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" title="펜 (자유 그리기) — 굵기/색상 보기" data-tool="pen" @click="activeTool = 'pen'; drawingOn = true; isPenPopoverOpen = !isPenPopoverOpen">
+              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" @click="activeTool = 'pen'; drawingOn = true; isPenPopoverOpen = !isPenPopoverOpen">
                 <span class="material-symbols-rounded">edit</span>
+                <span class="tool-tip">펜 (자유 그리기)</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" title="지우개" data-tool="eraser" @click="activeTool = 'eraser'; drawingOn = true">
+              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" data-tool="eraser" @click="activeTool = 'eraser'; drawingOn = true">
                 <span class="material-symbols-rounded">ink_eraser</span>
+                <span class="tool-tip">지우개</span>
               </button>
 
               <span class="tool-divider" aria-hidden="true"></span>
@@ -1847,36 +2102,36 @@ function textAvatarStyle(index: unknown) {
               <button class="tool-btn" :class="routeState !== 'hidden' ? 'is-on' : 'is-off'" type="button"
                 id="route-state-toggle"
                 :data-route-state="routeState"
-                :title="routeState === 'route' ? '경로: 실제 경로 (꾬불꾬불) — 다음: 점선' : routeState === 'dashed' ? '경로: 점선만 표시 — 다음: 숨김' : '경로: 숨김 — 다음: 실제 경로'"
                 :aria-pressed="routeState !== 'hidden'"
                 @click="toggleRouteState">
                 <span class="material-symbols-rounded icon-dashed">linear_scale</span>
                 <span class="material-symbols-rounded icon-route">route</span>
                 <span class="material-symbols-rounded icon-hidden">visibility_off</span>
+                <span class="tool-tip">{{ routeState === 'route' ? '경로: 켬 (다음: 점선)' : routeState === 'dashed' ? '경로: 점선 (다음: 숨김)' : '경로: 숨김 (다음: 켬)' }}</span>
               </button>
               <button class="tool-btn" :class="cardState !== 'hidden' ? 'is-on' : 'is-off'" type="button"
                 id="card-state-toggle"
                 :data-card-state="cardState"
-                :title="cardState === 'full' ? '여행지 카드: 전체 보기 — 다음: 최소화(핀)' : cardState === 'min' ? '여행지 카드: 최소화 (핀만) — 다음: 숨김' : '여행지 카드: 숨김 — 다음: 전체 보기'"
                 :aria-pressed="cardState !== 'hidden'"
                 @click="toggleCardState">
                 <span class="material-symbols-rounded icon-full">view_sidebar</span>
                 <span class="material-symbols-rounded icon-min">push_pin</span>
                 <span class="material-symbols-rounded icon-hidden-card">block</span>
+                <span class="tool-tip">{{ cardState === 'full' ? '여행지 카드: 전체 보기 — 다음: 최소화(핀)' : cardState === 'min' ? '여행지 카드: 최소화 (핀만) — 다음: 숨김' : '여행지 카드: 숨김 — 다음: 전체 보기' }}</span>
               </button>
               <button :class="['tool-btn', nearbyOn ? 'is-on' : 'is-off']" type="button"
                 data-toggle="nearby"
-                title="주변 여행지 표시 켜기/끄기"
                 :aria-pressed="nearbyOn"
                 @click="nearbyOn = !nearbyOn">
                 <span class="material-symbols-rounded">explore</span>
+                <span class="tool-tip">주변 여행지 표시 켜기/끄기</span>
               </button>
               <button :class="['tool-btn', drawingOn ? 'is-on' : 'is-off']" type="button"
                 data-toggle="drawing"
-                title="지도 그림 표시 켜기/끄기"
                 :aria-pressed="drawingOn"
                 @click="drawingOn = !drawingOn">
                 <span class="material-symbols-rounded">brush</span>
+                <span class="tool-tip">지도 그림 표시 켜기/끄기</span>
               </button>
 
               <span class="tool-divider" aria-hidden="true"></span>
@@ -1884,17 +2139,17 @@ function textAvatarStyle(index: unknown) {
               <!-- Undo / Redo -->
               <button :class="['tool-btn', canUndo ? 'is-on' : 'is-off']" type="button"
                 data-action="undo"
-                title="실행 취소 (Ctrl+Z)"
                 :disabled="!canUndo || itinerary.mutating.value"
                 @click="undo">
                 <span class="material-symbols-rounded">undo</span>
+                <span class="tool-tip">실행 취소 (Ctrl+Z)</span>
               </button>
               <button :class="['tool-btn', canRedo ? 'is-on' : 'is-off']" type="button"
                 data-action="redo"
-                title="다시 실행 (Ctrl+Y)"
                 :disabled="!canRedo || itinerary.mutating.value"
                 @click="redo">
                 <span class="material-symbols-rounded">redo</span>
+                <span class="tool-tip">다시 실행 (Ctrl+Y)</span>
               </button>
             </div>
           </div>
@@ -2239,6 +2494,17 @@ function textAvatarStyle(index: unknown) {
                 <span class="form-label-text">대표 여행지</span>
                 <input class="field" type="text" id="edit-trip-destination" v-model="editDestination" placeholder="예: 부산">
               </label>
+              <label class="form-label">
+                <span class="form-label-text">여행 기간 설정</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="date" class="field" id="edit-trip-start-date" v-model="editStartDate" style="flex:1;">
+                  <span>-</span>
+                  <input type="date" class="field" id="edit-trip-end-date" v-model="editEndDate" :min="editStartDate" style="flex:1;">
+                </div>
+              </label>
+              <div style="text-align:center;font-size:14px;color:var(--violet);font-weight:600;margin-top:8px;">
+                총 {{ editDayCount }}일 여행
+              </div>
               <p v-if="tripSettingsError" class="text-sm" style="color:var(--rose);">{{ tripSettingsError }}</p>
               <button type="submit" class="btn primary" :disabled="tripSettingsLoading || !editTitle.trim()" style="width:100%;margin-top:16px;">{{ tripSettingsLoading ? '저장 중…' : '설정 저장하기' }}</button>
             </form>
@@ -2354,27 +2620,48 @@ function textAvatarStyle(index: unknown) {
   margin-bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  position: relative;
 }
 .route-page-section .day-scroll-btn {
+  position: static;
+  transform: none;
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.05);
-  color: var(--ink);
+  border: 1px solid rgba(124, 58, 237, 0.45);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--violet);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.2);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 5;
 }
 .route-page-section .day-scroll-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--violet);
+  border-color: var(--violet);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
+  transform: scale(1.1);
+}
+.route-page-section .day-scroll-btn.prev {
+  left: auto;
+}
+.route-page-section .day-scroll-btn.next {
+  right: auto;
+}
+.route-page-section .day-scroll-btn[disabled] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: scale(0.9);
 }
 .route-page-section .day-scroll-btn .material-symbols-rounded {
-  font-size: 18px;
+  font-size: 14px;
 }
 .route-page-section .day-tabs {
   flex: 1;
@@ -2384,9 +2671,9 @@ function textAvatarStyle(index: unknown) {
   -ms-overflow-style: none;
   scroll-behavior: smooth;
   gap: 2px;
-  padding: 3px;
+  padding: 2px;
   background: rgba(0, 0, 0, 0.05);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 .route-page-section .day-tabs::-webkit-scrollbar {
   display: none;
@@ -2395,9 +2682,9 @@ function textAvatarStyle(index: unknown) {
   flex: 0 0 auto;
   flex-direction: row;
   justify-content: center;
-  padding: 6px 12px;
-  min-height: 32px;
-  border-radius: 8px;
+  padding: 2px 8px;
+  min-height: 22px;
+  border-radius: 6px;
   gap: 0;
   white-space: nowrap;
 }
@@ -2405,7 +2692,7 @@ function textAvatarStyle(index: unknown) {
   display: none;
 }
 .route-page-section .day-tab .day-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 .route-page-section .day-tab:hover {
@@ -2449,13 +2736,105 @@ function textAvatarStyle(index: unknown) {
   width: 100%;
   box-sizing: border-box;
 }
+.route-page-section .trip-info-badge-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.avatar-with-tooltip {
+  position: relative;
+}
+.avatar-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.95);
+  background: var(--ink);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.15s ease;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.avatar-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px;
+  border-style: solid;
+  border-color: var(--ink) transparent transparent transparent;
+}
+.avatar-with-tooltip:hover .avatar-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) scale(1);
+}
+
+/* Day tabs modern pill design */
+.route-page-section .day-tabs {
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 4px;
+}
+.route-page-section .day-tab {
+  border-radius: 999px;
+  min-height: 48px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.route-page-section .day-tab:hover:not(.active) {
+  background: rgba(0, 0, 0, 0.04);
+}
+.route-page-section .day-tab.active {
+  background: var(--violet);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+}
+.route-page-section .day-tab.active .day-title,
+.route-page-section .day-tab.active .day-date {
+  color: #fff;
+}
+
 .route-page-section .itinerary {
   width: 100%;
   align-items: stretch;
 }
 .route-page-section .stop {
   width: calc(100% - 12px);
-  grid-template-columns: 24px minmax(0, 1fr) 28px 24px;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+}
+.route-page-section .stop-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: hidden;
+}
+.route-page-section .stop-content strong {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.route-page-section .stop-content .small.muted {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
 }
 .route-page-section .day-separator {
   width: 100%;
@@ -2606,11 +2985,12 @@ function textAvatarStyle(index: unknown) {
 .sidebar-search-panel {
   position:absolute;top:0;left:0;right:0;bottom:0;
   background:rgba(250,251,255,.98);
-  z-index:20;
+  z-index:150;
   transform:translateX(-100%);
   transition:transform .3s cubic-bezier(.4,0,.2,1);
   display:flex;flex-direction:column;
   pointer-events:none;
+  overflow:visible;
 }
 .sidebar-search-panel.show { transform:translateX(0);pointer-events:auto; }
 
@@ -2623,7 +3003,7 @@ function textAvatarStyle(index: unknown) {
   margin-left:auto;
 }
 
-.search-panel-body { padding:16px;overflow-y:auto;flex:1; }
+.search-panel-body { padding:16px;overflow:visible;flex:1;min-height:0; }
 
 .search-input-wrapper { position:relative;margin-bottom:16px; }
 .search-input-wrapper input {
@@ -2747,8 +3127,9 @@ function textAvatarStyle(index: unknown) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: -2px 12px 2px 12px;
-  padding: 0;
+  gap: 2px;
+  margin: -4px 12px 0 12px;
+  padding: 4px 0;
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.2s;
@@ -2767,9 +3148,9 @@ function textAvatarStyle(index: unknown) {
 }
 .route-connector-line {
   width: 2px;
-  height: 8px;
+  height: 2px;
   background: var(--violet);
-  border-radius: 1px;
+  border-radius: 2px;
   transition: background 0.2s;
 }
 .route-unlink-icon {
@@ -2781,6 +3162,80 @@ function textAvatarStyle(index: unknown) {
 }
 .route-connector:hover .route-unlink-icon {
   opacity: 1;
+}
+
+/* Prevent native drag and selection during custom pointer drag */
+.route-page-section .stop,
+.route-page-section .day-separator {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Tooltip CSS */
+.map-tools .tool-btn {
+  position: relative;
+}
+.map-tools .tool-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(4px);
+  background: var(--ink);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 200;
+}
+.map-tools .tool-tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px;
+  border-style: solid;
+  border-color: var(--ink) transparent transparent transparent;
+}
+.map-tools .tool-btn:hover .tool-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Trash Drop Zone CSS */
+.trash-drop-zone {
+  display: none;
+  border: 2px dashed var(--rose);
+  background: rgba(244, 63, 94, 0.05);
+  color: var(--rose);
+  padding: 0;
+  height: 48px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  transition: all 0.2s;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.trash-drop-zone.is-drag-over-trash {
+  background: rgba(244, 63, 94, 0.15);
+  border-style: solid;
+}
+.route-page-section .itinerary.dragging-stop ~ .add-stop-container > .add-stop-dashed,
+.route-page-section .itinerary.dragging-separator ~ .add-stop-container > .add-stop-dashed {
+  display: none;
+}
+.route-page-section .itinerary.dragging-stop ~ .add-stop-container > .trash-drop-zone,
+.route-page-section .itinerary.dragging-separator ~ .add-stop-container > .trash-drop-zone {
+  display: flex;
 }
 </style>
 
