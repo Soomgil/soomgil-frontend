@@ -7,7 +7,7 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import { useSwipeFeed } from '@/composables/useSwipeFeed'
 import type { SwipeAction } from '@/types/swipe'
-import type { ParkingType } from '@/types/place'
+import type { AccessibilityFlag, ParkingType } from '@/types/place'
 
 const router = useRouter()
 
@@ -20,6 +20,7 @@ const {
   error,
   finished: isFinished,
   load,
+  ensureLoaded,
   persistReaction,
   advance,
 } = useSwipeFeed()
@@ -31,19 +32,39 @@ const currentDescription = computed(() => (
   || currentPlace.value?.summary?.trim()
   || ''
 ))
+const displayedDescription = computed(() => (
+  currentDescription.value || '상세 설명이 제공되지 않았습니다.'
+))
 const descriptionExpanded = ref(false)
 const canExpandDescription = computed(() => currentDescription.value.length > 180)
 const currentAccessibility = computed(() => currentPlace.value?.accessibility)
-const hasAccessibilityInfo = computed(() => {
-  const accessibility = currentAccessibility.value
-  return Boolean(accessibility && (
-    accessibility.openingHours
-    || accessibility.closedDays
-    || accessibility.parkingType !== 'UNKNOWN'
-    || accessibility.flags.length > 0
-  ))
-})
 const stageRef = ref<HTMLElement | null>(null)
+
+type AccessibilityState = 'supported' | 'unavailable' | 'unknown'
+
+const accessibilityItems: ReadonlyArray<{
+  flag: AccessibilityFlag
+  icon: string
+  label: string
+}> = [
+  { flag: 'WHEELCHAIR', icon: 'accessible', label: '휠체어' },
+  { flag: 'DISABLED_TOILET', icon: 'accessible_forward', label: '장애인 화장실' },
+  { flag: 'STROLLER', icon: 'stroller', label: '유모차' },
+  { flag: 'PET', icon: 'pets', label: '반려동물' },
+  { flag: 'ELDERLY', icon: 'elderly', label: '노약자 편의' },
+]
+
+function accessibilityState(flag: AccessibilityFlag): AccessibilityState {
+  if (currentAccessibility.value?.flags.includes(flag)) return 'supported'
+  if (currentAccessibility.value?.unavailableFlags.includes(flag)) return 'unavailable'
+  return 'unknown'
+}
+
+function accessibilityStatusLabel(state: AccessibilityState) {
+  if (state === 'supported') return '가능'
+  if (state === 'unavailable') return '불가'
+  return '-'
+}
 
 function parkingTypeLabel(type?: ParkingType) {
   return ({
@@ -67,10 +88,12 @@ const overlayOpacity = ref(0)
 const cardTransform = ref('')
 const swipeClass = ref('')
 const activePhotoIdx = ref(0)
+const galleryPhotos = computed(() => {
+  const photos = [currentPlace.value?.thumbnailUrl, ...(currentPlace.value?.photos ?? [])]
+  return [...new Set(photos.filter((photo): photo is string => Boolean(photo?.trim())))]
+})
 const activePhoto = computed(() => {
-  if (!currentPlace.value) return null
-  if (activePhotoIdx.value === 0) return currentPlace.value.thumbnailUrl
-  return currentPlace.value.photos?.[activePhotoIdx.value] ?? null
+  return galleryPhotos.value[activePhotoIdx.value] ?? null
 })
 
 function resetCard() {
@@ -248,7 +271,7 @@ function onPointerCancel() {
 }
 
 onMounted(() => {
-  void load()
+  void ensureLoaded()
 })
 </script>
 
@@ -388,8 +411,8 @@ onMounted(() => {
                   </button>
                   <div class="photo-strip" data-place-photos>
                     <button
-                      v-for="(photo, idx) in (currentPlace.photos ?? [])"
-                      :key="idx"
+                      v-for="(photo, idx) in galleryPhotos"
+                      :key="photo"
                       class="photo-thumb"
                       :class="{ active: activePhotoIdx === idx }"
                       type="button"
@@ -409,7 +432,7 @@ onMounted(() => {
             <aside v-if="currentPlace" class="panel place-detail-panel">
               <h3>{{ currentPlace.placeName }}</h3>
 
-              <section v-if="currentDescription" class="place-description-card" aria-label="장소 상세 설명">
+              <section class="place-description-card" :class="{ 'is-empty': !currentDescription }" aria-label="장소 상세 설명">
                 <div class="place-description-heading">
                   <span class="material-symbols-rounded">auto_stories</span>
                   <strong>장소 이야기</strong>
@@ -417,7 +440,7 @@ onMounted(() => {
                 <p
                   class="place-description-text"
                   :class="{ 'is-expanded': descriptionExpanded }"
-                >{{ currentDescription }}</p>
+                >{{ displayedDescription }}</p>
                 <button
                   v-if="canExpandDescription"
                   type="button"
@@ -469,35 +492,34 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div v-if="hasAccessibilityInfo" class="detail-info-card">
+              <div class="detail-info-card">
                 <p class="detail-section-title">이용 안내</p>
-                <div v-if="currentAccessibility?.openingHours" class="detail-info-row">
+                <div class="detail-info-row" data-guide="opening-hours">
                   <span class="detail-info-label"><span class="material-symbols-rounded">schedule</span>이용시간</span>
-                  <strong class="detail-info-value">{{ currentAccessibility.openingHours }}</strong>
+                  <strong class="detail-info-value">{{ currentAccessibility?.openingHours || '-' }}</strong>
                 </div>
-                <div v-if="currentAccessibility?.closedDays" class="detail-info-row">
+                <div class="detail-info-row" data-guide="closed-days">
                   <span class="detail-info-label"><span class="material-symbols-rounded">event_busy</span>쉬는날</span>
-                  <strong class="detail-info-value">{{ currentAccessibility.closedDays }}</strong>
+                  <strong class="detail-info-value">{{ currentAccessibility?.closedDays || '-' }}</strong>
                 </div>
-                <div v-if="currentAccessibility && currentAccessibility.parkingType !== 'UNKNOWN'" class="detail-info-row">
+                <div class="detail-info-row" data-guide="parking">
                   <span class="detail-info-label"><span class="material-symbols-rounded">local_parking</span>주차시설</span>
-                  <strong class="detail-info-value">{{ parkingTypeLabel(currentAccessibility.parkingType) }}</strong>
+                  <strong
+                    class="detail-info-value"
+                    :class="{ 'is-unavailable': currentAccessibility?.parkingType === 'NONE' }"
+                  >{{ currentAccessibility?.parkingType === 'UNKNOWN' || !currentAccessibility ? '-' : parkingTypeLabel(currentAccessibility.parkingType) }}</strong>
                 </div>
-                <div v-if="currentAccessibility?.flags.length" class="detail-accessibility-row">
-                  <span v-if="currentAccessibility.flags.includes('WHEELCHAIR')" class="accessibility-chip">
-                    <span class="material-symbols-rounded">accessible</span>휠체어
-                  </span>
-                  <span v-if="currentAccessibility.flags.includes('PET')" class="accessibility-chip">
-                    <span class="material-symbols-rounded">pets</span>반려동물
-                  </span>
-                  <span v-if="currentAccessibility.flags.includes('STROLLER')" class="accessibility-chip">
-                    <span class="material-symbols-rounded">stroller</span>유모차
-                  </span>
-                  <span v-if="currentAccessibility.flags.includes('DISABLED_TOILET')" class="accessibility-chip">
-                    <span class="material-symbols-rounded">accessible_forward</span>장애인 화장실
-                  </span>
-                  <span v-if="currentAccessibility.flags.includes('ELDERLY')" class="accessibility-chip">
-                    <span class="material-symbols-rounded">elderly</span>노약자 편의
+                <div class="detail-accessibility-row" aria-label="편의시설 지원 상태">
+                  <span
+                    v-for="item in accessibilityItems"
+                    :key="item.flag"
+                    class="accessibility-status"
+                    :class="`is-${accessibilityState(item.flag)}`"
+                    :data-accessibility="item.flag"
+                  >
+                    <span class="material-symbols-rounded">{{ item.icon }}</span>
+                    <span>{{ item.label }}</span>
+                    <strong>{{ accessibilityStatusLabel(accessibilityState(item.flag)) }}</strong>
                   </span>
                 </div>
               </div>
@@ -547,7 +569,7 @@ onMounted(() => {
   font-size: 24px !important;
   font-weight: 850 !important;
   color: var(--ink);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   margin-bottom: 10px !important;
 }
 .place-detail-panel p.muted {
@@ -567,6 +589,10 @@ onMounted(() => {
     linear-gradient(145deg, rgba(239, 246, 255, 0.82), rgba(255, 255, 255, 0.94));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
+.place-description-card.is-empty {
+  border-style: dashed;
+  background: #f8fafc;
+}
 .place-description-heading {
   display: flex;
   align-items: center;
@@ -574,7 +600,7 @@ onMounted(() => {
   margin-bottom: 10px;
   color: var(--violet);
   font-size: 13px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .place-description-heading .material-symbols-rounded {
   font-size: 18px;
@@ -586,7 +612,7 @@ onMounted(() => {
   color: #465168;
   font-size: 14px;
   line-height: 1.75;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   white-space: pre-line;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 5;
@@ -757,32 +783,49 @@ onMounted(() => {
   max-width: 60%;
   word-break: keep-all;
 }
+.detail-info-value.is-unavailable {
+  color: #e83e68;
+}
 .detail-accessibility-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-.accessibility-chip {
+.accessibility-status {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  min-height: 36px;
   font-size: 11.5px;
   font-weight: 800;
-  padding: 5px 10px;
-  border-radius: 10px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  color: var(--muted);
+}
+.accessibility-status strong {
+  margin-left: auto;
+  font-size: 11px;
+}
+.accessibility-status.is-supported {
   background: rgba(76, 175, 80, 0.06);
   color: #2e7d32;
-  border: 1px solid rgba(76, 175, 80, 0.12);
-  transition: all 0.2s;
+  border-color: rgba(76, 175, 80, 0.12);
 }
-.accessibility-chip:hover {
-  background: rgba(76, 175, 80, 0.1);
-  transform: scale(1.02);
+.accessibility-status.is-unavailable {
+  background: rgba(255, 92, 141, 0.08);
+  color: #d93667;
+  border-color: rgba(255, 92, 141, 0.2);
 }
-.accessibility-chip .material-symbols-rounded {
+.accessibility-status.is-unknown {
+  background: #f8fafc;
+  color: #7b879b;
+}
+.accessibility-status .material-symbols-rounded {
   font-size: 15px;
 }
 .liked-by-avatar-wrapper {

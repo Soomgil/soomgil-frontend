@@ -1,8 +1,9 @@
 import type { Router } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
+import { useSwipeStore } from '@/stores/swipe.store'
 
 export function applyGuards(router: Router) {
-  router.beforeEach((to, _from, next) => {
+  router.beforeEach(async (to, _from, next) => {
     const auth = useAuthStore()
 
     if (to.meta.requiresAuth && !auth.isAuthenticated) {
@@ -13,6 +14,10 @@ export function applyGuards(router: Router) {
     if (to.meta.guestOnly && auth.isAuthenticated) {
       next({ name: 'Home' })
       return
+    }
+
+    if (to.name === 'Swipe' && auth.isAuthenticated) {
+      await useSwipeStore().warm()
     }
 
     next()

@@ -70,6 +70,7 @@ const stops: ItineraryMapStop[] = [
       closedDays: null,
       parkingType: 'UNKNOWN',
       flags: ['WHEELCHAIR', 'PET'],
+      unavailableFlags: [],
     },
   },
   { id: 'item-2', placeId: 'place-2', title: '둘째 장소', dayIndex: 1, index: 2, lat: 36.36, lng: 127.39 },
