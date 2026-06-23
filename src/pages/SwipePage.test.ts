@@ -25,6 +25,13 @@ const feedItem = {
     thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
     category: 'ATTRACTION',
     sourceStatus: 'AVAILABLE',
+    description: '장수역의 역사와 지역 이야기를 전시로 만날 수 있는 공간입니다. '.repeat(8),
+    accessibility: {
+      openingHours: '09:00~18:00',
+      closedDays: null,
+      parkingType: 'FREE',
+      flags: ['WHEELCHAIR', 'STROLLER'],
+    },
   },
   myReaction: null,
   likedByFollowees: [],
@@ -47,8 +54,23 @@ describe('SwipePage', () => {
 
     await flushPromises()
     expect(wrapper.text()).toContain('해운대해수욕장')
+    expect(wrapper.text()).toContain('09:00~18:00')
+    expect(wrapper.text()).toContain('무료')
+    expect(wrapper.text()).toContain('휠체어')
+    expect(wrapper.text()).toContain('유모차')
+    expect(wrapper.text()).toContain('장소 이야기')
+    expect(wrapper.find('button[aria-label="LIKE"]').exists()).toBe(false)
 
-    await wrapper.get('button[aria-label="LIKE"]').trigger('click')
+    const descriptionToggle = wrapper.get('.place-description-toggle')
+    expect(descriptionToggle.attributes('aria-expanded')).toBe('false')
+    await descriptionToggle.trigger('click')
+    expect(descriptionToggle.attributes('aria-expanded')).toBe('true')
+    expect(descriptionToggle.text()).toContain('접기')
+
+    const swipeCard = wrapper.get('.swipe-card')
+    swipeCard.element.dispatchEvent(new MouseEvent('pointerdown', { clientX: 0, clientY: 0, bubbles: true }))
+    swipeCard.element.dispatchEvent(new MouseEvent('pointermove', { clientX: 120, clientY: 0, bubbles: true }))
+    swipeCard.element.dispatchEvent(new MouseEvent('pointerup', { clientX: 120, clientY: 0, bubbles: true }))
     await flushPromises()
     expect(react).toHaveBeenCalledWith('KTO', '126508', 'LIKE')
 

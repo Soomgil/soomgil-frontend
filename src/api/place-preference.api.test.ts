@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { get, put, del } = vi.hoisted(() => ({
+const { get, post, put, del } = vi.hoisted(() => ({
   get: vi.fn(),
+  post: vi.fn(),
   put: vi.fn(),
   del: vi.fn(),
 }))
 
 vi.mock('@/api/http', () => ({
-  default: { get, put, delete: del },
+  default: { get, post, put, delete: del },
 }))
 
 import { placeApi } from '@/api/place.api'
@@ -28,6 +29,7 @@ const place = {
 describe('place and preference APIs', () => {
   beforeEach(() => {
     get.mockReset()
+    post.mockReset()
     put.mockReset()
     del.mockReset()
   })
@@ -48,6 +50,12 @@ describe('place and preference APIs', () => {
       description: '넓은 백사장이 있는 해수욕장',
       photos: ['https://cdn.example.com/haeundae.jpg', 'https://cdn.example.com/haeundae-2.jpg'],
       tags: ['바다·해안', '산책'],
+      accessibility: {
+        openingHours: '09:00~18:00',
+        closedDays: null,
+        parkingType: 'FREE',
+        flags: ['WHEELCHAIR', 'STROLLER'],
+      },
     }
     get.mockResolvedValue({ data: { items: [{ place: swipePlace, myReaction: null, likedByFollowees: [] }], nextSeed: 'next' } })
     put.mockResolvedValue({ data: { place: { provider: 'KTO', externalPlaceId: '126508' }, reaction: 'SUPER_LIKE', savedPlaceEligible: true, updatedAt: '2026-06-21T00:00:00Z' } })
@@ -65,7 +73,42 @@ describe('place and preference APIs', () => {
     expect(feed.items[0].place.description).toBe('넓은 백사장이 있는 해수욕장')
     expect(feed.items[0].place.photos).toHaveLength(2)
     expect(feed.items[0].place.tags).toEqual(['바다·해안', '산책'])
+    expect(feed.items[0].place.accessibility).toEqual({
+      openingHours: '09:00~18:00',
+      closedDays: null,
+      parkingType: 'FREE',
+      flags: ['WHEELCHAIR', 'STROLLER'],
+    })
     expect(reaction.savedPlaceEligible).toBe(true)
+  })
+
+  it('loads and maps accessibility for route places in one batch', async () => {
+    post.mockResolvedValue({
+      data: {
+        map: {
+          'KTO:126508': {
+            openingHours: null,
+            closedDays: '매주 월요일',
+            parkingType: 'PAID',
+            flags: ['PET'],
+          },
+        },
+      },
+    })
+
+    const result = await placeApi.getAccessibilityBatch([
+      { provider: 'KTO', externalPlaceId: '126508' },
+    ])
+
+    expect(post).toHaveBeenCalledWith('/places/accessibility/batch', {
+      items: [{ provider: 'KTO', externalPlaceId: '126508' }],
+    })
+    expect(result['KTO:126508']).toEqual({
+      openingHours: null,
+      closedDays: '매주 월요일',
+      parkingType: 'PAID',
+      flags: ['PET'],
+    })
   })
 
   it('loads trip recommendations and toggles saved places', async () => {

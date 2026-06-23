@@ -87,7 +87,7 @@ describe('커뮤니티 API 화면 연동', () => {
   it('CommunityPage에서 여행기 상세와 댓글을 API로 조회한다', async () => {
     const wrapper = mount(CommunityPage, { global: { stubs } })
     await flushPromises()
-    await wrapper.get('.story-list-card').trigger('click')
+    await wrapper.get('.story-tile').trigger('click')
     await flushPromises()
 
     expect(mocks.communityApi.getPost).toHaveBeenCalledWith('post-1')
@@ -123,6 +123,6 @@ describe('커뮤니티 API 화면 연동', () => {
       sourceTripId: 'trip-1', baseVersion: 7, title: '서울의 하루',
       mediaFileIds: ['media-1'], coverMediaFileId: 'media-1', hashtags: ['서울', '골목'],
     }))
-    expect(mocks.push).toHaveBeenCalledWith('/community/stories')
+    expect(mocks.push).toHaveBeenCalledWith('/community')
   })
 })

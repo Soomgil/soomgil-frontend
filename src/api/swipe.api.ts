@@ -1,6 +1,7 @@
 import http from './http'
 import { mapPlace } from './place.api'
 import type { PageMeta, PagedItems } from '@/types/api'
+import type { PlaceAccessibilityDto } from './place.api'
 import type { PlaceProvider, PlaceRecommendation, SavedPlace, TagPreparationStatus, UserSummary } from '@/types/place'
 import type { RecommendationTab, SwipeAction, SwipeFeed, SwipeReactionResult, SwipeTagStatus } from '@/types/swipe'
 
@@ -18,6 +19,7 @@ interface PlaceSummaryDto {
   photos?: string[] | null
   tags?: string[] | null
   tagStatus?: TagPreparationStatus | null
+  accessibility?: PlaceAccessibilityDto | null
 }
 
 interface SwipeFeedDto {

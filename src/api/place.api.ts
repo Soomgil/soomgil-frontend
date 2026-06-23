@@ -1,6 +1,21 @@
 import http from './http'
 import type { PagedItems, PageMeta } from '@/types/api'
-import type { Place, PlaceProvider, PlaceSourceStatus, TagPreparationStatus } from '@/types/place'
+import type {
+  AccessibilityFlag,
+  ParkingType,
+  Place,
+  PlaceAccessibility,
+  PlaceProvider,
+  PlaceSourceStatus,
+  TagPreparationStatus,
+} from '@/types/place'
+
+export interface PlaceAccessibilityDto {
+  openingHours?: string | null
+  closedDays?: string | null
+  parkingType?: ParkingType | null
+  flags?: AccessibilityFlag[] | null
+}
 
 interface PlaceSummaryDto {
   provider: PlaceProvider
@@ -16,6 +31,7 @@ interface PlaceSummaryDto {
   photos?: string[] | null
   tags?: string[] | null
   tagStatus?: TagPreparationStatus | null
+  accessibility?: PlaceAccessibilityDto | null
 }
 
 interface PlaceDetailDto extends PlaceSummaryDto {
@@ -39,6 +55,22 @@ export interface PlaceSearchParams {
   size?: number
 }
 
+export interface PlaceAccessibilityBatchItem {
+  provider: PlaceProvider
+  externalPlaceId: string
+  contentTypeId?: string
+}
+
+export function mapAccessibility(dto?: PlaceAccessibilityDto | null): PlaceAccessibility | undefined {
+  if (!dto) return undefined
+  return {
+    openingHours: dto.openingHours ?? null,
+    closedDays: dto.closedDays ?? null,
+    parkingType: dto.parkingType ?? 'UNKNOWN',
+    flags: dto.flags ?? [],
+  }
+}
+
 export function mapPlace(dto: PlaceSummaryDto | PlaceDetailDto): Place {
   const detail = 'phone' in dto ? dto : null
   return {
@@ -57,6 +89,7 @@ export function mapPlace(dto: PlaceSummaryDto | PlaceDetailDto): Place {
     tags: dto.tags ?? undefined,
     tagStatus: dto.tagStatus ?? undefined,
     contact: detail?.phone ?? undefined,
+    accessibility: mapAccessibility(dto.accessibility),
   }
 }
 
@@ -75,5 +108,21 @@ export const placeApi = {
     const response = await http.get<PlaceSummaryDto[] | PagedPlaceDto>('/places/popular', { params: { limit } })
     const data = Array.isArray(response.data) ? response.data : response.data.items
     return data.map(mapPlace)
+  },
+
+  async getAccessibilityBatch(
+    items: PlaceAccessibilityBatchItem[],
+  ): Promise<Record<string, PlaceAccessibility>> {
+    if (items.length === 0) return {}
+    const response = await http.post<{ map: Record<string, PlaceAccessibilityDto> }>(
+      '/places/accessibility/batch',
+      { items },
+    )
+    return Object.fromEntries(
+      Object.entries(response.data.map).flatMap(([key, value]) => {
+        const accessibility = mapAccessibility(value)
+        return accessibility ? [[key, accessibility]] : []
+      }),
+    )
   },
 }

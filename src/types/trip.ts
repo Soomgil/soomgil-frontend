@@ -23,6 +23,8 @@ export interface TripSummary {
   myRole: TripAccessRole
   itineraryVersion: number
   createdAt: string
+  startDate?: string | null
+  endDate?: string | null
 }
 
 export interface TripDetail extends TripSummary {

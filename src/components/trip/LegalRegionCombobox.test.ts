@@ -42,7 +42,7 @@ describe('LegalRegionCombobox', () => {
       q: '부산',
       isActive: true,
       page: 0,
-      size: 10,
+      size: 20,
     }, expect.any(AbortSignal))
     expect(signal?.aborted).toBe(false)
 

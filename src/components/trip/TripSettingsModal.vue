@@ -145,6 +145,7 @@ onUnmounted(() => {
               보관됨
             </button>
           </div>
+          <p class="status-hint">여행 종료일이 지나면 자동으로 '보관됨'으로 전환돼요. 직접 상태를 바꿀 수도 있어요.</p>
         </fieldset>
 
         <p v-if="error" class="settings-error" aria-live="polite">{{ error }}</p>
@@ -197,7 +198,7 @@ onUnmounted(() => {
 
 .settings-modal {
   background: #fff;
-  border-radius: 8px;
+  border-radius: 24px;
   box-shadow: 0 24px 64px rgb(0 0 0 / 18%);
   max-height: min(760px, calc(100vh - 40px));
   overflow: auto;
@@ -261,6 +262,13 @@ onUnmounted(() => {
   background: #fff;
   box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
   color: #111827;
+}
+
+.status-hint {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0 0;
 }
 
 .settings-actions,
@@ -330,7 +338,7 @@ onUnmounted(() => {
   }
 
   .settings-modal {
-    border-radius: 8px 8px 0 0;
+    border-radius: 24px 24px 0 0;
     max-height: 92vh;
   }
 

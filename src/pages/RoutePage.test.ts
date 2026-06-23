@@ -33,12 +33,17 @@ const connectedApis = vi.hoisted(() => ({
 		createInvite: vi.fn(),
 		updateTrip: vi.fn(),
 	},
+  place: {
+    getPlace: vi.fn(),
+    getAccessibilityBatch: vi.fn(),
+  },
 }))
 
 vi.mock('@/api/ai.api', () => ({ aiApi: connectedApis.ai }))
 vi.mock('@/api/chat.api', () => ({ chatApi: connectedApis.chat }))
 vi.mock('@/api/planning.api', () => ({ planningApi: connectedApis.planning }))
 vi.mock('@/api/trip.api', () => ({ tripApi: connectedApis.trip }))
+vi.mock('@/api/place.api', () => ({ placeApi: connectedApis.place }))
 
 vi.mock('@/components/place/PlaceDiscoveryPanel.vue', () => ({
   default: {
@@ -141,6 +146,7 @@ describe('RoutePage itinerary integration', () => {
     })
     connectedApis.planning.getNote.mockRejectedValue({ response: { status: 404 } })
     connectedApis.planning.getChecklists.mockResolvedValue([])
+		connectedApis.place.getAccessibilityBatch.mockResolvedValue({})
 		connectedApis.trip.getInvites.mockResolvedValue([])
 		connectedApis.trip.createInvite.mockResolvedValue({
 			id: 'invite-1', tripId: 'trip-1', inviteCode: 'CODE', inviteUrl: 'https://soomgil.test/invite/CODE',
@@ -406,6 +412,51 @@ describe('RoutePage itinerary integration', () => {
       itemType: 'CUSTOM_PLACE',
       placeName: '점심 식사',
     })
+  })
+
+  it('KTO 일정 장소의 접근성을 batch 조회해 지도 마커에 전달한다', async () => {
+    holder.state.fetchItinerary.mockImplementationOnce(async () => {
+      holder.state.days.value = [{
+        id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+        date: '2026-07-01', title: null, sortOrder: 0,
+        items: [{
+          id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+          itemType: 'PLACE', place: { provider: 'KTO', externalPlaceId: '126508' },
+          placeName: '해운대해수욕장', address: '부산 해운대구',
+          lat: 35.1587, lng: 129.1604, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+        }],
+      }]
+    })
+    connectedApis.place.getAccessibilityBatch.mockResolvedValueOnce({
+      'KTO:126508': {
+        openingHours: '09:00~18:00',
+        closedDays: null,
+        parkingType: 'FREE',
+        flags: ['WHEELCHAIR'],
+      },
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(connectedApis.place.getAccessibilityBatch).toHaveBeenCalledWith([
+      { provider: 'KTO', externalPlaceId: '126508' },
+    ])
+    expect(wrapper.getComponent(MapboxItineraryMap).props('stops')).toEqual([
+      expect.objectContaining({
+        placeId: '126508',
+        accessibility: expect.objectContaining({ flags: ['WHEELCHAIR'] }),
+      }),
+    ])
   })
 
   it('장소 탐색 결과를 실제 장소 참조로 일정에 추가한다', async () => {

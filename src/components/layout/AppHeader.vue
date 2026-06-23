@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { notificationApi } from '@/api/notification.api'
+import { tripApi } from '@/api/trip.api'
+import { itineraryApi } from '@/api/itinerary.api'
 import type { PageMeta } from '@/types/api'
 import type { Notification } from '@/types/notification'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
@@ -54,16 +56,71 @@ const hasMoreNotifications = computed(() => {
   return page ? page.page + 1 < page.totalPages : false
 })
 
+/* ── Briefing ── */
+interface BriefingItem {
+  title: string
+  description: string
+}
+interface BriefingTrip {
+  id: string
+  title: string
+  destination: string
+}
+const briefingTrip = ref<BriefingTrip | null>(null)
+const briefingItems = ref<BriefingItem[]>([])
+const briefingLoading = ref(false)
+const briefingError = ref('')
+const briefingLoaded = ref(false)
+
 function closeAllDropdowns() {
   showBriefing.value = false
   showNotif.value = false
   showProfile.value = false
 }
 
+async function loadBriefing() {
+  briefingLoading.value = true
+  briefingError.value = ''
+  try {
+    const trip = await tripApi.getNearestTrip()
+    briefingTrip.value = {
+      id: trip.id,
+      title: trip.title,
+      destination: trip.displayDestination,
+    }
+    try {
+      const itinerary = await itineraryApi.getItinerary(trip.id)
+      const today = new Date().toISOString().slice(0, 10)
+      const todayDay =
+        itinerary.days.find((day) => day.date === today) ??
+        itinerary.days.find((day) => day.dayNumber === 1) ??
+        itinerary.days.find((day) => (day.items ?? []).length > 0) ??
+        null
+      briefingItems.value = (todayDay?.items ?? []).slice(0, 3).map((item) => ({
+        title: item.placeName,
+        description: item.address ?? '',
+      }))
+    } catch {
+      briefingItems.value = []
+    }
+    briefingLoaded.value = true
+  } catch {
+    briefingTrip.value = null
+    briefingItems.value = []
+    briefingError.value = '예정된 일정을 불러오지 못했어요.'
+    briefingLoaded.value = true
+  } finally {
+    briefingLoading.value = false
+  }
+}
+
 function toggleBriefing() {
   const next = !showBriefing.value
   closeAllDropdowns()
   showBriefing.value = next
+  if (next && !briefingLoaded.value && !briefingLoading.value) {
+    void loadBriefing()
+  }
 }
 
 async function toggleNotif() {
@@ -104,8 +161,10 @@ async function openNotification(notification: Notification) {
   const destination = notification.payload?.route
     || (notification.payload?.inviteCode ? `/trip-invites/${notification.payload.inviteCode}` : null)
     || (notification.tripId ? `/trips/${notification.tripId}/route` : null)
-  closeAllDropdowns()
-  if (destination) await router.push(destination)
+  if (destination) {
+    closeAllDropdowns()
+    await router.push(destination)
+  }
 }
 
 async function markAllNotificationsRead() {
@@ -215,24 +274,22 @@ async function handleLogout() {
               <span class="material-symbols-rounded" style="font-size:18px; color:var(--violet)">event_note</span>
               오늘 일정 브리핑
             </h4>
-            <div class="compact-timeline" style="margin-bottom:20px;">
-              <div>
-                <time>10:00</time>
-                <span></span>
-                <p><strong>부산역 도착</strong>KTX 123열차, 수화물 보관</p>
+            <p v-if="briefingLoading" style="font-size:13px;color:var(--muted);margin:0 0 16px;">불러오는 중…</p>
+            <p v-else-if="briefingError" style="font-size:13px;color:var(--rose);margin:0 0 16px;">{{ briefingError }}</p>
+            <template v-else>
+              <p v-if="briefingTrip" style="font-size:12px;color:var(--violet);font-weight:800;margin:0 0 12px;">
+                {{ briefingTrip.title }}<span v-if="briefingTrip.destination"> · {{ briefingTrip.destination }}</span>
+              </p>
+              <div v-if="briefingItems.length > 0" class="compact-timeline" style="margin-bottom:20px;">
+                <div v-for="(item, idx) in briefingItems" :key="idx">
+                  <time>{{ String(idx + 1).padStart(2, '0') }}</time>
+                  <span></span>
+                  <p><strong>{{ item.title }}</strong>{{ item.description }}</p>
+                </div>
               </div>
-              <div>
-                <time>12:30</time>
-                <span></span>
-                <p><strong>이재모 피자 본점</strong>치즈크러스트 피자 대기</p>
-              </div>
-              <div>
-                <time>15:00</time>
-                <span></span>
-                <p><strong>흰여울문화마을</strong>해안 터널 및 오션뷰 카페</p>
-              </div>
-            </div>
-            <a href="#" class="btn ghost" style="display:flex; align-items:center; justify-content:center; width:100%; padding:8px 0; font-size:13px; min-height:0; height:auto; border-color:var(--line); border-radius:999px; text-decoration:none; color:var(--violet); font-weight:700;" @click.prevent="closeAllDropdowns(); router.push('/my-trips')">전체보기</a>
+              <p v-else style="font-size:13px;color:var(--muted);margin:0 0 16px;">예정된 일정이 없어요.</p>
+            </template>
+            <a href="#" class="btn ghost" style="display:flex; align-items:center; justify-content:center; width:100%; padding:8px 0; font-size:13px; min-height:0; height:auto; border-color:var(--line); border-radius:999px; text-decoration:none; color:var(--violet); font-weight:700;" @click.prevent="closeAllDropdowns(); router.push(briefingTrip ? `/trips/${briefingTrip.id}/route` : '/my-trips')">전체보기</a>
           </div>
         </div>
 
@@ -250,17 +307,30 @@ async function handleLogout() {
             <p v-if="notificationsLoading" style="font-size:13px;color:var(--muted)">불러오는 중…</p>
             <p v-else-if="notificationsError" style="font-size:13px;color:var(--rose)">{{ notificationsError }}</p>
             <p v-else-if="notifications.length === 0" style="font-size:13px;color:var(--muted)">새 알림이 없습니다.</p>
-            <div v-else style="display:grid;gap:8px;max-height:360px;overflow:auto;">
-              <article v-for="notification in notifications" :key="notification.id" :style="{background: notification.readAt ? '#fff' : 'var(--bg)', padding:'10px', borderRadius:'12px', border:'1px solid var(--line)'}">
-                <button type="button" style="display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:0" @click="openNotification(notification)">
-                  <strong style="font-size:13px;display:block;color:var(--ink)">{{ notification.title }}</strong>
-                  <span v-if="notification.actor" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--violet)">
-                    <img v-if="notification.actor.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover;" />
+            <div v-else class="notification-list">
+              <article
+                v-for="notification in notifications"
+                :key="notification.id"
+                class="notification-item"
+                :class="{ 'is-read': !!notification.readAt }"
+              >
+                <button type="button" class="notification-open" @click.stop="openNotification(notification)">
+                  <strong class="notification-title">{{ notification.title }}</strong>
+                  <span v-if="notification.actor" class="notification-actor">
+                    <img v-if="notification.actor.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" />
                     {{ notification.actor.displayName }}
                   </span>
-                  <p v-if="notification.body" style="font-size:12px;color:var(--muted);margin:3px 0 0">{{ notification.body }}</p>
+                  <p v-if="notification.body" class="notification-body">{{ notification.body }}</p>
                 </button>
-                <button type="button" aria-label="알림 삭제" style="margin-top:6px;border:0;background:transparent;color:var(--muted);font-size:11px;cursor:pointer" @click="dismissNotification(notification.id)">삭제</button>
+                <button
+                  type="button"
+                  class="notification-dismiss"
+                  aria-label="알림 삭제"
+                  title="삭제"
+                  @click.stop="dismissNotification(notification.id)"
+                >
+                  <span class="material-symbols-rounded">close</span>
+                </button>
               </article>
               <button
                 v-if="hasMoreNotifications"
@@ -314,6 +384,97 @@ async function handleLogout() {
 <style scoped>
 .profile-item-link:hover {
   background: var(--bg);
+}
+
+.notification-list {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-right: 2px;
+}
+
+.notification-list::-webkit-scrollbar {
+  display: none;
+}
+
+.notification-item {
+  position: relative;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.notification-item.is-read {
+  background: #fff;
+}
+
+.notification-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  padding-right: 22px;
+}
+
+.notification-title {
+  font-size: 13px;
+  display: block;
+  color: var(--ink);
+}
+
+.notification-actor {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--violet);
+}
+
+.notification-actor img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.notification-body {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 3px 0 0;
+}
+
+.notification-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.notification-dismiss:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink);
+}
+
+.notification-dismiss .material-symbols-rounded {
+  font-size: 16px;
 }
 
 @media (max-width: 480px) {

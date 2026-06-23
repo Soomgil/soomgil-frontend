@@ -4,6 +4,17 @@ export type PlaceProvider = 'KTO' | 'KAKAO' | 'GOOGLE'
 export type PlaceSourceStatus = 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
 export type TagPreparationStatus = 'READY' | 'REFRESHING' | 'PENDING'
 
+/* ── Accessibility ── */
+export type ParkingType = 'FREE' | 'PAID' | 'MIXED' | 'NONE' | 'UNKNOWN'
+export type AccessibilityFlag = 'WHEELCHAIR' | 'PET' | 'STROLLER' | 'DISABLED_TOILET' | 'ELDERLY'
+
+export interface PlaceAccessibility {
+  openingHours: string | null
+  closedDays: string | null
+  parkingType: ParkingType
+  flags: AccessibilityFlag[]
+}
+
 /* ── Place (외부 장소 참조 기반) ── */
 export interface Place {
   provider: PlaceProvider
@@ -21,14 +32,11 @@ export interface Place {
   summary?: string
   description?: string
   tags?: string[]
-  hours?: string
-  closed?: string
-  parking?: string
   contact?: string
   admission?: string
   photos?: string[]
   likedBy?: (PlaceReaction | { extra: number })[]
-  accessibility?: { wheelchair: boolean; pets: boolean; stroller: boolean }
+  accessibility?: PlaceAccessibility
   travelStories?: PlaceTravelStory[]
 }
 

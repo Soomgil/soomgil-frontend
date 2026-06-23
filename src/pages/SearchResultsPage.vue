@@ -14,11 +14,64 @@ import type { TripSummary } from '@/types/trip'
 const route = useRoute()
 const router = useRouter()
 
+const RECENT_KEY = 'soomgil:recent-searches'
+const RECENT_LIMIT = 8
+
 const searchInput = ref<string>(typeof route.query.q === 'string' ? route.query.q : '')
 const activeTab = ref<string>(typeof route.query.tab === 'string' ? route.query.tab : '전체')
 const result = ref<UnifiedSearchResponse | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+const recentSearches = ref<string[]>(loadRecentSearches())
+
+const tabs = [
+  { key: '전체', icon: 'search' },
+  { key: '여행', icon: 'luggage' },
+  { key: '장소', icon: 'place' },
+  { key: '여행기', icon: 'auto_stories' },
+  { key: '사용자', icon: 'group' },
+] as const
+
+function loadRecentSearches(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string').slice(0, RECENT_LIMIT) : []
+  } catch {
+    return []
+  }
+}
+
+function persistRecentSearch(query: string) {
+  const trimmed = query.trim()
+  if (!trimmed) return
+  const next = [trimmed, ...recentSearches.value.filter((v) => v !== trimmed)].slice(0, RECENT_LIMIT)
+  recentSearches.value = next
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function removeRecentSearch(query: string) {
+  recentSearches.value = recentSearches.value.filter((v) => v !== query)
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recentSearches.value))
+  } catch {
+    // ignore
+  }
+}
+
+function clearRecentSearches() {
+  recentSearches.value = []
+  try {
+    localStorage.removeItem(RECENT_KEY)
+  } catch {
+    // ignore
+  }
+}
 
 const hasQuery = computed(() => searchInput.value.trim().length > 0)
 const totalCount = computed(() => {
@@ -30,6 +83,11 @@ const totalCount = computed(() => {
     result.value.users.length
   )
 })
+
+const visibleTrips = computed(() => (activeTab.value === '전체' || activeTab.value === '여행') ? result.value?.trips ?? [] : [])
+const visiblePlaces = computed(() => (activeTab.value === '전체' || activeTab.value === '장소') ? result.value?.places ?? [] : [])
+const visiblePosts = computed(() => (activeTab.value === '전체' || activeTab.value === '여행기') ? result.value?.posts ?? [] : [])
+const visibleUsers = computed(() => (activeTab.value === '전체' || activeTab.value === '사용자') ? result.value?.users ?? [] : [])
 
 function queryFromUrl(): string {
   return typeof route.query.q === 'string' ? route.query.q : ''
@@ -61,7 +119,21 @@ async function runSearch(q: string) {
 function submitSearch() {
   const q = searchInput.value.trim()
   if (!q) return
+  persistRecentSearch(q)
   router.replace({ path: '/search', query: { q, tab: activeTab.value } })
+}
+
+function selectTab(tab: string) {
+  activeTab.value = tab
+  if (searchInput.value.trim()) {
+    router.replace({ path: '/search', query: { q: searchInput.value.trim(), tab } })
+  }
+}
+
+function runRecentSearch(query: string) {
+  searchInput.value = query
+  persistRecentSearch(query)
+  router.replace({ path: '/search', query: { q: query, tab: activeTab.value } })
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -78,11 +150,11 @@ function gotoTrip(trip: TripSummary) {
 }
 
 function gotoPlace(place: PlaceSearchSummary) {
-  router.push({ path: '/swipe', query: { placeId: place.externalPlaceId } })
+  router.push({ name: 'PlaceDetail', params: { provider: place.provider, id: place.externalPlaceId } })
 }
 
 function gotoPost(post: CommunityPostSummary) {
-  router.push({ path: '/community', query: { postId: post.id } })
+  router.push({ path: `/community/${post.id}` })
 }
 
 function gotoUser(user: UserSearchResult) {
@@ -93,7 +165,7 @@ function exploreSection(section: 'trips' | 'places' | 'posts' | 'users') {
   const q = searchInput.value.trim()
   const target: Record<typeof section, string> = {
     trips: '/my-trips',
-    places: '/swipe',
+    places: '/community',
     posts: '/community/stories',
     users: '/community',
   }
@@ -156,6 +228,22 @@ watch(
             <span>검색</span>
           </button>
         </form>
+
+        <div class="search-tabs" role="tablist" aria-label="검색 카테고리">
+          <button
+            v-for="tab in tabs"
+            :key="tab.key"
+            type="button"
+            role="tab"
+            class="search-tab"
+            :class="{ active: activeTab === tab.key }"
+            :aria-selected="activeTab === tab.key"
+            @click="selectTab(tab.key)"
+          >
+            <span class="material-symbols-rounded">{{ tab.icon }}</span>
+            {{ tab.key }}
+          </button>
+        </div>
       </section>
 
       <!-- Result Body -->
@@ -166,12 +254,31 @@ watch(
           :message="error"
           @retry="runSearch(searchInput)"
         />
-        <EmptyState
-          v-else-if="!hasQuery"
-          icon="search"
-          title="검색어를 입력해 주세요"
-          description="찾고 싶은 여행, 장소, 여행기, 사용자를 검색해 보세요."
-        />
+        <div v-else-if="!hasQuery" class="search-empty-panel">
+          <div v-if="recentSearches.length > 0" class="search-recent">
+            <div class="search-recent-head">
+              <h3>최근 검색어</h3>
+              <button type="button" class="search-recent-clear" @click="clearRecentSearches">전체 삭제</button>
+            </div>
+            <ul class="search-recent-list">
+              <li v-for="item in recentSearches" :key="item">
+                <button type="button" class="search-recent-item" @click="runRecentSearch(item)">
+                  <span class="material-symbols-rounded">history</span>
+                  <span>{{ item }}</span>
+                </button>
+                <button type="button" class="search-recent-remove" :aria-label="`${item} 삭제`" @click="removeRecentSearch(item)">
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+          <EmptyState
+            v-else
+            icon="search"
+            title="검색어를 입력해 주세요"
+            description="찾고 싶은 여행, 장소, 여행기, 사용자를 검색해 보세요."
+          />
+        </div>
         <EmptyState
           v-else-if="result && totalCount === 0"
           icon="search_off"
@@ -180,12 +287,12 @@ watch(
         />
         <template v-else-if="result">
           <!-- Trips -->
-          <section v-if="result.trips.length > 0" class="search-section" aria-label="여행 결과">
+          <section v-if="visibleTrips.length > 0" class="search-section" aria-label="여행 결과">
             <header class="search-section-head">
               <h2>
                 <span class="material-symbols-rounded search-section-icon">luggage</span>
                 여행
-                <span class="search-section-count">{{ result.trips.length }}</span>
+                <span class="search-section-count">{{ visibleTrips.length }}</span>
               </h2>
               <button type="button" class="btn ghost search-more-btn" @click="exploreSection('trips')">
                 자세히 보기
@@ -194,7 +301,7 @@ watch(
             </header>
             <div class="search-grid">
               <button
-                v-for="trip in result.trips"
+                v-for="trip in visibleTrips"
                 :key="trip.id"
                 type="button"
                 class="search-card search-card--trip"
@@ -217,12 +324,12 @@ watch(
           </section>
 
           <!-- Places -->
-          <section v-if="result.places.length > 0" class="search-section" aria-label="장소 결과">
+          <section v-if="visiblePlaces.length > 0" class="search-section" aria-label="장소 결과">
             <header class="search-section-head">
               <h2>
                 <span class="material-symbols-rounded search-section-icon">place</span>
                 장소
-                <span class="search-section-count">{{ result.places.length }}</span>
+                <span class="search-section-count">{{ visiblePlaces.length }}</span>
               </h2>
               <button type="button" class="btn ghost search-more-btn" @click="exploreSection('places')">
                 자세히 보기
@@ -231,7 +338,7 @@ watch(
             </header>
             <div class="search-grid">
               <button
-                v-for="place in result.places"
+                v-for="place in visiblePlaces"
                 :key="`${place.provider}-${place.externalPlaceId}`"
                 type="button"
                 class="search-card search-card--place"
@@ -251,12 +358,12 @@ watch(
           </section>
 
           <!-- Posts -->
-          <section v-if="result.posts.length > 0" class="search-section" aria-label="여행기 결과">
+          <section v-if="visiblePosts.length > 0" class="search-section" aria-label="여행기 결과">
             <header class="search-section-head">
               <h2>
                 <span class="material-symbols-rounded search-section-icon">auto_stories</span>
                 여행기
-                <span class="search-section-count">{{ result.posts.length }}</span>
+                <span class="search-section-count">{{ visiblePosts.length }}</span>
               </h2>
               <button type="button" class="btn ghost search-more-btn" @click="exploreSection('posts')">
                 자세히 보기
@@ -265,7 +372,7 @@ watch(
             </header>
             <div class="search-grid">
               <button
-                v-for="post in result.posts"
+                v-for="post in visiblePosts"
                 :key="post.id"
                 type="button"
                 class="search-card search-card--post"
@@ -293,12 +400,12 @@ watch(
           </section>
 
           <!-- Users -->
-          <section v-if="result.users.length > 0" class="search-section" aria-label="사용자 결과">
+          <section v-if="visibleUsers.length > 0" class="search-section" aria-label="사용자 결과">
             <header class="search-section-head">
               <h2>
                 <span class="material-symbols-rounded search-section-icon">group</span>
                 사용자
-                <span class="search-section-count">{{ result.users.length }}</span>
+                <span class="search-section-count">{{ visibleUsers.length }}</span>
               </h2>
               <button type="button" class="btn ghost search-more-btn" @click="exploreSection('users')">
                 자세히 보기
@@ -307,7 +414,7 @@ watch(
             </header>
             <div class="search-grid">
               <button
-                v-for="user in result.users"
+                v-for="user in visibleUsers"
                 :key="user.id"
                 type="button"
                 class="search-card search-card--user"
@@ -448,6 +555,147 @@ watch(
 
 .search-submit-btn .material-symbols-rounded {
   font-size: 20px;
+}
+
+.search-tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.search-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.search-tab:hover {
+  border-color: rgba(123, 104, 238, 0.4);
+  color: var(--violet);
+}
+
+.search-tab.active {
+  background: var(--violet);
+  border-color: var(--violet);
+  color: #fff;
+}
+
+.search-tab .material-symbols-rounded {
+  font-size: 16px;
+}
+
+.search-empty-panel {
+  display: grid;
+  gap: 24px;
+  margin-top: 12px;
+}
+
+.search-recent {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 20px;
+}
+
+.search-recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.search-recent-head h3 {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0;
+}
+
+.search-recent-clear {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+.search-recent-clear:hover {
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.search-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.search-recent-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 4px 6px 4px 10px;
+}
+
+.search-recent-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.search-recent-item:hover {
+  color: var(--violet);
+}
+
+.search-recent-item .material-symbols-rounded {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.search-recent-remove {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.search-recent-remove:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--ink);
+}
+
+.search-recent-remove .material-symbols-rounded {
+  font-size: 14px;
 }
 
 .search-body {

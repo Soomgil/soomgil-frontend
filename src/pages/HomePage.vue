@@ -6,12 +6,62 @@ import { tripApi, type NearestTripDto } from '@/api/trip.api'
 import { communityApi } from '@/api/community.api'
 import { placeApi } from '@/api/place.api'
 import { useAuthStore } from '@/stores/auth.store'
+import { useToast } from '@/composables/useToast'
 import type { TripSummary, TripDetailMember } from '@/types/trip'
 import type { CommunityPostSummary } from '@/types/community'
 import type { Place } from '@/types/place'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const toast = useToast()
+const creatingInvite = ref(false)
+
+async function createAndCopyInviteLink() {
+  if (creatingInvite.value) return
+  if (!nearestTrip.value) {
+    toast.info('초대할 여행이 없어요. 먼저 새 여행을 만들어주세요.')
+    router.push({ name: 'Route' })
+    return
+  }
+  creatingInvite.value = true
+  try {
+    const invite = await tripApi.createInvite(nearestTrip.value.id)
+    const url = new URL(`/trip-invites/${encodeURIComponent(invite.inviteCode)}`, window.location.origin)
+    try {
+      await navigator.clipboard.writeText(url.toString())
+      toast.success('초대 링크를 복사했어요. 바로 공유해 보세요.')
+    } catch {
+      toast.success(`초대 링크: ${url.toString()}`)
+    }
+  } catch {
+    toast.error('초대 링크를 만들지 못했어요.')
+  } finally {
+    creatingInvite.value = false
+  }
+}
+
+function openAiRecommendation() {
+  if (nearestTrip.value) {
+    router.push({ name: 'Route', params: { tripId: nearestTrip.value.id } })
+    toast.info('추천 장소는 해당 여행의 "발견" 패널에서 만나볼 수 있어요.')
+  } else {
+    toast.info('추천을 받으려면 먼저 여행을 만들어주세요.')
+    router.push({ name: 'Route' })
+  }
+}
+
+const nearestTripDday = computed(() => {
+  if (!nearestTrip.value?.startDate) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const start = new Date(nearestTrip.value.startDate)
+  if (Number.isNaN(start.getTime())) return null
+  start.setHours(0, 0, 0, 0)
+  const diff = Math.round((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  if (diff > 0) return `D-${diff}`
+  if (diff === 0) return 'D-DAY'
+  return `D+${Math.abs(diff)}`
+})
 
 /* ── Search ────────────────────────────────────────────── */
 const searchCategories: { key: string; icon: string; isNew?: boolean }[] = [
@@ -31,7 +81,7 @@ function submitSearch() {
 }
 
 function showAlert(msg: string) {
-  window.alert(msg)
+  toast.info(msg)
 }
 
 /* ── Hero Carousel ───────────────────────────────────── */
@@ -115,7 +165,7 @@ async function fetchHomeData() {
   try {
     const [placesRes, storiesRes] = await Promise.allSettled([
       placeApi.getPopularPlaces(3),
-      communityApi.getPosts({ size: 3, sort: ['likes,desc'] })
+      communityApi.getPosts({ size: 20, sort: ['likes,desc'] })
     ])
 
     if (placesRes.status === 'fulfilled') {
@@ -135,7 +185,14 @@ async function fetchHomeData() {
     }
 
     if (storiesRes.status === 'fulfilled') {
-      featuredStories.value = storiesRes.value.items
+      const sorted = [...storiesRes.value.items].sort((a, b) => {
+        const likeDiff = (b.likeCount ?? 0) - (a.likeCount ?? 0)
+        if (likeDiff !== 0) return likeDiff
+        const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
+        const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
+        return bTime - aTime
+      })
+      featuredStories.value = sorted.slice(0, 3)
     } else {
       console.error('Failed to load stories', storiesRes.reason)
     }
@@ -253,15 +310,6 @@ async function fetchHomeData() {
 
         <!-- 3. Quick Actions -->
         <div class="home-action-row">
-          <a class="home-action-card" href="#" @click.prevent="router.push({ name: 'Swipe' })">
-            <div class="home-action-icon icon-violet">
-              <span class="material-symbols-rounded">swipe</span>
-            </div>
-            <div class="home-action-text">
-              <h3>내 취향 수집</h3>
-              <p>취향 카드 넘기기</p>
-            </div>
-          </a>
           <a class="home-action-card" href="#" @click.prevent="router.push({ name: 'Route' })">
             <div class="home-action-icon icon-blue">
               <span class="material-symbols-rounded">map</span>
@@ -271,7 +319,7 @@ async function fetchHomeData() {
               <p>일정 설계하기</p>
             </div>
           </a>
-          <a class="home-action-card" href="#" @click.prevent="showAlert('초대 기능을 준비 중입니다.')">
+          <a class="home-action-card" href="#" @click.prevent="createAndCopyInviteLink">
             <div class="home-action-icon icon-rose">
               <span class="material-symbols-rounded">group_add</span>
             </div>
@@ -280,7 +328,7 @@ async function fetchHomeData() {
               <p>함께하면 더 즐거워요</p>
             </div>
           </a>
-          <a class="home-action-card" href="#" @click.prevent="showAlert('AI 추천 기능을 준비 중입니다.')">
+          <a class="home-action-card" href="#" @click.prevent="openAiRecommendation">
             <div class="home-action-icon icon-cyan">
               <span class="material-symbols-rounded">auto_awesome</span>
             </div>
@@ -327,10 +375,11 @@ async function fetchHomeData() {
           <div v-if="nearestTripLoading" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted);">
             로딩 중...
           </div>
-          <div v-else-if="!nearestTrip" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted); cursor: pointer;" @click="router.push({ name: 'Route' })">
-            <div style="text-align: center;">
-              <span class="material-symbols-rounded" style="font-size: 32px; margin-bottom: 8px;">add_circle</span>
-              <p style="margin: 0;">새로운 여행을 계획해보세요</p>
+          <div v-else-if="!nearestTrip" class="home-nearest-card home-nearest-card--empty" @click="router.push({ name: 'Route' })">
+            <div class="home-nearest-empty">
+              <span class="material-symbols-rounded home-nearest-empty-icon">add_circle</span>
+              <p class="home-nearest-empty-title">새로운 여행을 계획해보세요</p>
+              <p class="home-nearest-empty-sub">첫 여행을 만들면 이곳에 표시돼요.</p>
             </div>
           </div>
           <a v-else class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
@@ -338,7 +387,13 @@ async function fetchHomeData() {
               <img :src="nearestTrip.coverImageUrl || (nearestTrip.displayDestination ? '/images/랜딩페이지/jeju.png' : '/images/랜딩페이지/busan.png')" :alt="nearestTrip.title" />
             </div>
             <div class="home-nearest-content">
-              <span class="home-nearest-dday">{{ nearestTrip.startDate ? nearestTrip.startDate : '곧 출발' }}</span>
+              <div class="home-nearest-meta">
+                <span class="home-nearest-dday">{{ nearestTripDday ?? '곧 출발' }}</span>
+                <span v-if="nearestTrip.displayDestination" class="home-nearest-destination">
+                  <span class="material-symbols-rounded" style="font-size:14px;">place</span>
+                  {{ nearestTrip.displayDestination }}
+                </span>
+              </div>
               <h3>{{ nearestTrip.title }}</h3>
               <div class="home-nearest-members">
                 <div class="avatars">
@@ -382,8 +437,9 @@ async function fetchHomeData() {
           <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push(`/community/${story.id}`)">
             <div class="home-community-card-img">
               <img v-if="story.coverMedia?.publicUrl" :src="story.coverMedia.publicUrl" :alt="story.title" />
-              <div v-else style="width: 100%; height: 100%; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--muted);">
+              <div v-else class="home-community-card-placeholder">
                 <span class="material-symbols-rounded">image</span>
+                <p>등록된 사진이 없어요</p>
               </div>
             </div>
             <div class="home-community-card-body">
@@ -423,9 +479,9 @@ async function fetchHomeData() {
             </div>
           </div>
           <div class="home-invite-cta-actions">
-            <button class="btn primary home-invite-primary-action" type="button" @click="showAlert('초대 기능을 준비 중입니다.')">
+            <button class="btn primary home-invite-primary-action" type="button" :disabled="creatingInvite" @click="createAndCopyInviteLink">
               <span class="material-symbols-rounded" aria-hidden="true">person_add</span>
-              초대 링크 만들기
+              {{ creatingInvite ? '링크 생성 중…' : '초대 링크 만들기' }}
             </button>
             <div class="home-invite-share-row">
               <div class="home-invite-cta-social" role="group" aria-label="초대 링크 공유 채널">
@@ -870,7 +926,48 @@ async function fetchHomeData() {
   background: rgba(255,255,255,0.2);
   backdrop-filter: blur(8px);
   font-size: 13px; font-weight: 800;
+}
+.home-nearest-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.home-nearest-destination {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+.home-nearest-card--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+.home-nearest-empty {
+  text-align: center;
+  padding: 24px;
+}
+.home-nearest-empty-icon {
+  font-size: 36px;
+  color: var(--violet);
+  margin-bottom: 8px;
+}
+.home-nearest-empty-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.home-nearest-empty-sub {
+  margin: 0;
+  font-size: 12px;
 }
 .home-nearest-content h3 {
   font-size: 22px; font-weight: 800;
@@ -916,12 +1013,39 @@ async function fetchHomeData() {
 .home-community-card-img {
   position: relative;
   overflow: hidden;
+  min-height: 180px;
+  height: 180px;
 }
 .home-community-card-img img {
   width: 100%; height: 180px; object-fit: cover; display: block;
   transition: transform 0.4s ease;
 }
 .home-community-card:hover .home-community-card-img img { transform: scale(1.05); }
+.home-community-card-placeholder {
+  width: 100%;
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(0, 102, 255, 0.08), transparent 60%),
+    radial-gradient(circle at 70% 80%, rgba(140, 100, 255, 0.08), transparent 60%),
+    linear-gradient(135deg, var(--bg), #fff);
+}
+.home-community-card-placeholder .material-symbols-rounded {
+  font-size: 40px;
+  color: var(--violet);
+  opacity: 0.7;
+}
+.home-community-card-placeholder p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
 .home-community-card-body { padding: 20px; }
 .home-community-card-body .cmn-tag {
   display: inline-block; font-size: 11px; font-weight: 800;

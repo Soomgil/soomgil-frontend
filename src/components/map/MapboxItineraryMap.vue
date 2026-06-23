@@ -5,6 +5,7 @@ import MapDrawingOverlay from './MapDrawingOverlay.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from './MapDrawingOverlay.vue'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { LngLat, Viewport } from '@/types/geo'
+import type { AccessibilityFlag, PlaceAccessibility } from '@/types/place'
 
 export interface ItineraryMapStop {
   id: string
@@ -16,6 +17,7 @@ export interface ItineraryMapStop {
   lat: number
   lng: number
   image?: string | null
+  accessibility?: PlaceAccessibility
 }
 
 export interface ItineraryMapRoute {
@@ -67,6 +69,12 @@ function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? 'day-color-5' : `day-color-${((dayIndex - 1) % 5) + 1}`
 }
 
+const ACCESSIBILITY_MARKERS: Partial<Record<AccessibilityFlag, { icon: string; label: string }>> = {
+  WHEELCHAIR: { icon: 'accessible', label: '휠체어' },
+  PET: { icon: 'pets', label: '반려동물' },
+  STROLLER: { icon: 'stroller', label: '유모차' },
+}
+
 function createMarkerElement(stop: ItineraryMapStop) {
   const marker = document.createElement('button')
   marker.type = 'button'
@@ -102,6 +110,25 @@ function createMarkerElement(stop: ItineraryMapStop) {
   day.className = 'map-pin-day-badge'
   day.textContent = stop.dayIndex <= 0 ? '일차 미정' : `${stop.dayIndex}일차`
   info.append(title, day)
+
+  const supportedFlags = stop.accessibility?.flags.filter((flag) => ACCESSIBILITY_MARKERS[flag]) ?? []
+  if (supportedFlags.length > 0) {
+    const accessibility = document.createElement('span')
+    accessibility.className = 'map-pin-accessibility'
+    accessibility.setAttribute(
+      'aria-label',
+      `접근성: ${supportedFlags.map((flag) => ACCESSIBILITY_MARKERS[flag]!.label).join(', ')}`,
+    )
+    supportedFlags.forEach((flag) => {
+      const markerInfo = ACCESSIBILITY_MARKERS[flag]!
+      const icon = document.createElement('span')
+      icon.className = 'material-symbols-rounded'
+      icon.textContent = markerInfo.icon
+      icon.title = markerInfo.label
+      accessibility.appendChild(icon)
+    })
+    info.appendChild(accessibility)
+  }
 
   const badge = document.createElement('span')
   badge.className = 'map-pin-badge'

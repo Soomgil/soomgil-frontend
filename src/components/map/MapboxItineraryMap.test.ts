@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from './MapboxItineraryMap.vue'
+import type { ItineraryMapStop } from './MapboxItineraryMap.vue'
 import MapDrawingOverlay from './MapDrawingOverlay.vue'
 
 const mapbox = vi.hoisted(() => {
@@ -55,8 +56,22 @@ vi.mock('mapbox-gl', () => ({
   },
 }))
 
-const stops = [
-  { id: 'item-1', placeId: 'place-1', title: '첫 장소', dayIndex: 1, index: 1, lat: 36.35, lng: 127.38 },
+const stops: ItineraryMapStop[] = [
+  {
+    id: 'item-1',
+    placeId: 'place-1',
+    title: '첫 장소',
+    dayIndex: 1,
+    index: 1,
+    lat: 36.35,
+    lng: 127.38,
+    accessibility: {
+      openingHours: null,
+      closedDays: null,
+      parkingType: 'UNKNOWN',
+      flags: ['WHEELCHAIR', 'PET'],
+    },
+  },
   { id: 'item-2', placeId: 'place-2', title: '둘째 장소', dayIndex: 1, index: 2, lat: 36.36, lng: 127.39 },
 ]
 const routes = [{
@@ -113,6 +128,7 @@ describe('MapboxItineraryMap', () => {
     const markerCall = mapbox.Marker.mock.calls[0]
     const markerElement = (markerCall![0] as { element: HTMLButtonElement }).element
     expect(getComputedStyle(markerElement.querySelector('.map-pin-info')!).display).toBe('block')
+    expect(markerElement.querySelector('.map-pin-accessibility')?.getAttribute('aria-label')).toBe('접근성: 휠체어, 반려동물')
     markerElement.click()
     await nextTick()
     expect(wrapper.emitted('selectPlace')).toEqual([[undefined, 'place-1']])

@@ -79,11 +79,21 @@ async function search(query: string) {
       q: query,
       isActive: true,
       page: 0,
-      size: 10,
+      size: 20,
     }, controller.signal)
     if (requestId !== searchSequence || controller.signal.aborted) return
-    options.value = result.items
-    activeIndex.value = result.items.length > 0 ? 0 : -1
+    const ranked = [...result.items].sort((a, b) => {
+      const aPrefix = a.name.startsWith(query) || a.fullName.startsWith(query) ? 0 : 1
+      const bPrefix = b.name.startsWith(query) || b.fullName.startsWith(query) ? 0 : 1
+      if (aPrefix !== bPrefix) return aPrefix - bPrefix
+      const levelWeight = { SIDO: 0, SIGUNGU: 1, EUPMYEONDONG: 2 } as const
+      const aLevel = levelWeight[a.level] ?? 3
+      const bLevel = levelWeight[b.level] ?? 3
+      if (aLevel !== bLevel) return aLevel - bLevel
+      return a.fullName.localeCompare(b.fullName, 'ko')
+    })
+    options.value = ranked
+    activeIndex.value = ranked.length > 0 ? 0 : -1
     hasSearched.value = true
   } catch {
     if (requestId !== searchSequence || controller.signal.aborted) return
@@ -133,6 +143,19 @@ function selectRegion(region: LegalRegion) {
 function retry() {
   const query = inputValue.value.trim()
   if (query.length >= 2) void search(query)
+}
+
+function levelLabel(level: LegalRegion['level']): string {
+  switch (level) {
+    case 'SIDO':
+      return '시/도'
+    case 'SIGUNGU':
+      return '시/군/구'
+    case 'EUPMYEONDONG':
+      return '읍/면/동'
+    default:
+      return level
+  }
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -212,7 +235,7 @@ onBeforeUnmount(() => {
           <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
         </button>
       </div>
-      <p v-else-if="hasSearched && options.length === 0" class="legal-region-state">검색 결과가 없습니다.</p>
+      <p v-else-if="hasSearched && options.length === 0" class="legal-region-state">검색 결과가 없습니다. 시/도 전체명(예: 부산광역시)으로 다시 입력해 보세요.</p>
       <template v-else>
         <button
           v-for="(region, index) in options"
@@ -228,7 +251,7 @@ onBeforeUnmount(() => {
           @click="selectRegion(region)"
         >
           <span>{{ region.fullName }}</span>
-          <small>{{ region.code }}</small>
+          <small>{{ levelLabel(region.level) }}</small>
         </button>
       </template>
     </div>

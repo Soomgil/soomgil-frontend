@@ -47,6 +47,15 @@ describe('AppHeader 알림 API 연동', () => {
     mocks.getNotifications.mockResolvedValue(page([]))
   })
 
+  it('서비스 헤더에서 취향 수집 화면으로 이동한다', async () => {
+    const wrapper = mount(AppHeader)
+    const swipeLink = wrapper.findAll('nav a').find((link) => link.text() === '취향 수집')
+
+    expect(swipeLink).toBeDefined()
+    await swipeLink!.trigger('click')
+    expect(mocks.push).toHaveBeenCalledWith('/swipe')
+  })
+
   it('빈 알림 page를 명시적으로 표시한다', async () => {
     const wrapper = mount(AppHeader)
     await wrapper.get('#header-notif-btn').trigger('click')

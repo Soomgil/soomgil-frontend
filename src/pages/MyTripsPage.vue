@@ -40,14 +40,29 @@ const filters: { label: string; value: TripFilter }[] = [
   { label: '보관됨', value: 'past' },
 ]
 
+function isAutoArchived(trip: TripSummary): boolean {
+  if (trip.status !== 'ACTIVE') return false
+  if (!trip.endDate) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const end = new Date(trip.endDate)
+  end.setHours(0, 0, 0, 0)
+  return end < today
+}
+
+function effectiveStatus(trip: TripSummary): TripSummary['status'] {
+  return isAutoArchived(trip) ? 'ARCHIVED' : trip.status
+}
+
 const filteredTrips = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
 
   return tripStore.trips.filter((trip) => {
+    const status = effectiveStatus(trip)
     const matchesStatus =
       activeFilter.value === 'all' ||
-      (activeFilter.value === 'upcoming' && trip.status === 'ACTIVE') ||
-      (activeFilter.value === 'past' && trip.status === 'ARCHIVED')
+      (activeFilter.value === 'upcoming' && status === 'ACTIVE') ||
+      (activeFilter.value === 'past' && status === 'ARCHIVED')
     const matchesQuery =
       !query ||
       trip.title.toLowerCase().includes(query) ||
@@ -69,8 +84,9 @@ function formatCreatedAt(value: string) {
 }
 
 function statusLabel(trip: TripSummary) {
-  if (trip.status === 'ARCHIVED') return '보관됨'
-  if (trip.status === 'DELETED') return '삭제됨'
+  const status = effectiveStatus(trip)
+  if (status === 'ARCHIVED') return '보관됨'
+  if (status === 'DELETED') return '삭제됨'
   return '진행 중'
 }
 
@@ -79,7 +95,7 @@ function goTripDetail(tripId: string) {
 }
 
 /* ── Carousel (다음 여행) ───────────────────────────── */
-const upcomingTrips = computed(() => filteredTrips.value.filter((trip) => trip.status === 'ACTIVE'))
+const upcomingTrips = computed(() => filteredTrips.value.filter((trip) => effectiveStatus(trip) === 'ACTIVE'))
 const carouselIndex = ref(0)
 const currentTrip = computed(() => upcomingTrips.value[carouselIndex.value] ?? upcomingTrips.value[0] ?? null)
 
@@ -111,14 +127,16 @@ function getDestName(trip: TripSummary): string {
 }
 
 function getTripStatus(trip: TripSummary): string {
-  if (trip.status === 'ARCHIVED') return '지난 여행'
-  if (trip.status === 'DELETED') return '삭제됨'
+  const status = effectiveStatus(trip)
+  if (status === 'ARCHIVED') return '지난 여행'
+  if (status === 'DELETED') return '삭제됨'
   return '진행 중'
 }
 
 function getStatusCls(trip: TripSummary): string {
-  if (trip.status === 'ARCHIVED') return 'is-past'
-  if (trip.status === 'ACTIVE') return 'is-active'
+  const status = effectiveStatus(trip)
+  if (status === 'ARCHIVED') return 'is-past'
+  if (status === 'ACTIVE') return 'is-active'
   return ''
 }
 

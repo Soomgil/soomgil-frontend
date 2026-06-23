@@ -27,7 +27,7 @@ import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, Note, PlanningScope } from '@/types/planning'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
-import type { Place } from '@/types/place'
+import type { ParkingType, Place, PlaceAccessibility } from '@/types/place'
 
 /* ── RoutePage 내부 전용 타입 ── */
 type RouteStop = RouteStopViewModel
@@ -91,6 +91,33 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
+const placeAccessibilityByKey = ref<Record<string, PlaceAccessibility>>({})
+let accessibilityRequestRevision = 0
+
+function placeAccessibilityKey(provider: string, externalPlaceId: string) {
+  return `${provider}:${externalPlaceId}`
+}
+
+async function loadRouteAccessibility(plans: DayPlan[]) {
+  const revision = ++accessibilityRequestRevision
+  const unique = new Map<string, { provider: 'KTO'; externalPlaceId: string }>()
+  plans.forEach((day) => day.items.forEach((item) => {
+    if (item.placeProvider !== 'KTO' || !item.placeExternalId) return
+    const key = placeAccessibilityKey(item.placeProvider, item.placeExternalId)
+    unique.set(key, { provider: 'KTO', externalPlaceId: item.placeExternalId })
+  }))
+  if (unique.size === 0) {
+    placeAccessibilityByKey.value = {}
+    return
+  }
+  try {
+    const result = await placeApi.getAccessibilityBatch([...unique.values()])
+    if (revision === accessibilityRequestRevision) placeAccessibilityByKey.value = result
+  } catch {
+    if (revision === accessibilityRequestRevision) placeAccessibilityByKey.value = {}
+  }
+}
+
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
@@ -106,6 +133,9 @@ const mapStops = computed<ItineraryMapStop[]>(() => {
       lat: item.lat,
       lng: item.lng,
       image: item.thumbnailUrl ?? '',
+      accessibility: item.placeProvider && item.placeExternalId
+        ? placeAccessibilityByKey.value[placeAccessibilityKey(item.placeProvider, item.placeExternalId)]
+        : undefined,
     }]
   }))
 })
@@ -153,6 +183,7 @@ async function loadTrip() {
 
 watch(itinerary.days, (days) => {
   dayPlans.value = toDayPlans(days)
+  void loadRouteAccessibility(dayPlans.value)
   if (activeDay.value !== 0 && !dayPlans.value.some((day) => day.day === activeDay.value)) {
     activeDay.value = 0
   }
@@ -1271,6 +1302,29 @@ const isDetailbarOpen = ref(false)
 const selectedPlace = ref<any>(null)
 const detailbarMainImg = ref('')
 
+function parkingTypeLabel(type?: ParkingType) {
+  return ({
+    FREE: '무료',
+    PAID: '유료',
+    MIXED: '무료·유료',
+    NONE: '주차 불가',
+    UNKNOWN: '정보 없음',
+  } satisfies Record<ParkingType, string>)[type ?? 'UNKNOWN']
+}
+
+function hasAccessibilityFlag(accessibility: PlaceAccessibility | undefined, flag: PlaceAccessibility['flags'][number]) {
+  return accessibility?.flags.includes(flag) ?? false
+}
+
+function hasAccessibilityInfo(accessibility?: PlaceAccessibility) {
+  return Boolean(accessibility && (
+    accessibility.openingHours
+    || accessibility.closedDays
+    || accessibility.parkingType !== 'UNKNOWN'
+    || accessibility.flags.length > 0
+  ))
+}
+
 // Make selectPlace available globally for map marker onclick
 ;(window as any).selectPlace = selectPlace
 
@@ -1285,6 +1339,8 @@ async function selectPlace(placeId: string) {
   }
   try {
     const place = await placeApi.getPlace('KTO', placeId)
+    const accessibility = place.accessibility
+      ?? placeAccessibilityByKey.value[placeAccessibilityKey('KTO', place.externalPlaceId)]
     selectedPlace.value = {
       id: place.externalPlaceId,
       title: place.placeName,
@@ -1292,11 +1348,8 @@ async function selectPlace(placeId: string) {
       image: place.thumbnailUrl || '',
       likes: '',
       location: place.address || '',
-      hours: '',
-      closed: '',
-      parking: '',
       photos: place.photos || (place.thumbnailUrl ? [place.thumbnailUrl] : []),
-      accessibility: '',
+      accessibility,
       contact: place.contact,
       admission: '',
       featuredMenu: '',
@@ -1313,6 +1366,8 @@ async function selectPlace(placeId: string) {
 
 function selectDiscoveredPlace(place: Place) {
   const image = place.thumbnailUrl ?? place.photos?.[0] ?? ''
+  const accessibility = place.accessibility
+    ?? placeAccessibilityByKey.value[placeAccessibilityKey(place.provider, place.externalPlaceId)]
   selectedPlace.value = {
     id: place.externalPlaceId,
     title: place.placeName,
@@ -1320,11 +1375,8 @@ function selectDiscoveredPlace(place: Place) {
     image,
     likes: place.likedBy?.length ?? 0,
     location: place.address ?? '',
-    hours: '',
-    closed: '',
-    parking: '',
     photos: place.photos ?? (image ? [image] : []),
-    accessibility: place.accessibility,
+    accessibility,
     contact: place.contact,
     admission: place.admission,
     likedBy: (place.likedBy ?? []).flatMap((reaction) => 'displayName' in reaction
@@ -1872,43 +1924,51 @@ function textAvatarStyle(index: unknown) {
               </div>
 
               <!-- Quick Info -->
-              <div class="detailbar-info-card" v-if="selectedPlace.hours || selectedPlace.closed || selectedPlace.parking || selectedPlace.accessibility">
+              <div class="detailbar-info-card" v-if="hasAccessibilityInfo(selectedPlace.accessibility)">
                 <h4 class="section-title">이용 안내</h4>
                 <div class="detailbar-info-grid">
-                  <div class="info-item">
+                  <div v-if="selectedPlace.accessibility?.openingHours" class="info-item">
                     <span class="icon-wrap"><span class="material-symbols-rounded">schedule</span></span>
                     <div class="info-content">
                       <span class="label">이용시간</span>
-                      <strong class="value">{{ selectedPlace.hours }}</strong>
+                      <strong class="value">{{ selectedPlace.accessibility.openingHours }}</strong>
                     </div>
                   </div>
-                  <div class="info-item">
+                  <div v-if="selectedPlace.accessibility?.closedDays" class="info-item">
                     <span class="icon-wrap"><span class="material-symbols-rounded">event_busy</span></span>
                     <div class="info-content">
                       <span class="label">쉬는날</span>
-                      <strong class="value">{{ selectedPlace.closed }}</strong>
+                      <strong class="value">{{ selectedPlace.accessibility.closedDays }}</strong>
                     </div>
                   </div>
-                  <div class="info-item">
+                  <div v-if="selectedPlace.accessibility && selectedPlace.accessibility.parkingType !== 'UNKNOWN'" class="info-item">
                     <span class="icon-wrap"><span class="material-symbols-rounded">local_parking</span></span>
                     <div class="info-content">
                       <span class="label">주차시설</span>
-                      <strong class="value">{{ selectedPlace.parking }}</strong>
+                      <strong class="value">{{ parkingTypeLabel(selectedPlace.accessibility.parkingType) }}</strong>
                     </div>
                   </div>
                 </div>
-                <div class="detailbar-acc-row">
-                  <div :class="['acc-pill', selectedPlace.accessibility?.wheelchair ? 'enabled' : 'disabled']">
+                <div v-if="selectedPlace.accessibility?.flags.length" class="detailbar-acc-row">
+                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'WHEELCHAIR')" class="acc-pill enabled">
                     <span class="material-symbols-rounded">accessible</span>
-                    <span>휠체어 {{ selectedPlace.accessibility?.wheelchair ? '가능' : '불가' }}</span>
+                    <span>휠체어 가능</span>
                   </div>
-                  <div :class="['acc-pill', selectedPlace.accessibility?.pets ? 'enabled' : 'disabled']">
+                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'PET')" class="acc-pill enabled">
                     <span class="material-symbols-rounded">pets</span>
-                    <span>반려동물 {{ selectedPlace.accessibility?.pets ? '가능' : '불가' }}</span>
+                    <span>반려동물 가능</span>
                   </div>
-                  <div :class="['acc-pill', selectedPlace.accessibility?.stroller ? 'enabled' : 'disabled']">
+                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'STROLLER')" class="acc-pill enabled">
                     <span class="material-symbols-rounded">stroller</span>
-                    <span>유모차 {{ selectedPlace.accessibility?.stroller ? '가능' : '불가' }}</span>
+                    <span>유모차 가능</span>
+                  </div>
+                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'DISABLED_TOILET')" class="acc-pill enabled">
+                    <span class="material-symbols-rounded">accessible_forward</span>
+                    <span>장애인 화장실</span>
+                  </div>
+                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'ELDERLY')" class="acc-pill enabled">
+                    <span class="material-symbols-rounded">elderly</span>
+                    <span>노약자 편의</span>
                   </div>
                 </div>
               </div>

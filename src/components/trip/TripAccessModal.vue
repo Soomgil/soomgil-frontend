@@ -194,7 +194,7 @@ async function removeMember(userId: string) {
 
 .access-modal {
   background: #fff;
-  border-radius: 8px;
+  border-radius: 24px;
   box-shadow: 0 24px 64px rgb(0 0 0 / 18%);
   max-height: min(760px, calc(100vh - 40px));
   overflow: auto;
@@ -254,7 +254,7 @@ async function removeMember(userId: string) {
 
 .access-list li {
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 16px;
   gap: 12px;
   min-height: 68px;
   padding: 12px 14px;
@@ -316,7 +316,7 @@ async function removeMember(userId: string) {
   }
 
   .access-modal {
-    border-radius: 8px 8px 0 0;
+    border-radius: 24px 24px 0 0;
     max-height: 90vh;
   }
 

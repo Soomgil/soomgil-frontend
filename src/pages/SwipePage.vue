@@ -5,9 +5,9 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
-import SwipeActionBar from '@/components/swipe/SwipeActionBar.vue'
 import { useSwipeFeed } from '@/composables/useSwipeFeed'
 import type { SwipeAction } from '@/types/swipe'
+import type { ParkingType } from '@/types/place'
 
 const router = useRouter()
 
@@ -26,7 +26,34 @@ const {
 
 const totalPlaces = computed(() => completedCount.value + items.value.length)
 const currentPlace = computed(() => currentItem.value?.place ?? null)
+const currentDescription = computed(() => (
+  currentPlace.value?.description?.trim()
+  || currentPlace.value?.summary?.trim()
+  || ''
+))
+const descriptionExpanded = ref(false)
+const canExpandDescription = computed(() => currentDescription.value.length > 180)
+const currentAccessibility = computed(() => currentPlace.value?.accessibility)
+const hasAccessibilityInfo = computed(() => {
+  const accessibility = currentAccessibility.value
+  return Boolean(accessibility && (
+    accessibility.openingHours
+    || accessibility.closedDays
+    || accessibility.parkingType !== 'UNKNOWN'
+    || accessibility.flags.length > 0
+  ))
+})
 const stageRef = ref<HTMLElement | null>(null)
+
+function parkingTypeLabel(type?: ParkingType) {
+  return ({
+    FREE: '무료',
+    PAID: '유료',
+    MIXED: '무료·유료',
+    NONE: '주차 불가',
+    UNKNOWN: '정보 없음',
+  } satisfies Record<ParkingType, string>)[type ?? 'UNKNOWN']
+}
 
 /* ── XP Progress ──────────────────────────────────────── */
 const xpGoal = computed(() => Math.max(totalPlaces.value, 1))
@@ -52,6 +79,7 @@ function resetCard() {
   overlayOpacity.value = 0
   cardTransform.value = ''
   swipeClass.value = ''
+  descriptionExpanded.value = false
 }
 
 async function decide(type: 'like' | 'dislike' | 'superlike') {
@@ -153,11 +181,6 @@ function spawnSwipeBurst(type: string, x: number, y: number) {
     stage.appendChild(particle)
     particle.addEventListener('animationend', () => particle.remove())
   }
-}
-
-function handleSwipeButton(type: 'like' | 'dislike' | 'superlike') {
-  if (isFinished.value || submitting.value) return
-  void decide(type)
 }
 
 function selectPhoto(idx: number) {
@@ -357,14 +380,6 @@ onMounted(() => {
                 </template>
               </div>
 
-              <SwipeActionBar
-                v-if="currentPlace && !loading && !error"
-                :disabled="submitting"
-                @nope="handleSwipeButton('dislike')"
-                @like="handleSwipeButton('like')"
-                @super-like="handleSwipeButton('superlike')"
-              />
-
               <!-- Photo Strip -->
               <section v-if="currentPlace" class="photo-strip-section" aria-label="관광지 추가 사진">
                 <div class="photo-strip-wrap">
@@ -393,7 +408,29 @@ onMounted(() => {
             <!-- Detail Panel -->
             <aside v-if="currentPlace" class="panel place-detail-panel">
               <h3>{{ currentPlace.placeName }}</h3>
-              <p class="muted">{{ currentPlace.description }}</p>
+
+              <section v-if="currentDescription" class="place-description-card" aria-label="장소 상세 설명">
+                <div class="place-description-heading">
+                  <span class="material-symbols-rounded">auto_stories</span>
+                  <strong>장소 이야기</strong>
+                </div>
+                <p
+                  class="place-description-text"
+                  :class="{ 'is-expanded': descriptionExpanded }"
+                >{{ currentDescription }}</p>
+                <button
+                  v-if="canExpandDescription"
+                  type="button"
+                  class="place-description-toggle"
+                  :aria-expanded="descriptionExpanded"
+                  @click="descriptionExpanded = !descriptionExpanded"
+                >
+                  {{ descriptionExpanded ? '접기' : '더보기' }}
+                  <span class="material-symbols-rounded">
+                    {{ descriptionExpanded ? 'expand_less' : 'expand_more' }}
+                  </span>
+                </button>
+              </section>
 
               <div class="detail-reaction-card">
                 <div class="detail-reaction-header">
@@ -432,29 +469,35 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div v-if="currentPlace.hours || currentPlace.closed || currentPlace.parking || currentPlace.accessibility" class="detail-info-card">
+              <div v-if="hasAccessibilityInfo" class="detail-info-card">
                 <p class="detail-section-title">이용 안내</p>
-                <div class="detail-info-row">
+                <div v-if="currentAccessibility?.openingHours" class="detail-info-row">
                   <span class="detail-info-label"><span class="material-symbols-rounded">schedule</span>이용시간</span>
-                  <strong class="detail-info-value">{{ currentPlace.hours }}</strong>
+                  <strong class="detail-info-value">{{ currentAccessibility.openingHours }}</strong>
                 </div>
-                <div class="detail-info-row">
+                <div v-if="currentAccessibility?.closedDays" class="detail-info-row">
                   <span class="detail-info-label"><span class="material-symbols-rounded">event_busy</span>쉬는날</span>
-                  <strong class="detail-info-value">{{ currentPlace.closed }}</strong>
+                  <strong class="detail-info-value">{{ currentAccessibility.closedDays }}</strong>
                 </div>
-                <div class="detail-info-row">
+                <div v-if="currentAccessibility && currentAccessibility.parkingType !== 'UNKNOWN'" class="detail-info-row">
                   <span class="detail-info-label"><span class="material-symbols-rounded">local_parking</span>주차시설</span>
-                  <strong class="detail-info-value">{{ currentPlace.parking }}</strong>
+                  <strong class="detail-info-value">{{ parkingTypeLabel(currentAccessibility.parkingType) }}</strong>
                 </div>
-                <div class="detail-accessibility-row">
-                  <span v-if="currentPlace.accessibility?.wheelchair" class="accessibility-chip">
+                <div v-if="currentAccessibility?.flags.length" class="detail-accessibility-row">
+                  <span v-if="currentAccessibility.flags.includes('WHEELCHAIR')" class="accessibility-chip">
                     <span class="material-symbols-rounded">accessible</span>휠체어
                   </span>
-                  <span v-if="currentPlace.accessibility?.pets" class="accessibility-chip">
+                  <span v-if="currentAccessibility.flags.includes('PET')" class="accessibility-chip">
                     <span class="material-symbols-rounded">pets</span>반려동물
                   </span>
-                  <span v-if="currentPlace.accessibility?.stroller" class="accessibility-chip">
+                  <span v-if="currentAccessibility.flags.includes('STROLLER')" class="accessibility-chip">
                     <span class="material-symbols-rounded">stroller</span>유모차
+                  </span>
+                  <span v-if="currentAccessibility.flags.includes('DISABLED_TOILET')" class="accessibility-chip">
+                    <span class="material-symbols-rounded">accessible_forward</span>장애인 화장실
+                  </span>
+                  <span v-if="currentAccessibility.flags.includes('ELDERLY')" class="accessibility-chip">
+                    <span class="material-symbols-rounded">elderly</span>노약자 편의
                   </span>
                 </div>
               </div>
@@ -505,8 +548,71 @@ onMounted(() => {
   color: var(--muted);
   margin-bottom: 20px;
 }
+.place-description-card {
+  position: relative;
+  margin-top: 16px;
+  padding: 18px 18px 14px;
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(139, 92, 246, 0.08), transparent 42%),
+    linear-gradient(145deg, rgba(239, 246, 255, 0.82), rgba(255, 255, 255, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+.place-description-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  color: var(--violet);
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+.place-description-heading .material-symbols-rounded {
+  font-size: 18px;
+}
+.place-description-text {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #465168;
+  font-size: 14px;
+  line-height: 1.75;
+  letter-spacing: -0.01em;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+.place-description-text.is-expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+.place-description-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 10px 0 0 auto;
+  padding: 5px 7px 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.07);
+  color: var(--violet);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.place-description-toggle:hover {
+  background: rgba(124, 58, 237, 0.13);
+  transform: translateY(-1px);
+}
+.place-description-toggle .material-symbols-rounded {
+  font-size: 17px;
+}
 .detail-reaction-card {
-  margin-top: 20px;
+  margin-top: 16px;
   padding: 18px 20px;
   border-radius: 20px;
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.03), rgba(255, 92, 141, 0.03));

@@ -112,7 +112,7 @@ async function handlePublish() {
       coverMediaFileId: selectedMedia.value[0]?.id ?? null,
     })
     toast.success('여행기가 등록되었습니다.')
-    router.push('/community/stories')
+    router.push('/community')
   } catch {
     toast.error('여행기를 등록하지 못했습니다. 여행계획 버전을 확인해주세요.')
   } finally {

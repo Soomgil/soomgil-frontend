@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { communityApi } from "@/api/community.api";
 import { userApi } from "@/api/user.api";
@@ -198,10 +198,6 @@ async function openStory(story: StoryView) {
       0,
       stories.value.findIndex((item) => item.id === story.id),
     );
-    await nextTick();
-    const container = document.getElementById("overlay-feed-stories");
-    const article = container?.querySelector<HTMLElement>(`[data-story-id="${story.id}"]`);
-    if (container && article) container.scrollTo({ top: article.offsetTop, behavior: "auto" });
   } catch {
     toast.error("여행기 상세를 불러오지 못했습니다.");
   }
@@ -393,9 +389,10 @@ async function shareStory(story: StoryView) {
   }
 }
 
-function handlePostPublished(post: CommunityPostDetail) {
-  posts.value.unshift(post);
+function handlePostPublished(_post: CommunityPostDetail) {
+  storyWriteModal.close();
   currentPage.value = 1;
+  void loadPosts();
 }
 const scrollGuideVisible = ref(true);
 const visibleStoryIdx = ref(0);
@@ -449,6 +446,15 @@ onMounted(async () => {
   if (q) searchQuery.value = q;
   await loadPosts();
 });
+watch(
+  () => route.fullPath,
+  (next, prev) => {
+    if (next === "/community" && prev !== "/community") {
+      currentPage.value = 1;
+      void loadPosts();
+    }
+  },
+);
 </script>
 
 <template>
@@ -2016,18 +2022,11 @@ onMounted(async () => {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   max-height: calc(94vh - 160px);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 102, 255, 0.18) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .story-overlay .story-feed-window::-webkit-scrollbar {
-  width: 6px;
-}
-.story-overlay .story-feed-window::-webkit-scrollbar-track {
-  background: transparent;
-}
-.story-overlay .story-feed-window::-webkit-scrollbar-thumb {
-  background: rgba(0, 102, 255, 0.16);
-  border-radius: 10px;
+  display: none;
 }
 .story-overlay .feed-sidebar {
   --feed-panel-offset: 82px;
