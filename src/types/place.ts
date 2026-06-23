@@ -13,6 +13,7 @@ export interface PlaceAccessibility {
   closedDays: string | null
   parkingType: ParkingType
   flags: AccessibilityFlag[]
+  unavailableFlags: AccessibilityFlag[]
 }
 
 /* ── Place (외부 장소 참조 기반) ── */

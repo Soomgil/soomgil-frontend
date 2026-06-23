@@ -78,6 +78,7 @@ describe('place and preference APIs', () => {
       closedDays: null,
       parkingType: 'FREE',
       flags: ['WHEELCHAIR', 'STROLLER'],
+      unavailableFlags: [],
     })
     expect(reaction.savedPlaceEligible).toBe(true)
   })
@@ -108,6 +109,7 @@ describe('place and preference APIs', () => {
       closedDays: '매주 월요일',
       parkingType: 'PAID',
       flags: ['PET'],
+      unavailableFlags: [],
     })
   })
 
