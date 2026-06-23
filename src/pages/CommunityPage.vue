@@ -2012,23 +2012,10 @@ watch(
   scroll-behavior: smooth;
   max-height: calc(94vh - 160px);
   scrollbar-width: none;
-<<<<<<< HEAD
   -ms-overflow-style: none;
 }
 .story-overlay .story-feed-window::-webkit-scrollbar {
   display: none;
-=======
-}
-.story-overlay .story-feed-window::-webkit-scrollbar {
-  display: none;
-}
-.story-overlay .story-feed-window::-webkit-scrollbar-track {
-  background: transparent;
-}
-.story-overlay .story-feed-window::-webkit-scrollbar-thumb {
-  background: rgba(0, 102, 255, 0.16);
-  border-radius: 10px;
->>>>>>> origin/develop
 }
 .story-overlay .feed-sidebar {
   --feed-panel-offset: 82px;

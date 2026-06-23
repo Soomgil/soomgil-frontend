@@ -302,7 +302,6 @@ async function handleLogout() {
               <span class="material-symbols-rounded" style="font-size:18px; color:var(--violet)">event_note</span>
               오늘 일정 브리핑
             </h4>
-<<<<<<< HEAD
             <p v-if="briefingLoading" style="font-size:13px;color:var(--muted);margin:0 0 16px;">불러오는 중…</p>
             <p v-else-if="briefingError" style="font-size:13px;color:var(--rose);margin:0 0 16px;">{{ briefingError }}</p>
             <template v-else>
@@ -319,19 +318,6 @@ async function handleLogout() {
               <p v-else style="font-size:13px;color:var(--muted);margin:0 0 16px;">예정된 일정이 없어요.</p>
             </template>
             <a href="#" class="btn ghost" style="display:flex; align-items:center; justify-content:center; width:100%; padding:8px 0; font-size:13px; min-height:0; height:auto; border-color:var(--line); border-radius:999px; text-decoration:none; color:var(--violet); font-weight:700;" @click.prevent="closeAllDropdowns(); router.push(briefingTrip ? `/trips/${briefingTrip.id}/route` : '/my-trips')">전체보기</a>
-=======
-            <p v-if="briefingLoading" class="header-state">일정을 불러오는 중…</p>
-            <p v-else-if="briefingError" class="header-state header-state--error">{{ briefingError }}</p>
-            <p v-else-if="briefingItems.length === 0" class="header-state">다가오는 여행에 등록된 일정이 없습니다.</p>
-            <div v-else class="compact-timeline" style="margin-bottom:20px;">
-              <div v-for="item in briefingItems" :key="item.id">
-                <time>{{ item.label }}</time>
-                <span></span>
-                <p><strong>{{ item.title }}</strong>{{ item.address || '상세 위치 미정' }}</p>
-              </div>
-            </div>
-            <a href="#" class="btn ghost" style="display:flex; align-items:center; justify-content:center; width:100%; padding:8px 0; font-size:13px; min-height:0; height:auto; border-color:var(--line); border-radius:999px; text-decoration:none; color:var(--violet); font-weight:700;" @click.prevent="closeAllDropdowns(); router.push(briefingTripId ? `/trips/${briefingTripId}/route` : '/my-trips')">전체보기</a>
->>>>>>> origin/develop
           </div>
         </div>
 
@@ -350,7 +336,6 @@ async function handleLogout() {
             <p v-else-if="notificationsError" style="font-size:13px;color:var(--rose)">{{ notificationsError }}</p>
             <p v-else-if="notifications.length === 0" style="font-size:13px;color:var(--muted)">새 알림이 없습니다.</p>
             <div v-else class="notification-list">
-<<<<<<< HEAD
               <article
                 v-for="notification in notifications"
                 :key="notification.id"
@@ -361,13 +346,6 @@ async function handleLogout() {
                   <strong class="notification-title">{{ notification.title }}</strong>
                   <span v-if="notification.actor" class="notification-actor">
                     <img v-if="notification.actor.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" />
-=======
-              <article v-for="notification in notifications" :key="notification.id" class="notification-item" :class="{ unread: !notification.readAt }">
-                <button type="button" style="display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:0" @click="openNotification(notification)">
-                  <strong style="font-size:13px;display:block;color:var(--ink)">{{ notification.title }}</strong>
-                  <span v-if="notification.actor" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--violet)">
-                    <img v-if="notification.actor.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover;" />
->>>>>>> origin/develop
                     {{ notification.actor.displayName }}
                   </span>
                   <p v-if="notification.body" class="notification-body">{{ notification.body }}</p>
@@ -381,10 +359,6 @@ async function handleLogout() {
                 >
                   <span class="material-symbols-rounded">close</span>
                 </button>
-<<<<<<< HEAD
-=======
-                <button type="button" class="notification-delete" aria-label="알림 삭제" title="알림 삭제" @click.stop="dismissNotification(notification.id)"><span class="material-symbols-rounded">close</span></button>
->>>>>>> origin/develop
               </article>
               <button
                 v-if="hasMoreNotifications"
