@@ -76,11 +76,57 @@ function closeAllDropdowns() {
   showProfile.value = false
 }
 
+<<<<<<< HEAD
 async function toggleBriefing() {
   const next = !showBriefing.value
   closeAllDropdowns()
   showBriefing.value = next
   if (next) await loadBriefing()
+=======
+async function loadBriefing() {
+  briefingLoading.value = true
+  briefingError.value = ''
+  try {
+    const trip = await tripApi.getNearestTrip()
+    briefingTrip.value = {
+      id: trip.id,
+      title: trip.title,
+      destination: trip.displayDestination,
+    }
+    try {
+      const itinerary = await itineraryApi.getItinerary(trip.id)
+      const today = new Date().toISOString().slice(0, 10)
+      const todayDay =
+        itinerary.days.find((day) => day.date === today) ??
+        itinerary.days.find((day) => day.dayNumber === 1) ??
+        itinerary.days.find((day) => (day.items ?? []).length > 0) ??
+        null
+      briefingItems.value = (todayDay?.items ?? []).slice(0, 3).map((item) => ({
+        title: item.placeName,
+        description: item.address ?? '',
+      }))
+    } catch {
+      briefingItems.value = []
+    }
+    briefingLoaded.value = true
+  } catch {
+    briefingTrip.value = null
+    briefingItems.value = []
+    briefingError.value = '예정된 일정을 불러오지 못했어요.'
+    briefingLoaded.value = true
+  } finally {
+    briefingLoading.value = false
+  }
+}
+
+function toggleBriefing() {
+  const next = !showBriefing.value
+  closeAllDropdowns()
+  showBriefing.value = next
+  if (next && !briefingLoaded.value && !briefingLoading.value) {
+    void loadBriefing()
+  }
+>>>>>>> origin/develop
 }
 
 async function loadBriefing() {
@@ -264,6 +310,7 @@ async function handleLogout() {
               <span class="material-symbols-rounded" style="font-size:18px; color:var(--violet)">event_note</span>
               오늘 일정 브리핑
             </h4>
+<<<<<<< HEAD
             <p v-if="briefingLoading" class="header-state">일정을 불러오는 중…</p>
             <p v-else-if="briefingError" class="header-state header-state--error">{{ briefingError }}</p>
             <p v-else-if="briefingItems.length === 0" class="header-state">다가오는 여행에 등록된 일정이 없습니다.</p>
@@ -275,6 +322,24 @@ async function handleLogout() {
               </div>
             </div>
             <a href="#" class="btn ghost" style="display:flex; align-items:center; justify-content:center; width:100%; padding:8px 0; font-size:13px; min-height:0; height:auto; border-color:var(--line); border-radius:999px; text-decoration:none; color:var(--violet); font-weight:700;" @click.prevent="closeAllDropdowns(); router.push(briefingTripId ? `/trips/${briefingTripId}/route` : '/my-trips')">전체보기</a>
+=======
+            <p v-if="briefingLoading" style="font-size:13px;color:var(--muted);margin:0 0 16px;">불러오는 중…</p>
+            <p v-else-if="briefingError" style="font-size:13px;color:var(--rose);margin:0 0 16px;">{{ briefingError }}</p>
+            <template v-else>
+              <p v-if="briefingTrip" style="font-size:12px;color:var(--violet);font-weight:800;margin:0 0 12px;">
+                {{ briefingTrip.title }}<span v-if="briefingTrip.destination"> · {{ briefingTrip.destination }}</span>
+              </p>
+              <div v-if="briefingItems.length > 0" class="compact-timeline" style="margin-bottom:20px;">
+                <div v-for="(item, idx) in briefingItems" :key="idx">
+                  <time>{{ String(idx + 1).padStart(2, '0') }}</time>
+                  <span></span>
+                  <p><strong>{{ item.title }}</strong>{{ item.description }}</p>
+                </div>
+              </div>
+              <p v-else style="font-size:13px;color:var(--muted);margin:0 0 16px;">예정된 일정이 없어요.</p>
+            </template>
+            <a href="#" class="btn ghost" style="display:flex; align-items:center; justify-content:center; width:100%; padding:8px 0; font-size:13px; min-height:0; height:auto; border-color:var(--line); border-radius:999px; text-decoration:none; color:var(--violet); font-weight:700;" @click.prevent="closeAllDropdowns(); router.push(briefingTrip ? `/trips/${briefingTrip.id}/route` : '/my-trips')">전체보기</a>
+>>>>>>> origin/develop
           </div>
         </div>
 

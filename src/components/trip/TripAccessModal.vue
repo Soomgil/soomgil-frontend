@@ -194,7 +194,10 @@ async function removeMember(userId: string) {
 
 .access-modal {
   background: #fff;
+<<<<<<< HEAD
   border: 1px solid rgba(227, 234, 244, .9);
+=======
+>>>>>>> origin/develop
   border-radius: 24px;
   box-shadow: 0 24px 64px rgb(0 0 0 / 18%);
   max-height: min(760px, calc(100vh - 40px));
