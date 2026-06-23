@@ -17,7 +17,7 @@ import type { Place } from '@/types/place'
 import type { Story } from '@/types/community'
 import LikedPlacesModal from '@/components/mypage/LikedPlacesModal.vue'
 import MyStoriesModal from '@/components/mypage/MyStoriesModal.vue'
-import MyStoryDetailModal from '@/components/mypage/MyStoryDetailModal.vue'
+import StoryDetailOverlay from '@/components/community/StoryDetailOverlay.vue'
 import FollowListModal from '@/components/common/FollowListModal.vue'
 
 const router = useRouter()
@@ -52,7 +52,7 @@ onMounted(async () => {
   }
   try {
     await auth.fetchUser()
-    await Promise.allSettled([loadFollowData(), loadMyStories(), loadLikedPlaces(), loadMyTripCount()])
+    await Promise.allSettled([loadFollowData(), loadMyStories(), loadLikedPlaces(), loadMyTripCount(), loadPreferences()])
   } catch {
     // fetch 실패해도 페이지는 노출
   } finally {
@@ -62,7 +62,6 @@ onMounted(async () => {
 
 // 좋아요한 장소
 const likedPlacesSource = ref<Place[]>([])
-const placeSearchQuery = ref('')
 const failedPlaceImages = ref(new Set<string>())
 const removingPlaceKeys = ref(new Set<string>())
 
@@ -100,15 +99,7 @@ async function loadLikedPlaces() {
   }
 }
 
-const likedPlaces = computed(() => {
-  if (!placeSearchQuery.value.trim()) return likedPlacesSource.value
-  const q = placeSearchQuery.value.trim().toLowerCase()
-  return likedPlacesSource.value.filter((p) =>
-    p.placeName.toLowerCase().includes(q) ||
-    (p.address ?? '').toLowerCase().includes(q) ||
-    (p.tags ?? []).some(t => t.toLowerCase().includes(q))
-  )
-})
+const likedPlaces = computed(() => likedPlacesSource.value)
 
 const myStories = ref<Story[]>([])
 
@@ -314,6 +305,62 @@ function onStatClick(label: string) {
   }
 }
 
+// 여행 취향 — 실제 preference 도메인 데이터로 채워짐 (API 실패 시 mock 폴백)
+const GROUP_COLORS: Record<string, string> = {
+  nature_scene: '#10b981',
+  history_culture: '#7c3aed',
+  activity: '#0066ff',
+  mood: '#ec4899',
+  space_context: '#f59e0b',
+}
+const DEFAULT_COLOR = '#6b7280'
+
+const travelPreferences = ref<{
+  tags: string[]
+  styles: { label: string; percent: number; color: string }[]
+  insight: string
+  isEmpty: boolean
+}>({
+  tags: ['도시 산책', '역사/문화', '야경 명소', '사진 여행', '혼행'],
+  styles: [
+    { label: '도시 여행', percent: 82, color: '#0066ff' },
+    { label: '역사/문화 여행', percent: 74, color: '#7c3aed' },
+    { label: '야경/감성 여행', percent: 68, color: '#ec4899' },
+    { label: '자연/힐링', percent: 56, color: '#10b981' },
+    { label: '맛집/미식', percent: 42, color: '#f59e0b' },
+  ],
+  insight: '도시의 감성과 역사적인 장소를 함께 즐기는 여행을 선호해요. 다음 여행은 근교의 역사 도시를 추천해요.',
+  isEmpty: false,
+})
+
+async function loadPreferences() {
+  try {
+    const data = await userApi.getPreferences()
+    if (data.topCategories.length === 0) {
+      travelPreferences.value = {
+        tags: [],
+        styles: [],
+        insight: data.travelStyle,
+        isEmpty: true,
+      }
+      return
+    }
+    travelPreferences.value = {
+      tags: data.preferredTags,
+      styles: data.topCategories.map((c) => ({
+        label: c.category,
+        percent: c.percentage,
+        color: GROUP_COLORS[c.groupCode] ?? DEFAULT_COLOR,
+      })),
+      insight: data.travelStyle,
+      isEmpty: false,
+    }
+  } catch (err) {
+    console.error('Failed to load preferences', err)
+    // API 실패 시 기존 mock 유지
+  }
+}
+
 function handleUserClick(userId: string) {
   followersModal.close()
   followingModal.close()
@@ -333,80 +380,67 @@ function handleUserClick(userId: string) {
         <!-- 프로필 히어로 영역 -->
         <div class="mypage-hero" data-mypage-hero>
           <div class="mypage-hero__content">
-            <div class="mypage-profile-card">
-              <!-- Avatar + Info -->
-              <div class="profile-card-left-group">
-                <div class="mypage-hero__avatar-container" style="cursor: pointer;" @click="openProfileEdit">
-                  <span class="mypage-hero__avatar-ring">
-                    <span
-                      class="mypage-hero__avatar"
-                      :style="{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'var(--violet)',
-                        color: '#fff',
-                        fontWeight: 800,
-                        fontSize: '28px',
-                        overflow: 'hidden'
-                      }"
+            <div class="mypage-profile-card profile-header-card">
+              <!-- 좌측: 큰 원형 프로필 이미지 -->
+              <div class="profile-avatar-col">
+                <div class="profile-avatar-wrap" style="cursor: pointer;" @click="openProfileEdit">
+                  <span
+                    class="mypage-hero__avatar profile-avatar-img"
+                    :style="{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'var(--violet)',
+                      color: '#fff',
+                      fontWeight: 800,
+                      fontSize: '40px',
+                      overflow: 'hidden'
+                    }"
+                  >
+                    <img v-if="displayUser.profileImageUrl" :src="displayUser.profileImageUrl" alt="프로필 이미지" style="width: 100%; height: 100%; object-fit: cover;">
+                    <span v-else>{{ displayName.charAt(0) }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <!-- 우측: 이름/핸들/소개/통계/버튼 세로 스택 -->
+              <div class="profile-info-col">
+                <h2 class="profile-display-name">{{ displayName }}</h2>
+                <span class="profile-handle">{{ displayEmail }}</span>
+                <p v-if="displayBio" class="profile-bio">{{ displayBio }}</p>
+
+                <!-- 통계 행: 5개 가로 (박스 없음) -->
+                <div class="profile-stats-row">
+                  <div v-if="isLoading" class="profile-stat-item" style="color: var(--muted); opacity: 0.5;">
+                    <span class="profile-stat-value"><span class="material-symbols-rounded" style="animation: spin 1s linear infinite; font-size: 22px;">sync</span></span>
+                    <span class="profile-stat-label">불러오는 중...</span>
+                  </div>
+                  <template v-else>
+                    <div
+                      v-for="(stat, idx) in profileStats"
+                      :key="stat.label"
+                      class="profile-stat-item"
+                      :class="{ 'has-divider': idx > 0 }"
+                      style="cursor: pointer;"
+                      @click="onStatClick(stat.label)"
                     >
-                      <img v-if="displayUser.profileImageUrl" :src="displayUser.profileImageUrl" alt="프로필 이미지" style="width: 100%; height: 100%; object-fit: cover;">
-                      <span v-else>{{ displayName.charAt(0) }}</span>
-                    </span>
-                  </span>
-                  <span class="avatar-link-badge">
-                    <span class="material-symbols-rounded">link</span>
-                  </span>
-                </div>
-                <div class="profile-card-details">
-                  <div class="mypage-hero__name-col">
-                    <div class="mypage-hero__name-row">
-                      <h2 class="mypage-hero__name">{{ displayName }}</h2>
-                      <span class="material-symbols-rounded verified-check-badge">verified</span>
+                      <span class="profile-stat-value">{{ stat.value }}</span>
+                      <span class="profile-stat-label">{{ stat.label }}</span>
                     </div>
-                    <span class="mypage-hero__email">{{ displayEmail }}</span>
-                    <span class="mypage-visibility-badge"><span class="material-symbols-rounded">{{ displayUser.profileVisibility === 'PRIVATE' ? 'group' : 'public' }}</span>{{ displayUser.profileVisibility === 'PRIVATE' ? '팔로워 공개' : '전체 공개' }}</span>
-                  </div>
-                  <p v-if="displayBio" class="mypage-hero__intro">{{ displayBio }}</p>
-                  <!-- 취향 태그는 preference 도메인 연동 후 사용자 데이터로 표시 (현재는 숨김) -->
-                  <ul v-if="false" class="mypage-hero__tags">
-                    <li class="mypage-hero__tag">#호수</li>
-                    <li class="mypage-hero__tag">#온천</li>
-                    <li class="mypage-hero__tag">#산책</li>
-                    <li class="mypage-hero__tag">#카페</li>
-                    <li class="mypage-hero__tag">#전시</li>
-                  </ul>
+                  </template>
                 </div>
-              </div>
 
-              <!-- Stats -->
-              <div class="mypage-profile-minimal-stats">
-                <div v-if="isLoading" class="minimal-stat-item" style="color: var(--muted); opacity: 0.5;">
-                  <span class="material-symbols-rounded minimal-stat-icon" style="animation: spin 1s linear infinite;">sync</span>
-                  <span class="minimal-stat-label">불러오는 중...</span>
+                <!-- 버튼 행: 2개 pill -->
+                <div class="profile-actions-row">
+                  <button type="button" class="profile-pill-btn primary" @click="openProfileEdit">
+                    <span class="material-symbols-rounded">edit</span>프로필 수정
+                  </button>
+                  <button type="button" class="profile-pill-btn secondary" @click="shareProfile">
+                    <span class="material-symbols-rounded">share</span>공유하기
+                  </button>
                 </div>
-                <template v-else>
-                  <div v-for="stat in profileStats" :key="stat.label" class="minimal-stat-item"
-                    style="cursor: pointer;"
-                    @click="onStatClick(stat.label)">
-                    <span class="material-symbols-rounded minimal-stat-icon">{{ stat.icon }}</span>
-                    <span class="minimal-stat-value">{{ stat.value }}</span>
-                    <span class="minimal-stat-label">{{ stat.label }}</span>
-                  </div>
-                </template>
+                <p v-if="shareNotice" class="mypage-share-notice" role="status">{{ shareNotice }}</p>
               </div>
-
-              <!-- Actions -->
-              <div class="mypage-profile-actions">
-                <button type="button" class="mypage-profile-btn edit" @click="openProfileEdit">
-                  <span class="material-symbols-rounded">edit</span>프로필 수정
-                </button>
-                <button type="button" class="mypage-profile-btn share" @click="shareProfile">
-                  <span class="material-symbols-rounded">share</span>공유하기
-                </button>
-              </div>
-              <p v-if="shareNotice" class="mypage-share-notice" role="status">{{ shareNotice }}</p>
             </div>
           </div>
         </div>
@@ -421,14 +455,7 @@ function handleUserClick(userId: string) {
             <h2 id="section-liked-places-title" class="mypage-section-title">
               <span class="material-symbols-rounded section-icon section-icon--rose" aria-hidden="true">favorite</span>좋아요한 장소
             </h2>
-            <div v-if="likedPlaces.length > 0" class="mypage-header-search-row">
-              <div class="mypage-search-inline">
-                <span class="material-symbols-rounded">search</span>
-                <input type="search" v-model="placeSearchQuery" placeholder="장소명, 지역, 태그로 검색" />
-              </div>
-              <span class="mypage-search-count">{{ likedPlaces.length }}곳</span>
-              <a href="#" class="mypage-more-link" @click.prevent="likedPlacesModal.open()">모두 보기 ›</a>
-            </div>
+            <a v-if="likedPlaces.length > 0" href="#" class="mypage-more-link" @click.prevent="likedPlacesModal.open()">모두 보기 ›</a>
           </div>
 
           <div class="mypage-section-content liked-places-layout">
@@ -471,79 +498,91 @@ function handleUserClick(userId: string) {
           </div>
         </section>
 
-        <!-- 2. 내 여행기 섹션 -->
-        <section class="mypage-section" aria-labelledby="section-my-stories-title">
-          <div class="mypage-section-header">
-            <h2 id="section-my-stories-title" class="mypage-section-title">
-              <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">auto_stories</span>내 여행기
-            </h2>
-            <a v-if="myStories.length > 0" href="#" class="mypage-more-link" @click.prevent="myStoriesModal.open()">모두 보기 ›</a>
-          </div>
+        <!-- 2. 통합 하단 섹션: 내 여행기 + 여행 취향 (2컬럼) -->
+        <section class="mypage-section profile-bottom-grid">
+          <!-- 좌측: 내 여행기 -->
+          <article class="profile-bottom-col">
+            <div class="mypage-section-header">
+              <h2 id="section-my-stories-title" class="mypage-section-title">
+                <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">auto_stories</span>내 여행기
+              </h2>
+              <a v-if="myStories.length > 0" href="#" class="mypage-more-link" @click.prevent="myStoriesModal.open()">모두 보기 ›</a>
+            </div>
 
-          <!-- 빈 상태 -->
-          <div v-if="myStories.length === 0" class="mypage-empty-state">
-            <span class="material-symbols-rounded mypage-empty-icon">auto_stories</span>
-            <p class="mypage-empty-title">작성한 여행기가 없어요</p>
-            <p class="mypage-empty-desc">여행에서 만난 순간들을 기록으로 남겨보세요.</p>
-            <button type="button" class="mypage-empty-cta" @click="router.push('/community/story-write')">여행기 쓰기</button>
-          </div>
+            <!-- 빈 상태 -->
+            <div v-if="myStories.length === 0" class="mypage-empty-state">
+              <span class="material-symbols-rounded mypage-empty-icon">auto_stories</span>
+              <p class="mypage-empty-title">작성한 여행기가 없어요</p>
+              <p class="mypage-empty-desc">여행에서 만난 순간들을 기록으로 남겨보세요.</p>
+              <button type="button" class="mypage-empty-cta" @click="router.push('/community/story-write')">여행기 쓰기</button>
+            </div>
 
-          <!-- 데이터 있을 때 -->
-          <div v-else class="mypage-stories-magazine" data-mypage-stories-list>
-            <div v-for="story in myStories" :key="story.id" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
-              <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
-              <div class="story-magazine-body">
-                <h3 class="story-magazine-title">
-                  <span>{{ story.title }}</span>
-                </h3>
-                <div class="story-magazine-meta">
-                  <span class="story-date">{{ story.location }}</span>
-                  <div class="story-stats-row">
-                    <span>
-                      <span class="material-symbols-rounded">favorite</span> {{ story.likes }}
-                    </span>
-                    <span>
-                      <span class="material-symbols-rounded">chat_bubble</span> {{ story.comments }}
-                    </span>
+            <!-- 데이터 있을 때 -->
+            <div v-else class="mypage-stories-magazine" data-mypage-stories-list>
+              <div v-for="story in myStories" :key="story.id" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
+                <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
+                <div class="story-magazine-body">
+                  <h3 class="story-magazine-title">
+                    <span>{{ story.title }}</span>
+                  </h3>
+                  <div class="story-magazine-meta">
+                    <span class="story-date">{{ story.location }}</span>
+                    <div class="story-stats-row">
+                      <span>
+                        <span class="material-symbols-rounded">favorite</span> {{ story.likes }}
+                      </span>
+                      <span>
+                        <span class="material-symbols-rounded">chat_bubble</span> {{ story.comments }}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </article>
 
-        <!-- 4. 하단 분석 통계 위젯 영역 (내 여행 지도 & 여행 취향) -->
-        <section class="mypage-insights-section" aria-labelledby="section-insights-title">
-          <div class="mypage-insights-grid">
-            <!-- 좌측: 내 여행 지도 -->
-            <article class="insight-card map-insight-card">
-              <div class="insight-card-header">
-                <h3 id="section-insights-title">내 여행 지도</h3>
-                <p class="insight-subtitle">방문한 지역이 없습니다</p>
-              </div>
-              <div class="mypage-empty-state mypage-empty-state--inline">
-                <span class="material-symbols-rounded mypage-empty-icon">public</span>
-                <p class="mypage-empty-title">아직 방문한 지역이 없어요</p>
-                <p class="mypage-empty-desc">여행을 기록하면 지도에 표시됩니다.</p>
-              </div>
-            </article>
+          <!-- 우측: 여행 취향 -->
+          <article class="profile-bottom-col preference-panel">
+            <div class="mypage-section-header">
+              <h2 class="mypage-section-title">
+                <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">explore</span>여행 취향
+              </h2>
+            </div>
+            <p class="preference-intro">데이터 기반 나의 여행 스타일</p>
 
-            <!-- 우측: 여행 취향 -->
-            <article class="insight-card preference-insight-card">
-              <div class="insight-card-header" style="display:flex; align-items:flex-start; justify-content:space-between;">
-                <div>
-                  <h3>여행 취향</h3>
-                  <p class="insight-subtitle">데이터 기반 나의 여행 스타일</p>
+            <div v-if="travelPreferences.isEmpty" class="pref-empty">
+              <span class="material-symbols-rounded pref-empty-icon">swipe</span>
+              <p class="pref-empty-title">아직 학습된 취향이 없어요</p>
+              <p class="pref-empty-desc">스와이프로 장소에 반응하면<br>나만의 여행 스타일이 표시됩니다.</p>
+              <button type="button" class="pref-empty-cta" @click="router.push('/search')">취향 알아보기</button>
+            </div>
+
+            <template v-else>
+            <!-- 태그 칩 -->
+            <div class="pref-tag-list">
+              <span v-for="tag in travelPreferences.tags" :key="tag" class="pref-tag-chip">#{{ tag }}</span>
+            </div>
+
+            <!-- 선호 스타일 progress bar -->
+            <div class="pref-style-list">
+              <div v-for="style in travelPreferences.styles" :key="style.label" class="pref-style-bar">
+                <div class="pref-style-header">
+                  <span class="pref-style-label">{{ style.label }}</span>
+                  <span class="pref-style-percent">{{ style.percent }}%</span>
+                </div>
+                <div class="pref-style-track">
+                  <div class="pref-style-fill" :style="{ width: style.percent + '%', background: style.color }"></div>
                 </div>
               </div>
-              <div class="mypage-empty-state mypage-empty-state--inline">
-                <span class="material-symbols-rounded mypage-empty-icon">explore</span>
-                <p class="mypage-empty-title">아직 분석된 취향이 없어요</p>
-                <p class="mypage-empty-desc">장소를 탐색하고 스와이프하면 취향이 분석됩니다.</p>
-                <button type="button" class="mypage-empty-cta" @click="router.push('/swipe')">취향 분석 시작하기</button>
-              </div>
-            </article>
-          </div>
+            </div>
+
+            <!-- 인사이트 박스 -->
+            <div class="pref-insight-box">
+              <span class="material-symbols-rounded pref-insight-icon">lightbulb</span>
+              <p class="pref-insight-text">{{ travelPreferences.insight }}</p>
+            </div>
+            </template>
+          </article>
         </section>
 
           </div>
@@ -554,7 +593,13 @@ function handleUserClick(userId: string) {
     <!-- Modals -->
     <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" @remove="removeLikedPlace" @close="likedPlacesModal.close()" />
     <MyStoriesModal v-if="myStoriesModal.isOpen.value" :stories="myStories" @close="myStoriesModal.close()" @story-click="openCommunityStory" />
-    <MyStoryDetailModal v-if="selectedStoryId" :story-id="selectedStoryId" @close="selectedStoryId = null" />
+    <StoryDetailOverlay
+      v-if="selectedStoryId"
+      :stories="myStories"
+      :initial-story-id="selectedStoryId"
+      @close="selectedStoryId = null"
+      @changed="loadMyStories"
+    />
     <FollowListModal v-if="followersModal.isOpen.value" title="팔로워" :users="followers" :followingIds="followingIds" @close="followersModal.close()" @toggle-follow="toggleFollow" @user-click="handleUserClick" />
     <FollowListModal v-if="followingModal.isOpen.value" title="팔로잉" :users="following" :followingIds="followingIds" @close="followingModal.close()" @toggle-follow="toggleFollow" @user-click="handleUserClick" />
 
@@ -783,6 +828,354 @@ function handleUserClick(userId: string) {
     flex: 0 0 92%;
     min-width: 92%;
     max-width: 92%;
+  }
+}
+
+/* ========================================
+ * 프로필 카드: 인스타그램 웹 프로필 헤더
+ * 좌(아바타 28%) / 우(정보 72%) 가로 배치
+ * ======================================== */
+
+.profile-header-card {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 40px !important;
+  padding: 36px 40px !important;
+}
+
+/* 좌측 아바타 컬럼 */
+.profile-avatar-col {
+  flex: 0 0 28%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.profile-avatar-wrap {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  padding: 4px;
+  background: linear-gradient(135deg, rgba(0,102,255,0.18), rgba(0,209,255,0.18));
+  box-sizing: border-box;
+}
+.profile-avatar-wrap .profile-avatar-img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50% !important;
+  border: 4px solid #fff;
+  box-sizing: border-box;
+  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.12);
+}
+
+/* 우측 정보 컬럼 */
+.profile-info-col {
+  flex: 1 1 72%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.profile-display-name {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: var(--ink);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.profile-handle {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.profile-bio {
+  margin: 4px 0 8px;
+  font-size: 0.95rem;
+  color: var(--ink);
+  opacity: 0.78;
+  line-height: 1.6;
+  font-weight: 500;
+  max-width: 100%;
+}
+
+/* 통계 행 (박스 없음, 얇은 구분선) */
+.profile-stats-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 8px 0 16px;
+}
+.profile-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 22px;
+  text-align: center;
+  min-width: 78px;
+}
+.profile-stat-item:first-child {
+  padding-left: 0;
+}
+.profile-stat-item.has-divider {
+  border-left: 1px solid var(--line);
+}
+.profile-stat-value {
+  font-size: 1.5rem;
+  font-weight: 950;
+  color: var(--ink);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.profile-stat-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* 버튼 행 (2개 pill) */
+.profile-actions-row {
+  display: flex;
+  gap: 10px;
+}
+.profile-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+  border: none;
+}
+.profile-pill-btn .material-symbols-rounded {
+  font-size: 18px;
+}
+.profile-pill-btn.primary {
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(26, 32, 51, 0.18);
+}
+.profile-pill-btn.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(26, 32, 51, 0.26);
+}
+.profile-pill-btn.secondary {
+  background: #fff;
+  color: var(--ink);
+  border: 1.5px solid var(--line);
+}
+.profile-pill-btn.secondary:hover {
+  background: var(--surface-2);
+  border-color: var(--violet);
+  color: var(--violet);
+}
+
+/* ========================================
+ * 통합 하단 섹션: 2컬럼 그리드
+ * ======================================== */
+.profile-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
+}
+.profile-bottom-col {
+  background: #fff;
+  border-radius: 22px;
+  padding: 28px;
+  box-shadow: var(--soft-shadow);
+  display: flex;
+  flex-direction: column;
+}
+.profile-bottom-col .mypage-section-header {
+  margin-bottom: 20px;
+}
+
+/* 여행 취향 패널 */
+.preference-intro {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  font-weight: 600;
+}
+.pref-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.pref-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pref-style-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.pref-style-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pref-style-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pref-style-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pref-style-percent {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--muted);
+}
+.pref-style-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.pref-style-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.pref-insight-box {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(0, 102, 255, 0.04);
+  border: 1px solid rgba(0, 102, 255, 0.12);
+}
+.pref-insight-icon {
+  font-size: 20px;
+  color: var(--violet);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.pref-insight-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 취향 데이터 없음 (온보딩) */
+.pref-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 32px 16px;
+}
+.pref-empty-icon {
+  font-size: 44px;
+  color: var(--violet);
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+.pref-empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.pref-empty-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.pref-empty-cta {
+  margin-top: 10px;
+  padding: 10px 22px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 102, 255, 0.2);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.pref-empty-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0, 102, 255, 0.28);
+}
+
+/* === 반응형 === */
+@media (max-width: 1024px) {
+  .profile-header-card {
+    gap: 28px !important;
+    padding: 28px 28px !important;
+  }
+  .profile-avatar-col {
+    flex-basis: 32%;
+  }
+}
+@media (max-width: 768px) {
+  .profile-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-header-card {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center;
+    gap: 20px !important;
+    padding: 28px 20px !important;
+  }
+  .profile-avatar-col {
+    flex-basis: auto;
+  }
+  .profile-info-col {
+    align-items: center;
+  }
+  .profile-stats-row {
+    justify-content: center;
+  }
+  .profile-actions-row {
+    justify-content: center;
+  }
+}
+@media (max-width: 480px) {
+  .profile-stats-row {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+  .profile-stat-item {
+    min-width: 64px;
+    padding: 0 12px;
+  }
+  .profile-stat-item.has-divider {
+    border-left: none;
   }
 }
 </style>

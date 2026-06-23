@@ -198,6 +198,7 @@ async function openStory(story: StoryView) {
       0,
       stories.value.findIndex((item) => item.id === story.id),
     );
+    transitionName.value = "slide-up";
   } catch {
     toast.error("여행기 상세를 불러오지 못했습니다.");
   }
@@ -206,16 +207,13 @@ async function openStory(story: StoryView) {
 function closeModal() {
   selectedPost.value = null;
   apiComments.value = [];
+  scrollGuideVisible.value = true;
+  isTransitioning.value = false;
 }
 
 function goPage(page: number) {
   if (page < 1 || page > totalPages.value) return;
   currentPage.value = page;
-}
-
-function scrollToLatest() {
-  const target = document.getElementById("latest-stories");
-  if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function prevPopular() {
@@ -411,6 +409,68 @@ const visibleStoryIdx = ref(0);
 
 const visibleStory = computed(() => stories.value[visibleStoryIdx.value] || stories.value[0]);
 
+const transitionName = ref<"slide-up" | "slide-down">("slide-up");
+const isTransitioning = ref(false);
+
+function goToStory(direction: -1 | 1) {
+  if (isTransitioning.value) return;
+  const next = visibleStoryIdx.value + direction;
+  if (next < 0 || next >= stories.value.length) return;
+  isTransitioning.value = true;
+  transitionName.value = direction > 0 ? "slide-up" : "slide-down";
+  visibleStoryIdx.value = next;
+  scrollGuideVisible.value = false;
+  void selectVisibleStory(next);
+  window.setTimeout(() => {
+    isTransitioning.value = false;
+  }, 350);
+}
+
+let touchStartY = 0;
+let touchStartX = 0;
+function onTouchStart(e: TouchEvent) {
+  touchStartY = e.touches[0].clientY;
+  touchStartX = e.touches[0].clientX;
+}
+function onTouchEnd(e: TouchEvent) {
+  const dy = touchStartY - e.changedTouches[0].clientY;
+  const dx = touchStartX - e.changedTouches[0].clientX;
+  if (Math.abs(dy) < 50 || Math.abs(dy) < Math.abs(dx)) return;
+  const article = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(".story-post");
+  const atTop = article ? article.scrollTop <= 0 : true;
+  const atBottom = article
+    ? article.scrollTop + article.clientHeight >= article.scrollHeight - 1
+    : true;
+  if (dy > 0 && !atBottom) return;
+  if (dy < 0 && !atTop) return;
+  goToStory(dy > 0 ? 1 : -1);
+}
+function onWheel(e: WheelEvent) {
+  if (Math.abs(e.deltaY) < 15) return;
+  const article = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(".story-post");
+  if (!article) return;
+  const atTop = article.scrollTop <= 0;
+  const atBottom = article.scrollTop + article.clientHeight >= article.scrollHeight - 1;
+  if (e.deltaY > 0) {
+    if (!atBottom) return;
+    e.preventDefault();
+    goToStory(1);
+  } else {
+    if (!atTop) return;
+    e.preventDefault();
+    goToStory(-1);
+  }
+}
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
+    e.preventDefault();
+    goToStory(1);
+  } else if (e.key === "ArrowUp" || e.key === "PageUp") {
+    e.preventDefault();
+    goToStory(-1);
+  }
+}
+
 let visibleStoryRequest = 0;
 async function selectVisibleStory(index: number) {
   const story = stories.value[index];
@@ -430,29 +490,16 @@ async function selectVisibleStory(index: number) {
   }
 }
 
-function onFeedScroll(e: Event) {
-  const el = e.target as HTMLElement;
-  if (scrollGuideVisible.value && el.scrollTop > 30) {
-    scrollGuideVisible.value = false;
-  }
-  // Determine which story is visible based on scroll position
-  const articles = el.querySelectorAll(".story-post");
-  const centerY = el.scrollTop + el.clientHeight / 2;
-  articles.forEach((article, idx) => {
-    const top = (article as HTMLElement).offsetTop;
-    const bottom = top + (article as HTMLElement).offsetHeight;
-    if (centerY >= top && centerY < bottom) {
-      if (visibleStoryIdx.value !== idx) {
-        visibleStoryIdx.value = idx;
-        void selectVisibleStory(idx);
-      }
-    }
-  });
-}
-
 watch(searchQuery, () => {
   currentPage.value = 1;
 });
+watch(
+  () => !!selectedStory.value,
+  (open) => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = open ? "hidden" : "";
+  },
+);
 onMounted(async () => {
   const q = typeof route.query.q === "string" ? route.query.q.trim() : "";
   if (q) searchQuery.value = q;
@@ -486,24 +533,6 @@ watch(
             <p class="lead community-hero-lead">
               전 세계 여행자들이 직접 다녀온 생생한 여행기와 검증된 루트를 탐색할 수 있습니다.
             </p>
-          </div>
-          <div class="community-hero-actions">
-            <button
-              type="button"
-              class="community-pill community-pill-ghost"
-              @click="scrollToLatest"
-            >
-              <span class="material-symbols-rounded">auto_stories</span>
-              여행기 둘러보기
-            </button>
-            <button
-              type="button"
-              class="community-pill community-pill-ghost"
-              @click="openWriter"
-            >
-              <span class="material-symbols-rounded">add_road</span>
-              여행기 작성
-            </button>
           </div>
         </div>
 
@@ -622,6 +651,14 @@ watch(
                 </div>
               </div>
               <div class="latest-stories-tools">
+                <button
+                  type="button"
+                  class="community-pill community-pill-primary story-write-pill"
+                  @click="openWriter"
+                >
+                  <span class="material-symbols-rounded">add_road</span>
+                  여행기 작성
+                </button>
                 <label class="community-story-search search-box">
                   <input
                     v-model="searchQuery"
@@ -752,7 +789,7 @@ watch(
       aria-label="여행기 상세"
     >
       <div class="story-overlay-backdrop" @click="closeModal"></div>
-      <div class="story-overlay-panel">
+      <div class="story-overlay-panel" @click="scrollGuideVisible = false">
         <button class="story-overlay-close" type="button" aria-label="닫기" @click="closeModal">
           <span class="material-symbols-rounded">close</span>
         </button>
@@ -773,162 +810,163 @@ watch(
 
             <div
               class="story-feed-window"
-              aria-label="스크롤 가능한 여행기 피드"
+              aria-label="여행기 피드"
               id="overlay-feed-stories"
-              @scroll="onFeedScroll"
+              tabindex="0"
+              @touchstart.passive="onTouchStart"
+              @touchend.passive="onTouchEnd"
+              @wheel="onWheel"
+              @keydown="onKeydown"
             >
-              <article
-                v-for="story in selectedStory ? [selectedStory] : []"
-                :key="story.id"
-                :data-story-id="story.id"
-                class="story-post"
-                style="margin-bottom: 32px"
-              >
-                <div
-                  class="story-post-head"
-                  style="
-                    padding: 16px 20px;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: flex-start;
-                    gap: 12px;
-                  "
+              <Transition :name="transitionName" mode="out-in">
+                <article
+                  :key="visibleStory.id"
+                  :data-story-id="visibleStory.id"
+                  class="story-post"
                 >
                   <div
+                    class="story-post-head"
                     style="
+                      padding: 16px 20px;
                       display: flex;
-                      align-items: center;
-                      justify-content: space-between;
-                      width: 100%;
+                      flex-direction: column;
+                      align-items: flex-start;
+                      gap: 12px;
                     "
                   >
                     <div
-                      class="story-author"
-                      style="display: flex; align-items: center; gap: 10px; cursor: pointer"
-                      @click="openUserProfile(story.authorUserId)"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        width: 100%;
+                      "
                     >
                       <div
-                        class="fc-avatar"
-                        style="width: 40px; height: 40px; background: var(--violet)"
+                        class="story-author"
+                        style="display: flex; align-items: center; gap: 10px; cursor: pointer"
+                        @click="openUserProfile(visibleStory.authorUserId)"
                       >
-                        <img
-                          v-if="story.authorProfileImageUrl"
-                          :src="story.authorProfileImageUrl"
-                          :alt="`${story.author} 프로필 사진`"
-                        />
-                        <span v-else>{{ story.avatar }}</span>
+                        <div
+                          class="fc-avatar"
+                          style="width: 40px; height: 40px; background: var(--violet)"
+                        >
+                          <img
+                            v-if="visibleStory.authorProfileImageUrl"
+                            :src="visibleStory.authorProfileImageUrl"
+                            :alt="`${visibleStory.author} 프로필 사진`"
+                          />
+                          <span v-else>{{ visibleStory.avatar }}</span>
+                        </div>
+                        <div>
+                          <strong style="font-size: 15px; color: var(--violet)">{{
+                            visibleStory.author
+                          }}</strong>
+                          <span class="small muted" style="display: block">{{ visibleStory.location }}</span>
+                        </div>
                       </div>
-                      <div>
-                        <strong style="font-size: 15px; color: var(--violet)">{{
-                          story.author
-                        }}</strong>
-                        <span class="small muted" style="display: block">{{ story.location }}</span>
-                      </div>
+                      <button
+                        type="button"
+                        class="story-report-btn"
+                        aria-label="게시글 신고"
+                        title="신고"
+                        @click.stop="openReport"
+                      >
+                        <span class="material-symbols-rounded">campaign</span>
+                      </button>
                     </div>
+                  </div>
+                  <div class="story-post-photo-frame">
                     <button
+                      v-if="visibleStory.photos.length > 1"
                       type="button"
-                      class="story-report-btn"
-                      aria-label="게시글 신고"
-                      title="신고"
-                      @click.stop="openReport"
+                      class="feed-photo-nav carousel-btn prev-btn prev"
+                      aria-label="이전 사진"
+                      @click="moveStoryPhoto(visibleStory, -1)"
                     >
-                      <span class="material-symbols-rounded">campaign</span>
+                      <span class="material-symbols-rounded">chevron_left</span>
                     </button>
-                  </div>
-                </div>
-                <div style="overflow: hidden; display: block; position: relative">
-                  <button
-                    v-if="story.photos.length > 1"
-                    type="button"
-                    class="feed-photo-nav carousel-btn prev-btn prev"
-                    aria-label="이전 사진"
-                    @click="moveStoryPhoto(story, -1)"
-                  >
-                    <span class="material-symbols-rounded">chevron_left</span>
-                  </button>
-                  <img
-                    :alt="story.title"
-                    :src="currentStoryPhoto(story)"
-                    style="width: 100%; transition: transform 0.5s ease; display: block"
-                  />
-                  <button
-                    v-if="story.photos.length > 1"
-                    type="button"
-                    class="feed-photo-nav carousel-btn next-btn next"
-                    aria-label="다음 사진"
-                    @click="moveStoryPhoto(story, 1)"
-                  >
-                    <span class="material-symbols-rounded">chevron_right</span>
-                  </button>
-                  <span v-if="story.photos.length > 1" class="feed-photo-count"
-                    >{{ (storyPhotoIndexes[story.id] ?? 0) + 1 }} / {{ story.photos.length }}</span
-                  >
-                </div>
-                <div class="story-body" style="padding: 22px 24px">
-                  <h3 style="font-size: 20px; line-height: 1.4; margin: 0 0 12px">
-                    {{ story.title }}
-                  </h3>
-                  <p class="muted" style="font-size: 15px; line-height: 1.7; margin: 0 0 16px">
-                    {{ story.summary }}
-                  </p>
-                  <div class="tag-row" style="margin-bottom: 12px">
-                    <span v-for="tag in story.tags" :key="tag" class="tag">{{ tag }}</span>
-                  </div>
-                  <p style="font-size: 14px; line-height: 1.7; color: var(--muted)">
-                    {{ story.content }}
-                  </p>
-                  <div
-                    style="
-                      margin-top: 16px;
-                      display: flex;
-                      align-items: center;
-                      gap: 20px;
-                      color: var(--muted);
-                      font-size: 14px;
-                    "
-                  >
+                    <img
+                      :alt="visibleStory.title"
+                      :src="currentStoryPhoto(visibleStory)"
+                      class="story-post-photo-img"
+                    />
                     <button
+                      v-if="visibleStory.photos.length > 1"
                       type="button"
-                      class="story-like-button"
-                      :class="{ active: story.likedByMe }"
-                      :disabled="likingPostIds.has(story.id)"
-                      :aria-pressed="story.likedByMe"
-                      @click="toggleStoryLike(story)"
+                      class="feed-photo-nav carousel-btn next-btn next"
+                      aria-label="다음 사진"
+                      @click="moveStoryPhoto(visibleStory, 1)"
                     >
-                      <span class="material-symbols-rounded" style="font-size: 20px">favorite</span>
-                      {{ story.likes }}
+                      <span class="material-symbols-rounded">chevron_right</span>
                     </button>
-                    <span style="display: flex; align-items: center; gap: 4px"
-                      ><span
-                        class="material-symbols-rounded"
-                        style="font-size: 20px; color: var(--violet)"
-                        >chat_bubble</span
-                      >
-                      {{ story.comments }}</span
+                    <span v-if="visibleStory.photos.length > 1" class="feed-photo-count"
+                      >{{ (storyPhotoIndexes[visibleStory.id] ?? 0) + 1 }} / {{ visibleStory.photos.length }}</span
                     >
-                    <button type="button" class="story-like-button" @click="retripStory(story)">
-                      <span class="material-symbols-rounded" style="font-size: 20px"
-                        >content_copy</span
-                      >
-                      리트립
-                    </button>
-                    <button type="button" class="story-like-button" @click="shareStory(story)">
-                      <span class="material-symbols-rounded" style="font-size: 20px">share</span>
-                      공유
-                    </button>
-                    <template v-if="story.authorUserId === auth.user?.id">
-                      <button type="button" class="story-like-button" @click="editStory(story)">
-                        <span class="material-symbols-rounded" style="font-size: 20px">edit</span>
-                        수정
-                      </button>
-                      <button type="button" class="story-like-button" @click="deleteStory(story)">
-                        <span class="material-symbols-rounded" style="font-size: 20px">delete</span>
-                        삭제
-                      </button>
-                    </template>
                   </div>
-                </div>
-              </article>
+                  <div class="story-body" style="padding: 18px 24px 10px">
+                    <h3 style="font-size: 20px; line-height: 1.4; margin: 0 0 10px">
+                      {{ visibleStory.title }}
+                    </h3>
+                    <div class="tag-row" style="margin-bottom: 10px">
+                      <span v-for="tag in visibleStory.tags" :key="tag" class="tag">{{ tag }}</span>
+                    </div>
+                    <p class="muted" style="font-size: 15px; line-height: 1.7; margin: 0">
+                      {{ visibleStory.summary }}
+                    </p>
+                    <div
+                      style="
+                        margin-top: 16px;
+                        display: flex;
+                        align-items: center;
+                        gap: 20px;
+                        color: var(--muted);
+                        font-size: 14px;
+                      "
+                    >
+                      <button
+                        type="button"
+                        class="story-like-button"
+                        :class="{ active: visibleStory.likedByMe }"
+                        :disabled="likingPostIds.has(visibleStory.id)"
+                        :aria-pressed="visibleStory.likedByMe"
+                        @click="toggleStoryLike(visibleStory)"
+                      >
+                        <span class="material-symbols-rounded" style="font-size: 20px">favorite</span>
+                        {{ visibleStory.likes }}
+                      </button>
+                      <span style="display: flex; align-items: center; gap: 4px"
+                        ><span
+                          class="material-symbols-rounded"
+                          style="font-size: 20px; color: var(--violet)"
+                          >chat_bubble</span
+                        >
+                        {{ visibleStory.comments }}</span
+                      >
+                      <button type="button" class="story-like-button" @click="retripStory(visibleStory)">
+                        <span class="material-symbols-rounded" style="font-size: 20px"
+                          >content_copy</span
+                        >
+                        리트립
+                      </button>
+                      <button type="button" class="story-like-button" @click="shareStory(visibleStory)">
+                        <span class="material-symbols-rounded" style="font-size: 20px">share</span>
+                        공유
+                      </button>
+                      <template v-if="visibleStory.authorUserId === auth.user?.id">
+                        <button type="button" class="story-like-button" @click="editStory(visibleStory)">
+                          <span class="material-symbols-rounded" style="font-size: 20px">edit</span>
+                          수정
+                        </button>
+                        <button type="button" class="story-like-button" @click="deleteStory(visibleStory)">
+                          <span class="material-symbols-rounded" style="font-size: 20px">delete</span>
+                          삭제
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                </article>
+              </Transition>
             </div>
 
             <div v-show="scrollGuideVisible" class="feed-scroll-guide" data-scroll-guide>
@@ -1278,12 +1316,6 @@ watch(
   color: var(--muted);
   word-break: keep-all;
 }
-.community-hero-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
 .community-pill {
   display: inline-flex;
   align-items: center;
@@ -1311,17 +1343,9 @@ watch(
   transform: translateY(-2px);
   box-shadow: 0 16px 32px rgba(0, 102, 255, 0.28);
 }
-.community-pill-ghost {
-  background: #fff;
-  color: var(--ink);
-  border-color: var(--line);
-  box-shadow: 0 4px 12px rgba(0, 50, 150, 0.05);
-}
-.community-pill-ghost:hover {
-  transform: translateY(-2px);
-  border-color: rgba(0, 102, 255, 0.3);
-  color: var(--violet);
-  box-shadow: 0 10px 22px rgba(0, 102, 255, 0.1);
+.story-write-pill {
+  min-height: 40px;
+  white-space: nowrap;
 }
 
 /* ===== Content container ===== */
@@ -1400,7 +1424,7 @@ watch(
 .polaroid-image {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   border-radius: 2px;
   overflow: hidden;
   background: #eef3fb;
@@ -2001,18 +2025,60 @@ watch(
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 .story-overlay .story-post {
+  position: relative;
+  display: block;
+  height: auto;
+  max-height: calc(82vh - 120px);
+  margin-bottom: 0;
   border: 1px solid var(--line);
   border-radius: 18px;
-  overflow: hidden;
-  background: #fff;
-}
-.story-overlay .story-feed-window {
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-  max-height: calc(94vh - 160px);
+  overflow-x: hidden;
+  background: #fff;
+  box-sizing: border-box;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+.story-overlay .story-post::-webkit-scrollbar {
+  display: none;
+}
+.story-post-photo-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #eef3fb;
+  flex-shrink: 0;
+}
+.story-post-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.5s ease;
+}
+.story-overlay .story-feed-window {
+  position: relative;
+  overflow: visible;
+  outline: none;
+}
+.slide-up-enter-active,
+.slide-up-leave-active,
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: transform 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.slide-up-enter-from {
+  transform: translateY(100%);
+}
+.slide-up-leave-to {
+  transform: translateY(-100%);
+}
+.slide-down-enter-from {
+  transform: translateY(-100%);
+}
+.slide-down-leave-to {
+  transform: translateY(100%);
 }
 .story-overlay .story-feed-window::-webkit-scrollbar {
   display: none;
@@ -2349,12 +2415,6 @@ watch(
     align-items: flex-start;
     gap: 18px;
   }
-  .community-hero-actions {
-    width: 100%;
-  }
-  .community-hero-actions .community-pill {
-    flex: 1;
-  }
   .today-pick-grid {
     grid-template-columns: 1fr;
     gap: 36px;
@@ -2417,9 +2477,6 @@ watch(
 @media (max-width: 480px) {
   .community-hero-title {
     font-size: clamp(26px, 7vw, 34px);
-  }
-  .community-hero-actions {
-    gap: 8px;
   }
   .community-pill {
     padding: 10px 14px;

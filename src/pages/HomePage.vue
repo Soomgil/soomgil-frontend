@@ -63,6 +63,8 @@ const nearestTripDday = computed(() => {
   return `D+${Math.abs(diff)}`
 })
 
+const userName = computed(() => authStore.user?.displayName?.trim() || '회원')
+
 /* ── Search ────────────────────────────────────────────── */
 const searchCategories: { key: string; icon: string; isNew?: boolean }[] = [
   { key: '전체', icon: 'search' },
@@ -156,6 +158,9 @@ async function fetchHomeData() {
     }
 
     if (authStore.isAuthenticated) {
+      if (!authStore.user) {
+        try { await authStore.fetchUser() } catch { /* user 조회 실패해도 홈은 노출 */ }
+      }
       try {
         nearestTrip.value = await tripApi.getNearestTrip()
       } catch (e) {
@@ -378,32 +383,30 @@ async function fetchHomeData() {
               <p class="home-nearest-empty-sub">첫 여행을 만들면 이곳에 표시돼요.</p>
             </div>
           </div>
-          <a v-else-if="nearestTrip" class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
-            <div class="home-nearest-bg">
-              <img :src="nearestTrip.coverImageUrl || (nearestTrip.displayDestination ? '/images/랜딩페이지/jeju.png' : '/images/랜딩페이지/busan.png')" :alt="nearestTrip.title" />
-            </div>
-            <div class="home-nearest-content">
-              <div class="home-nearest-meta">
-                <span class="home-nearest-dday">{{ nearestTripDday ?? '곧 출발' }}</span>
+          <a v-else-if="nearestTrip" class="home-nearest-card home-nearest-card--plain" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
+            <div class="home-nearest-plain">
+              <span class="home-nearest-dday-lg">{{ nearestTripDday ?? '날짜 미정' }}</span>
+              <p class="home-nearest-waiting">{{ userName }}을(를) 기다리는 여행</p>
+              <h3 class="home-nearest-trip-title">{{ nearestTrip.title }}</h3>
+              <div class="home-nearest-plain-foot">
+                <div class="home-nearest-members">
+                  <div class="avatars">
+                    <span
+                      v-for="(thumb, idx) in nearestTrip.memberThumbnails"
+                      :key="idx"
+                      class="avatar"
+                      :style="{ background: 'rgba(255,255,255,0.25)' }"
+                    >
+                      <img v-if="thumb" :src="thumb" alt="member avatar" style="width:100%; height:100%; border-radius:50%; object-fit:cover;"/>
+                      <span v-else>{{ '?' }}</span>
+                    </span>
+                  </div>
+                  <span class="member-count">{{ nearestTrip.memberCount }}명과 함께</span>
+                </div>
                 <span v-if="nearestTrip.displayDestination" class="home-nearest-destination">
                   <span class="material-symbols-rounded" style="font-size:14px;">place</span>
                   {{ nearestTrip.displayDestination }}
                 </span>
-              </div>
-              <h3>{{ nearestTrip.title }}</h3>
-              <div class="home-nearest-members">
-                <div class="avatars">
-                  <span
-                    v-for="(thumb, idx) in nearestTrip.memberThumbnails"
-                    :key="idx"
-                    class="avatar"
-                    :style="{ background: 'var(--violet)' }"
-                  >
-                    <img v-if="thumb" :src="thumb" alt="member avatar" style="width:100%; height:100%; border-radius:50%; object-fit:cover;"/>
-                    <span v-else>{{ '?' }}</span>
-                  </span>
-                </div>
-                <span class="member-count">{{ nearestTrip.memberCount }}명</span>
               </div>
               <span class="home-nearest-link">
                 여행 계획 보기 <span class="material-symbols-rounded" style="font-size:18px;">arrow_forward</span>
@@ -899,6 +902,49 @@ async function fetchHomeData() {
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 .home-nearest-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+
+/* Plain (image-less) variant: gradient bg + big D-day + waiting copy */
+.home-nearest-card--plain {
+  background: linear-gradient(135deg, var(--violet) 0%, var(--blue) 100%);
+  color: #fff;
+  justify-content: center;
+  padding: 36px 32px;
+}
+.home-nearest-plain {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.home-nearest-dday-lg {
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0 0 10px;
+}
+.home-nearest-waiting {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.92;
+}
+.home-nearest-trip-title {
+  font-size: 24px;
+  font-weight: 800;
+  margin: 0 0 20px;
+  line-height: 1.35;
+}
+.home-nearest-plain-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
 .home-nearest-bg {
   position: absolute; inset: 0;
 }

@@ -12,6 +12,7 @@ import type {
 import type { PagedItems } from '@/types/api'
 import { mapBackendUser } from '@/types/auth'
 import type { Place } from '@/types/place'
+import type { UserPreferenceAnalysis } from '@/types/user'
 import { mapPlace } from './place.api'
 
 export const userApi = {
@@ -96,6 +97,12 @@ export const userApi = {
       params: { page: 0, size: 100 },
     })
     return res.data.items.map((saved) => mapPlace(saved.place))
+  },
+
+  /** 내 여행 취향 분석 조회 (GET /me/preferences) */
+  getPreferences: async (): Promise<UserPreferenceAnalysis> => {
+    const res = await http.get<UserPreferenceAnalysis>('/me/preferences')
+    return res.data
   },
   /** 특정 사용자 프로필 조회 (GET /users/{userId}) */
   getUserProfile: async (userId: string): Promise<import('@/types/user').PublicUserProfile> => {

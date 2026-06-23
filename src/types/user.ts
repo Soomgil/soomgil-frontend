@@ -28,7 +28,7 @@ export interface UserStats {
 }
 
 export interface UserPreferenceAnalysis {
-  topCategories: { category: string; percentage: number }[]
+  topCategories: { category: string; groupCode: string; percentage: number }[]
   travelStyle: string
   preferredTags: string[]
 }

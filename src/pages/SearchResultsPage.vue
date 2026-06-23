@@ -74,20 +74,30 @@ function clearRecentSearches() {
 }
 
 const hasQuery = computed(() => searchInput.value.trim().length > 0)
-const totalCount = computed(() => {
-  if (!result.value) return 0
-  return (
-    result.value.trips.length +
-    result.value.places.length +
-    result.value.posts.length +
-    result.value.users.length
-  )
-})
 
 const visibleTrips = computed(() => (activeTab.value === '전체' || activeTab.value === '여행') ? result.value?.trips ?? [] : [])
 const visiblePlaces = computed(() => (activeTab.value === '전체' || activeTab.value === '장소') ? result.value?.places ?? [] : [])
 const visiblePosts = computed(() => (activeTab.value === '전체' || activeTab.value === '여행기') ? result.value?.posts ?? [] : [])
 const visibleUsers = computed(() => (activeTab.value === '전체' || activeTab.value === '사용자') ? result.value?.users ?? [] : [])
+
+// Whether the currently selected tab has anything to show. Drives the per-tab
+// empty state so selecting a category with no matches shows "결과 없음" instead
+// of a blank body (which is what made the search bar/layout feel inconsistent).
+const hasVisibleResults = computed(() =>
+  visibleTrips.value.length > 0 ||
+  visiblePlaces.value.length > 0 ||
+  visiblePosts.value.length > 0 ||
+  visibleUsers.value.length > 0,
+)
+
+const emptyDescription = computed(() => {
+  const q = result.value?.query ?? searchInput.value.trim()
+  if (!q) return '다른 키워드로 다시 검색해 보세요.'
+  if (activeTab.value === '전체') {
+    return `"${q}" 와(과) 일치하는 결과가 없습니다. 다른 키워드로 다시 검색해 보세요.`
+  }
+  return `"${q}" 에 대한 ${activeTab.value} 결과가 없습니다. 다른 카테고리를 선택하거나 다른 키워드로 검색해 보세요.`
+})
 
 function queryFromUrl(): string {
   return typeof route.query.q === 'string' ? route.query.q : ''
@@ -116,11 +126,16 @@ async function runSearch(q: string) {
   }
 }
 
+function scrollTopToSearch() {
+  window.scrollTo({ top: 0 })
+}
+
 function submitSearch() {
   const q = searchInput.value.trim()
   if (!q) return
   persistRecentSearch(q)
   router.replace({ path: '/search', query: { q, tab: activeTab.value } })
+  scrollTopToSearch()
 }
 
 function selectTab(tab: string) {
@@ -128,12 +143,14 @@ function selectTab(tab: string) {
   if (searchInput.value.trim()) {
     router.replace({ path: '/search', query: { q: searchInput.value.trim(), tab } })
   }
+  scrollTopToSearch()
 }
 
 function runRecentSearch(query: string) {
   searchInput.value = query
   persistRecentSearch(query)
   router.replace({ path: '/search', query: { q: query, tab: activeTab.value } })
+  scrollTopToSearch()
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -280,10 +297,10 @@ watch(
           />
         </div>
         <EmptyState
-          v-else-if="result && totalCount === 0"
+          v-else-if="result && !hasVisibleResults"
           icon="search_off"
           title="검색 결과가 없어요"
-          :description="`&quot;${result.query}&quot; 와(과) 일치하는 결과가 없습니다. 다른 키워드로 다시 검색해 보세요.`"
+          :description="emptyDescription"
         />
         <template v-else-if="result">
           <!-- Trips -->
@@ -439,13 +456,23 @@ watch(
 
 <style scoped>
 .search-page {
+  width: 100%; /* defeat flex auto-margin content-sizing: force container width so
+                  the search bar stays the same width with or without results */
   max-width: 1180px;
   margin: 0 auto;
-  padding: 32px 24px 80px;
+  padding: 28px 24px 20px;
+  /* Lock the whole page to the viewport below the fixed 72px topbar so the
+     header (search bar + tabs) keeps a constant size and the result body
+     below fills the remaining space and scrolls internally — it no longer
+     grows with results or collapses when empty. */
+  height: calc(100vh - 72px);
+  display: flex;
+  flex-direction: column;
 }
 
 .search-head {
-  margin-bottom: 28px;
+  flex: 0 0 auto;
+  margin-bottom: 20px;
 }
 
 .search-head .eyebrow {
@@ -485,6 +512,9 @@ watch(
   display: flex;
   gap: 8px;
   align-items: stretch;
+  max-width: 560px; /* keep the search bar narrow and centered while the result
+                       grid below stays full-width */
+  margin: 0 auto;
 }
 
 .search-input-wrap {
@@ -560,8 +590,9 @@ watch(
 .search-tabs {
   display: flex;
   gap: 8px;
-  margin-top: 16px;
+  margin: 16px auto 0;
   flex-wrap: wrap;
+  max-width: 560px; /* align tabs with the narrow, centered search bar */
 }
 
 .search-tab {
@@ -699,7 +730,17 @@ watch(
 }
 
 .search-body {
-  margin-top: 12px;
+  flex: 1 1 auto;
+  min-height: 0; /* allow the flex item to shrink so overflow scrolling works */
+  margin-top: 0;
+  padding: 0 4px 24px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* don't chain scroll to the window */
+  scrollbar-width: none;
+}
+
+.search-body::-webkit-scrollbar {
+  display: none;
 }
 
 .search-section {
@@ -884,7 +925,7 @@ watch(
 
 @media (max-width: 720px) {
   .search-page {
-    padding: 20px 16px 60px;
+    padding: 20px 16px 16px;
   }
 
   .search-head-title {
@@ -902,6 +943,12 @@ watch(
 }
 
 @media (max-width: 480px) {
+  /* On narrow screens the global topbar wraps and body padding-top grows to
+     132px, so shrink the page height to match and keep it within the viewport. */
+  .search-page {
+    height: calc(100vh - 132px);
+  }
+
   .search-grid {
     grid-template-columns: 1fr;
   }
