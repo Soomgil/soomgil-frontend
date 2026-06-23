@@ -80,17 +80,8 @@ function submitSearch() {
   router.push({ path: '/search', query: { q, tab: activeSearchTab.value } })
 }
 
-<<<<<<< HEAD
 function showAlert(msg: string) {
   toast.info(msg)
-=======
-function openTripCreation(intent: 'route' | 'ai' = 'route') {
-  void router.push({ path: '/my-trips', query: { create: '1', intent } })
-}
-
-function openTripSelection(intent: 'invite' | 'share') {
-  void router.push({ path: '/my-trips', query: { intent } })
->>>>>>> origin/develop
 }
 
 function openTripSelection(intent: 'invite' | 'share') {

@@ -82,7 +82,6 @@ function closeAllDropdowns() {
   showProfile.value = false
 }
 
-<<<<<<< HEAD
 async function loadBriefing() {
   briefingLoading.value = true
   briefingError.value = ''
@@ -125,36 +124,6 @@ function toggleBriefing() {
   showBriefing.value = next
   if (next && !briefingLoaded.value && !briefingLoading.value) {
     void loadBriefing()
-=======
-async function toggleBriefing() {
-  const next = !showBriefing.value
-  closeAllDropdowns()
-  showBriefing.value = next
-  if (next) await loadBriefing()
-}
-
-async function loadBriefing() {
-  briefingLoading.value = true
-  briefingError.value = ''
-  try {
-    const nearest = await tripApi.getNearestTrip()
-    briefingTripId.value = nearest.id
-    const itinerary = await itineraryApi.getItinerary(nearest.id)
-    const today = new Date().toISOString().slice(0, 10)
-    const day = itinerary.days.find((item) => item.date === today)
-      ?? itinerary.days.find((item) => item.groupType === 'DAY')
-    briefingItems.value = (day?.items ?? []).slice(0, 4).map((item, index) => ({
-      id: item.id,
-      label: `${index + 1}번째`,
-      title: item.placeName,
-      address: item.address,
-    }))
-  } catch {
-    briefingItems.value = []
-    briefingError.value = '예정된 일정을 불러오지 못했습니다.'
-  } finally {
-    briefingLoading.value = false
->>>>>>> origin/develop
   }
 }
 

@@ -194,14 +194,10 @@ async function openStory(story: StoryView) {
     await Promise.all([enrichPostAuthors([post]), enrichCommentAuthors(commentPage.items)]);
     selectedPost.value = post;
     apiComments.value = commentPage.items;
-<<<<<<< HEAD
     visibleStoryIdx.value = Math.max(
       0,
       stories.value.findIndex((item) => item.id === story.id),
     );
-=======
-    visibleStoryIdx.value = Math.max(0, stories.value.findIndex((item) => item.id === story.id));
->>>>>>> origin/develop
   } catch {
     toast.error("여행기 상세를 불러오지 못했습니다.");
   }

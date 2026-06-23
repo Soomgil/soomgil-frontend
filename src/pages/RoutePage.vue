@@ -91,7 +91,6 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
-<<<<<<< HEAD
 const placeAccessibilityByKey = ref<Record<string, PlaceAccessibility>>({})
 let accessibilityRequestRevision = 0
 
@@ -119,11 +118,6 @@ async function loadRouteAccessibility(plans: DayPlan[]) {
   }
 }
 
-=======
-const scheduledPlaceKeys = computed(() => dayPlans.value.flatMap((day) => day.items.flatMap((item) =>
-  item.placeProvider && item.placeExternalId ? [`${item.placeProvider}:${item.placeExternalId}`] : [],
-)))
->>>>>>> origin/develop
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
