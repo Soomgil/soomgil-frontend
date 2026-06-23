@@ -30,8 +30,12 @@ function submitSearch() {
   router.push({ path: '/search', query: { q, tab: activeSearchTab.value } })
 }
 
-function showAlert(msg: string) {
-  window.alert(msg)
+function openTripCreation(intent: 'route' | 'ai' = 'route') {
+  void router.push({ path: '/my-trips', query: { create: '1', intent } })
+}
+
+function openTripSelection(intent: 'invite' | 'share') {
+  void router.push({ path: '/my-trips', query: { intent } })
 }
 
 /* ── Hero Carousel ───────────────────────────────────── */
@@ -189,7 +193,7 @@ async function fetchHomeData() {
             <h1><span>여행의 시작은</span><br>설렘에서부터</h1>
             <p class="lead">새로운 루트를 만들고, 우리만의 여행을 기록해보세요.</p>
             <div style="display:flex; gap:12px;">
-              <button class="btn primary" type="button" @click="router.push({ name: 'Route' })">
+              <button class="btn primary" type="button" @click="openTripCreation('route')">
                 <span class="material-symbols-rounded">add</span>새 여행 만들기
               </button>
               <a class="btn ghost" href="#" @click.prevent="router.push('/community')">둘러보기</a>
@@ -245,7 +249,7 @@ async function fetchHomeData() {
               <p>취향 카드 넘기기</p>
             </div>
           </a>
-          <a class="home-action-card" href="#" @click.prevent="router.push({ name: 'Route' })">
+          <a class="home-action-card" href="#" @click.prevent="openTripCreation('route')">
             <div class="home-action-icon icon-blue">
               <span class="material-symbols-rounded">map</span>
             </div>
@@ -254,7 +258,7 @@ async function fetchHomeData() {
               <p>일정 설계하기</p>
             </div>
           </a>
-          <a class="home-action-card" href="#" @click.prevent="showAlert('초대 기능을 준비 중입니다.')">
+          <a class="home-action-card" href="#" @click.prevent="openTripSelection('invite')">
             <div class="home-action-icon icon-rose">
               <span class="material-symbols-rounded">group_add</span>
             </div>
@@ -263,7 +267,7 @@ async function fetchHomeData() {
               <p>함께하면 더 즐거워요</p>
             </div>
           </a>
-          <a class="home-action-card" href="#" @click.prevent="showAlert('AI 추천 기능을 준비 중입니다.')">
+          <a class="home-action-card" href="#" @click.prevent="openTripCreation('ai')">
             <div class="home-action-icon icon-cyan">
               <span class="material-symbols-rounded">auto_awesome</span>
             </div>
@@ -310,7 +314,7 @@ async function fetchHomeData() {
           <div v-if="nearestTripLoading" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted);">
             로딩 중...
           </div>
-          <div v-else-if="!nearestTrip" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted); cursor: pointer;" @click="router.push({ name: 'Route' })">
+          <div v-else-if="!nearestTrip" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted); cursor: pointer;" @click="openTripCreation('route')">
             <div style="text-align: center;">
               <span class="material-symbols-rounded" style="font-size: 32px; margin-bottom: 8px;">add_circle</span>
               <p style="margin: 0;">새로운 여행을 계획해보세요</p>
@@ -362,11 +366,12 @@ async function fetchHomeData() {
           <a class="btn primary home-section-state-cta" href="#" @click.prevent="router.push('/community/story-write')">첫 여행기 작성하기</a>
         </div>
         <div v-else class="home-community-grid">
-          <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push(`/community/${story.id}`)">
+          <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push({ path: '/community', query: { story: story.id } })">
             <div class="home-community-card-img">
-              <img v-if="story.coverMedia?.publicUrl" :src="story.coverMedia.publicUrl" :alt="story.title" />
-              <div v-else style="width: 100%; height: 100%; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--muted);">
-                <span class="material-symbols-rounded">image</span>
+              <img v-if="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl" :src="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl ?? ''" :alt="story.title" />
+              <div v-else class="home-community-placeholder">
+                <span class="material-symbols-rounded">auto_stories</span>
+                <span>여행 사진 준비 중</span>
               </div>
             </div>
             <div class="home-community-card-body">
@@ -406,16 +411,16 @@ async function fetchHomeData() {
             </div>
           </div>
           <div class="home-invite-cta-actions">
-            <button class="btn primary home-invite-primary-action" type="button" @click="showAlert('초대 기능을 준비 중입니다.')">
+            <button class="btn primary home-invite-primary-action" type="button" @click="openTripSelection('invite')">
               <span class="material-symbols-rounded" aria-hidden="true">person_add</span>
               초대 링크 만들기
             </button>
             <div class="home-invite-share-row">
               <div class="home-invite-cta-social" role="group" aria-label="초대 링크 공유 채널">
-                <button type="button" class="home-invite-social-btn btn-kakao" aria-label="카카오톡으로 초대" @click="showAlert('카카오톡 공유 기능을 준비 중입니다.')">
+                <button type="button" class="home-invite-social-btn btn-kakao" aria-label="카카오톡으로 초대" @click="openTripSelection('share')">
                   <svg viewBox="0 0 24 24" fill="#3c1e1e" aria-hidden="true"><path d="M12 3C6.48 3 2 6.69 2 11.24c0 2.93 1.9 5.51 4.73 6.99-.15.55-.97 3.36-.99 3.58 0 0-.02.15.08.21.1.06.22.01.22.01.29-.04 3.37-2.2 3.9-2.59.64.09 1.31.14 2.06.14 5.52 0 10-3.69 10-8.24S17.52 3 12 3z"/></svg>
                 </button>
-                <button type="button" class="home-invite-social-btn btn-google" aria-label="구글로 초대" @click="showAlert('구글 공유 기능을 준비 중입니다.')">
+                <button type="button" class="home-invite-social-btn btn-google" aria-label="구글로 초대" @click="openTripSelection('share')">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                 </button>
               </div>
@@ -900,6 +905,8 @@ async function fetchHomeData() {
   position: relative;
   overflow: hidden;
 }
+.home-community-placeholder { width: 100%; height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; background: linear-gradient(135deg, #eef2ff, #f8fafc); color: var(--muted); font-size: 12px; font-weight: 750; }
+.home-community-placeholder .material-symbols-rounded { font-size: 34px; color: var(--violet); }
 .home-community-card-img img {
   width: 100%; height: 180px; object-fit: cover; display: block;
   transition: transform 0.4s ease;

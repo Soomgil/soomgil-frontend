@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   markAsRead: vi.fn(),
   markAllAsRead: vi.fn(),
   deleteNotification: vi.fn(),
+  getNearestTrip: vi.fn(),
+  getItinerary: vi.fn(),
 }))
 
 vi.mock('vue-router', () => ({
@@ -28,6 +30,8 @@ vi.mock('@/api/notification.api', () => ({
     deleteNotification: mocks.deleteNotification,
   },
 }))
+vi.mock('@/api/trip.api', () => ({ tripApi: { getNearestTrip: mocks.getNearestTrip } }))
+vi.mock('@/api/itinerary.api', () => ({ itineraryApi: { getItinerary: mocks.getItinerary } }))
 
 import AppHeader from './AppHeader.vue'
 
@@ -45,6 +49,10 @@ describe('AppHeader 알림 API 연동', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.getNotifications.mockResolvedValue(page([]))
+    mocks.getNearestTrip.mockResolvedValue({ id: 'trip-1', title: '부산 여행' })
+    mocks.getItinerary.mockResolvedValue({
+      days: [{ id: 'day-1', groupType: 'DAY', date: '2026-06-23', items: [{ id: 'item-1', placeName: '부산역', address: '부산 동구' }] }],
+    })
   })
 
   it('빈 알림 page를 명시적으로 표시한다', async () => {
@@ -83,5 +91,16 @@ describe('AppHeader 알림 API 연동', () => {
     expect(wrapper.text()).toContain('알림을 읽음 처리하지 못했습니다.')
     expect(mocks.push).not.toHaveBeenCalled()
     expect(wrapper.get('#header-notif-btn').text()).toContain('1')
+  })
+
+  it('오늘 일정 브리핑을 실제 여행 일정 API로 표시한다', async () => {
+    const wrapper = mount(AppHeader)
+    await wrapper.get('#header-briefing-btn').trigger('click')
+    await flushPromises()
+
+    expect(mocks.getNearestTrip).toHaveBeenCalled()
+    expect(mocks.getItinerary).toHaveBeenCalledWith('trip-1')
+    expect(wrapper.text()).toContain('부산역')
+    expect(wrapper.text()).toContain('부산 동구')
   })
 })

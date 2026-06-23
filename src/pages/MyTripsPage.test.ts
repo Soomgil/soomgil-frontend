@@ -4,6 +4,7 @@ import MyTripsPage from './MyTripsPage.vue'
 import type { TripSummary } from '@/types/trip'
 
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
+const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: {} as Record<string, string> }))
 
 const trip = {
   id: 'trip-1',
@@ -29,12 +30,16 @@ const store = vi.hoisted(() => ({
 }))
 
 vi.mock('@/stores/trip.store', () => ({ useTripStore: () => store }))
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: routing.push, replace: routing.replace }),
+  useRoute: () => ({ query: routing.query }),
+}))
 vi.mock('@/api/geo.api', () => ({ geoApi: geo }))
 
 describe('MyTripsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routing.query = {}
     store.trips = []
     store.loading = false
     store.error = null
@@ -194,5 +199,19 @@ describe('MyTripsPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('보관한 여행이 없습니다.')
+  })
+
+  it('보관된 여행 필터에서도 보딩패스 티켓 UI를 유지한다', async () => {
+    store.trips = [{ ...trip, id: 'archived-1', title: '지난 부산 여행', status: 'ARCHIVED' }]
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await flushPromises()
+    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '보관됨')!
+    await archivedFilter.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.boarding-pass-card').exists()).toBe(true)
+    expect(wrapper.text()).toContain('지난 부산 여행')
   })
 })
