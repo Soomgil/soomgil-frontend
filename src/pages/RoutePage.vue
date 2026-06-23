@@ -122,12 +122,9 @@ async function loadRouteAccessibility(plans: DayPlan[]) {
   }
 }
 
-<<<<<<< HEAD
 const scheduledPlaceKeys = computed(() => dayPlans.value.flatMap((day) => day.items.flatMap((item) =>
   item.placeProvider && item.placeExternalId ? [`${item.placeProvider}:${item.placeExternalId}`] : [],
 )))
-=======
->>>>>>> origin/develop
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {

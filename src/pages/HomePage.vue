@@ -80,13 +80,8 @@ function submitSearch() {
   router.push({ path: '/search', query: { q, tab: activeSearchTab.value } })
 }
 
-<<<<<<< HEAD
 function openTripCreation(intent: 'route' | 'ai' = 'route') {
   void router.push({ path: '/my-trips', query: { create: '1', intent } })
-=======
-function showAlert(msg: string) {
-  toast.info(msg)
->>>>>>> origin/develop
 }
 
 function openTripSelection(intent: 'invite' | 'share') {
@@ -302,7 +297,6 @@ async function fetchHomeData() {
 
         <!-- 3. Quick Actions -->
         <div class="home-action-row">
-<<<<<<< HEAD
           <a class="home-action-card" href="#" @click.prevent="router.push({ name: 'Swipe' })">
             <div class="home-action-icon icon-violet">
               <span class="material-symbols-rounded">swipe</span>
@@ -313,9 +307,6 @@ async function fetchHomeData() {
             </div>
           </a>
           <a class="home-action-card" href="#" @click.prevent="openTripCreation('route')">
-=======
-          <a class="home-action-card" href="#" @click.prevent="router.push({ name: 'Route' })">
->>>>>>> origin/develop
             <div class="home-action-icon icon-blue">
               <span class="material-symbols-rounded">map</span>
             </div>
@@ -333,11 +324,7 @@ async function fetchHomeData() {
               <p>함께하면 더 즐거워요</p>
             </div>
           </a>
-<<<<<<< HEAD
           <a class="home-action-card" href="#" @click.prevent="openTripCreation('ai')">
-=======
-          <a class="home-action-card" href="#" @click.prevent="openAiRecommendation">
->>>>>>> origin/develop
             <div class="home-action-icon icon-cyan">
               <span class="material-symbols-rounded">auto_awesome</span>
             </div>
@@ -384,18 +371,14 @@ async function fetchHomeData() {
           <div v-if="nearestTripLoading" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted);">
             로딩 중...
           </div>
-<<<<<<< HEAD
           <div v-else-if="!nearestTrip" class="home-nearest-card home-nearest-card--empty" @click="openTripCreation('route')">
-=======
-          <div v-else-if="!nearestTrip" class="home-nearest-card home-nearest-card--empty" @click="router.push({ name: 'Route' })">
->>>>>>> origin/develop
             <div class="home-nearest-empty">
               <span class="material-symbols-rounded home-nearest-empty-icon">add_circle</span>
               <p class="home-nearest-empty-title">새로운 여행을 계획해보세요</p>
               <p class="home-nearest-empty-sub">첫 여행을 만들면 이곳에 표시돼요.</p>
             </div>
           </div>
-          <a v-else class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
+          <a v-else-if="nearestTrip" class="home-nearest-card" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
             <div class="home-nearest-bg">
               <img :src="nearestTrip.coverImageUrl || (nearestTrip.displayDestination ? '/images/랜딩페이지/jeju.png' : '/images/랜딩페이지/busan.png')" :alt="nearestTrip.title" />
             </div>
@@ -449,17 +432,10 @@ async function fetchHomeData() {
         <div v-else class="home-community-grid">
           <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push({ path: '/community', query: { story: story.id } })">
             <div class="home-community-card-img">
-<<<<<<< HEAD
               <img v-if="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl" :src="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl ?? ''" :alt="story.title" />
               <div v-else class="home-community-placeholder">
                 <span class="material-symbols-rounded">auto_stories</span>
                 <span>여행 사진 준비 중</span>
-=======
-              <img v-if="story.coverMedia?.publicUrl" :src="story.coverMedia.publicUrl" :alt="story.title" />
-              <div v-else class="home-community-card-placeholder">
-                <span class="material-symbols-rounded">image</span>
-                <p>등록된 사진이 없어요</p>
->>>>>>> origin/develop
               </div>
             </div>
             <div class="home-community-card-body">
