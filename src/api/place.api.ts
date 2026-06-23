@@ -15,6 +15,7 @@ export interface PlaceAccessibilityDto {
   closedDays?: string | null
   parkingType?: ParkingType | null
   flags?: AccessibilityFlag[] | null
+  unavailableFlags?: AccessibilityFlag[] | null
 }
 
 interface PlaceSummaryDto {
@@ -68,6 +69,7 @@ export function mapAccessibility(dto?: PlaceAccessibilityDto | null): PlaceAcces
     closedDays: dto.closedDays ?? null,
     parkingType: dto.parkingType ?? 'UNKNOWN',
     flags: dto.flags ?? [],
+    unavailableFlags: dto.unavailableFlags ?? [],
   }
 }
 

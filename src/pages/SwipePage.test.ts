@@ -31,6 +31,7 @@ const feedItem = {
       closedDays: null,
       parkingType: 'FREE',
       flags: ['WHEELCHAIR', 'STROLLER'],
+      unavailableFlags: ['PET'],
     },
   },
   myReaction: null,
@@ -58,6 +59,9 @@ describe('SwipePage', () => {
     expect(wrapper.text()).toContain('무료')
     expect(wrapper.text()).toContain('휠체어')
     expect(wrapper.text()).toContain('유모차')
+    expect(wrapper.get('[data-accessibility="PET"]').classes()).toContain('is-unavailable')
+    expect(wrapper.get('[data-accessibility="PET"]').text()).toContain('불가')
+    expect(wrapper.get('[data-accessibility="DISABLED_TOILET"]').classes()).toContain('is-unknown')
     expect(wrapper.text()).toContain('장소 이야기')
     expect(wrapper.find('button[aria-label="LIKE"]').exists()).toBe(false)
 
@@ -80,6 +84,70 @@ describe('SwipePage', () => {
     await wrapper.get('a').trigger('click')
     expect(push).toHaveBeenCalledWith('/my-trips')
     vi.useRealTimers()
+  })
+
+  it('keeps description and guidance placeholders visible when KTO omits optional fields', async () => {
+    getFeed.mockResolvedValue({
+      items: [{
+        ...feedItem,
+        place: {
+          ...feedItem.place,
+          description: undefined,
+          accessibility: {
+            openingHours: null,
+            closedDays: null,
+            parkingType: 'UNKNOWN',
+            flags: [],
+            unavailableFlags: [],
+          },
+        },
+      }],
+      nextSeed: null,
+    })
+    const wrapper = mount(SwipePage, {
+      global: { stubs: { AppHeader: true } },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('.place-description-card').text()).toContain('상세 설명이 제공되지 않았습니다.')
+    expect(wrapper.get('[data-guide="opening-hours"]').text()).toContain('-')
+    expect(wrapper.get('[data-guide="closed-days"]').text()).toContain('-')
+    expect(wrapper.get('[data-guide="parking"]').text()).toContain('-')
+    expect(wrapper.findAll('.accessibility-status')).toHaveLength(5)
+    expect(wrapper.findAll('.accessibility-status.is-unknown')).toHaveLength(5)
+  })
+
+  it('shows each KTO photo only once when the thumbnail is repeated in photos', async () => {
+    getFeed.mockResolvedValue({
+      items: [{
+        ...feedItem,
+        place: {
+          ...feedItem.place,
+          photos: [
+            'https://cdn.example.com/haeundae.jpg',
+            'https://cdn.example.com/haeundae.jpg',
+            'https://cdn.example.com/haeundae-2.jpg',
+          ],
+        },
+      }],
+      nextSeed: null,
+    })
+    const wrapper = mount(SwipePage, {
+      global: { stubs: { AppHeader: true } },
+    })
+
+    await flushPromises()
+
+    const thumbnails = wrapper.findAll('.photo-thumb img')
+    expect(thumbnails).toHaveLength(2)
+    expect(thumbnails.map((image) => image.attributes('src'))).toEqual([
+      'https://cdn.example.com/haeundae.jpg',
+      'https://cdn.example.com/haeundae-2.jpg',
+    ])
+
+    await wrapper.findAll('.photo-thumb')[1].trigger('click')
+    expect(wrapper.get('[data-place-image]').attributes('src')).toBe('https://cdn.example.com/haeundae-2.jpg')
   })
 
   it('shows a retry action when feed loading fails', async () => {
