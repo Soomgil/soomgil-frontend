@@ -426,12 +426,7 @@ interface DragSource {
 
 function onPointerDown(e: PointerEvent) {
   if ((e.target as HTMLElement).closest('button')) return
-  if (
-    e.button !== 0 || (
-      !(e.target as HTMLElement).closest('.grip-icon') &&
-      !(e.target as HTMLElement).closest('.stop-num')
-    )
-  ) return
+  if (e.button !== 0 || !(e.currentTarget as HTMLElement).classList.contains('day-separator')) return
   if (itinerary.mutating.value) return
 
   const stop = (e.currentTarget as HTMLElement)
@@ -659,26 +654,27 @@ function reorderSingleDay(source: DragSource, targetIdx: number) {
   plan.items = items.map((it, idx) => ({ ...it, order: idx + 1 }))
 }
 
+let pendingOrderSave: Promise<void> = Promise.resolve()
 async function persistItineraryOrder() {
   if (dayPlans.value.length === 0) return
+  const order = dayPlans.value.map((day, dayIndex) => ({
+    dayId: day.id,
+    sortOrder: dayIndex,
+    itemOrders: day.items.map((item, itemIndex) => ({ itemId: item.id, sortOrder: itemIndex })),
+  }))
   itineraryActionError.value = ''
-  try {
-    await itinerary.reorder({
-      days: dayPlans.value.map((day, dayIndex) => ({
-        dayId: day.id,
-        sortOrder: dayIndex,
-        itemOrders: day.items.map((item, itemIndex) => ({
-          itemId: item.id,
-          sortOrder: itemIndex,
-        })),
-      })),
-    })
-  } catch {
-    itineraryActionError.value = '일정 순서를 저장하지 못해 최신 상태로 되돌렸습니다.'
-    undoStack.value = []
-    redoStack.value = []
-    await loadItinerary()
-  }
+  pendingOrderSave = pendingOrderSave.then(async () => {
+    try {
+      await itinerary.reorder({ days: order })
+      showToast('일정 순서를 저장했습니다')
+    } catch {
+      itineraryActionError.value = '일정 순서를 저장하지 못해 최신 상태로 되돌렸습니다.'
+      undoStack.value = []
+      redoStack.value = []
+      await loadItinerary()
+    }
+  })
+  await pendingOrderSave
 }
 
 /* 드래그앤드롭 초기화 */
@@ -857,6 +853,27 @@ async function switchMemoDay(tag: string) {
 }
 
 const memoTextDisplay = ref('')
+const memoTextarea = ref<HTMLTextAreaElement | null>(null)
+
+function formatMemo(kind: 'bold' | 'italic' | 'underline' | 'strike' | 'bullet' | 'number') {
+  const textarea = memoTextarea.value
+  if (!textarea) return
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const selected = memoTextDisplay.value.slice(start, end) || '내용'
+  const wrappers = {
+    bold: ['**', '**'], italic: ['*', '*'], underline: ['<u>', '</u>'], strike: ['~~', '~~'],
+  } as const
+  let replacement = selected
+  if (kind === 'bullet') replacement = selected.split('\n').map((line) => `- ${line}`).join('\n')
+  else if (kind === 'number') replacement = selected.split('\n').map((line, index) => `${index + 1}. ${line}`).join('\n')
+  else replacement = `${wrappers[kind][0]}${selected}${wrappers[kind][1]}`
+  memoTextDisplay.value = `${memoTextDisplay.value.slice(0, start)}${replacement}${memoTextDisplay.value.slice(end)}`
+  requestAnimationFrame(() => {
+    textarea.focus()
+    textarea.setSelectionRange(start, start + replacement.length)
+  })
+}
 
 async function loadNote(tag = activeMemoDay.value) {
   if (!tripId) return
@@ -1717,6 +1734,7 @@ function textAvatarStyle(index: unknown) {
                 <PlaceDiscoveryPanel
                   :trip-id="tripId"
                   :bbox="discoveryBbox"
+                  :scheduled-place-keys="scheduledPlaceKeys"
                   @select="selectDiscoveredPlace"
                   @add="addPlaceToItinerary"
                 />
@@ -2078,9 +2096,6 @@ function textAvatarStyle(index: unknown) {
                 <span class="voice-wave-text">듣고 있습니다...</span>
               </div>
               <input type="text" id="ai-chat-input" :aria-label="activeConversation === 'ai' ? 'AI 가이드에게 질문하기' : '여행방 메시지 입력'" :placeholder="activeConversation === 'ai' ? 'AI에게 일정에 관해 물어보세요...' : '여행 멤버에게 메시지를 보내세요...'" v-model="aiMessage" @keydown.enter="sendAiMessage" />
-              <button id="ai-chat-mic-btn" class="compact-mic-btn" type="button" aria-label="음성 인식">
-                <span class="material-symbols-rounded">mic</span>
-              </button>
               <button id="ai-chat-send-btn" class="btn primary compact-send-btn" type="button" @click="sendAiMessage">
                 <span class="material-symbols-rounded">send</span>
               </button>
@@ -2107,16 +2122,16 @@ function textAvatarStyle(index: unknown) {
             </div>
             <!-- 미니 포맷 툴바 -->
             <div class="memo-toolbar">
-              <button type="button" class="toolbar-btn" title="굵게" aria-label="굵게"><span class="material-symbols-rounded">format_bold</span></button>
-              <button type="button" class="toolbar-btn" title="기울임" aria-label="기울임"><span class="material-symbols-rounded">format_italic</span></button>
-              <button type="button" class="toolbar-btn" title="밑줄" aria-label="밑줄"><span class="material-symbols-rounded">format_underlined</span></button>
-              <button type="button" class="toolbar-btn" title="취소선" aria-label="취소선"><span class="material-symbols-rounded">format_strikethrough</span></button>
+              <button type="button" class="toolbar-btn" title="굵게" aria-label="굵게" @click="formatMemo('bold')"><span class="material-symbols-rounded">format_bold</span></button>
+              <button type="button" class="toolbar-btn" title="기울임" aria-label="기울임" @click="formatMemo('italic')"><span class="material-symbols-rounded">format_italic</span></button>
+              <button type="button" class="toolbar-btn" title="밑줄" aria-label="밑줄" @click="formatMemo('underline')"><span class="material-symbols-rounded">format_underlined</span></button>
+              <button type="button" class="toolbar-btn" title="취소선" aria-label="취소선" @click="formatMemo('strike')"><span class="material-symbols-rounded">format_strikethrough</span></button>
               <div class="toolbar-divider"></div>
-              <button type="button" class="toolbar-btn" title="글머리 기호" aria-label="글머리 기호"><span class="material-symbols-rounded">format_list_bulleted</span></button>
-              <button type="button" class="toolbar-btn" title="번호 매기기" aria-label="번호 매기기"><span class="material-symbols-rounded">format_list_numbered</span></button>
+              <button type="button" class="toolbar-btn" title="글머리 기호" aria-label="글머리 기호" @click="formatMemo('bullet')"><span class="material-symbols-rounded">format_list_bulleted</span></button>
+              <button type="button" class="toolbar-btn" title="번호 매기기" aria-label="번호 매기기" @click="formatMemo('number')"><span class="material-symbols-rounded">format_list_numbered</span></button>
             </div>
             <div class="panel-body memo-body">
-              <textarea id="memo-textarea" placeholder="여행 계획, 팁, 예약 정보 등을 자유롭게 메모해보세요..." v-model="memoTextDisplay"></textarea>
+              <textarea id="memo-textarea" ref="memoTextarea" placeholder="여행 계획, 팁, 예약 정보 등을 자유롭게 메모해보세요..." v-model="memoTextDisplay"></textarea>
             </div>
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">

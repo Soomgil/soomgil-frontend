@@ -84,50 +84,31 @@ function showAlert(msg: string) {
   toast.info(msg)
 }
 
+function openTripSelection(intent: 'invite' | 'share') {
+  void router.push({ path: '/my-trips', query: { intent } })
+}
+
 /* ── Hero Carousel ───────────────────────────────────── */
-const slides = [
-  {
-    image: '/images/랜딩페이지/busan.png',
-    title: '부산 바다 여행',
-    subtitle: '바다 향기 가득한 항구 도시',
+const slides = computed(() => {
+  const storySlides = featuredStories.value.flatMap((story) => {
+    const image = story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl
+    return image ? [{ image, title: story.title, subtitle: story.summary ?? '여행자의 새로운 이야기', tag: 'story', tagLabel: '여행기' }] : []
+  })
+  const placeSlides = topPlaces.value.flatMap((place) => place.thumbnailUrl ? [{
+    image: place.thumbnailUrl,
+    title: place.placeName,
+    subtitle: place.summary ?? place.address ?? '이번 주 인기 여행지',
     tag: 'place',
-    tagLabel: '여행지',
-  },
-  {
-    image: '/images/랜딩페이지/jeju.png',
-    title: '제주도 힐링 코스',
-    subtitle: '자연이 빚어낸 완벽한 휴양지',
-    tag: 'story',
-    tagLabel: '여행기',
-  },
-  {
-    image: '/images/랜딩페이지/gyeongju.png',
-    title: '경주 문화유산 답사',
-    subtitle: '천년 역사가 숨 쉬는 문화 유산 도시',
-    tag: 'column',
-    tagLabel: '칼럼',
-  },
-  {
-    image: '/images/랜딩페이지/jeonju.png',
-    title: '전주 한옥마을 미식 여행',
-    subtitle: '전통과 미식이 어우러진 한옥 마을',
-    tag: 'place',
-    tagLabel: '여행지',
-  },
-  {
-    image: '/images/랜딩페이지/daejeon.png',
-    title: '대전 빵지순례 코스',
-    subtitle: '과학과 미식의 중심 도시',
-    tag: 'story',
-    tagLabel: '여행기',
-  },
-]
+    tagLabel: '인기 장소',
+  }] : [])
+  return [...storySlides, ...placeSlides].slice(0, 5)
+})
 
 const currentSlide = ref(0)
 let carouselTimer: ReturnType<typeof setInterval> | null = null
 
 function nextSlide() {
-  currentSlide.value = (currentSlide.value + 1) % slides.length
+  if (slides.value.length > 1) currentSlide.value = (currentSlide.value + 1) % slides.value.length
 }
 
 function goToSlide(index: number) {
@@ -137,7 +118,7 @@ function goToSlide(index: number) {
 
 function resetCarouselTimer() {
   if (carouselTimer) clearInterval(carouselTimer)
-  carouselTimer = setInterval(nextSlide, 4500)
+  if (slides.value.length > 1) carouselTimer = setInterval(nextSlide, 4500)
 }
 
 onMounted(() => {
@@ -196,6 +177,8 @@ async function fetchHomeData() {
     } else {
       console.error('Failed to load stories', storiesRes.reason)
     }
+    currentSlide.value = 0
+    resetCarouselTimer()
   } catch (error) {
     console.error('Failed to fetch home data', error)
   } finally {
@@ -267,13 +250,17 @@ async function fetchHomeData() {
             <h1><span>여행의 시작은</span><br>설렘에서부터</h1>
             <p class="lead">새로운 루트를 만들고, 우리만의 여행을 기록해보세요.</p>
             <div style="display:flex; gap:12px;">
-              <button class="btn primary" type="button" @click="router.push({ name: 'Route' })">
+              <button class="btn primary" type="button" @click="openTripCreation('route')">
                 <span class="material-symbols-rounded">add</span>새 여행 만들기
               </button>
               <a class="btn ghost" href="#" @click.prevent="router.push('/community')">둘러보기</a>
             </div>
           </div>
           <div class="home-hero-content">
+            <div v-if="slides.length === 0" class="home-section-state home-section-state--wide">
+              <span class="material-symbols-rounded home-section-state-icon">landscape</span>
+              <p>추천 콘텐츠를 준비하고 있어요.</p>
+            </div>
             <div
               v-for="(slide, i) in slides"
               :key="i"
@@ -289,7 +276,7 @@ async function fetchHomeData() {
             </div>
 
             <!-- Carousel dots -->
-            <div class="home-hero-dots" style="position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2;">
+            <div v-if="slides.length > 1" class="home-hero-dots" style="position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2;">
               <button
                 v-for="(_, i) in slides"
                 :key="i"
@@ -345,7 +332,7 @@ async function fetchHomeData() {
           <div class="home-toplikes-card">
             <div class="home-toplikes-header">
               <h3>Super-like TOP 3</h3>
-              <a href="#">더보기 <span class="material-symbols-rounded" style="font-size:16px;">arrow_forward</span></a>
+              <a href="#" @click.prevent="router.push({ path: '/search', query: { tab: '여행지' } })">더보기 <span class="material-symbols-rounded" style="font-size:16px;">arrow_forward</span></a>
             </div>
             <div class="home-toplikes-list">
               <div v-if="topPlacesLoading" class="home-section-state home-section-state--loading">
@@ -356,7 +343,7 @@ async function fetchHomeData() {
                 <span class="material-symbols-rounded home-section-state-icon">place</span>
                 <p>아직 인기 장소가 없어요.</p>
               </div>
-              <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" @click="router.push({ name: 'PlaceDetail', params: { provider: place.provider, id: place.externalPlaceId } })">
+              <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" role="link" tabindex="0" @click="router.push({ path: '/search', query: { q: place.placeName, tab: '여행지' } })" @keydown.enter="router.push({ path: '/search', query: { q: place.placeName, tab: '여행지' } })">
                 <span class="home-toplikes-rank">{{ idx + 1 }}</span>
                 <img v-if="place.thumbnailUrl" class="home-toplikes-img" :src="place.thumbnailUrl" :alt="place.placeName" />
                 <div v-else class="home-toplikes-img" style="background: var(--bg); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">image</span></div>
@@ -434,7 +421,7 @@ async function fetchHomeData() {
           <a class="btn primary home-section-state-cta" href="#" @click.prevent="router.push('/community/story-write')">첫 여행기 작성하기</a>
         </div>
         <div v-else class="home-community-grid">
-          <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push(`/community/${story.id}`)">
+          <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push({ path: '/community', query: { story: story.id } })">
             <div class="home-community-card-img">
               <img v-if="story.coverMedia?.publicUrl" :src="story.coverMedia.publicUrl" :alt="story.title" />
               <div v-else class="home-community-card-placeholder">
@@ -485,10 +472,10 @@ async function fetchHomeData() {
             </button>
             <div class="home-invite-share-row">
               <div class="home-invite-cta-social" role="group" aria-label="초대 링크 공유 채널">
-                <button type="button" class="home-invite-social-btn btn-kakao" aria-label="카카오톡으로 초대" @click="showAlert('카카오톡 공유 기능을 준비 중입니다.')">
+                <button type="button" class="home-invite-social-btn btn-kakao" aria-label="카카오톡으로 초대" @click="openTripSelection('share')">
                   <svg viewBox="0 0 24 24" fill="#3c1e1e" aria-hidden="true"><path d="M12 3C6.48 3 2 6.69 2 11.24c0 2.93 1.9 5.51 4.73 6.99-.15.55-.97 3.36-.99 3.58 0 0-.02.15.08.21.1.06.22.01.22.01.29-.04 3.37-2.2 3.9-2.59.64.09 1.31.14 2.06.14 5.52 0 10-3.69 10-8.24S17.52 3 12 3z"/></svg>
                 </button>
-                <button type="button" class="home-invite-social-btn btn-google" aria-label="구글로 초대" @click="showAlert('구글 공유 기능을 준비 중입니다.')">
+                <button type="button" class="home-invite-social-btn btn-google" aria-label="구글로 초대" @click="openTripSelection('share')">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                 </button>
               </div>
@@ -1016,6 +1003,8 @@ async function fetchHomeData() {
   min-height: 180px;
   height: 180px;
 }
+.home-community-placeholder { width: 100%; height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; background: linear-gradient(135deg, #eef2ff, #f8fafc); color: var(--muted); font-size: 12px; font-weight: 750; }
+.home-community-placeholder .material-symbols-rounded { font-size: 34px; color: var(--violet); }
 .home-community-card-img img {
   width: 100%; height: 180px; object-fit: cover; display: block;
   transition: transform 0.4s ease;

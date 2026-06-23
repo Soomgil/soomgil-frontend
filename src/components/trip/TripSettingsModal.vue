@@ -287,6 +287,7 @@ onUnmounted(() => {
   font-size: 14px;
   margin: 0;
 }
+.status-help { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 
 .danger-zone {
   align-items: center;

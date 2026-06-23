@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -8,6 +8,7 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import TripAccessModal from '@/components/trip/TripAccessModal.vue'
 import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
+import BoardingPassCard from '@/components/trip/BoardingPassCard.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
@@ -15,6 +16,7 @@ import type { LegalRegion } from '@/types/geo'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 
 const router = useRouter()
+const route = useRoute()
 const tripStore = useTripStore()
 const createModal = useModal()
 const activeFilter = ref<TripFilter>('all')
@@ -26,6 +28,10 @@ const createError = ref('')
 const accessTrip = ref<TripSummary | null>(null)
 const settingsTrip = ref<TripSummary | null>(null)
 const timelineEl = ref<HTMLElement | null>(null)
+const requestedIntent = computed(() => typeof route.query.intent === 'string' ? route.query.intent : null)
+const intentMessage = computed(() => requestedIntent.value === 'invite' || requestedIntent.value === 'share'
+  ? '초대할 여행의 티켓에서 멤버 버튼을 선택해 초대 링크를 만들거나 공유하세요.'
+  : null)
 
 function scrollTimeline(direction: number) {
   const el = timelineEl.value
@@ -97,17 +103,17 @@ function goTripDetail(tripId: string) {
 /* ── Carousel (다음 여행) ───────────────────────────── */
 const upcomingTrips = computed(() => filteredTrips.value.filter((trip) => effectiveStatus(trip) === 'ACTIVE'))
 const carouselIndex = ref(0)
-const currentTrip = computed(() => upcomingTrips.value[carouselIndex.value] ?? upcomingTrips.value[0] ?? null)
+const currentTrip = computed(() => featuredTrips.value[carouselIndex.value] ?? featuredTrips.value[0] ?? null)
 
 function nextCarousel() {
-  if (upcomingTrips.value.length === 0) return
-  carouselIndex.value = (carouselIndex.value + 1) % upcomingTrips.value.length
+  if (featuredTrips.value.length === 0) return
+  carouselIndex.value = (carouselIndex.value + 1) % featuredTrips.value.length
 }
 function prevCarousel() {
-  if (upcomingTrips.value.length === 0) return
-  carouselIndex.value = (carouselIndex.value - 1 + upcomingTrips.value.length) % upcomingTrips.value.length
+  if (featuredTrips.value.length === 0) return
+  carouselIndex.value = (carouselIndex.value - 1 + featuredTrips.value.length) % featuredTrips.value.length
 }
-const carouselDots = computed(() => upcomingTrips.value.map((_, i) => i))
+const carouselDots = computed(() => featuredTrips.value.map((_, i) => i))
 
 /* ── Boarding pass / timeline helpers ───────────────── */
 function getDestCode(trip: TripSummary): string {
@@ -184,7 +190,7 @@ async function handleCreateTrip() {
 
   createError.value = ''
   try {
-    await tripStore.createTrip({
+    const created = await tripStore.createTrip({
       title,
       displayDestination: newDestination.value.trim() || undefined,
       ...(selectedRegion.value ? { legalRegionCodes: [selectedRegion.value.code] } : {}),
@@ -192,6 +198,9 @@ async function handleCreateTrip() {
     resetForm()
     createModal.close()
     if (activeFilter.value === 'past') activeFilter.value = 'upcoming'
+    if (requestedIntent.value === 'route' || requestedIntent.value === 'ai') {
+      await router.replace({ name: 'Route', params: { tripId: created.id }, query: requestedIntent.value === 'ai' ? { panel: 'ai' } : {} })
+    }
   } catch {
     createError.value = '여행을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.'
   }
@@ -209,8 +218,14 @@ function closeCreateModal() {
   createModal.close()
 }
 
-onMounted(loadTrips)
+onMounted(() => {
+  void loadTrips()
+  if (route.query.create === '1') createModal.open()
+})
 watch(activeFilter, loadTrips)
+watch(filteredTrips, () => {
+  if (carouselIndex.value >= featuredTrips.value.length) carouselIndex.value = 0
+})
 </script>
 
 <template>
@@ -230,15 +245,24 @@ watch(activeFilter, loadTrips)
             새 여행 만들기
           </button>
         </div>
+        <p v-if="intentMessage" class="trip-intent-guide" role="status"><span class="material-symbols-rounded">info</span>{{ intentMessage }}</p>
 
         <div class="trip-dashboard-layout">
           <div class="trip-dashboard-main">
             <section
-              v-if="!tripStore.loading && !tripStore.error && upcomingTrips.length > 0 && currentTrip"
+              v-if="!tripStore.loading && !tripStore.error && featuredTrips.length > 0 && currentTrip"
               class="next-trip-panel boarding-pass-container"
               aria-label="다음 여행"
             >
-              <div class="boarding-pass-card boarding-pass-card--placeholder">
+              <BoardingPassCard
+                :trip="currentTrip"
+                :position="carouselIndex"
+                :count="featuredTrips.length"
+                @detail="goTripDetail(currentTrip.id)"
+                @access="openTripAccess(currentTrip)"
+                @settings="openTripSettings(currentTrip)"
+              />
+              <div v-if="false" class="boarding-pass-card boarding-pass-card--placeholder" aria-hidden="true">
                 <div class="ticket-main">
                   <div class="ticket-header">
                     <div class="ticket-logo">
@@ -329,7 +353,7 @@ watch(activeFilter, loadTrips)
                 </div>
               </div>
 
-              <div v-if="upcomingTrips.length > 1" class="next-trip-nav">
+              <div v-if="featuredTrips.length > 1" class="next-trip-nav">
                 <button class="carousel-btn prev-btn" type="button" aria-label="이전 여행" @click="prevCarousel">
                   <span class="material-symbols-rounded">chevron_left</span>
                 </button>
@@ -523,6 +547,8 @@ watch(activeFilter, loadTrips)
   justify-content: space-between;
   margin: 36px 0 24px;
 }
+.trip-intent-guide { display: flex; align-items: center; gap: 8px; margin: -12px 0 24px; padding: 12px 16px; border: 1px solid rgba(124, 58, 237, .18); border-radius: 14px; background: rgba(124, 58, 237, .05); color: var(--violet); font-size: 13px; font-weight: 750; }
+.trip-intent-guide .material-symbols-rounded { font-size: 18px; }
 
 .trip-toolbar {
   align-items: center;

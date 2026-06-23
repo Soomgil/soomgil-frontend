@@ -89,7 +89,7 @@ const router = createRouter({
     {
       path: '/community/feed',
       name: 'Feed',
-      component: () => import('@/pages/FeedPage.vue'),
+      redirect: { name: 'Community' },
     },
     {
       path: '/community/stories',
@@ -121,6 +121,7 @@ const router = createRouter({
     },
     {
       path: '/settings',
+      alias: '/setting',
       name: 'Settings',
       component: () => import('@/pages/SettingsPage.vue'),
       meta: { requiresAuth: true },

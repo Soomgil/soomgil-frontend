@@ -9,16 +9,20 @@ import { userApi } from '@/api/user.api'
 import { mediaApi } from '@/api/media.api'
 import { communityApi } from '@/api/community.api'
 import { tripApi } from '@/api/trip.api'
+import { swipeApi } from '@/api/swipe.api'
+import { useToast } from '@/composables/useToast'
 import { communityPostToStory } from '@/utils/community'
 import type { UpdateMeRequest, UserSummary } from '@/types/auth'
 import type { Place } from '@/types/place'
 import type { Story } from '@/types/community'
 import LikedPlacesModal from '@/components/mypage/LikedPlacesModal.vue'
 import MyStoriesModal from '@/components/mypage/MyStoriesModal.vue'
+import MyStoryDetailModal from '@/components/mypage/MyStoryDetailModal.vue'
 import FollowListModal from '@/components/common/FollowListModal.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
+const toast = useToast()
 
 // store.user가 있으면 우선
 const displayUser = computed(() => auth.user ?? {} as any)
@@ -59,6 +63,33 @@ onMounted(async () => {
 // 좋아요한 장소
 const likedPlacesSource = ref<Place[]>([])
 const placeSearchQuery = ref('')
+const failedPlaceImages = ref(new Set<string>())
+const removingPlaceKeys = ref(new Set<string>())
+
+function placeKey(place: Place) {
+  return `${place.provider}:${place.externalPlaceId}`
+}
+
+function markPlaceImageFailed(place: Place) {
+  failedPlaceImages.value = new Set(failedPlaceImages.value).add(placeKey(place))
+}
+
+async function removeLikedPlace(place: Place) {
+  const key = placeKey(place)
+  if (removingPlaceKeys.value.has(key)) return
+  removingPlaceKeys.value = new Set(removingPlaceKeys.value).add(key)
+  try {
+    await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
+    likedPlacesSource.value = likedPlacesSource.value.filter((item) => placeKey(item) !== key)
+    toast.success('좋아요한 장소에서 제거했습니다.')
+  } catch {
+    toast.error('좋아요를 취소하지 못했습니다.')
+  } finally {
+    const next = new Set(removingPlaceKeys.value)
+    next.delete(key)
+    removingPlaceKeys.value = next
+  }
+}
 
 async function loadLikedPlaces() {
   if (!auth.user?.id) return
@@ -91,8 +122,10 @@ async function loadMyStories() {
   }
 }
 
+const selectedStoryId = ref<string | null>(null)
 function openCommunityStory(storyId: string) {
-  router.push({ path: '/community', query: { story: storyId } })
+  myStoriesModal.close()
+  selectedStoryId.value = storyId
 }
 
 // Places slider
@@ -160,6 +193,8 @@ const profileForm = ref({
 // 사진 변경 — signed URL로 storage에 직접 업로드한 뒤 media metadata를 등록한다.
 const photoInput = ref<HTMLInputElement | null>(null)
 const photoNotice = ref<string | null>(null)
+const pendingProfilePhoto = ref<File | null>(null)
+const pendingProfilePhotoUrl = ref<string | null>(null)
 function triggerPhotoPicker() {
   photoNotice.value = null
   photoInput.value?.click()
@@ -169,21 +204,16 @@ async function onPhotoSelected(e: Event) {
   const file = input.files?.[0]
   if (!file) return
 
-  photoNotice.value = null
-  try {
-    const mediaFile = await mediaApi.uploadFile(file, 'PROFILE_IMAGE')
-    if (mediaFile.id) {
-      await userApi.updateMe({
-        profileMediaFileId: mediaFile.id,
-      })
-      await auth.fetchUser()
-    }
-  } catch (err) {
-    console.error('Photo upload failed:', err)
-    photoNotice.value = '사진 업로드에 실패했습니다. 다시 시도해주세요.'
-  } finally {
+  if (!file.type.startsWith('image/')) {
+    photoNotice.value = '이미지 파일만 선택할 수 있습니다.'
     input.value = ''
+    return
   }
+  if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
+  pendingProfilePhoto.value = file
+  pendingProfilePhotoUrl.value = URL.createObjectURL(file)
+  photoNotice.value = '저장 버튼을 누르면 사진이 변경됩니다.'
+  input.value = ''
 }
 
 function syncProfileForm() {
@@ -195,9 +225,20 @@ function syncProfileForm() {
 // 모달이 열릴 때만 폼 초기값 동기화.
 // watchEffect를 쓰면 fetchUser() 지연 해결 시 사용자가 입력한 값을 덮어쓴다.
 function openProfileEdit() {
+  if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
+  pendingProfilePhoto.value = null
+  pendingProfilePhotoUrl.value = null
   syncProfileForm()
   profileError.value = null
   profileEditModal.open()
+}
+
+function closeProfileEdit() {
+  if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
+  pendingProfilePhoto.value = null
+  pendingProfilePhotoUrl.value = null
+  photoNotice.value = null
+  profileEditModal.close()
 }
 
 const profileSaving = ref(false)
@@ -212,8 +253,15 @@ async function saveProfile() {
       bio: profileForm.value.intro,
       profileVisibility: profileForm.value.visibility === 'followers' ? 'PRIVATE' : 'PUBLIC',
     }
+    if (pendingProfilePhoto.value) {
+      const mediaFile = await mediaApi.uploadFile(pendingProfilePhoto.value, 'PROFILE_IMAGE')
+      payload.profileMediaFileId = mediaFile.id
+    }
     await userApi.updateMe(payload)
     await auth.fetchUser()
+    if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
+    pendingProfilePhoto.value = null
+    pendingProfilePhotoUrl.value = null
     profileEditModal.close()
   } catch (e: unknown) {
     // 인터셉터가 콘솔엔 찍어주지만 사용자에게도 피드백 필요
@@ -227,6 +275,21 @@ async function saveProfile() {
     console.error('[saveProfile] failed:', e)
   } finally {
     profileSaving.value = false
+  }
+}
+
+const shareNotice = ref('')
+async function shareProfile() {
+  const url = `${window.location.origin}/mypage/${auth.user?.id ?? ''}`
+  try {
+    if (navigator.share) await navigator.share({ title: `${displayName.value}님의 숨길 프로필`, url })
+    else {
+      await navigator.clipboard.writeText(url)
+      shareNotice.value = '프로필 링크를 복사했습니다.'
+      window.setTimeout(() => { shareNotice.value = '' }, 2500)
+    }
+  } catch (error) {
+    if ((error as DOMException)?.name !== 'AbortError') shareNotice.value = '공유 링크를 만들지 못했습니다.'
   }
 }
 
@@ -273,7 +336,7 @@ function handleUserClick(userId: string) {
             <div class="mypage-profile-card">
               <!-- Avatar + Info -->
               <div class="profile-card-left-group">
-                <div class="mypage-hero__avatar-container" style="cursor: pointer;" @click="triggerPhotoPicker">
+                <div class="mypage-hero__avatar-container" style="cursor: pointer;" @click="openProfileEdit">
                   <span class="mypage-hero__avatar-ring">
                     <span
                       class="mypage-hero__avatar"
@@ -303,6 +366,7 @@ function handleUserClick(userId: string) {
                       <span class="material-symbols-rounded verified-check-badge">verified</span>
                     </div>
                     <span class="mypage-hero__email">{{ displayEmail }}</span>
+                    <span class="mypage-visibility-badge"><span class="material-symbols-rounded">{{ displayUser.profileVisibility === 'PRIVATE' ? 'group' : 'public' }}</span>{{ displayUser.profileVisibility === 'PRIVATE' ? '팔로워 공개' : '전체 공개' }}</span>
                   </div>
                   <p v-if="displayBio" class="mypage-hero__intro">{{ displayBio }}</p>
                   <!-- 취향 태그는 preference 도메인 연동 후 사용자 데이터로 표시 (현재는 숨김) -->
@@ -338,10 +402,11 @@ function handleUserClick(userId: string) {
                 <button type="button" class="mypage-profile-btn edit" @click="openProfileEdit">
                   <span class="material-symbols-rounded">edit</span>프로필 수정
                 </button>
-                <button type="button" class="mypage-profile-btn share">
+                <button type="button" class="mypage-profile-btn share" @click="shareProfile">
                   <span class="material-symbols-rounded">share</span>공유하기
                 </button>
               </div>
+              <p v-if="shareNotice" class="mypage-share-notice" role="status">{{ shareNotice }}</p>
             </div>
           </div>
         </div>
@@ -383,8 +448,9 @@ function handleUserClick(userId: string) {
               <div class="mypage-places-slider" ref="placesSliderRef">
                 <div v-for="place in likedPlaces" :key="place.externalPlaceId" class="mypage-place-card mypage-place-card--slider">
                   <div class="place-img-wrap">
-                    <img :src="(place.thumbnailUrl ?? '')" :alt="place.placeName" />
-                    <button type="button" class="place-heart-btn" aria-label="좋아요 취소">
+                    <img v-if="place.thumbnailUrl && !failedPlaceImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markPlaceImageFailed(place)" />
+                    <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
+                    <button type="button" class="place-heart-btn" aria-label="좋아요 취소" :disabled="removingPlaceKeys.has(placeKey(place))" @click="removeLikedPlace(place)">
                       <span class="material-symbols-rounded">favorite</span>
                     </button>
                   </div>
@@ -428,7 +494,7 @@ function handleUserClick(userId: string) {
               <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
               <div class="story-magazine-body">
                 <h3 class="story-magazine-title">
-                  <a href="#" @click.prevent>{{ story.title }}</a>
+                  <span>{{ story.title }}</span>
                 </h3>
                 <div class="story-magazine-meta">
                   <span class="story-date">{{ story.location }}</span>
@@ -486,16 +552,17 @@ function handleUserClick(userId: string) {
     </main>
 
     <!-- Modals -->
-    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" @close="likedPlacesModal.close()" />
+    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" @remove="removeLikedPlace" @close="likedPlacesModal.close()" />
     <MyStoriesModal v-if="myStoriesModal.isOpen.value" :stories="myStories" @close="myStoriesModal.close()" @story-click="openCommunityStory" />
+    <MyStoryDetailModal v-if="selectedStoryId" :story-id="selectedStoryId" @close="selectedStoryId = null" />
     <FollowListModal v-if="followersModal.isOpen.value" title="팔로워" :users="followers" :followingIds="followingIds" @close="followersModal.close()" @toggle-follow="toggleFollow" @user-click="handleUserClick" />
     <FollowListModal v-if="followingModal.isOpen.value" title="팔로잉" :users="following" :followingIds="followingIds" @close="followingModal.close()" @toggle-follow="toggleFollow" @user-click="handleUserClick" />
 
     <!-- 프로필 수정 모달 -->
     <div v-if="profileEditModal.isOpen.value" class="story-overlay" role="dialog" aria-modal="true" aria-label="프로필 수정">
-      <div class="story-overlay-backdrop" @click="profileEditModal.close()"></div>
+      <div class="story-overlay-backdrop" @click="closeProfileEdit"></div>
       <div class="story-overlay-panel" style="width: min(96vw, 580px); max-height: 92vh;">
-        <button class="story-overlay-close" type="button" aria-label="닫기" @click="profileEditModal.close()">
+        <button class="story-overlay-close" type="button" aria-label="닫기" @click="closeProfileEdit">
           <span class="material-symbols-rounded">close</span>
         </button>
         <div style="padding: 40px 32px; overflow-y: auto; max-height: calc(92vh - 20px);">
@@ -506,7 +573,7 @@ function handleUserClick(userId: string) {
           <!-- 아바타 변경 -->
           <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 28px;">
             <div style="width: 72px; height: 72px; border-radius: 50%; background: var(--violet); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 28px; font-weight: 800; flex-shrink: 0; overflow: hidden;">
-              <img v-if="displayUser.profileImageUrl" :src="displayUser.profileImageUrl" alt="프로필 이미지" style="width: 100%; height: 100%; object-fit: cover;">
+              <img v-if="pendingProfilePhotoUrl || displayUser.profileImageUrl" :src="pendingProfilePhotoUrl || displayUser.profileImageUrl" alt="프로필 이미지 미리보기" style="width: 100%; height: 100%; object-fit: cover;">
               <span v-else>{{ displayName.charAt(0) }}</span>
             </div>
             <div>
@@ -577,7 +644,7 @@ function handleUserClick(userId: string) {
 
           <!-- 저장 버튼 -->
           <div style="display: flex; gap: 12px; justify-content: flex-end;">
-            <button type="button" style="padding: 12px 24px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;" @click="profileEditModal.close()">취소</button>
+            <button type="button" style="padding: 12px 24px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;" @click="closeProfileEdit">취소</button>
             <button type="button" :disabled="profileSaving" style="padding: 12px 28px; border-radius: 999px; border: none; background: linear-gradient(135deg, var(--violet), var(--blue)); color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 18px rgba(0, 102, 255, 0.25); opacity: 1;" @click="saveProfile">
               <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">save</span>{{ profileSaving ? '저장 중...' : '저장' }}
             </button>
@@ -601,6 +668,11 @@ function handleUserClick(userId: string) {
   background: rgba(0, 102, 255, 0.02);
   border: 1px dashed var(--line);
 }
+.place-image-placeholder { width: 100%; height: 100%; display: grid; place-items: center; background: linear-gradient(135deg, #eef2ff, #f8fafc); color: var(--muted); }
+.place-image-placeholder .material-symbols-rounded { font-size: 36px; }
+.mypage-share-notice { margin: 8px 0 0; color: var(--violet); font-size: 12px; font-weight: 800; text-align: right; }
+.mypage-visibility-badge { display: inline-flex; align-items: center; gap: 4px; width: fit-content; margin-top: 7px; padding: 4px 9px; border-radius: 999px; background: rgba(124, 58, 237, .08); color: var(--violet); font-size: 11px; font-weight: 850; }
+.mypage-visibility-badge .material-symbols-rounded { font-size: 14px; }
 .mypage-empty-state--inline {
   padding: 36px 20px;
   height: 100%;

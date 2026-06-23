@@ -1,91 +1,71 @@
 <script setup lang="ts">
-import type { Trip } from '@/types/trip'
-import BaseAvatar from '@/components/common/BaseAvatar.vue'
-import { formatDDay } from '@/utils/date'
+import { computed } from 'vue'
+import type { TripSummary } from '@/types/trip'
+import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 
-defineProps<{ trip: Trip }>()
-defineEmits<{ detail: [] }>()
+const props = withDefaults(defineProps<{ trip: TripSummary; position?: number; count?: number }>(), {
+  position: 0,
+  count: 1,
+})
+
+defineEmits<{ detail: []; access: []; settings: [] }>()
+
+const destinationName = computed(() => props.trip.displayDestination?.trim() || '여행지 미정')
+const destinationCode = computed(() => {
+  const normalized = destinationName.value.replace(/[^A-Za-z가-힣]/g, '')
+  if (!normalized || normalized === '여행지미정') return 'TBD'
+  const latin = normalized.replace(/[^A-Za-z]/g, '').toUpperCase()
+  return (latin || normalized).slice(0, 3)
+})
+const statusLabel = computed(() => props.trip.status === 'ARCHIVED' ? '보관된 여행' : '여행 준비 중')
+const roleLabel = computed(() => props.trip.myRole === 'OWNER' ? '방장' : '멤버')
+const createdLabel = computed(() => {
+  const date = new Date(props.trip.createdAt)
+  return Number.isNaN(date.getTime()) ? '-' : new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(date)
+})
 </script>
 
 <template>
-  <div
-    class="boarding-pass-card relative flex rounded-[32px] overflow-hidden shadow-[0_20px_60px_rgba(0,102,255,0.08)] border border-line/50"
-    :style="{ backgroundImage: `linear-gradient(135deg, rgba(255,255,255,0.95), rgba(244,249,255,0.98)), url(${trip.coverImageUrl})` }"
-  >
-    <!-- Left ticket -->
-    <div class="ticket-main flex-1 p-8">
-      <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center gap-2">
-          <img src="@/assets/images/soomgil_logo_none_text.png" alt="숨길" class="w-8 h-8 rounded-lg" />
-          <span class="text-xs font-black tracking-wider text-muted">SOOMGIL AIR</span>
+  <div class="boarding-pass-card boarding-pass-card--placeholder" data-testid="trip-ticket">
+    <div class="ticket-main">
+      <div class="ticket-header">
+        <div class="ticket-logo">
+          <img :src="logoUrl" alt="숨길 로고" class="logo-image">
+          <span class="logo-text">SOOMGIL AIR</span>
         </div>
-        <span class="px-3 py-1 rounded-full text-xs font-black bg-brand-violet/10 text-brand-violet">
-          {{ formatDDay(trip.startDate ?? '') }}
-        </span>
+        <span class="ticket-badge d-day-badge">{{ statusLabel }}</span>
       </div>
-
-      <div class="flex items-center gap-4 mb-6">
-        <div class="text-center">
-          <span class="text-2xl font-black text-ink">SEL</span>
-          <span class="block text-[10px] text-muted mt-0.5">서울</span>
-        </div>
-        <div class="flex-1 flex items-center gap-2">
-          <span class="flex-1 h-px bg-line" />
-          <span class="material-symbols-rounded text-brand-violet">flight</span>
-          <span class="flex-1 h-px bg-line" />
-        </div>
-        <div class="text-center">
-          <span class="text-2xl font-black text-ink">{{ trip.destinationCode || 'DJE' }}</span>
-          <span class="block text-[10px] text-muted mt-0.5">{{ trip.destinationName?.split('(')[0] || '대전' }}</span>
-        </div>
+      <div class="ticket-route">
+        <div class="route-point departure"><span class="airport-code">SEL</span><span class="city-name">서울 (SEOUL)</span></div>
+        <div class="route-path" aria-hidden="true"><span class="line"></span><span class="material-symbols-rounded plane-icon">flight</span><span class="line"></span></div>
+        <div class="route-point destination"><span class="airport-code">{{ destinationCode }}</span><span class="city-name">{{ destinationName }}</span></div>
       </div>
-
-      <div class="grid grid-cols-2 gap-x-6 gap-y-2 mb-4 text-xs">
-        <div><span class="text-muted">PASSENGER</span><br><span class="font-bold text-ink">{{ trip.passengerCount || (trip.members ?? []).length }}명</span></div>
-        <div><span class="text-muted">DATE</span><br><span class="font-bold text-ink">{{ (trip.startDate ?? '').replace(/-/g, '.') }}</span></div>
-        <div><span class="text-muted">DESTINATIONS</span><br><span class="font-bold text-ink">{{ trip.placeCount || (trip.places ?? []).length }}곳</span></div>
-        <div><span class="text-muted">CHECKLIST</span><br><span class="font-bold text-ink">{{ trip.checklistProgress || '0/0' }}</span></div>
+      <div class="ticket-details">
+        <div class="detail-item"><span class="label">PASSENGER</span><span class="value">{{ roleLabel }}</span></div>
+        <div class="detail-item"><span class="label">CREATED</span><span class="value">{{ createdLabel }}</span></div>
+        <div class="detail-item"><span class="label">DESTINATION</span><span class="value">{{ destinationName }}</span></div>
       </div>
-
-      <div>
-        <span class="text-[10px] text-muted font-bold tracking-wider">COMPANIONS</span>
-        <div class="flex -space-x-2 mt-1">
-          <BaseAvatar v-for="m in (trip.members ?? []).slice(0, 4)" :key="m.id" :name="m.displayName ?? '?'" color="var(--violet)" size="sm" />
-          <div v-if="(trip.members ?? []).length > 4" class="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center text-xs font-bold text-muted border-2 border-surface">
-            +{{ (trip.members ?? []).length - 4 }}
-          </div>
-        </div>
+      <div class="ticket-members-wrapper" aria-label="여행 권한">
+        <span class="label">ROLE</span><div class="next-trip-members"><span class="avatar">{{ roleLabel }}</span></div>
       </div>
     </div>
-
-    <!-- Divider -->
-    <div class="ticket-divider flex flex-col items-center justify-center w-[1px] bg-transparent relative">
-      <span class="absolute -top-3 -left-3 w-6 h-6 rounded-full bg-bg" />
-      <span class="border-l border-dashed border-line h-full" />
-      <span class="absolute -bottom-3 -left-3 w-6 h-6 rounded-full bg-bg" />
-    </div>
-
-    <!-- Right stub -->
-    <div class="ticket-stub w-[260px] p-6 flex flex-col justify-between">
-      <div>
-        <span class="text-[10px] text-muted font-bold tracking-wider">BOARDING PASS</span>
-        <h2 class="text-lg font-black text-ink mt-1 leading-tight">{{ trip.title }}</h2>
-        <p class="text-xs text-muted mt-1">{{ (trip.startDate ?? '').replace(/-/g, '. ') }} · {{ (trip.members ?? []).length }}명</p>
+    <div class="ticket-divider" aria-hidden="true"><span class="punch-hole top"></span><span class="dashed-line"></span><span class="punch-hole bottom"></span></div>
+    <div class="ticket-stub">
+      <div class="stub-header"><span class="stub-title-label">BOARDING PASS</span><h2 class="stub-title">{{ trip.title }}</h2><p class="stub-date-info">{{ createdLabel }} 생성</p></div>
+      <button class="stub-detail-btn" type="button" @click="$emit('detail')"><span>자세히 보기</span><span class="material-symbols-rounded">arrow_forward</span></button>
+      <div class="stub-actions">
+        <button class="stub-action-btn" type="button" @click="$emit('access')"><span class="material-symbols-rounded" aria-hidden="true">group</span>{{ trip.myRole === 'OWNER' ? '멤버 및 초대' : '멤버 보기' }}</button>
+        <button v-if="trip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click="$emit('settings')"><span class="material-symbols-rounded" aria-hidden="true">settings</span>설정</button>
       </div>
-      <button
-        class="mt-4 flex items-center gap-1 text-sm font-bold text-brand-violet hover:gap-2 transition-all"
-        @click="$emit('detail')"
-      >
-        자세히 보기
-        <span class="material-symbols-rounded text-base">arrow_forward</span>
-      </button>
+      <div class="stub-controls">
+        <div class="next-trip-dots carousel-dots-container" :aria-label="`${count}개 여행 중 ${position + 1}번째`">
+          <span v-for="index in count" :key="index" class="carousel-dot" :class="{ active: index - 1 === position }"></span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.boarding-pass-card {
-  background-size: cover;
-  background-position: center;
-}
+.boarding-pass-card--placeholder { background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.98)) !important; }
 </style>

@@ -46,6 +46,10 @@ const activeNavKey = computed(() => {
 const showBriefing = ref(false)
 const showNotif = ref(false)
 const showProfile = ref(false)
+const briefingItems = ref<Array<{ id: string; label: string; title: string; address: string | null }>>([])
+const briefingLoading = ref(false)
+const briefingError = ref('')
+const briefingTripId = ref<string | null>(null)
 const notifications = ref<Notification[]>([])
 const notificationsLoading = ref(false)
 const notificationsError = ref('')
@@ -120,6 +124,30 @@ function toggleBriefing() {
   showBriefing.value = next
   if (next && !briefingLoaded.value && !briefingLoading.value) {
     void loadBriefing()
+  }
+}
+
+async function loadBriefing() {
+  briefingLoading.value = true
+  briefingError.value = ''
+  try {
+    const nearest = await tripApi.getNearestTrip()
+    briefingTripId.value = nearest.id
+    const itinerary = await itineraryApi.getItinerary(nearest.id)
+    const today = new Date().toISOString().slice(0, 10)
+    const day = itinerary.days.find((item) => item.date === today)
+      ?? itinerary.days.find((item) => item.groupType === 'DAY')
+    briefingItems.value = (day?.items ?? []).slice(0, 4).map((item, index) => ({
+      id: item.id,
+      label: `${index + 1}번째`,
+      title: item.placeName,
+      address: item.address,
+    }))
+  } catch {
+    briefingItems.value = []
+    briefingError.value = '예정된 일정을 불러오지 못했습니다.'
+  } finally {
+    briefingLoading.value = false
   }
 }
 
@@ -385,6 +413,15 @@ async function handleLogout() {
 .profile-item-link:hover {
   background: var(--bg);
 }
+.header-state { margin: 16px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.header-state--error { color: var(--rose); }
+.notification-list { display: grid; gap: 8px; max-height: 360px; overflow-y: auto; scrollbar-width: none; }
+.notification-list::-webkit-scrollbar { display: none; }
+.notification-item { position: relative; padding: 10px 34px 10px 10px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.notification-item.unread { background: var(--bg); border-color: rgba(124, 58, 237, .18); }
+.notification-delete { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 25px; height: 25px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.notification-delete:hover { background: rgba(244, 63, 94, .1); color: var(--rose); }
+.notification-delete .material-symbols-rounded { font-size: 16px; }
 
 .notification-list {
   display: grid;

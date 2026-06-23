@@ -86,7 +86,7 @@ function openUserProfile(userId: string | null) {
   if (userId) router.push(`/mypage/${userId}`);
 }
 
-const PER_PAGE = 6;
+const PER_PAGE = 8;
 
 function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryView {
   const detail = "snapshot" in post ? post : null;
@@ -228,8 +228,9 @@ function nextPopular() {
 }
 
 const apiComments = ref<CommunityComment[]>([]);
-const comments = computed(() =>
-  apiComments.value.map((comment) => ({
+const comments = computed(() => {
+  const commentsById = new Map(apiComments.value.map((comment) => [comment.id, comment]));
+  return apiComments.value.map((comment) => ({
     id: comment.id,
     authorUserId: comment.author?.id ?? null,
     profileImageUrl: comment.author?.profileImageUrl ?? null,
@@ -241,9 +242,20 @@ const comments = computed(() =>
     ),
     text: comment.content ?? "삭제된 댓글입니다.",
     featured: false,
-    likes: 0,
-  })),
-);
+    depth: comment.depth,
+    parentName: comment.parentCommentId
+      ? commentsById.get(comment.parentCommentId)?.author?.displayName ?? "댓글 작성자"
+      : null,
+  }));
+});
+
+function openWriter() {
+  if (!auth.isAuthenticated) {
+    void router.push({ name: "Login", query: { redirect: "/community" } });
+    return;
+  }
+  storyWriteModal.open();
+}
 
 const overlayComment = ref("");
 const replyTarget = ref<{ id: string; name: string } | null>(null);
@@ -487,17 +499,9 @@ watch(
             <button
               type="button"
               class="community-pill community-pill-ghost"
-              @click="storyWriteModal.open"
+              @click="openWriter"
             >
               <span class="material-symbols-rounded">add_road</span>
-              내 경로 저장하기
-            </button>
-            <button
-              type="button"
-              class="community-pill community-pill-primary"
-              @click="storyWriteModal.open"
-            >
-              <span class="material-symbols-rounded">edit_note</span>
               여행기 작성
             </button>
           </div>
@@ -625,22 +629,10 @@ watch(
                     placeholder="여행기 검색"
                     aria-label="여행기 검색"
                   />
-                  <button
-                    class="search-box__button"
-                    type="button"
-                    aria-label="여행기 검색"
-                  >
+                  <span class="search-box__button" aria-hidden="true">
                     <span class="material-symbols-rounded" aria-hidden="true">search</span>
-                  </button>
+                  </span>
                 </label>
-                <button
-                  type="button"
-                  class="filter-pill"
-                  aria-label="필터"
-                  title="필터"
-                >
-                  <span class="material-symbols-rounded">tune</span>
-                </button>
               </div>
             </div>
 
@@ -786,7 +778,7 @@ watch(
               @scroll="onFeedScroll"
             >
               <article
-                v-for="story in stories"
+                v-for="story in selectedStory ? [selectedStory] : []"
                 :key="story.id"
                 :data-story-id="story.id"
                 class="story-post"
@@ -918,7 +910,7 @@ watch(
                       <span class="material-symbols-rounded" style="font-size: 20px"
                         >content_copy</span
                       >
-                      재여행
+                      리트립
                     </button>
                     <button type="button" class="story-like-button" @click="shareStory(story)">
                       <span class="material-symbols-rounded" style="font-size: 20px">share</span>
@@ -995,7 +987,7 @@ watch(
                   v-for="comment in comments"
                   :key="comment.id"
                   class="fc-item"
-                  :class="{ 'is-featured': comment.featured }"
+                  :class="{ 'is-featured': comment.featured, 'is-reply': comment.depth === 1 }"
                 >
                   <button
                     class="fc-avatar fc-avatar-button"
@@ -1025,12 +1017,9 @@ watch(
                       </div>
                       <span class="fc-time">{{ comment.time }}</span>
                     </div>
+                    <span v-if="comment.depth === 1" class="fc-reply-label"><span class="material-symbols-rounded">subdirectory_arrow_right</span>{{ comment.parentName }}님에게 보낸 답글</span>
                     <p class="fc-text">{{ comment.text }}</p>
                     <div class="fc-actions">
-                      <button>
-                        <span class="material-symbols-rounded">favorite</span
-                        ><span>{{ comment.likes }}</span>
-                      </button>
                       <button
                         type="button"
                         @click="replyTarget = { id: comment.id, name: comment.name }"
@@ -2126,11 +2115,10 @@ watch(
   overflow-y: auto;
   padding: 10px;
   background: #fbfdff;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 102, 255, 0.18) transparent;
+  scrollbar-width: none;
 }
 .feed-comment-scroll::-webkit-scrollbar {
-  width: 5px;
+  display: none;
 }
 .feed-comment-scroll::-webkit-scrollbar-track {
   background: transparent;
@@ -2166,6 +2154,9 @@ watch(
   border-color: rgba(255, 92, 141, 0.18);
   background: #fff8fb;
 }
+.fc-item.is-reply { margin-left: 26px; border-left: 3px solid rgba(0, 102, 255, .3); background: #f8fbff; }
+.fc-reply-label { display: inline-flex; align-items: center; gap: 3px; margin-bottom: 5px; color: var(--violet); font-size: 10px; font-weight: 850; }
+.fc-reply-label .material-symbols-rounded { font-size: 14px; }
 .fc-avatar {
   width: 34px;
   height: 34px;
