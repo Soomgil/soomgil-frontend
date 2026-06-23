@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import OAuthButtons from '@/components/auth/OAuthButtons.vue'
 import { getAuthErrorMessage } from '@/utils/auth-error'
 
 const router = useRouter()
+const route = useRoute()
 const { login, loginWithOAuth } = useAuth()
 
 const email = ref('')
@@ -14,6 +15,11 @@ const password = ref('')
 const rememberMe = ref(true)
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
+const completionMessage = computed(() => {
+  if (route.query.verified === '1') return '이메일 인증이 완료됐습니다. 로그인해주세요.'
+  if (route.query.reset === '1') return '비밀번호가 변경됐습니다. 새 비밀번호로 로그인해주세요.'
+  return ''
+})
 
 const heroImg = '/images/랜딩페이지/korea_hero.png'
 
@@ -82,6 +88,7 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
           </div>
 
           <div class="auth-feedback-slot" data-testid="auth-feedback" aria-live="polite">
+            <p v-if="completionMessage" class="auth-success-message" role="status">{{ completionMessage }}</p>
             <p v-if="submitError" class="auth-submit-error" role="alert">{{ submitError }}</p>
           </div>
 

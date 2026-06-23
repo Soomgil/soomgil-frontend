@@ -47,10 +47,6 @@ export interface AiChatRequest {
   } | null
 }
 
-export interface AiRouteDraftRequest {
-  preferences?: Record<string, unknown>
-}
-
 export interface AiMessageResponse {
   message: AiChatMessage
   toolCalls: AiToolCall[]

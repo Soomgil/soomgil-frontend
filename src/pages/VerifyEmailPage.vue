@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { authApi } from '@/api/auth.api'
@@ -10,18 +10,21 @@ const router = useRouter()
 const auth = useAuth()
 
 const email = ref((route.query.email as string) || '')
-const token = ref('')
+const token = ref((route.query.token as string) || '')
 const submitting = ref(false)
 const resendMessage = ref('')
+const verificationError = ref('')
+const resendError = ref('')
 
 async function handleVerify() {
   if (!token.value.trim()) return
   submitting.value = true
+  verificationError.value = ''
   try {
     await auth.verifyEmail(token.value.trim())
     router.push({ path: '/login', query: { verified: '1' } })
   } catch {
-    // 에러는 인터셉터에서 처리
+    verificationError.value = '인증 링크가 만료되었거나 유효하지 않습니다. 인증 메일을 다시 받아주세요.'
   } finally {
     submitting.value = false
   }
@@ -29,13 +32,19 @@ async function handleVerify() {
 
 async function handleResend() {
   if (!email.value) return
+  resendError.value = ''
+  resendMessage.value = ''
   try {
     await authApi.sendEmailVerification({ email: email.value })
-    resendMessage.value = '인증 메일을 다시 발송했습니다. Mailpit(localhost:8025)을 확인하세요.'
+    resendMessage.value = '인증 메일을 다시 발송했습니다.'
   } catch {
-    // 에러는 인터셉터에서 처리
+    resendError.value = '인증 메일을 발송하지 못했습니다. 잠시 후 다시 시도해주세요.'
   }
 }
+
+onMounted(() => {
+  if (token.value) void handleVerify()
+})
 </script>
 
 <template>
@@ -66,16 +75,15 @@ async function handleResend() {
             <span class="material-symbols-rounded">verified</span>인증 완료
           </button>
 
+          <p v-if="verificationError" class="auth-submit-error" role="alert">{{ verificationError }}</p>
+
           <div class="auth-form-options" style="justify-content: space-between;">
             <a href="#" @click.prevent="handleResend">인증 메일 다시 보내기</a>
             <a href="#" @click.prevent="router.push('/login')">로그인으로</a>
           </div>
 
           <p v-if="resendMessage" class="small" style="color: var(--blue);">{{ resendMessage }}</p>
-
-          <p class="small muted">
-            개발 환경에서는 Mailpit(<a href="http://localhost:8025" target="_blank">localhost:8025</a>)에서 인증 메일을 확인할 수 있습니다.
-          </p>
+          <p v-if="resendError" class="auth-submit-error" role="alert">{{ resendError }}</p>
         </form>
       </section>
     </main>

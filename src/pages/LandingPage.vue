@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import '@/styles/scroll-explore.css'
+import logoImg from '@/assets/images/soomgil_logo_extract.png'
 
 const router = useRouter()
 
@@ -47,7 +48,6 @@ const gyeongjuImg = '/images/랜딩페이지/gyeongju.png'
 const busanImg = '/images/랜딩페이지/busan.png'
 const aiImg = '/images/랜딩페이지/ai_simple.png'
 const mapBgImg = '/images/랜딩페이지/map_bg.png'
-const logoImg = '/images/soomgil_logo_extract.png'
 
 const galleryCards = [
   { img: heroImg, title: '달빛 아래 걷는 조선의 밤', desc: '경복궁에서 덕수궁까지 이어지는 고궁 산책' },

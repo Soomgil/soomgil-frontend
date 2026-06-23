@@ -125,7 +125,7 @@ onMounted(loadFeed)
                 title="아직 피드에 게시글이 없어요"
                 description="다른 여행자들의 생생한 여행 이야기가 곧 채워질 거예요. 첫 여행기를 공유해보세요."
                 action-label="여행기 작성하기"
-                @action="router.push('/stories/new')"
+                @action="router.push('/community/story-write')"
               />
               <template v-else>
                 <div

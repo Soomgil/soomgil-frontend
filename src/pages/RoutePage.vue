@@ -783,6 +783,7 @@ async function sendAiMessage() {
       chatMessages.value.push(await chatApi.sendMessage(tripId, content))
     }
   } catch (error: any) {
+    aiMessage.value = content
     const code = error?.response?.data?.code ?? error?.response?.data?.errorCode
     conversationError.value = code === 'AI_PROVIDER_UNAVAILABLE'
       ? 'AI 모델 연결 설정이 필요합니다. 관리자에게 문의해 주세요.'
@@ -1976,7 +1977,10 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <div class="ai-chat-messages-container" id="ai-chat-messages">
-              <p v-if="conversationError" class="text-sm" style="color:var(--rose)">{{ conversationError }}</p>
+              <div v-if="conversationError" class="text-sm" style="color:var(--rose);display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span>{{ conversationError }}</span>
+                <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
+              </div>
               <template v-if="activeConversation === 'ai'">
                 <div v-for="msg in aiMessages" :key="msg.id" :class="['ai-message', msg.role === 'ASSISTANT' || msg.role === 'TOOL' ? 'assistant' : 'user']">
                   <div v-if="msg.role === 'ASSISTANT' || msg.role === 'TOOL'" class="ai-message-avatar">&#10024;</div>

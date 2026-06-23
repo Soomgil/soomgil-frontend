@@ -85,6 +85,7 @@ vi.mock('@/composables/useItinerary', async () => {
     days,
     routes: ref([]),
     mapDrawings: ref([]),
+    itineraryVersion: ref(3),
     loading: ref(false),
     mutating: ref(false),
     error: ref(null),
@@ -211,6 +212,54 @@ describe('RoutePage itinerary integration', () => {
       scopeType: 'TRIP', itineraryDayId: null,
     })
     expect(connectedApis.planning.getChecklists).toHaveBeenCalledWith('trip-1')
+  })
+
+  it('AI history가 비어 있으면 첫 질문 안내를 표시한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('AI에게 첫 질문을 보내보세요.')
+  })
+
+  it('AI history 조회 실패 후 다시 시도하여 응답을 복구한다', async () => {
+    connectedApis.ai.getMessages
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        items: [{ id: 'ai-1', role: 'ASSISTANT', requester: null, content: '복구된 답변', toolCallId: null, createdAt: '2026-06-22T00:00:00Z' }],
+        page: { offset: 0, limit: 50, nextOffset: null, hasMore: false, sort: [] },
+      })
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('일부 대화 내역을 불러오지 못했습니다.')
+    const retry = wrapper.findAll('button').find((button) => button.text().includes('다시 시도'))
+    await retry!.trigger('click')
+    await flushPromises()
+
+    expect(connectedApis.ai.getMessages).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('복구된 답변')
+  })
+
+  it('AI 전송 실패 시 입력 내용을 복원해 재시도할 수 있게 한다', async () => {
+    connectedApis.ai.sendMessage.mockRejectedValue({ response: { data: { code: 'AI_PROVIDER_UNAVAILABLE' } } })
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    await vi.waitFor(() => expect(wrapper.get('.ai-status').text()).not.toContain('불러오는 중'))
+
+    const input = wrapper.get('#ai-chat-input')
+    await input.setValue('일정을 요약해줘')
+    await wrapper.get('#ai-chat-send-btn').trigger('click')
+    await flushPromises()
+
+    expect(connectedApis.ai.sendMessage).toHaveBeenCalledWith('trip-1', expect.objectContaining({ content: '일정을 요약해줘' }))
+    expect((input.element as HTMLInputElement).value).toBe('일정을 요약해줘')
+    expect(wrapper.text()).toContain('AI 모델 연결 설정이 필요합니다.')
   })
 
   it('지도 패널에서 여행 메모와 체크리스트 항목을 바로 저장한다', async () => {
