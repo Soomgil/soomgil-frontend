@@ -65,6 +65,7 @@ describe('SwipePage', () => {
     expect(wrapper.get('[data-accessibility="PET"]').text()).toContain('불가')
     expect(wrapper.get('[data-accessibility="DISABLED_TOILET"]').classes()).toContain('is-unknown')
     expect(wrapper.text()).toContain('장소 이야기')
+    expect(wrapper.find('.swipe-body > p.muted').exists()).toBe(false)
     expect(wrapper.find('button[aria-label="LIKE"]').exists()).toBe(false)
 
     const descriptionToggle = wrapper.get('.place-description-toggle')

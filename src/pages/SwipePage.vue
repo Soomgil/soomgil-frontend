@@ -394,7 +394,6 @@ onMounted(() => {
                         </span>
                       </div>
                       <h2 style="font-size: 32px; margin: 12px 0 10px">{{ currentPlace.placeName }}</h2>
-                      <p class="muted" style="font-size: 15px; line-height: 1.6">{{ currentPlace.summary }}</p>
                       <div v-if="currentPlace.tags?.length || currentPlace.category" class="tag-row" style="margin-top: 12px">
                         <span v-for="tag in (currentPlace.tags ?? [currentPlace.category]).filter(Boolean)" :key="tag ?? ''" class="tag">{{ tag }}</span>
                       </div>
