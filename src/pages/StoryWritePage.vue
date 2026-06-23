@@ -2,10 +2,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
-import http from '@/api/http'
 import { communityApi } from '@/api/community.api'
 import { mediaApi } from '@/api/media.api'
-import type { PageMeta } from '@/types/community'
+import { tripApi } from '@/api/trip.api'
+import type { TripSummary } from '@/types/trip'
 import type { TripRecordPhoto } from '@/types/media'
 import type { MediaFile } from '@/types/media'
 import { useToast } from '@/composables/useToast'
@@ -14,19 +14,14 @@ const router = useRouter()
 const toast = useToast()
 
 // Form state
-const title = ref('성심당만 보고 갔다가 대전에 반하고 온 여행')
+const title = ref('')
 const selectedTripId = ref('')
-const tagsInput = ref('#대전여행 #성심당 #빵지순례')
+const tagsInput = ref('')
 
-interface PublishableTrip {
-  id: string
-  title: string
-  displayDestination: string | null
-  itineraryVersion: number
-}
+type PublishableTrip = Pick<TripSummary, 'id' | 'title' | 'displayDestination' | 'itineraryVersion'>
 const myTrips = ref<PublishableTrip[]>([])
 const publishing = ref(false)
-const content = ref('성심당문화원에서 커피 마시고 은행동 거리를 걷는데 분위기가 진짜 좋았습니다. 저녁에는 중앙시장까지 걸어갔는데 사람도 많고 먹거리도 다양해서 예상보다 훨씬 재밌었어요.')
+const content = ref('')
 const recordPhotos = ref<TripRecordPhoto[]>([])
 const selectedMediaIds = ref<Set<string>>(new Set())
 const localPhotos = ref<MediaFile[]>([])
@@ -195,10 +190,7 @@ function carouselNext() {
 
 onMounted(async () => {
   try {
-    const response = await http.get<{ items: PublishableTrip[]; page: PageMeta }>('/trips', {
-      params: { page: 0, size: 100, status: 'ACTIVE' },
-    })
-    myTrips.value = response.data.items
+    myTrips.value = (await tripApi.getTrips({ page: 0, size: 100, status: 'ACTIVE' })).items
   } catch {
     toast.error('내 여행계획을 불러오지 못했습니다.')
   }

@@ -127,7 +127,7 @@ async function removeMember(userId: string) {
           <ul v-else class="access-list">
             <li v-for="member in tripStore.members" :key="member.id">
               <span class="member-avatar" aria-hidden="true">
-                <img v-if="member.user.profileImageUrl" :src="member.user.profileImageUrl" alt="" />
+                <img v-if="member.user.profileImageUrl" :src="member.user.profileImageUrl" :alt="`${member.user.displayName} 프로필 사진`" />
                 <template v-else>{{ member.user.displayName.charAt(0) }}</template>
               </span>
               <div class="access-list__body">

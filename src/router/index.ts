@@ -23,12 +23,14 @@ const router = createRouter({
     },
     {
       path: '/verify-email',
+      alias: '/auth/verify-email',
       name: 'VerifyEmail',
       component: () => import('@/pages/VerifyEmailPage.vue'),
       meta: { guestOnly: true },
     },
     {
       path: '/reset-password',
+      alias: '/auth/reset-password',
       name: 'ResetPassword',
       component: () => import('@/pages/ResetPasswordPage.vue'),
     },

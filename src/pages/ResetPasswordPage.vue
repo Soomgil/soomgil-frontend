@@ -1,27 +1,31 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth.api'
 import AppHeader from '@/components/layout/AppHeader.vue'
 
 const router = useRouter()
+const route = useRoute()
 
-const step = ref<'request' | 'confirm'>('request')
-const email = ref('')
-const token = ref('')
+const initialToken = (route.query.token as string) || ''
+const step = ref<'request' | 'confirm'>(initialToken ? 'confirm' : 'request')
+const email = ref((route.query.email as string) || '')
+const token = ref(initialToken)
 const newPassword = ref('')
 const submitting = ref(false)
 const requestMessage = ref('')
+const submitError = ref('')
 
 async function handleRequest() {
   if (!email.value.trim()) return
   submitting.value = true
+  submitError.value = ''
   try {
     await authApi.requestPasswordReset(email.value.trim())
-    requestMessage.value = '재설정 메일을 발송했습니다. Mailpit(localhost:8025)에서 토큰을 확인하세요.'
+    requestMessage.value = '재설정 메일을 발송했습니다. 메일의 링크를 열거나 토큰을 입력해주세요.'
     step.value = 'confirm'
   } catch {
-    // 에러는 인터셉터에서 처리
+    submitError.value = '재설정 메일을 발송하지 못했습니다. 잠시 후 다시 시도해주세요.'
   } finally {
     submitting.value = false
   }
@@ -30,6 +34,7 @@ async function handleRequest() {
 async function handleReset() {
   if (!token.value.trim() || !newPassword.value) return
   submitting.value = true
+  submitError.value = ''
   try {
     await authApi.resetPassword({
       token: token.value.trim(),
@@ -37,7 +42,7 @@ async function handleReset() {
     })
     router.push({ path: '/login', query: { reset: '1' } })
   } catch {
-    // 에러는 인터셉터에서 처리
+    submitError.value = '재설정 링크가 만료되었거나 새 비밀번호를 사용할 수 없습니다.'
   } finally {
     submitting.value = false
   }
@@ -68,6 +73,8 @@ async function handleReset() {
               <span class="material-symbols-rounded">send</span>재설정 메일 발송
             </button>
           </template>
+
+          <p v-if="submitError" class="auth-submit-error" role="alert">{{ submitError }}</p>
 
           <template v-else>
             <p v-if="requestMessage" class="small" style="color: var(--blue); margin-bottom: 8px;">{{ requestMessage }}</p>

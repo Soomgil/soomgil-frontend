@@ -12,6 +12,7 @@ import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
 import type { LegalRegion } from '@/types/geo'
+import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 
 const router = useRouter()
 const tripStore = useTripStore()
@@ -223,7 +224,7 @@ watch(activeFilter, loadTrips)
                 <div class="ticket-main">
                   <div class="ticket-header">
                     <div class="ticket-logo">
-                      <img src="/images/soomgil_logo_none_text.png" alt="숨길 로고" class="logo-image">
+                      <img :src="logoUrl" alt="숨길 로고" class="logo-image">
                       <span class="logo-text">SOOMGIL AIR</span>
                     </div>
                     <span class="ticket-badge d-day-badge">{{ getTripStatus(currentTrip) }}</span>

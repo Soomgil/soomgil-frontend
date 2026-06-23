@@ -3,13 +3,13 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { notificationApi } from '@/api/notification.api'
+import type { PageMeta } from '@/types/api'
 import type { Notification } from '@/types/notification'
+import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-
-const logoUrl = '/images/soomgil_logo_none_text.png'
 
 /* ── Nav Items ── */
 const landingNavItems = [
@@ -47,7 +47,12 @@ const showProfile = ref(false)
 const notifications = ref<Notification[]>([])
 const notificationsLoading = ref(false)
 const notificationsError = ref('')
+const notificationPage = ref<PageMeta | null>(null)
 const unreadCount = computed(() => notifications.value.filter((item) => !item.readAt).length)
+const hasMoreNotifications = computed(() => {
+  const page = notificationPage.value
+  return page ? page.page + 1 < page.totalPages : false
+})
 
 function closeAllDropdowns() {
   showBriefing.value = false
@@ -65,14 +70,20 @@ async function toggleNotif() {
   const next = !showNotif.value
   closeAllDropdowns()
   showNotif.value = next
-  if (next) await loadNotifications()
+  if (next) await loadNotifications(0)
 }
 
-async function loadNotifications() {
+async function loadNotifications(page = 0) {
   notificationsLoading.value = true
   notificationsError.value = ''
   try {
-    notifications.value = (await notificationApi.getNotifications({ page: 0, size: 20 })).items
+    const response = await notificationApi.getNotifications({ page, size: 20 })
+    notificationPage.value = response.page
+    notifications.value = page === 0
+      ? response.items
+      : [...notifications.value, ...response.items.filter((next) => (
+          !notifications.value.some((current) => current.id === next.id)
+        ))]
   } catch {
     notificationsError.value = '알림을 불러오지 못했습니다.'
   } finally {
@@ -81,9 +92,14 @@ async function loadNotifications() {
 }
 
 async function openNotification(notification: Notification) {
-  if (!notification.readAt) {
-    const updated = await notificationApi.markAsRead(notification.id)
-    notifications.value = notifications.value.map((item) => item.id === updated.id ? updated : item)
+  try {
+    if (!notification.readAt) {
+      const updated = await notificationApi.markAsRead(notification.id)
+      notifications.value = notifications.value.map((item) => item.id === updated.id ? updated : item)
+    }
+  } catch {
+    notificationsError.value = '알림을 읽음 처리하지 못했습니다.'
+    return
   }
   const destination = notification.payload?.route
     || (notification.payload?.inviteCode ? `/trip-invites/${notification.payload.inviteCode}` : null)
@@ -93,14 +109,24 @@ async function openNotification(notification: Notification) {
 }
 
 async function markAllNotificationsRead() {
-  await notificationApi.markAllAsRead()
-  const readAt = new Date().toISOString()
-  notifications.value = notifications.value.map((item) => ({ ...item, readAt: item.readAt ?? readAt }))
+  notificationsError.value = ''
+  try {
+    await notificationApi.markAllAsRead()
+    const readAt = new Date().toISOString()
+    notifications.value = notifications.value.map((item) => ({ ...item, readAt: item.readAt ?? readAt }))
+  } catch {
+    notificationsError.value = '전체 알림을 읽음 처리하지 못했습니다.'
+  }
 }
 
 async function dismissNotification(notificationId: string) {
-  await notificationApi.deleteNotification(notificationId)
-  notifications.value = notifications.value.filter((item) => item.id !== notificationId)
+  notificationsError.value = ''
+  try {
+    await notificationApi.deleteNotification(notificationId)
+    notifications.value = notifications.value.filter((item) => item.id !== notificationId)
+  } catch {
+    notificationsError.value = '알림을 삭제하지 못했습니다.'
+  }
 }
 
 function toggleProfile() {
@@ -236,6 +262,14 @@ async function handleLogout() {
                 </button>
                 <button type="button" aria-label="알림 삭제" style="margin-top:6px;border:0;background:transparent;color:var(--muted);font-size:11px;cursor:pointer" @click="dismissNotification(notification.id)">삭제</button>
               </article>
+              <button
+                v-if="hasMoreNotifications"
+                type="button"
+                class="btn ghost"
+                :disabled="notificationsLoading"
+                data-testid="load-more-notifications"
+                @click="loadNotifications((notificationPage?.page ?? 0) + 1)"
+              >더 보기</button>
             </div>
           </div>
         </div>
