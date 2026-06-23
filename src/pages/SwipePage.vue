@@ -5,7 +5,6 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
-import SwipeActionBar from '@/components/swipe/SwipeActionBar.vue'
 import { useSwipeFeed } from '@/composables/useSwipeFeed'
 import type { SwipeAction } from '@/types/swipe'
 
@@ -153,11 +152,6 @@ function spawnSwipeBurst(type: string, x: number, y: number) {
     stage.appendChild(particle)
     particle.addEventListener('animationend', () => particle.remove())
   }
-}
-
-function handleSwipeButton(type: 'like' | 'dislike' | 'superlike') {
-  if (isFinished.value || submitting.value) return
-  void decide(type)
 }
 
 function selectPhoto(idx: number) {
@@ -356,14 +350,6 @@ onMounted(() => {
                   </article>
                 </template>
               </div>
-
-              <SwipeActionBar
-                v-if="currentPlace && !loading && !error"
-                :disabled="submitting"
-                @nope="handleSwipeButton('dislike')"
-                @like="handleSwipeButton('like')"
-                @super-like="handleSwipeButton('superlike')"
-              />
 
               <!-- Photo Strip -->
               <section v-if="currentPlace" class="photo-strip-section" aria-label="관광지 추가 사진">

@@ -48,7 +48,9 @@ describe('SwipePage', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('해운대해수욕장')
 
-    await wrapper.get('button[aria-label="LIKE"]').trigger('click')
+    const card = wrapper.get('.swipe-card')
+    card.element.dispatchEvent(new MouseEvent('pointerdown', { clientX: 0, clientY: 0, button: 0, bubbles: true }))
+    card.element.dispatchEvent(new MouseEvent('pointerup', { clientX: 120, clientY: 0, bubbles: true }))
     await flushPromises()
     expect(react).toHaveBeenCalledWith('KTO', '126508', 'LIKE')
 
