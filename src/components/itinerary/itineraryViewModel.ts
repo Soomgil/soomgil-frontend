@@ -62,5 +62,15 @@ export function toDayPlans(days: ItineraryDay[]): DayPlanViewModel[] {
 }
 
 export function dayPlanLabel(day: DayPlanViewModel) {
-  return day.groupType === 'UNSCHEDULED' ? '일차 미정' : `${day.day}일차`
+  if (day.groupType === 'UNSCHEDULED') return '일차 미정'
+  const base = `${day.day}일차`
+  if (!day.date) return base
+  // YYYY-MM-DD → M/D 형태로 짧게 표시
+  const parts = day.date.split('-')
+  if (parts.length === 3) {
+    const month = parseInt(parts[1], 10)
+    const d = parseInt(parts[2], 10)
+    return `${base} (${month}/${d})`
+  }
+  return base
 }

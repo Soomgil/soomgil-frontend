@@ -188,11 +188,13 @@ onMounted(() => {
         </div>
         <div class="discovery-copy">
           <div class="discovery-meta">
-            <span>{{ item.place.category || '장소' }}</span>
-            <span v-if="item.recommendation?.distanceMeters != null">{{ Math.round(item.recommendation.distanceMeters) }}m</span>
+            <div class="discovery-meta-left">
+              <span>{{ item.place.category || '장소' }}</span>
+              <span v-if="item.recommendation?.distanceMeters != null">{{ Math.round(item.recommendation.distanceMeters) }}m</span>
+            </div>
+            <span v-if="scheduledKeys.has(placeKey(item.place))" class="discovery-scheduled"><span class="material-symbols-rounded">check_circle</span>일정에 추가됨</span>
           </div>
           <strong>{{ item.place.placeName }}</strong>
-          <span v-if="scheduledKeys.has(placeKey(item.place))" class="discovery-scheduled"><span class="material-symbols-rounded">check_circle</span>일정에 추가됨</span>
           <p>{{ item.place.address || '주소 정보 없음' }}</p>
           <div v-if="item.recommendation?.matchedMembers?.length" class="discovery-match-row">
             <div class="discovery-members">
@@ -256,7 +258,10 @@ onMounted(() => {
 .discovery-copy p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
 .discovery-match-row { align-items: center; display: flex; gap: 8px; justify-content: space-between; margin-top: 10px; min-width: 0; }
 .discovery-copy .discovery-reason { color: var(--violet); flex: 1; font-weight: 800; font-size: 11px; margin: 0; min-width: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-.discovery-meta { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.discovery-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.discovery-meta-left { display: flex; align-items: center; gap: 8px; }
+.discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; color: #059669; font-size: 10px; font-weight: 850; margin-left: auto; flex-shrink: 0; }
+.discovery-scheduled .material-symbols-rounded { font-size: 14px; }
 .discovery-actions { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
 .discovery-actions .action-btn { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; cursor: pointer; transition: transform .14s ease, box-shadow .14s ease, background .14s ease, border-color .14s ease, color .14s ease; border: 1px solid var(--line); }
 .discovery-actions .action-btn.bookmark-btn { background: #fff; color: var(--violet); }

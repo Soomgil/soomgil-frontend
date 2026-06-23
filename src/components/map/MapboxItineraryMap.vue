@@ -8,6 +8,16 @@ import type { LngLat, Viewport } from '@/types/geo'
 import type { AccessibilityFlag, PlaceAccessibility } from '@/types/place'
 import { useTheme } from '@/composables/useTheme'
 
+export interface ItineraryMapNearbyPlace {
+  id: string
+  provider: string
+  externalPlaceId: string
+  title: string
+  category: string | null
+  lat: number
+  lng: number
+}
+
 export interface ItineraryMapStop {
   id: string
   placeProvider?: string
@@ -30,6 +40,8 @@ const props = withDefaults(defineProps<{
   stops: ItineraryMapStop[]
   routes?: ItineraryMapRoute[]
   routeDisplay?: 'route' | 'dashed' | 'hidden'
+  cardDisplay?: 'full' | 'min' | 'hidden'
+  nearbyPlaces?: ItineraryMapNearbyPlace[]
   drawings?: MapDrawingStroke[]
   drawingTool?: MapDrawingTool
   drawingColor?: string
@@ -38,7 +50,9 @@ const props = withDefaults(defineProps<{
 }>(), {
   drawings: () => [],
   routes: () => [],
+  nearbyPlaces: () => [],
   routeDisplay: 'route',
+  cardDisplay: 'full',
   drawingTool: 'cursor',
   drawingColor: '#1f2937',
   drawingWidth: 6,
@@ -46,6 +60,7 @@ const props = withDefaults(defineProps<{
 })
 const emit = defineEmits<{
   selectPlace: [placeProvider: string | undefined, placeId: string]
+  selectNearbyPlace: [placeProvider: string, placeId: string]
   viewportChange: [viewport: Viewport]
   drawingCreate: [drawing: MapDrawingDraft]
   drawingErase: [drawingId: string]
@@ -97,7 +112,7 @@ const ACCESSIBILITY_MARKERS: Partial<Record<AccessibilityFlag, { icon: string; l
 function createMarkerElement(stop: ItineraryMapStop) {
   const marker = document.createElement('button')
   marker.type = 'button'
-  marker.className = `map-pin-card ${dayClass(stop.dayIndex)}`
+  marker.className = `map-pin-card map-pin-card--${props.cardDisplay} ${dayClass(stop.dayIndex)}`
   marker.setAttribute('aria-label', `${stop.title} 지도 위치`)
 
   const imageWrapper = document.createElement('span')
@@ -157,6 +172,28 @@ function createMarkerElement(stop: ItineraryMapStop) {
   return marker
 }
 
+function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
+  const el = document.createElement('div')
+  el.className = 'map-nearby-place-marker'
+  el.setAttribute('aria-label', `${place.title} 주변 관광지`)
+
+  const icon = document.createElement('span')
+  icon.className = 'material-symbols-rounded'
+  icon.textContent = 'explore'
+  el.appendChild(icon)
+
+  const label = document.createElement('span')
+  label.className = 'map-nearby-place-label'
+  label.textContent = place.title
+  el.appendChild(label)
+
+  el.addEventListener('click', () => {
+    emit('selectNearbyPlace', place.provider, place.externalPlaceId)
+  })
+
+  return el
+}
+
 function clearMapContent() {
   markers.forEach((marker) => marker.remove())
   markers = []
@@ -176,9 +213,17 @@ function renderStops() {
   const mapbox = mapboxgl
   clearMapContent()
 
-  props.stops.forEach((stop) => {
-    markers.push(new mapbox.Marker({ element: createMarkerElement(stop), anchor: 'bottom' })
-      .setLngLat([stop.lng, stop.lat])
+  if (props.cardDisplay !== 'hidden') {
+    props.stops.forEach((stop) => {
+      markers.push(new mapbox.Marker({ element: createMarkerElement(stop), anchor: 'bottom' })
+        .setLngLat([stop.lng, stop.lat])
+        .addTo(map!))
+    })
+  }
+
+  props.nearbyPlaces.forEach((place) => {
+    markers.push(new mapbox.Marker({ element: createNearbyMarkerElement(place), anchor: 'bottom' })
+      .setLngLat([place.lng, place.lat])
       .addTo(map!))
   })
 
@@ -287,7 +332,7 @@ async function initializeMap() {
       zoom: 10,
     })
     map = createdMap
-    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right')
+    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     createdMap.on('style.load', () => {
       if (sequence !== initializationSequence || map !== createdMap) return
       styleReady = true
@@ -324,7 +369,7 @@ function retry() {
   void initializeMap()
 }
 
-watch(() => props.stops, renderStops, { deep: true })
+watch(() => [props.stops, props.nearbyPlaces, props.cardDisplay], renderStops, { deep: true })
 watch(() => [props.routes, props.routeDisplay], renderStops, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {

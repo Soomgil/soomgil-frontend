@@ -8605,6 +8605,45 @@
       z-index: 2;
     }
 
+    .map-nearby-place-marker {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 150px;
+      min-height: 30px;
+      padding: 5px 9px 5px 7px;
+      border: 2px solid #ffffff;
+      border-radius: 999px;
+      background: #059669;
+      color: #ffffff;
+      box-shadow: 0 8px 20px rgba(5, 150, 105, 0.28), 0 2px 8px rgba(15, 23, 42, 0.12);
+      cursor: pointer;
+      pointer-events: auto;
+      transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+    }
+
+    .map-nearby-place-marker:hover {
+      background: #047857;
+      transform: translateY(-1px) scale(1.04);
+      box-shadow: 0 12px 28px rgba(5, 150, 105, 0.34), 0 3px 10px rgba(15, 23, 42, 0.16);
+    }
+
+    .map-nearby-place-marker .material-symbols-rounded {
+      flex: 0 0 auto;
+      font-size: 17px;
+      line-height: 1;
+    }
+
+    .map-nearby-place-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1.2;
+    }
+
     /* AI Chat Panel CSS */
     .ai-chat-panel {
       position: absolute;
