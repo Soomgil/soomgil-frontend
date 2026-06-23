@@ -284,7 +284,7 @@ async function fetchHomeData() {
           <div class="home-toplikes-card">
             <div class="home-toplikes-header">
               <h3>Super-like TOP 3</h3>
-              <a href="#">더보기 <span class="material-symbols-rounded" style="font-size:16px;">arrow_forward</span></a>
+              <a href="#" @click.prevent="router.push({ path: '/search', query: { tab: '여행지' } })">더보기 <span class="material-symbols-rounded" style="font-size:16px;">arrow_forward</span></a>
             </div>
             <div class="home-toplikes-list">
               <div v-if="topPlacesLoading" class="home-section-state home-section-state--loading">

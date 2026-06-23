@@ -13,9 +13,11 @@ import LikedPlacesModal from '@/components/mypage/LikedPlacesModal.vue'
 import MyStoriesModal from '@/components/mypage/MyStoriesModal.vue'
 import FollowListModal from '@/components/common/FollowListModal.vue'
 import type { Place } from '@/types/place'
+import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
+const toast = useToast()
 
 const userId = computed(() => route.params.userId as string)
 const user = ref<any>(null)
@@ -68,6 +70,20 @@ async function toggleFollow() {
     }
   } catch (err) {
     console.error('Failed to toggle follow status:', err)
+  }
+}
+
+async function shareProfile() {
+  if (!user.value) return
+  const url = `${window.location.origin}/mypage/${userId.value}`
+  try {
+    if (navigator.share) await navigator.share({ title: `${user.value.displayName}님의 숨길 프로필`, url })
+    else {
+      await navigator.clipboard.writeText(url)
+      toast.success('프로필 링크를 복사했습니다.')
+    }
+  } catch (error) {
+    if ((error as DOMException)?.name !== 'AbortError') toast.error('프로필을 공유하지 못했습니다.')
   }
 }
 
@@ -224,7 +240,7 @@ function openCommunityStory(storyId: string) {
                   <span class="material-symbols-rounded">{{ isFollowing ? 'person_remove' : 'person_add' }}</span>
                   {{ isFollowing ? '팔로잉' : '팔로우' }}
                 </button>
-                <button type="button" class="mypage-profile-btn share">
+                <button type="button" class="mypage-profile-btn share" @click="shareProfile">
                   <span class="material-symbols-rounded">share</span>공유하기
                 </button>
               </div>
@@ -268,9 +284,9 @@ function openCommunityStory(storyId: string) {
                       <div v-for="place in filteredPlaces" :key="place.externalPlaceId" class="mypage-place-card mypage-place-card--slider">
                         <div class="place-img-wrap">
                           <img :src="(place.thumbnailUrl ?? '')" :alt="place.placeName" />
-                          <button type="button" class="place-heart-btn" aria-label="좋아요" style="cursor: default;">
+                          <span class="place-heart-btn" aria-label="좋아요한 장소">
                             <span class="material-symbols-rounded">favorite</span>
-                          </button>
+                          </span>
                         </div>
                         <div class="place-info-wrap">
                           <span class="place-region-category">{{ place.address }}</span>
@@ -311,7 +327,7 @@ function openCommunityStory(storyId: string) {
                     <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
                     <div class="story-magazine-body">
                       <h3 class="story-magazine-title">
-                        <a href="#" @click.prevent>{{ story.title }}</a>
+                        <span>{{ story.title }}</span>
                       </h3>
                       <div class="story-magazine-meta">
                         <span class="story-date">{{ story.location }}</span>

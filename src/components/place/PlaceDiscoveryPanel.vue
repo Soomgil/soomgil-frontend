@@ -102,6 +102,8 @@ async function toggleSaved(place: Place) {
       next.delete(key)
       savedKeys.value = next
     } else {
+      // 저장 API는 SUPER_LIKE 반응이 있는 장소만 허용한다.
+      await swipeApi.react(place.provider, place.externalPlaceId, 'SUPER_LIKE')
       await swipeApi.savePlace(place.provider, place.externalPlaceId)
       savedKeys.value = new Set(savedKeys.value).add(key)
     }

@@ -28,7 +28,6 @@ vi.mock('@/composables/useToast', () => ({ useToast: () => mocks.toast }))
 vi.mock('@/stores/auth.store', () => ({ useAuthStore: () => ({ user: null }) }))
 
 import CommunityPage from './CommunityPage.vue'
-import FeedPage from './FeedPage.vue'
 import StoriesPage from './StoriesPage.vue'
 import StoryWritePage from './StoryWritePage.vue'
 
@@ -71,6 +70,8 @@ describe('커뮤니티 API 화면 연동', () => {
       page: page.page,
     })
     mocks.communityApi.createPost.mockResolvedValue({ ...page.items[0], snapshotVersion: 7 })
+    mocks.communityApi.likePost.mockResolvedValue({ postId: 'post-1', liked: true, likeCount: 4 })
+    mocks.communityApi.unlikePost.mockResolvedValue({ postId: 'post-1', liked: false, likeCount: 3 })
   })
 
   it.each([
@@ -94,13 +95,37 @@ describe('커뮤니티 API 화면 연동', () => {
     expect(mocks.communityApi.getComments).toHaveBeenCalledWith('post-1')
   })
 
-  it('피드의 빈 상태에서 실제 작성 라우트로 이동한다', async () => {
-    mocks.communityApi.getPosts.mockResolvedValueOnce({ ...page, items: [] })
-    const wrapper = mount(FeedPage, { global: { stubs } })
+  it('CommunityPage 상세 모달의 좋아요를 API에 반영한다', async () => {
+    const wrapper = mount(CommunityPage, { global: { stubs } })
+    await flushPromises()
+    await wrapper.get('.story-tile').trigger('click')
     await flushPromises()
 
-    await wrapper.get('button').trigger('click')
-    expect(mocks.push).toHaveBeenCalledWith('/community/story-write')
+    const likeButton = wrapper.findAll('.story-like-button').find((button) => button.text().includes('favorite'))
+    expect(likeButton).toBeDefined()
+    await likeButton!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.communityApi.likePost).toHaveBeenCalledWith('post-1')
+    expect(likeButton!.text()).toContain('4')
+  })
+
+  it('대댓글을 부모 댓글과 구분해 들여쓰기와 대상 이름으로 표시한다', async () => {
+    mocks.communityApi.getComments.mockResolvedValueOnce({
+      items: [
+        { id: 'comment-1', postId: 'post-1', parentCommentId: null, depth: 0, author: { id: 'user-2', displayName: '민지', profileImageUrl: null }, content: '좋은 여행기예요', moderationStatus: 'VISIBLE', createdAt: '2026-06-22T00:00:00Z' },
+        { id: 'reply-1', postId: 'post-1', parentCommentId: 'comment-1', depth: 1, author: { id: 'user-3', displayName: '준호', profileImageUrl: null }, content: '저도 동의해요', moderationStatus: 'VISIBLE', createdAt: '2026-06-22T01:00:00Z' },
+      ],
+      page: page.page,
+    })
+    const wrapper = mount(CommunityPage, { global: { stubs } })
+    await flushPromises()
+    await wrapper.get('.story-tile').trigger('click')
+    await flushPromises()
+
+    const reply = wrapper.get('.fc-item.is-reply')
+    expect(reply.text()).toContain('민지님에게 보낸 답글')
+    expect(reply.text()).toContain('저도 동의해요')
   })
 
   it('작성 화면에 더미 본문을 채우지 않고 여행 기록 사진으로 게시물을 등록한다', async () => {

@@ -616,22 +616,10 @@ onMounted(async () => {
                     placeholder="여행기 검색"
                     aria-label="여행기 검색"
                   />
-                  <button
-                    class="search-box__button"
-                    type="button"
-                    aria-label="여행기 검색"
-                  >
+                  <span class="search-box__button" aria-hidden="true">
                     <span class="material-symbols-rounded" aria-hidden="true">search</span>
-                  </button>
+                  </span>
                 </label>
-                <button
-                  type="button"
-                  class="filter-pill"
-                  aria-label="필터"
-                  title="필터"
-                >
-                  <span class="material-symbols-rounded">tune</span>
-                </button>
               </div>
             </div>
 

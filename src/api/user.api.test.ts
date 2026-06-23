@@ -40,4 +40,31 @@ describe('userApi social contract', () => {
       params: { page: 0, size: 100 },
     })
   })
+
+  it('unwraps and maps saved-place wrappers for My Page cards', async () => {
+    vi.mocked(http.get).mockResolvedValue({
+      data: {
+        items: [{
+          id: 'saved-1',
+          place: {
+            provider: 'KTO',
+            externalPlaceId: '20001',
+            name: '국립중앙과학관',
+            address: '대전광역시 유성구',
+            lat: 36.37,
+            lng: 127.37,
+            thumbnailUrl: null,
+            category: '문화시설',
+            sourceStatus: 'AVAILABLE',
+          },
+          createdAt: '2026-06-23T00:00:00Z',
+        }],
+        page: { page: 0, size: 100, totalElements: 1, totalPages: 1, sort: [] },
+      },
+    })
+
+    await expect(userApi.getSavedPlaces()).resolves.toEqual([
+      expect.objectContaining({ externalPlaceId: '20001', placeName: '국립중앙과학관' }),
+    ])
+  })
 })
