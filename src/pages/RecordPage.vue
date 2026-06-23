@@ -19,8 +19,8 @@ const routeTripId = typeof route.query.tripId === 'string' ? route.query.tripId 
 const selectedTripId = ref<string | null>(routeTripId)
 const isUploadModalOpen = ref(false)
 const uploadTripId = ref('')
-const uploadPreview = ref<string | null>(null)
-const uploadFile = ref<File | null>(null)
+const uploadFiles = ref<File[]>([])
+const uploadPreviews = ref<string[]>([])
 const uploadError = ref('')
 const uploadingPhoto = ref(false)
 const trips = ref<TripSummary[]>([])
@@ -271,9 +271,9 @@ function scrollSlider(direction: 'prev' | 'next') {
 }
 
 function clearUploadSelection() {
-  if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
-  uploadPreview.value = null
-  uploadFile.value = null
+  uploadPreviews.value.forEach((url) => URL.revokeObjectURL(url))
+  uploadPreviews.value = []
+  uploadFiles.value = []
 }
 
 function openUploadModal() {
@@ -292,43 +292,48 @@ function closeUploadModal() {
 
 function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
-  if (input.files && input.files[0]) {
-    const file = input.files[0]
-    if (!file.type.startsWith('image/')) {
-      uploadError.value = '이미지 파일만 업로드할 수 있습니다.'
-      return
-    }
-    if (uploadPreview.value) URL.revokeObjectURL(uploadPreview.value)
-    uploadFile.value = file
-    uploadPreview.value = URL.createObjectURL(file)
-    uploadError.value = ''
+  const selected = [...(input.files ?? [])]
+  if (selected.some((file) => !file.type.startsWith('image/'))) {
+    uploadError.value = '이미지 파일만 업로드할 수 있습니다.'
+    input.value = ''
+    return
   }
+  const remaining = Math.max(0, 10 - uploadFiles.value.length)
+  const accepted = selected.slice(0, remaining)
+  uploadFiles.value = [...uploadFiles.value, ...accepted]
+  uploadPreviews.value = [...uploadPreviews.value, ...accepted.map((file) => URL.createObjectURL(file))]
+  uploadError.value = selected.length > remaining ? '사진은 한 번에 최대 10장까지 추가할 수 있습니다.' : ''
+  input.value = ''
 }
 
-function removePreview() {
-  clearUploadSelection()
+function removePreview(index: number) {
+  URL.revokeObjectURL(uploadPreviews.value[index])
+  uploadPreviews.value = uploadPreviews.value.filter((_, itemIndex) => itemIndex !== index)
+  uploadFiles.value = uploadFiles.value.filter((_, itemIndex) => itemIndex !== index)
 }
 
 async function submitPhoto() {
-  if (!uploadTripId.value || !uploadFile.value || uploadingPhoto.value) {
+  if (!uploadTripId.value || uploadFiles.value.length === 0 || uploadingPhoto.value) {
     uploadError.value = '여행과 사진을 모두 선택해주세요.'
     return
   }
   uploadingPhoto.value = true
   uploadError.value = ''
-  let uploadedMediaId: string | null = null
+  const uploadedMediaIds: string[] = []
   try {
-    const media = await mediaApi.uploadFile(uploadFile.value, 'TRIP_RECORD')
-    uploadedMediaId = media.id
+    for (const file of uploadFiles.value) {
+      const media = await mediaApi.uploadFile(file, 'TRIP_RECORD')
+      uploadedMediaIds.push(media.id)
+    }
     const idempotencyKey = crypto.randomUUID()
     try {
-      await mediaApi.createRecord(uploadTripId.value, { mediaFileIds: [media.id] }, idempotencyKey)
+      await mediaApi.createRecord(uploadTripId.value, { mediaFileIds: uploadedMediaIds }, idempotencyKey)
     } catch (cause) {
       const status = typeof cause === 'object' && cause !== null && 'response' in cause
         ? (cause as { response?: { status?: number } }).response?.status
         : undefined
       if (status != null && status < 500) throw cause
-      await mediaApi.createRecord(uploadTripId.value, { mediaFileIds: [media.id] }, idempotencyKey)
+      await mediaApi.createRecord(uploadTripId.value, { mediaFileIds: uploadedMediaIds }, idempotencyKey)
     }
     const tripId = uploadTripId.value
     uploadingPhoto.value = false
@@ -339,8 +344,8 @@ async function submitPhoto() {
     const status = typeof cause === 'object' && cause !== null && 'response' in cause
       ? (cause as { response?: { status?: number } }).response?.status
       : undefined
-    if (uploadedMediaId && status != null && status < 500) {
-      await mediaApi.delete(uploadedMediaId).catch(() => undefined)
+    if (uploadedMediaIds.length && status != null && status < 500) {
+      await Promise.all(uploadedMediaIds.map((mediaId) => mediaApi.delete(mediaId).catch(() => undefined)))
     }
     uploadError.value = '사진을 추가하지 못했습니다. 잠시 후 다시 시도해주세요.'
   } finally {
@@ -555,17 +560,20 @@ onBeforeUnmount(() => {
           </label>
 
           <label class="record-upload-zone" role="button" tabindex="0" aria-label="사진 파일 선택">
-            <input class="sr-only" type="file" accept="image/*" @change="handleFileSelect" />
+            <input class="sr-only" type="file" accept="image/*" multiple @change="handleFileSelect" />
             <span class="material-symbols-rounded record-upload-icon">add_photo_alternate</span>
-            <span class="record-upload-title">사진을 선택하거나 여기에 끌어오세요</span>
-            <span class="record-upload-helper">JPG, PNG, WebP 이미지를 사용할 수 있습니다.</span>
+            <span class="record-upload-title">사진을 여러 장 선택하세요</span>
+            <span class="record-upload-helper">JPG, PNG, WebP · 최대 10장 · 선택 후에도 사진을 더 추가할 수 있어요.</span>
           </label>
 
-          <div v-if="uploadPreview" class="record-photo-preview">
-            <img :src="uploadPreview" alt="선택한 사진 미리보기" />
-            <button class="preview-remove-btn" type="button" @click="removePreview" aria-label="사진 삭제">
-              <span class="material-symbols-rounded">close</span>
-            </button>
+          <div v-if="uploadPreviews.length" class="record-photo-preview-grid" aria-label="선택한 사진">
+            <div v-for="(preview, index) in uploadPreviews" :key="preview" class="record-photo-preview">
+              <img :src="preview" :alt="`선택한 사진 ${index + 1}`" />
+              <span class="record-photo-number">{{ index + 1 }}</span>
+              <button class="preview-remove-btn" type="button" @click="removePreview(index)" :aria-label="`${index + 1}번째 사진 삭제`">
+                <span class="material-symbols-rounded">close</span>
+              </button>
+            </div>
           </div>
 
           <p class="trip-create-error" aria-live="polite">{{ uploadError }}</p>
@@ -573,7 +581,7 @@ onBeforeUnmount(() => {
           <div class="trip-create-actions">
             <button class="btn ghost" type="button" :disabled="uploadingPhoto" @click="closeUploadModal">취소</button>
             <button class="btn primary" type="submit" :disabled="uploadingPhoto">
-              <span class="material-symbols-rounded">check</span>{{ uploadingPhoto ? '추가 중...' : '사진 추가' }}
+              <span class="material-symbols-rounded">check</span>{{ uploadingPhoto ? '사진 업로드 중...' : uploadFiles.length ? `${uploadFiles.length}장 추가` : '사진 추가' }}
             </button>
           </div>
         </form>
@@ -1194,6 +1202,13 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: var(--muted);
 }
+.record-photo-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 330px;
+  overflow-y: auto;
+}
 .record-photo-preview {
   position: relative;
   width: 100%;
@@ -1203,6 +1218,7 @@ onBeforeUnmount(() => {
   margin-bottom: 20px;
   box-shadow: 0 12px 28px rgba(0,0,0,0.1);
 }
+.record-photo-number { position: absolute; left: 9px; bottom: 9px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(15, 23, 42, .72); color: #fff; font-size: 11px; font-weight: 850; }
 .record-photo-preview img {
   width: 100%;
   height: 240px;

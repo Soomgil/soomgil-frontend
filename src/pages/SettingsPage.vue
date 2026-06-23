@@ -3,18 +3,13 @@ import { ref, onMounted } from 'vue'
 import AppShell from '@/components/layout/AppShell.vue'
 import { useAuth } from '@/composables/useAuth'
 import { userApi } from '@/api/user.api'
-import type { UpdateMeRequest, UpdateUserSettingsRequest } from '@/types/auth'
+import type { UpdateUserSettingsRequest } from '@/types/auth'
 import type { SecurityEvent, UserSession } from '@/types/auth'
 
-const { logout, user } = useAuth()
+const { logout } = useAuth()
 
 const loading = ref(false)
 const saving = ref(false)
-
-const profileForm = ref({
-  displayName: '',
-  bio: '',
-})
 
 const settingsForm = ref({
   displayLanguage: 'ko',
@@ -24,6 +19,12 @@ const settingsForm = ref({
 })
 
 const timezones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul']
+const languages = [
+  { value: 'ko', label: '한국어' },
+  { value: 'en', label: 'English' },
+  { value: 'ja', label: '日本語' },
+  { value: 'zh-CN', label: '简体中文' },
+]
 
 const message = ref('')
 const errorMessage = ref('')
@@ -47,32 +48,12 @@ onMounted(async () => {
       marketingEmailOptIn: settings.marketingEmailOptIn,
       tripInviteEmailOptIn: settings.tripInviteEmailOptIn,
     }
-    if (user) {
-      profileForm.value.displayName = user.displayName
-      profileForm.value.bio = user.bio ?? ''
-    }
   } catch {
     errorMessage.value = '계정 설정을 불러오지 못했습니다.'
   } finally {
     loading.value = false
   }
 })
-
-async function saveProfile() {
-  saving.value = true
-  try {
-    const payload: UpdateMeRequest = {
-      displayName: profileForm.value.displayName,
-      bio: profileForm.value.bio || undefined,
-    }
-    await userApi.updateMe(payload)
-    message.value = '프로필을 저장했습니다.'
-  } catch {
-    // 에러는 인터셉터에서 처리
-  } finally {
-    saving.value = false
-  }
-}
 
 async function revokeSession(sessionId: string) {
   accountLoading.value = true
@@ -133,49 +114,24 @@ async function saveSettings() {
 
 <template>
   <AppShell>
-    <div class="max-w-2xl mx-auto px-6 py-12">
-      <h1 class="text-2xl font-black text-ink mb-8">설정</h1>
+    <div class="settings-page max-w-2xl mx-auto px-6 py-12">
+      <header class="settings-heading">
+        <p class="eyebrow"><span class="material-symbols-rounded">tune</span> Preferences</p>
+        <h1>설정</h1>
+        <p>프로필은 마이페이지에서, 기기와 서비스 환경은 여기에서 관리합니다.</p>
+      </header>
 
       <p v-if="loading" class="text-muted">불러오는 중…</p>
       <p v-if="message" class="text-sm mb-4" style="color: var(--blue);">{{ message }}</p>
       <p v-if="errorMessage" class="text-sm mb-4" style="color: var(--rose);">{{ errorMessage }}</p>
 
-      <!-- Profile Section -->
-      <section class="p-6 rounded-3xl bg-surface border border-line mb-6">
-        <h2 class="font-bold text-ink mb-4">프로필</h2>
-        <div class="flex items-center gap-4 mb-4">
-          <div class="w-16 h-16 rounded-full bg-brand-violet flex items-center justify-center text-white text-xl font-bold">
-            {{ profileForm.displayName?.charAt(0) || 'U' }}
-          </div>
-          <div>
-            <p class="font-bold text-ink">{{ user?.displayName || '사용자' }}</p>
-            <p class="text-sm text-muted">{{ user?.email || '' }}</p>
-          </div>
-        </div>
-        <label class="block mb-3">
-          <span class="text-sm text-ink font-semibold block mb-1">이름</span>
-          <input v-model="profileForm.displayName" type="text" class="w-full px-4 py-2 rounded-xl border border-line" />
-        </label>
-        <label class="block mb-4">
-          <span class="text-sm text-ink font-semibold block mb-1">소개</span>
-          <textarea v-model="profileForm.bio" rows="3" class="w-full px-4 py-2 rounded-xl border border-line"></textarea>
-        </label>
-        <button
-          class="px-4 py-2 rounded-xl bg-brand-violet text-white font-semibold text-sm disabled:opacity-50"
-          :disabled="saving"
-          @click="saveProfile"
-        >
-          프로필 저장
-        </button>
-      </section>
-
-      <section class="p-6 rounded-3xl bg-surface border border-line mb-6">
-        <h2 class="font-bold text-ink mb-4">로그인 기기</h2>
+      <section class="settings-card p-6 rounded-3xl bg-surface border border-line mb-6">
+        <div class="settings-card-title"><span class="material-symbols-rounded">devices</span><div><h2>로그인 기기</h2><p>실제 활성 세션을 확인하고 원격으로 해제할 수 있습니다.</p></div></div>
         <p v-if="sessions.length === 0" class="text-sm text-muted">활성 로그인 세션이 없습니다.</p>
         <ul v-else class="space-y-3">
           <li v-for="session in sessions" :key="session.id" class="flex items-center justify-between gap-4 p-3 rounded-xl border border-line">
             <div>
-              <strong class="text-sm text-ink">{{ session.deviceName || '알 수 없는 기기' }}</strong>
+              <strong class="text-sm text-ink">{{ session.deviceName || '브라우저 세션' }}</strong>
               <p class="text-xs text-muted mt-1">{{ session.deviceOs || '운영체제 정보 없음' }} · 만료 {{ new Date(session.expiresAt).toLocaleString('ko-KR') }}</p>
             </div>
             <button type="button" class="px-3 py-2 rounded-lg border border-line text-xs text-brand-rose" :disabled="accountLoading" @click="revokeSession(session.id)">해제</button>
@@ -184,8 +140,8 @@ async function saveSettings() {
         <button type="button" class="mt-4 px-4 py-2 rounded-xl border border-line text-sm font-semibold" :disabled="accountLoading" @click="logoutAllDevices">모든 기기 로그아웃</button>
       </section>
 
-      <section class="p-6 rounded-3xl bg-surface border border-line mb-6">
-        <h2 class="font-bold text-ink mb-4">보안 활동</h2>
+      <section class="settings-card p-6 rounded-3xl bg-surface border border-line mb-6">
+        <div class="settings-card-title"><span class="material-symbols-rounded">shield</span><div><h2>보안 활동</h2><p>최근 로그인과 계정 보안 이벤트입니다.</p></div></div>
         <p v-if="securityEvents.length === 0" class="text-sm text-muted">최근 보안 활동이 없습니다.</p>
         <ul v-else class="space-y-2">
           <li v-for="event in securityEvents" :key="event.id" class="flex justify-between gap-4 text-sm py-2 border-b border-line last:border-0">
@@ -195,19 +151,21 @@ async function saveSettings() {
         </ul>
       </section>
 
-      <section class="p-6 rounded-3xl bg-surface border border-brand-rose/20 mb-6">
+      <section class="settings-card p-6 rounded-3xl bg-surface border border-brand-rose/20 mb-6">
         <h2 class="font-bold text-brand-rose mb-2">계정 삭제</h2>
         <p class="text-sm text-muted mb-4">삭제 요청은 서버 정책에 따라 예약 처리됩니다. 활성 여행방을 소유 중이면 요청이 거절될 수 있습니다.</p>
         <button type="button" class="px-4 py-2 rounded-xl border border-brand-rose/30 text-brand-rose text-sm font-semibold" :disabled="accountLoading" @click="requestAccountDeletion">계정 삭제 예약</button>
       </section>
 
       <!-- Settings Section -->
-      <section class="p-6 rounded-3xl bg-surface border border-line mb-6">
-        <h2 class="font-bold text-ink mb-4">환경 설정</h2>
+      <section class="settings-card p-6 rounded-3xl bg-surface border border-line mb-6">
+        <div class="settings-card-title"><span class="material-symbols-rounded">language</span><div><h2>환경 설정</h2><p>서비스 표시 방식과 이메일 수신을 선택합니다.</p></div></div>
         <div class="space-y-4">
           <label class="block">
             <span class="text-sm text-ink font-semibold block mb-1">표시 언어</span>
-            <input v-model="settingsForm.displayLanguage" type="text" class="w-full px-4 py-2 rounded-xl border border-line" />
+            <select v-model="settingsForm.displayLanguage" class="w-full px-4 py-2 rounded-xl border border-line bg-white">
+              <option v-for="language in languages" :key="language.value" :value="language.value">{{ language.label }}</option>
+            </select>
           </label>
           <label class="block">
             <span class="text-sm text-ink font-semibold block mb-1">타임존</span>
@@ -243,3 +201,17 @@ async function saveSettings() {
     </div>
   </AppShell>
 </template>
+
+<style scoped>
+.settings-page { position: relative; }
+.settings-heading { margin-bottom: 30px; }
+.settings-heading .eyebrow { display: flex; align-items: center; gap: 6px; }
+.settings-heading h1 { margin: 6px 0 8px; font-size: 36px; font-weight: 900; }
+.settings-heading > p:last-child { margin: 0; color: var(--muted); }
+.settings-card { box-shadow: 0 16px 45px rgba(15, 23, 42, .05); }
+.settings-card-title { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+.settings-card-title > .material-symbols-rounded { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(124, 58, 237, .09); color: var(--violet); }
+.settings-card-title h2 { margin: 0 0 3px; color: var(--ink); font-size: 16px; font-weight: 850; }
+.settings-card-title p { margin: 0; color: var(--muted); font-size: 12px; }
+.settings-page select { min-height: 44px; }
+</style>

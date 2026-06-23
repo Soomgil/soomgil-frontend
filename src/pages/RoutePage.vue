@@ -91,6 +91,9 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
+const scheduledPlaceKeys = computed(() => dayPlans.value.flatMap((day) => day.items.flatMap((item) =>
+  item.placeProvider && item.placeExternalId ? [`${item.placeProvider}:${item.placeExternalId}`] : [],
+)))
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
@@ -395,12 +398,7 @@ interface DragSource {
 
 function onPointerDown(e: PointerEvent) {
   if ((e.target as HTMLElement).closest('button')) return
-  if (
-    e.button !== 0 || (
-      !(e.target as HTMLElement).closest('.grip-icon') &&
-      !(e.target as HTMLElement).closest('.stop-num')
-    )
-  ) return
+  if (e.button !== 0 || !(e.currentTarget as HTMLElement).classList.contains('day-separator')) return
   if (itinerary.mutating.value) return
 
   const stop = (e.currentTarget as HTMLElement)
@@ -628,26 +626,27 @@ function reorderSingleDay(source: DragSource, targetIdx: number) {
   plan.items = items.map((it, idx) => ({ ...it, order: idx + 1 }))
 }
 
+let pendingOrderSave: Promise<void> = Promise.resolve()
 async function persistItineraryOrder() {
   if (dayPlans.value.length === 0) return
+  const order = dayPlans.value.map((day, dayIndex) => ({
+    dayId: day.id,
+    sortOrder: dayIndex,
+    itemOrders: day.items.map((item, itemIndex) => ({ itemId: item.id, sortOrder: itemIndex })),
+  }))
   itineraryActionError.value = ''
-  try {
-    await itinerary.reorder({
-      days: dayPlans.value.map((day, dayIndex) => ({
-        dayId: day.id,
-        sortOrder: dayIndex,
-        itemOrders: day.items.map((item, itemIndex) => ({
-          itemId: item.id,
-          sortOrder: itemIndex,
-        })),
-      })),
-    })
-  } catch {
-    itineraryActionError.value = '일정 순서를 저장하지 못해 최신 상태로 되돌렸습니다.'
-    undoStack.value = []
-    redoStack.value = []
-    await loadItinerary()
-  }
+  pendingOrderSave = pendingOrderSave.then(async () => {
+    try {
+      await itinerary.reorder({ days: order })
+      showToast('일정 순서를 저장했습니다')
+    } catch {
+      itineraryActionError.value = '일정 순서를 저장하지 못해 최신 상태로 되돌렸습니다.'
+      undoStack.value = []
+      redoStack.value = []
+      await loadItinerary()
+    }
+  })
+  await pendingOrderSave
 }
 
 /* 드래그앤드롭 초기화 */
@@ -1665,6 +1664,7 @@ function textAvatarStyle(index: unknown) {
                 <PlaceDiscoveryPanel
                   :trip-id="tripId"
                   :bbox="discoveryBbox"
+                  :scheduled-place-keys="scheduledPlaceKeys"
                   @select="selectDiscoveredPlace"
                   @add="addPlaceToItinerary"
                 />

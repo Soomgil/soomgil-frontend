@@ -1,17 +1,16 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getSettings, getSessions, getSecurityEvents, updateMe, updateSettings, logout } = vi.hoisted(() => ({
+const { getSettings, getSessions, getSecurityEvents, updateSettings, logout } = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getSessions: vi.fn(),
   getSecurityEvents: vi.fn(),
-  updateMe: vi.fn(),
   updateSettings: vi.fn(),
   logout: vi.fn(),
 }))
 
 vi.mock('@/api/user.api', () => ({
-  userApi: { getSettings, getSessions, getSecurityEvents, updateMe, updateSettings },
+  userApi: { getSettings, getSessions, getSecurityEvents, updateSettings },
 }))
 
 vi.mock('@/composables/useAuth', () => ({
@@ -28,7 +27,6 @@ describe('SettingsPage', () => {
     getSettings.mockReset()
     getSessions.mockReset()
     getSecurityEvents.mockReset()
-    updateMe.mockReset()
     updateSettings.mockReset()
     logout.mockReset()
 
@@ -42,7 +40,7 @@ describe('SettingsPage', () => {
     getSecurityEvents.mockResolvedValue({ items: [] })
   })
 
-  it('loads user profile and settings on mount', async () => {
+  it('loads account settings on mount and uses option controls', async () => {
     const wrapper = mount(SettingsPage, {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
     })
@@ -51,39 +49,26 @@ describe('SettingsPage', () => {
 
     expect(wrapper.text()).not.toContain('불러오는 중')
     
-    // Check if the input models are populated properly
-    const inputs = wrapper.findAll('input[type="text"]')
-    // displayName, displayLanguage, timezone
-    expect((inputs[0].element as HTMLInputElement).value).toBe('테스터')
-    expect((inputs[1].element as HTMLInputElement).value).toBe('ko')
     const selects = wrapper.findAll('select')
-    expect((selects[0].element as HTMLSelectElement).value).toBe('Asia/Seoul')
-
-    const textareas = wrapper.findAll('textarea')
-    expect((textareas[0].element as HTMLTextAreaElement).value).toBe('안녕하세요')
+    expect((selects[0].element as HTMLSelectElement).value).toBe('ko')
+    expect((selects[1].element as HTMLSelectElement).value).toBe('Asia/Seoul')
+    expect(wrapper.text()).not.toContain('프로필 저장')
+    expect(wrapper.find('textarea').exists()).toBe(false)
 
     const checkboxes = wrapper.findAll('input[type="checkbox"]')
     expect((checkboxes[0].element as HTMLInputElement).checked).toBe(true) // marketing
     expect((checkboxes[1].element as HTMLInputElement).checked).toBe(true) // trip invite
   })
 
-  it('saves profile correctly and shows success message', async () => {
-    updateMe.mockResolvedValue({})
+  it('renders actual login session data', async () => {
+    getSessions.mockResolvedValue({ items: [{ id: 'session-1', deviceName: 'Chrome', deviceOs: 'Windows', expiresAt: '2026-06-30T00:00:00Z' }] })
     const wrapper = mount(SettingsPage, {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
     })
     await flushPromises()
 
-    await wrapper.findAll('input[type="text"]')[0].setValue('새이름')
-    await wrapper.findAll('button').find((button) => button.text() === '프로필 저장')!.trigger('click')
-
-    expect(updateMe).toHaveBeenCalledWith({
-      displayName: '새이름',
-      bio: '안녕하세요',
-    })
-
-    await flushPromises()
-    expect(wrapper.text()).toContain('프로필을 저장했습니다.')
+    expect(wrapper.text()).toContain('Chrome')
+    expect(wrapper.text()).toContain('Windows')
   })
 
   it('saves settings correctly and shows success message', async () => {

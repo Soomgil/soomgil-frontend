@@ -8462,12 +8462,12 @@
       border-radius: 14px;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
       border: 2px solid var(--day-color, var(--violet));
-      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease, border-color 0.25s;
+      transition: box-shadow 0.25s ease, border-color 0.25s;
     }
 
     .map-pin-card:hover {
-      transform: scale(1.12) translateY(-6px) !important;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25) !important;
+      border-color: color-mix(in srgb, var(--day-color, var(--violet)) 78%, #000) !important;
       z-index: 99999 !important;
     }
 
