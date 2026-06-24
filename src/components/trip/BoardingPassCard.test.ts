@@ -40,6 +40,10 @@ describe('BoardingPassCard', () => {
     )
     expect(wrapper.get('[data-testid="trip-qr"]').attributes('src')).toBe('data:image/png;base64,qr')
     expect(wrapper.text()).toContain('2026.07.01 - 2026.07.04')
+    expect(wrapper.get('.stub-qr-copy').text()).toContain('제주특별자치도')
+    expect(wrapper.get('.stub-role-badge').text()).toBe('방장')
+    expect(wrapper.find('.stub-passenger-meta').exists()).toBe(false)
+    expect(wrapper.get('.stub-detail-btn').text()).toContain('여행 계획 열기')
   })
 
   it('QR이 포함된 티켓을 PNG로 내보낸다', async () => {
