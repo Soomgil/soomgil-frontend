@@ -45,7 +45,7 @@ const filteredStories = computed(() => {
           <p class="mypage-empty-desc">다른 키워드로 검색해 보세요.</p>
         </div>
 
-        <div v-else style="overflow-y: auto; max-height: calc(94vh - 140px);">
+        <div v-else class="modal-scroll-container" style="overflow-y: auto; max-height: calc(94vh - 140px); padding: 16px; margin: -16px;">
           <div class="mypage-stories-magazine">
             <div v-for="story in filteredStories" :key="story.id" class="mypage-story-magazine-item" @click="$emit('storyClick', story.id)">
               <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
@@ -74,6 +74,13 @@ const filteredStories = computed(() => {
 </template>
 
 <style scoped>
+.modal-scroll-container {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.modal-scroll-container::-webkit-scrollbar {
+  display: none;
+}
 .mypage-search-inline {
   position: relative;
   display: flex;

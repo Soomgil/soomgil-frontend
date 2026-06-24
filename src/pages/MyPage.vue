@@ -64,6 +64,7 @@ onMounted(async () => {
 const likedPlacesSource = ref<Place[]>([])
 const failedPlaceImages = ref(new Set<string>())
 const removingPlaceKeys = ref(new Set<string>())
+const locallyUnsavedKeys = ref(new Set<string>())
 
 function placeKey(place: Place) {
   return `${place.provider}:${place.externalPlaceId}`
@@ -73,16 +74,24 @@ function markPlaceImageFailed(place: Place) {
   failedPlaceImages.value = new Set(failedPlaceImages.value).add(placeKey(place))
 }
 
-async function removeLikedPlace(place: Place) {
+async function toggleLikedPlace(place: Place) {
   const key = placeKey(place)
   if (removingPlaceKeys.value.has(key)) return
   removingPlaceKeys.value = new Set(removingPlaceKeys.value).add(key)
   try {
-    await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
-    likedPlacesSource.value = likedPlacesSource.value.filter((item) => placeKey(item) !== key)
-    toast.success('좋아요한 장소에서 제거했습니다.')
+    if (locallyUnsavedKeys.value.has(key)) {
+      await swipeApi.savePlace(place.provider, place.externalPlaceId)
+      const next = new Set(locallyUnsavedKeys.value)
+      next.delete(key)
+      locallyUnsavedKeys.value = next
+      toast.success('좋아요한 장소에 다시 추가했어요.')
+    } else {
+      await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
+      locallyUnsavedKeys.value = new Set(locallyUnsavedKeys.value).add(key)
+      toast.success('좋아요를 취소했어요.')
+    }
   } catch {
-    toast.error('좋아요를 취소하지 못했습니다.')
+    toast.error('요청을 처리하지 못했습니다.')
   } finally {
     const next = new Set(removingPlaceKeys.value)
     next.delete(key)
@@ -470,13 +479,13 @@ function handleUserClick(userId: string) {
                   <div class="place-img-wrap">
                     <img v-if="place.thumbnailUrl && !failedPlaceImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markPlaceImageFailed(place)" />
                     <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
-                    <button type="button" class="place-heart-btn" aria-label="좋아요 취소" :disabled="removingPlaceKeys.has(placeKey(place))" @click="removeLikedPlace(place)">
+                    <button type="button" class="place-heart-btn" aria-label="좋아요 취소" :disabled="removingPlaceKeys.has(placeKey(place))" @click="toggleLikedPlace(place)" :class="{ 'is-unsaved': locallyUnsavedKeys.has(placeKey(place)) }">
                       <span class="material-symbols-rounded">favorite</span>
                     </button>
                   </div>
                   <div class="place-info-wrap">
-                    <span class="place-region-category">{{ place.address }}</span>
                     <h3 class="place-title-h3">{{ place.placeName }}</h3>
+                    <span class="place-region-category">{{ place.address }}</span>
                     <p class="place-desc-text">{{ place.summary }}</p>
                     <div class="place-tag-row">
                       <span v-for="tag in (place.tags ?? []).slice(0, 3)" :key="tag" class="place-tag-pill">#{{ tag }}</span>
@@ -585,7 +594,7 @@ function handleUserClick(userId: string) {
     </main>
 
     <!-- Modals -->
-    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" @remove="removeLikedPlace" @close="likedPlacesModal.close()" />
+    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" :unsaved-keys="locallyUnsavedKeys" @toggle="toggleLikedPlace" @close="likedPlacesModal.close()" />
     <MyStoriesModal v-if="myStoriesModal.isOpen.value" :stories="myStories" @close="myStoriesModal.close()" @story-click="openCommunityStory" />
     <StoryDetailOverlay
       v-if="selectedStoryId"
@@ -755,7 +764,6 @@ function handleUserClick(userId: string) {
 /* Places slider */
 .mypage-places-slider-wrapper {
   position: relative;
-  overflow: hidden;
 }
 .mypage-places-slider {
   display: flex;
@@ -763,7 +771,8 @@ function handleUserClick(userId: string) {
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
-  padding-bottom: 8px;
+  padding: 16px;
+  margin: -16px;
   scrollbar-width: none;
 }
 .mypage-places-slider::-webkit-scrollbar {

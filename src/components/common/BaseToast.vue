@@ -9,7 +9,7 @@ const ui = useUiStore()
     <TransitionGroup
       tag="div"
       name="toast"
-      class="fixed top-20 right-4 z-[3000] flex flex-col gap-2"
+      class="fixed bottom-10 left-1/2 -translate-x-1/2 z-[3000] flex flex-col gap-2"
     >
       <div
         v-for="toast in ui.toasts"
@@ -30,6 +30,6 @@ const ui = useUiStore()
 <style scoped>
 .toast-enter-active { transition: all 0.3s ease; }
 .toast-leave-active { transition: all 0.2s ease; }
-.toast-enter-from { opacity: 0; transform: translateX(40px); }
-.toast-leave-to { opacity: 0; transform: translateX(40px); }
+.toast-enter-from { opacity: 0; transform: translateY(40px); }
+.toast-leave-to { opacity: 0; transform: translateY(40px); }
 </style>

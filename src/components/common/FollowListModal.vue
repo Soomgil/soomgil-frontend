@@ -39,7 +39,7 @@ function toggleFollow(userId: string) {
 <template>
   <div class="story-overlay" role="dialog" aria-modal="true" :aria-label="title">
     <div class="story-overlay-backdrop" @click="$emit('close')"></div>
-    <div class="story-overlay-panel" style="width: min(98vw, 560px); max-height: 90vh;">
+    <div class="story-overlay-panel" style="width: min(98vw, 560px); max-height: 60vh;">
       <button class="story-overlay-close" type="button" aria-label="닫기" @click="$emit('close')">
         <span class="material-symbols-rounded">close</span>
       </button>
@@ -64,7 +64,7 @@ function toggleFollow(userId: string) {
           />
         </div>
 
-        <div style="overflow-y: auto; max-height: calc(90vh - 220px); display: flex; flex-direction: column; gap: 12px;">
+        <div style="overflow-y: auto; max-height: calc(60vh - 160px); display: flex; flex-direction: column; gap: 12px;">
           <div v-if="filteredUsers.length === 0" style="text-align: center; padding: 32px 0; color: var(--muted); font-size: 14px;">
             <span class="material-symbols-rounded" style="font-size: 40px; display: block; margin-bottom: 8px; opacity: 0.4;">person_off</span>
             검색 결과가 없습니다

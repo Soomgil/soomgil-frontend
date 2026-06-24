@@ -2,8 +2,8 @@
 import { ref, computed } from 'vue'
 import type { Place } from '@/types/place'
 
-const props = defineProps<{ places: Place[] }>()
-defineEmits<{ close: []; remove: [place: Place] }>()
+const props = defineProps<{ places: Place[], unsavedKeys?: Set<string> }>()
+defineEmits<{ close: []; toggle: [place: Place] }>()
 
 const searchQuery = ref('')
 const failedImages = ref(new Set<string>())
@@ -44,19 +44,19 @@ const filteredPlaces = computed(() => {
           </div>
         </div>
 
-        <div style="overflow-y: auto; max-height: calc(94vh - 140px);">
+        <div class="modal-scroll-container" style="overflow-y: auto; max-height: calc(94vh - 140px); padding: 16px; margin: -16px;">
           <div class="mypage-places-grid">
             <div v-for="place in filteredPlaces" :key="place.externalPlaceId" class="mypage-place-card">
               <div class="place-img-wrap">
                 <img v-if="place.thumbnailUrl && !failedImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markImageFailed(place)" />
                 <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
-                <button type="button" class="place-heart-btn" aria-label="좋아요 취소" @click="$emit('remove', place)">
+                <button type="button" class="place-heart-btn" aria-label="좋아요 취소" @click="$emit('toggle', place)" :class="{ 'is-unsaved': unsavedKeys?.has(placeKey(place)) }">
                   <span class="material-symbols-rounded">favorite</span>
                 </button>
               </div>
               <div class="place-info-wrap">
-                <span class="place-region-category">{{ place.address }}</span>
                 <h3 class="place-title-h3">{{ place.placeName }}</h3>
+                <span class="place-region-category">{{ place.address }}</span>
                 <p class="place-desc-text">{{ place.summary }}</p>
                 <div class="place-tag-row">
                   <span v-for="tag in (place.tags ?? []).slice(0, 3)" :key="tag" class="place-tag-pill">#{{ tag }}</span>
@@ -71,6 +71,13 @@ const filteredPlaces = computed(() => {
 </template>
 
 <style scoped>
+.modal-scroll-container {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.modal-scroll-container::-webkit-scrollbar {
+  display: none;
+}
 .mypage-search-inline {
   position: relative;
   display: flex;

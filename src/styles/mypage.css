@@ -533,6 +533,8 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+  padding: 16px;
+  margin: -16px;
 }
 
 .mypage-place-card {
@@ -593,6 +595,10 @@
 .place-heart-btn .material-symbols-rounded {
   font-size: 17px;
   font-variation-settings: "FILL" 1;
+}
+
+.place-heart-btn.is-unsaved {
+  color: var(--gray-400, #9ca3af);
 }
 
 .place-info-wrap {
@@ -849,43 +855,74 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
+  padding: 16px;
+  margin: -16px;
 }
 
 .mypage-story-magazine-item {
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
-  gap: 18px;
-  align-items: center;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
   padding: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
   transition:
-    transform 0.4s cubic-bezier(0.25, 1, 0.5, 1),
-    box-shadow 0.4s cubic-bezier(0.25, 1, 0.5, 1),
-    border-color 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+    all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  overflow: hidden;
+}
+
+.mypage-story-magazine-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 100%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
 }
 
 .mypage-story-magazine-item:hover {
-  border-color: rgba(0, 102, 255, 0.25);
-  box-shadow: 0 12px 28px rgba(0, 40, 120, 0.06);
+  background: #ffffff;
+  border-color: rgba(124, 58, 237, 0.3);
+  box-shadow: 0 16px 32px rgba(124, 58, 237, 0.12), 0 4px 16px rgba(0, 0, 0, 0.08);
   transform: translateY(-4px);
 }
 
+.mypage-story-magazine-item:hover::before {
+  opacity: 1;
+}
+
 .story-magazine-thumb {
-  width: 104px;
-  height: 104px;
-  border-radius: 18px;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  height: auto;
+  border-radius: 16px;
   object-fit: cover;
-  transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+  transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.5s ease;
 }
 
 .mypage-story-magazine-item:hover .story-magazine-thumb {
-  transform: scale(1.04);
+  transform: scale(1.05) rotate(1deg);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
 
 .story-magazine-body {
   display: flex;
+  flex-grow: 1;
   min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  padding: 0 4px 4px;
+  z-index: 1;
 }
 
 .story-magazine-title {
@@ -893,46 +930,66 @@
   margin: 0;
   overflow: hidden;
   color: var(--ink);
-  font-size: 0.9375rem;
-  font-weight: 900;
-  line-height: 1.45;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  transition: color 0.3s ease;
 }
 
-.story-magazine-title a:hover {
+.mypage-story-magazine-item:hover .story-magazine-title {
   color: var(--violet);
 }
 
 .story-magazine-meta {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  margin-top: auto;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .story-date {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 800;
+  color: var(--ink);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.story-date::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--violet);
 }
 
 .story-stats-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 850;
-}
-
-.story-stats-row span {
-  display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 16px;
+}
+.story-stats-row span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--gray-500, #6b7280);
 }
 
 .story-stats-row .material-symbols-rounded {
-  font-size: 14px;
+  font-size: 16px;
+  color: var(--gray-400, #9ca3af);
+  transition: color 0.3s ease;
+}
+
+.mypage-story-magazine-item:hover .story-stats-row .material-symbols-rounded {
+  color: var(--violet);
 }
 
 /* 분석 통계 */
@@ -1233,6 +1290,10 @@
   .mypage-insights-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .mypage-stories-magazine {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
@@ -1288,17 +1349,193 @@
     grid-template-columns: 1fr;
   }
 
+  .mypage-page-heading h1 {
+    font-size: 2rem;
+  }
+
+  .mypage-profile-card,
+  .insight-card,
+  .mypage-filter-sidebar {
+    padding: 20px;
+  }
+
+  .mypage-hero__avatar {
+    width: 88px;
+    height: 88px;
   .preference-charts-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .mypage-story-magazine-item {
-    grid-template-columns: 88px minmax(0, 1fr);
+  .van-illustration-wrap {
+    position: static;
+    align-self: flex-end;
+    width: 128px;
+  }
   }
 
-  .story-magazine-thumb {
-    width: 88px;
-    height: 88px;
+  .mypage-profile-minimal-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================
+   분석 통계 및 여행 취향 위젯 고도화 스타일
+   ========================================== */
+
+/* 1. 내 여행 지도 애니메이션 & 호버 피드백 */
+@keyframes pinPulse {
+  0% { r: 4px; opacity: 0.8; }
+  100% { r: 16px; opacity: 0; }
+}
+
+.map-pin-pulse {
+  transform-origin: center;
+  animation: pinPulse 2.4s infinite cubic-bezier(0.25, 1, 0.5, 1);
+  pointer-events: none;
+}
+
+/* 개별 펄스 속도 조율 */
+.map-insight-content circle.map-pin-pulse:nth-of-type(odd) {
+  animation-delay: 0.8s;
+}
+
+.korea-svg-map {
+  filter: drop-shadow(0 8px 24px rgba(0, 30, 100, 0.04));
+  transition: transform 0.4s ease;
+}
+
+.korea-svg-map:hover {
+  transform: scale(1.02);
+}
+
+.map-pin, .map-pin-main {
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), fill 0.25s ease, filter 0.25s ease;
+  cursor: pointer;
+}
+
+.map-pin:hover, .map-pin-main:hover {
+  transform: scale(1.35);
+  fill: var(--rose) !important;
+  filter: drop-shadow(0 0 6px var(--rose));
+}
+
+/* 지도 통계 리스트 호버 액션 */
+.map-stats-list li {
+  padding: 4px 10px;
+  border-radius: 12px;
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.3s ease;
+}
+
+.map-stats-list li:hover {
+  transform: translateX(8px);
+  background-color: var(--surface-2);
+}
+
+/* 2. 여행 취향 도넛 차트 입체화 및 호버 액션 */
+.circular-progress-bar {
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease;
+  box-shadow: 
+    0 8px 20px rgba(0, 102, 255, 0.04),
+    inset 0 2px 4px rgba(255, 255, 255, 0.9);
+}
+
+.circular-progress-bar:hover {
+  transform: scale(1.12);
+  box-shadow: 
+    0 16px 32px rgba(0, 102, 255, 0.12),
+    inset 0 2px 4px rgba(255, 255, 255, 0.9);
+}
+
+.circular-progress-bar:hover .progress-inner {
+  color: var(--violet);
+  transform: scale(1.08);
+}
+
+.progress-inner {
+  transition: transform 0.3s ease, color 0.3s ease;
+}
+
+/* 취향 키워드 태그 흔들림 피드백 */
+@keyframes tagWiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-2.5deg) translateY(-1px); }
+  75% { transform: rotate(2.5deg) translateY(-1px); }
+}
+
+.preference-keyword-pill {
+  transition: 
+    transform 0.2s ease,
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border 0.25s ease;
+  border: 1px solid transparent;
+}
+
+.preference-keyword-pill:hover {
+  animation: tagWiggle 0.35s ease infinite;
+  background-color: rgba(0, 102, 255, 0.06);
+  color: var(--violet);
+  border-color: rgba(0, 102, 255, 0.12);
+}
+
+/* 3. 미니밴 일러스트 복합 애니메이션 */
+@keyframes vanDrive {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.van-illustration-wrap {
+  animation: vanDrive 3.5s ease-in-out infinite;
+}
+
+
+
+@keyframes headlightFlicker {
+  0%, 100% { opacity: 0.12; }
+  45%, 55% { opacity: 0.25; }
+  50% { opacity: 0.08; }
+}
+
+.van-light-beam {
+  animation: headlightFlicker 3s infinite ease-in-out;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+@keyframes smokeFloat {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  12% { opacity: 0.7; }
+  100% { transform: translate(-28px, -12px) scale(1.4); opacity: 0; }
+.carousel-nav-next {
+    right: 8px;
+  }
+
+  .profile-card-left-group {
+    align-items: flex-start;
+  }
+
+  .mypage-profile-minimal-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-card-left-group {
+    flex-direction: column;
+  }
+
+  .mypage-profile-actions,
+  .mypage-profile-btn,
+  .btn-create-route {
+    width: 100%;
+  }
+
+  .map-insight-content {
+    grid-template-columns: 1fr;
+  }
+
+  .preference-charts-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .van-illustration-wrap {
@@ -1461,7 +1698,3 @@
   transform-origin: center;
   animation: smokeFloat 2.2s infinite ease-out;
 }
-
-.van-smoke.s1 { animation-delay: 0s; }
-.van-smoke.s2 { animation-delay: 0.7s; }
-.van-smoke.s3 { animation-delay: 1.4s; }

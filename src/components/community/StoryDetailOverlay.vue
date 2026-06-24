@@ -160,27 +160,56 @@ const visibleStory = computed<StoryView>(() => {
 const apiComments = ref<CommunityComment[]>([]);
 const comments = computed(() => {
   const commentsById = new Map(apiComments.value.map((comment) => [comment.id, comment]));
-  return apiComments.value.map((comment) => ({
-    id: comment.id,
-    authorUserId: comment.author?.id ?? null,
-    profileImageUrl: comment.author?.profileImageUrl ?? null,
-    avatar: (comment.author?.displayName ?? "?").slice(0, 1),
-    name: comment.author?.displayName ?? "사용자",
-    color: "var(--violet)",
-    time: new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short" }).format(
-      new Date(comment.createdAt),
-    ),
-    text: comment.content ?? "삭제된 댓글입니다.",
-    featured: false,
-    depth: comment.depth,
-    parentName: comment.parentCommentId
-      ? commentsById.get(comment.parentCommentId)?.author?.displayName ?? "댓글 작성자"
-      : null,
-  }));
+  const roots: typeof apiComments.value = [];
+  const childrenMap = new Map<string, typeof apiComments.value>();
+  apiComments.value.forEach(comment => {
+    if (comment.parentCommentId) {
+      if (!childrenMap.has(comment.parentCommentId)) {
+        childrenMap.set(comment.parentCommentId, []);
+      }
+      childrenMap.get(comment.parentCommentId)!.push(comment);
+    } else {
+      roots.push(comment);
+    }
+  });
+  const sortedComments: typeof apiComments.value = [];
+  roots.forEach(root => {
+    sortedComments.push(root);
+    if (childrenMap.has(root.id)) {
+      sortedComments.push(...childrenMap.get(root.id)!);
+    }
+  });
+  return sortedComments.map((comment, i) => {
+    const isReply = comment.depth === 1;
+    const isLastReply = isReply && (i === sortedComments.length - 1 || sortedComments[i + 1].depth === 0);
+    const hasReplies = comment.depth === 0 && i < sortedComments.length - 1 && sortedComments[i + 1].depth === 1;
+
+    return {
+      id: comment.id,
+      authorUserId: comment.author?.id ?? null,
+      profileImageUrl: comment.author?.profileImageUrl ?? null,
+      avatar: (comment.author?.displayName ?? "?").slice(0, 1),
+      name: comment.author?.displayName ?? "사용자",
+      color: "var(--violet)",
+      time: new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short" }).format(
+        new Date(comment.createdAt),
+      ),
+      text: comment.content ?? "삭제된 댓글입니다.",
+      featured: false,
+      depth: comment.depth,
+      isReply,
+      isLastReply,
+      hasReplies,
+      parentName: comment.parentCommentId
+        ? commentsById.get(comment.parentCommentId)?.author?.displayName ?? "댓글 작성자"
+        : null,
+    };
+  });
 });
 
 const overlayComment = ref("");
 const replyTarget = ref<{ id: string; name: string } | null>(null);
+const activeCommentMenu = ref<string | null>(null);
 const reportModal = ref(false);
 const reportReason = ref<ReportReasonCode | "">("");
 const reportDetail = ref("");
@@ -245,6 +274,12 @@ async function deleteComment(commentId: string) {
   } catch {
     toast.error("댓글을 삭제하지 못했습니다.");
   }
+}
+
+function closeCommentMenuSoon() {
+  window.setTimeout(() => {
+    activeCommentMenu.value = null;
+  }, 200);
 }
 
 async function editStory(story: StoryView) {
@@ -454,25 +489,12 @@ watch(
 <template>
   <div class="story-overlay" role="dialog" aria-modal="true" aria-label="여행기 상세">
     <div class="story-overlay-backdrop" @click="closeModal"></div>
-    <div class="story-overlay-panel" @click="scrollGuideVisible = false">
+    <div class="story-overlay-panel story-detail-panel" @click="scrollGuideVisible = false">
       <button class="story-overlay-close" type="button" aria-label="닫기" @click="closeModal">
         <span class="material-symbols-rounded">close</span>
       </button>
       <div class="feed-layout" id="overlay-feed-layout">
         <section class="story-feed" aria-label="여행기 피드">
-          <div class="section-title compact-title">
-            <div>
-              <p class="eyebrow" style="color: var(--rose)">Feed</p>
-              <h2 style="font-size: 24px">
-                <span
-                  class="material-symbols-rounded"
-                  style="vertical-align: middle; color: var(--rose); margin-right: 6px"
-                  >dynamic_feed</span
-                >최신 여행 이야기
-              </h2>
-            </div>
-          </div>
-
           <div
             class="story-feed-window"
             aria-label="여행기 피드"
@@ -569,7 +591,7 @@ watch(
                     >{{ (storyPhotoIndexes[visibleStory.id] ?? 0) + 1 }} / {{ visibleStory.photos.length }}</span
                   >
                 </div>
-                <div class="story-body" style="padding: 18px 24px 10px">
+                <div class="story-body">
                   <h3 style="font-size: 20px; line-height: 1.4; margin: 0 0 10px">
                     {{ visibleStory.title }}
                   </h3>
@@ -579,16 +601,7 @@ watch(
                   <p class="muted" style="font-size: 15px; line-height: 1.7; margin: 0">
                     {{ visibleStory.summary }}
                   </p>
-                  <div
-                    style="
-                      margin-top: 16px;
-                      display: flex;
-                      align-items: center;
-                      gap: 20px;
-                      color: var(--muted);
-                      font-size: 14px;
-                    "
-                  >
+                  <div class="story-action-bar">
                     <button
                       type="button"
                       class="story-like-button"
@@ -662,27 +675,6 @@ watch(
                 댓글
                 <span class="comment-count-badge">{{ visibleStory.comments }}</span>
               </h3>
-              <p
-                class="muted"
-                style="
-                  font-size: 12px;
-                  margin: 4px 0 0;
-                  line-height: 1.4;
-                  display: flex;
-                  align-items: center;
-                  gap: 8px;
-                "
-              >
-                <span style="display: flex; align-items: center; gap: 3px"
-                  ><span
-                    class="material-symbols-rounded"
-                    style="font-size: 14px; color: var(--rose)"
-                    >favorite</span
-                  >
-                  {{ visibleStory.likes }}</span
-                >
-                <span>{{ visibleStory.title }}</span>
-              </p>
             </div>
 
             <div class="feed-comment-scroll" id="overlay-comment-scroll">
@@ -690,7 +682,12 @@ watch(
                 v-for="comment in comments"
                 :key="comment.id"
                 class="fc-item"
-                :class="{ 'is-featured': comment.featured, 'is-reply': comment.depth === 1 }"
+                :class="{ 
+                  'is-featured': comment.featured, 
+                  'is-reply': comment.isReply,
+                  'is-last-reply': comment.isLastReply,
+                  'has-replies': comment.hasReplies
+                }"
               >
                 <button
                   class="fc-avatar fc-avatar-button"
@@ -708,33 +705,38 @@ watch(
                 </button>
                 <div class="fc-body">
                   <div class="fc-meta">
-                    <div>
-                      <button
-                        class="fc-name fc-name-button"
-                        type="button"
-                        @click="openUserProfile(comment.authorUserId)"
-                      >
-                        {{ comment.name }}
-                      </button>
-                      <span v-if="comment.featured" class="fc-author-badge">인기</span>
-                    </div>
+                    <button
+                      class="fc-name fc-name-button"
+                      type="button"
+                      @click="openUserProfile(comment.authorUserId)"
+                    >
+                      @{{ comment.name }}
+                    </button>
                     <span class="fc-time">{{ comment.time }}</span>
+                    <div style="position: relative;" v-if="comment.authorUserId === auth.user?.id">
+                      <button
+                        class="fc-more-btn"
+                        type="button"
+                        @blur="closeCommentMenuSoon"
+                        @click="activeCommentMenu = activeCommentMenu === comment.id ? null : comment.id"
+                      >
+                        <span class="material-symbols-rounded">more_horiz</span>
+                      </button>
+                      <div v-if="activeCommentMenu === comment.id" class="fc-dropdown-menu">
+                        <button type="button" class="fc-dropdown-item" @click="deleteComment(comment.id)">
+                          <span class="material-symbols-rounded" style="font-size:16px;">delete</span>삭제하기
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <span v-if="comment.depth === 1" class="fc-reply-label"><span class="material-symbols-rounded">subdirectory_arrow_right</span>{{ comment.parentName }}님에게 보낸 답글</span>
                   <p class="fc-text">{{ comment.text }}</p>
                   <div class="fc-actions">
                     <button
                       type="button"
+                      class="fc-action-btn fc-reply-btn"
                       @click="replyTarget = { id: comment.id, name: comment.name }"
                     >
-                      <span class="material-symbols-rounded">reply</span>답글
-                    </button>
-                    <button
-                      v-if="comment.authorUserId === auth.user?.id"
-                      type="button"
-                      @click="deleteComment(comment.id)"
-                    >
-                      <span class="material-symbols-rounded">delete</span>삭제
+                      답글
                     </button>
                   </div>
                 </div>
@@ -932,11 +934,32 @@ watch(
   box-shadow: 0 32px 64px rgba(0, 50, 150, 0.15);
   z-index: 1;
 }
+.story-detail-panel {
+  display: flex;
+  width: min(98vw, 1200px, 125.333vh);
+  height: min(94vh, 900px, 73.5vw);
+  max-height: 900px;
+  aspect-ratio: 4 / 3;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 32px 64px rgba(0, 50, 150, 0.15);
+}
 .story-overlay-panel .feed-layout {
+  --overlay-feed-height: calc(100% - 80px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
   border-radius: 0;
   border: none;
   box-shadow: none;
-  padding: 40px;
+  padding: 0;
+  background: transparent;
 }
 .story-overlay-close {
   position: absolute;
@@ -963,12 +986,13 @@ watch(
 }
 .story-overlay .story-post {
   position: relative;
-  display: block;
-  height: auto;
-  max-height: calc(82vh - 120px);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: none;
   margin-bottom: 0;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 28px;
   overflow-y: auto;
   overflow-x: hidden;
   background: #fff;
@@ -994,10 +1018,58 @@ watch(
   display: block;
   transition: transform 0.5s ease;
 }
+.story-overlay .story-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: 24px;
+}
+.story-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 14px;
+}
 .story-overlay .story-feed-window {
   position: relative;
-  overflow: visible;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
   outline: none;
+}
+.story-overlay #overlay-feed-stories .story-post:hover {
+  transform: none;
+  box-shadow: none;
+}
+.story-overlay #overlay-feed-stories .story-post:hover img {
+  transform: none;
+}
+.story-overlay #overlay-feed-stories .feed-photo-nav:hover {
+  background: rgba(15, 23, 42, 0.6);
+  transform: translateY(-50%);
+}
+.story-overlay .story-feed {
+  position: relative;
+  display: block;
+  aspect-ratio: 10 / 16;
+  width: auto;
+  max-width: 100%;
+  height: var(--overlay-feed-height);
+  min-height: 0;
+  justify-self: end;
+  margin: 40px 24px 40px 40px;
+  box-sizing: border-box;
+}
+.story-overlay .story-feed::before {
+  display: none;
 }
 .slide-up-enter-active,
 .slide-up-leave-active,
@@ -1021,11 +1093,24 @@ watch(
   display: none;
 }
 .story-overlay .feed-sidebar {
-  --feed-panel-offset: 82px;
-  --feed-list-height: min(760px, calc(100vh - 190px));
-  height: var(--feed-list-height);
-  min-height: 650px;
-  padding-top: var(--feed-panel-offset);
+  aspect-ratio: 10 / 16;
+  width: auto;
+  max-width: 100%;
+  height: var(--overlay-feed-height);
+  min-height: 0;
+  justify-self: start;
+  padding-top: 0;
+  margin: 40px 40px 40px 24px;
+  box-sizing: border-box;
+}
+.story-overlay .feed-comment-widget.widget-card {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 28px;
 }
 
 .feed-comment-header {
@@ -1115,8 +1200,9 @@ watch(
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px;
+  margin: 20px;
   background: #fbfdff;
+  box-sizing: border-box;
   scrollbar-width: none;
 }
 .feed-comment-scroll::-webkit-scrollbar {
@@ -1134,51 +1220,115 @@ watch(
 }
 .fc-item {
   display: flex;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid rgba(227, 234, 244, 0.8);
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 4px 12px rgba(0, 102, 255, 0.03);
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  gap: 12px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  transition: transform 0.2s ease;
+  position: relative;
 }
 .fc-item + .fc-item {
-  margin-top: 10px;
-}
-.fc-item:hover {
-  border-color: rgba(0, 102, 255, 0.18);
-  box-shadow: 0 6px 16px rgba(0, 102, 255, 0.06);
+  margin-top: 16px;
 }
 .fc-item.is-featured {
-  border-color: rgba(255, 92, 141, 0.18);
   background: #fff8fb;
+  padding: 8px;
+  border-radius: 8px;
 }
-.fc-item.is-reply { margin-left: 26px; border-left: 3px solid rgba(0, 102, 255, .3); background: #f8fbff; }
-.fc-reply-label { display: inline-flex; align-items: center; gap: 3px; margin-bottom: 5px; color: var(--violet); font-size: 10px; font-weight: 850; }
-.fc-reply-label .material-symbols-rounded { font-size: 14px; }
+.fc-item.has-replies::after {
+  content: "";
+  position: absolute;
+  top: 36px;
+  left: 17px;
+  width: 2px;
+  height: calc(100% - 36px + 17px);
+  background: var(--line);
+  z-index: 0;
+}
+.fc-item.is-reply { 
+  margin-left: 48px; 
+  background: transparent; 
+  border: none;
+}
+.fc-item.is-reply::before {
+  content: "";
+  position: absolute;
+  top: -16px;
+  left: -31px;
+  width: 31px;
+  height: 29px;
+  border-left: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  border-bottom-left-radius: 20px;
+  z-index: 0;
+}
+.fc-item.is-reply:not(.is-last-reply)::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: -31px;
+  width: 2px;
+  height: calc(100% - 12px + 17px);
+  background: var(--line);
+  z-index: 0;
+}
 .fc-avatar {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 700;
   color: #fff;
-  border: 2px solid #fff;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  border: none;
+  box-shadow: none;
   overflow: hidden;
   padding: 0;
+  background: #e5e5e5;
+}
+.fc-item.is-reply .fc-avatar {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  font-size: 10px;
 }
 .fc-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.fc-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--line);
+  padding: 4px 0;
+  min-width: 100px;
+  z-index: 10;
+}
+.fc-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  color: var(--rose);
+  cursor: pointer;
+  text-align: left;
+}
+.fc-dropdown-item:hover {
+  background: rgba(0,0,0,0.04);
 }
 .fc-avatar-button {
   cursor: pointer;
@@ -1188,6 +1338,9 @@ watch(
   border: 0;
   background: transparent;
   cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f0f0f;
 }
 .fc-name-button:hover {
   color: var(--violet);
@@ -1198,21 +1351,32 @@ watch(
 }
 .fc-meta {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 6px;
+  margin-bottom: 4px;
 }
-.fc-name {
-  font-size: 13px;
-  font-weight: 850;
-  color: var(--ink);
+.fc-more-btn {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #0f0f0f;
+  cursor: pointer;
+  padding: 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+.fc-more-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.fc-more-btn .material-symbols-rounded {
+  font-size: 20px;
 }
 .fc-author-badge {
   display: inline-flex;
   align-items: center;
   min-height: 16px;
-  margin-left: 5px;
   padding: 0 6px;
   border-radius: 999px;
   color: var(--rose);
@@ -1221,44 +1385,47 @@ watch(
   font-weight: 900;
 }
 .fc-time {
-  font-size: 11px;
-  color: var(--muted);
+  font-size: 12px;
+  color: #606060;
   white-space: nowrap;
 }
 .fc-text {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #3f4658;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #0f0f0f;
   word-break: break-word;
 }
 .fc-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
 }
-.fc-actions button {
-  min-height: 24px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 8px;
-  font-size: 11px;
-  color: var(--muted);
+.fc-action-btn {
+  background: transparent;
+  border: none;
+  color: #0f0f0f;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 3px;
-  font-weight: 800;
-  transition: all 0.2s;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 50%;
+  transition: background 0.2s;
 }
-.fc-actions button:hover {
-  color: var(--violet);
-  border-color: rgba(0, 102, 255, 0.18);
-  background: var(--surface-2);
+.fc-action-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
 }
-.fc-actions button .material-symbols-rounded {
-  font-size: 14px;
+.fc-action-btn .material-symbols-rounded {
+  font-size: 18px;
+  font-variation-settings: 'FILL' 0;
+}
+.fc-reply-btn {
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
 }
 .fc-reply {
   margin-top: 10px;
@@ -1339,8 +1506,16 @@ watch(
 
 @media (max-width: 1024px) {
   .story-overlay-panel .feed-layout {
+    --overlay-feed-height: min(640px, calc(94vh - 48px));
     grid-template-columns: 1fr;
-    padding: 24px;
+    padding: 0;
+    gap: 20px;
+    overflow-y: auto;
+  }
+  .story-overlay .story-feed,
+  .story-overlay .feed-sidebar {
+    height: var(--overlay-feed-height);
+    margin: 24px;
   }
 }
 </style>

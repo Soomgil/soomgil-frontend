@@ -289,8 +289,8 @@ function openCommunityStory(storyId: string) {
                           </span>
                         </div>
                         <div class="place-info-wrap">
-                          <span class="place-region-category">{{ place.address }}</span>
                           <h3 class="place-title-h3">{{ place.placeName }}</h3>
+                          <span class="place-region-category">{{ place.address }}</span>
                           <p class="place-desc-text">{{ place.summary }}</p>
                           <div class="place-tag-row">
                             <span v-for="tag in (place.tags ?? []).slice(0, 3)" :key="tag" class="place-tag-pill">#{{ tag }}</span>
@@ -455,7 +455,6 @@ function openCommunityStory(storyId: string) {
 /* Places slider */
 .mypage-places-slider-wrapper {
   position: relative;
-  overflow: hidden;
 }
 .mypage-places-slider {
   display: flex;
@@ -463,7 +462,8 @@ function openCommunityStory(storyId: string) {
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
-  padding-bottom: 8px;
+  padding: 16px;
+  margin: -16px;
   scrollbar-width: none;
 }
 .mypage-places-slider::-webkit-scrollbar {
