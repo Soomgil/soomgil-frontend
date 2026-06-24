@@ -691,12 +691,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .record-page-head {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 40px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: var(--page-hero-bottom-space);
 }
 .record-page-title {
-  width: 100%;
+  width: auto;
 }
 .record-page-head h1 {
   max-width: 820px;
@@ -717,9 +718,9 @@ onBeforeUnmount(() => {
 .record-page-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-  width: 100%;
+  width: auto;
   min-width: 0;
 }
 .record-page-toolbar .lead {
