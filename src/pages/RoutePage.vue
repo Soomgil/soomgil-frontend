@@ -28,7 +28,7 @@ import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, Note, PlanningScope } from '@/types/planning'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
-import type { ParkingType, Place, PlaceAccessibility, PlaceProvider } from '@/types/place'
+import type { AccessibilityFlag, ParkingType, Place, PlaceAccessibility, PlaceProvider, PlaceRecommendation } from '@/types/place'
 import type { ItineraryDay, ReorderItineraryInput } from '@/types/itinerary'
 
 /* ── RoutePage 내부 전용 타입 ── */
@@ -178,10 +178,12 @@ const trip = computed(() => {
 })
 const dayPlans = ref<DayPlan[]>([])
 const placeAccessibilityByKey = ref<Record<string, PlaceAccessibility>>({})
+const routePlaceByKey = ref<Record<string, Place>>({})
 const routeNearbyPlaces = ref<Place[]>([])
 const routeNearbyLoading = ref(false)
 const routeNearbyError = ref('')
 let accessibilityRequestRevision = 0
+let routePlaceRequestRevision = 0
 let routeNearbyRequestRevision = 0
 
 function placeAccessibilityKey(provider: string, externalPlaceId: string) {
@@ -208,6 +210,34 @@ async function loadRouteAccessibility(plans: DayPlan[]) {
   }
 }
 
+async function loadRoutePlaceDetails(plans: DayPlan[]) {
+  const revision = ++routePlaceRequestRevision
+  const unique = new Map<string, { provider: PlaceProvider; externalPlaceId: string }>()
+  plans.forEach((day) => day.items.forEach((item) => {
+    if (!item.placeProvider || !item.placeExternalId || displayImageUrl(item.thumbnailUrl)) return
+    const provider = item.placeProvider as PlaceProvider
+    unique.set(placeAccessibilityKey(provider, item.placeExternalId), {
+      provider,
+      externalPlaceId: item.placeExternalId,
+    })
+  }))
+  if (unique.size === 0) return
+
+  const entries = await Promise.all([...unique.entries()].map(async ([key, reference]) => {
+    try {
+      const place = await placeApi.getPlace(reference.provider, reference.externalPlaceId)
+      return place ? [key, place] as const : null
+    } catch {
+      return null
+    }
+  }))
+  if (revision !== routePlaceRequestRevision) return
+  routePlaceByKey.value = {
+    ...routePlaceByKey.value,
+    ...Object.fromEntries(entries.filter((entry): entry is readonly [string, Place] => entry !== null)),
+  }
+}
+
 const scheduledPlaceKeys = computed(() => dayPlans.value.flatMap((day) => day.items.flatMap((item) =>
   item.placeProvider && item.placeExternalId ? [`${item.placeProvider}:${item.placeExternalId}`] : [],
 )))
@@ -215,15 +245,21 @@ const scheduledPlaceKeys = computed(() => dayPlans.value.flatMap((day) => day.it
 function displayImageUrl(url?: string | null) {
   const trimmed = url?.trim()
   if (!trimmed) return ''
-  if (trimmed.includes('cdn.soomgil.test')) {
-    return '/images/대전오월드/대전오월드_1_공공3유형.jpg'
-  }
+  if (trimmed.includes('cdn.soomgil.test')) return ''
   if (/^(https?:|data:|blob:|\/)/.test(trimmed)) return trimmed
   return `/${trimmed.replace(/^\.?\//, '')}`
 }
 
 function placeDisplayImage(place: Pick<Place, 'thumbnailUrl' | 'photos'>) {
   return displayImageUrl(place.thumbnailUrl) || displayImageUrl(place.photos?.find(Boolean))
+}
+
+function routeStopImage(item: RouteStop) {
+  const stored = displayImageUrl(item.thumbnailUrl)
+  if (stored) return stored
+  if (!item.placeProvider || !item.placeExternalId) return ''
+  const detailed = routePlaceByKey.value[placeAccessibilityKey(item.placeProvider, item.placeExternalId)]
+  return detailed ? placeDisplayImage(detailed) : ''
 }
 
 const mapStops = computed<ItineraryMapStop[]>(() => {
@@ -240,7 +276,7 @@ const mapStops = computed<ItineraryMapStop[]>(() => {
       index: currentIndex,
       lat: item.lat,
       lng: item.lng,
-      image: displayImageUrl(item.thumbnailUrl),
+      image: routeStopImage(item),
       accessibility: item.placeProvider && item.placeExternalId
         ? placeAccessibilityByKey.value[placeAccessibilityKey(item.placeProvider, item.placeExternalId)]
         : undefined,
@@ -263,16 +299,22 @@ const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
   })
 })
 const discoveryBbox = computed(() => {
-  const viewport = mapViewport.viewport.value
-  if (viewport) {
-    return `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
-  }
   if (mapStops.value.length > 0) {
     const lngs = mapStops.value.map((stop) => stop.lng)
     const lats = mapStops.value.map((stop) => stop.lat)
     return `${Math.min(...lngs)},${Math.min(...lats)},${Math.max(...lngs)},${Math.max(...lats)}`
   }
-  return '127.18,36.15,127.59,36.55'
+  const viewport = mapViewport.viewport.value
+  if (viewport) {
+    return `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
+  }
+  return ''
+})
+
+const viewportBbox = computed(() => {
+  const viewport = mapViewport.viewport.value
+  if (!viewport) return ''
+  return `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
 })
 
 const activeDay = ref(0)
@@ -307,6 +349,7 @@ async function loadTrip() {
 watch(itinerary.days, (days) => {
   dayPlans.value = toDayPlans(days)
   void loadRouteAccessibility(dayPlans.value)
+  void loadRoutePlaceDetails(dayPlans.value)
   if (activeDay.value !== 0 && !dayPlans.value.some((day) => day.day === activeDay.value)) {
     activeDay.value = 0
   }
@@ -523,13 +566,25 @@ function routeBbox(routes: Array<{ geometry?: Record<string, unknown> }>) {
 
 async function loadRouteNearbyPlaces() {
   const routes = itinerary.routes.value as Array<{ geometry?: Record<string, unknown> }>
-  const bbox = routeBbox(routes)
-  if (!bbox) return
+  const bbox = routeBbox(routes) || discoveryBbox.value
+  if (!bbox) {
+    routeNearbyPlaces.value = []
+    routeNearbyError.value = '일정에 위치가 있는 장소를 먼저 추가해 주세요.'
+    return
+  }
+  const [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(Number)
   const revision = ++routeNearbyRequestRevision
   routeNearbyLoading.value = true
   routeNearbyError.value = ''
   try {
-    const response = await swipeApi.getRecommendations(tripId, { bbox, tab: 'BASIC', page: 0, size: 30 })
+    const response = await swipeApi.getRecommendations(tripId, {
+      bbox,
+      centerLng: (minLng + maxLng) / 2,
+      centerLat: (minLat + maxLat) / 2,
+      tab: 'BASIC',
+      page: 0,
+      size: 30,
+    })
     if (revision !== routeNearbyRequestRevision) return
     const scheduled = new Set(scheduledPlaceKeys.value)
     routeNearbyPlaces.value = response.items
@@ -1590,8 +1645,8 @@ async function deleteTodo(id: string) {
 const routeState = ref<'route' | 'dashed' | 'hidden'>('route')
 const cardState = ref<'full' | 'min' | 'hidden'>('full')
 const nearbyOn = ref(false)
-watch([nearbyOn, () => itinerary.routes.value], async ([isOn, routes]) => {
-  if (isOn && Array.isArray(routes) && routes.length > 0) {
+watch([nearbyOn, () => itinerary.routes.value, discoveryBbox], async ([isOn]) => {
+  if (isOn) {
     await loadRouteNearbyPlaces()
   } else if (!isOn) {
     routeNearbyPlaces.value = []
@@ -1768,6 +1823,10 @@ const showCustomForm = ref(false)
 
 function openSearchPanel() { isSearchPanelOpen.value = true }
 function closeSearchPanel() { isSearchPanelOpen.value = false; showCustomForm.value = false }
+function openCustomScheduleForm() {
+  isSearchPanelOpen.value = true
+  showCustomForm.value = true
+}
 
 /* ── Custom schedule form ── */
 const customTitle = ref('')
@@ -1901,7 +1960,6 @@ async function copyInviteLink() {
 	}
 }
 const sidebarTheme = ref('theme-violet')
-const isCustomEventModalOpen = ref(false)
 
 /* ── Trip settings ── */
 const editTitle = ref('')
@@ -2040,8 +2098,45 @@ async function saveTripSettings() {
 
 /* ── Detailbar ── */
 const isDetailbarOpen = ref(false)
-const selectedPlace = ref<any>(null)
+interface DetailPlace {
+  place: Place | null
+  id: string
+  title: string
+  description: string
+  image: string
+  location: string
+  category: string | null
+  tags: string[]
+  photos: string[]
+  accessibility?: PlaceAccessibility | null
+  contact?: string
+  likes: number
+  likedBy: Array<{ avatar: string; name: string }>
+}
+
+const selectedPlace = ref<DetailPlace | null>(null)
+const selectedPlaceIsScheduled = computed(() => {
+  const place = selectedPlace.value?.place
+  return place ? scheduledPlaceKeys.value.includes(`${place.provider}:${place.externalPlaceId}`) : false
+})
 const detailbarMainImg = ref('')
+const descriptionExpanded = ref(false)
+const DESCRIPTION_PREVIEW_LENGTH = 180
+const displayedDescription = computed(() => {
+  const text = selectedPlace.value?.description ?? ''
+  if (!text) return ''
+  return descriptionExpanded.value ? text : text.slice(0, DESCRIPTION_PREVIEW_LENGTH)
+})
+const canExpandDescription = computed(
+  () => (selectedPlace.value?.description?.length ?? 0) > DESCRIPTION_PREVIEW_LENGTH,
+)
+const accessibilityItems: Array<{ flag: AccessibilityFlag; icon: string; label: string }> = [
+  { flag: 'WHEELCHAIR', icon: 'accessible', label: '휠체어' },
+  { flag: 'DISABLED_TOILET', icon: 'accessible_forward', label: '장애인 화장실' },
+  { flag: 'STROLLER', icon: 'stroller', label: '유모차' },
+  { flag: 'PET', icon: 'pets', label: '반려동물' },
+  { flag: 'ELDERLY', icon: 'elderly', label: '노약자 편의' },
+]
 
 function parkingTypeLabel(type?: ParkingType) {
   return ({
@@ -2053,17 +2148,14 @@ function parkingTypeLabel(type?: ParkingType) {
   } satisfies Record<ParkingType, string>)[type ?? 'UNKNOWN']
 }
 
-function hasAccessibilityFlag(accessibility: PlaceAccessibility | undefined, flag: PlaceAccessibility['flags'][number]) {
-  return accessibility?.flags.includes(flag) ?? false
+function accessibilityState(accessibility: PlaceAccessibility | null | undefined, flag: AccessibilityFlag) {
+  if (accessibility?.flags.includes(flag)) return { className: 'enabled', suffix: '가능' }
+  if (accessibility?.unavailableFlags.includes(flag)) return { className: 'disabled', suffix: '불가' }
+  return { className: 'unknown', suffix: '정보 없음' }
 }
 
-function hasAccessibilityInfo(accessibility?: PlaceAccessibility) {
-  return Boolean(accessibility && (
-    accessibility.openingHours
-    || accessibility.closedDays
-    || accessibility.parkingType !== 'UNKNOWN'
-    || accessibility.flags.length > 0
-  ))
+function placeGallery(place: Pick<Place, 'thumbnailUrl' | 'photos'>) {
+  return [...new Set([place.thumbnailUrl, ...(place.photos ?? [])].map(displayImageUrl).filter(Boolean))]
 }
 
 // Make selectPlace available globally for map marker onclick
@@ -2074,22 +2166,23 @@ function handleSelectPlace(provider: any, placeId: any, stopId?: string) {
 }
 
 function openStopDetail(item: RouteStop) {
-  const image = displayImageUrl(item.thumbnailUrl)
+  const image = routeStopImage(item)
   selectedPlace.value = {
+    place: null,
     id: item.placeExternalId || item.id,
     title: item.title,
-    description: item.memo || '등록된 상세 설명이 없습니다.',
+    description: item.memo || '직접 추가한 일정입니다. 장소 상세 정보가 연결되지 않았습니다.',
     image,
-    category: '장소',
+    category: '직접 추가한 일정',
+    tags: [],
     accessibility: item.placeProvider && item.placeExternalId
       ? placeAccessibilityByKey.value[placeAccessibilityKey(item.placeProvider, item.placeExternalId)]
       : null,
-    starred: false,
     location: item.time === '시간 미정' ? '' : item.time,
     photos: image ? [image] : [],
+    likes: 0,
     likedBy: [],
-    travelStories: [],
-  } as any
+  }
   detailbarMainImg.value = image
   isDetailbarOpen.value = true
 }
@@ -2139,22 +2232,27 @@ async function selectPlace(placeId: string | undefined, provider: PlaceProvider 
         console.error('Failed to load accessibility batch', err)
       }
     }
+    const photos = placeGallery(place)
+    routePlaceByKey.value = {
+      ...routePlaceByKey.value,
+      [placeAccessibilityKey(provider, place.externalPlaceId)]: place,
+    }
     selectedPlace.value = {
+      place: { ...place, accessibility },
       id: place.externalPlaceId,
       title: place.placeName,
-      description: place.description || place.summary,
-      image: placeDisplayImage(place),
-      likes: '',
+      description: place.description || place.summary || '',
+      image: photos[0] ?? '',
+      likes: 0,
       location: place.address || '',
-      photos: place.photos?.map(displayImageUrl).filter(Boolean) || (placeDisplayImage(place) ? [placeDisplayImage(place)] : []),
+      category: place.category ?? null,
+      tags: place.tags ?? [],
+      photos,
       accessibility,
       contact: place.contact,
-      admission: '',
-      featuredMenu: '',
       likedBy: [],
-      travelStories: [],
     }
-    detailbarMainImg.value = selectedPlace.value.image
+    detailbarMainImg.value = photos[0] ?? ''
   } catch (e) {
     if (stopId) {
       for (const day of dayPlans.value) {
@@ -2172,15 +2270,27 @@ async function selectPlace(placeId: string | undefined, provider: PlaceProvider 
   isDetailbarOpen.value = true
 }
 
-async function selectDiscoveredPlace(place: Place) {
-  const image = placeDisplayImage(place)
-  let accessibility = place.accessibility
-    ?? placeAccessibilityByKey.value[placeAccessibilityKey(place.provider, place.externalPlaceId)]
+async function selectDiscoveredPlace(place: Place, recommendation?: PlaceRecommendation) {
+  let detailed: Place = place
+  try {
+    detailed = await placeApi.getPlace(place.provider, place.externalPlaceId)
+  } catch (err) {
+    console.error('Failed to load place detail, falling back to summary', err)
+  }
+  routePlaceByKey.value = {
+    ...routePlaceByKey.value,
+    [placeAccessibilityKey(detailed.provider, detailed.externalPlaceId)]: detailed,
+  }
+
+  const photos = placeGallery(detailed)
+  const image = photos[0] ?? ''
+  let accessibility = detailed.accessibility
+    ?? placeAccessibilityByKey.value[placeAccessibilityKey(detailed.provider, detailed.externalPlaceId)]
 
   if (!accessibility) {
     try {
-      const batchRes = await placeApi.getAccessibilityBatch([{ provider: place.provider, externalPlaceId: place.externalPlaceId }])
-      const key = `${place.provider}:${place.externalPlaceId}`
+      const batchRes = await placeApi.getAccessibilityBatch([{ provider: detailed.provider, externalPlaceId: detailed.externalPlaceId }])
+      const key = `${detailed.provider}:${detailed.externalPlaceId}`
       if (batchRes[key]) {
         accessibility = batchRes[key]
       }
@@ -2190,21 +2300,26 @@ async function selectDiscoveredPlace(place: Place) {
   }
 
   selectedPlace.value = {
-    id: place.externalPlaceId,
-    title: place.placeName,
-    description: place.description ?? place.summary ?? '',
+    place: { ...detailed, accessibility },
+    id: detailed.externalPlaceId,
+    title: detailed.placeName,
+    description: detailed.description ?? detailed.summary ?? '',
     image,
-    likes: place.likedBy?.length ?? 0,
-    location: place.address ?? '',
-    photos: place.photos?.map(displayImageUrl).filter(Boolean) ?? (image ? [image] : []),
+    likes: recommendation?.matchedMembers.length ?? detailed.likedBy?.length ?? 0,
+    location: detailed.address ?? '',
+    category: detailed.category ?? null,
+    tags: detailed.tags ?? [],
+    photos,
     accessibility,
-    contact: place.contact,
-    admission: place.admission,
-    featuredMenu: place.featuredMenu,
-    likedBy: (place.likedBy ?? []).flatMap((reaction) => 'displayName' in reaction
+    contact: detailed.contact,
+    likedBy: recommendation
+      ? recommendation.matchedMembers.map((member) => ({
+        avatar: member.profileImageUrl ?? member.displayName.slice(0, 1),
+        name: member.displayName,
+      }))
+      : (detailed.likedBy ?? []).flatMap((reaction) => 'displayName' in reaction
       ? [{ avatar: reaction.profileImageUrl ?? reaction.displayName.slice(0, 1), name: reaction.displayName }]
       : []),
-    travelStories: place.travelStories,
   }
   detailbarMainImg.value = image
   isDetailbarOpen.value = true
@@ -2213,6 +2328,13 @@ async function selectDiscoveredPlace(place: Place) {
 function closeDetailbar() {
   isDetailbarOpen.value = false
   selectedPlace.value = null
+  descriptionExpanded.value = false
+}
+
+async function addSelectedPlaceToItinerary() {
+  const place = selectedPlace.value?.place
+  if (!place) return
+  await addPlaceToItinerary(place)
 }
 
 /* ── Toast ── */
@@ -2248,6 +2370,10 @@ watch(() => drawingRetryIds.value.length, (count, previousCount) => {
 async function addPlaceToItinerary(place: Place) {
   if (!hasPlaceReference(place)) {
     itineraryActionError.value = '실제 장소 검색 결과만 일정에 추가할 수 있습니다.'
+    return
+  }
+  if (scheduledPlaceKeys.value.includes(`${place.provider}:${place.externalPlaceId}`)) {
+    showToast('이미 일정에 추가된 장소입니다.')
     return
   }
   const defaultDay = dayPlans.value.find((day) => day.groupType === 'DAY')?.day ?? dayPlans.value[0]?.day ?? 1
@@ -2409,11 +2535,18 @@ function textAvatarStyle(index: unknown) {
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <template v-for="(item, idx) in day.items" :key="item.id">
-                      <div :class="['stop', getDayColorClass(day.day), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id) }]"
+                      <div :class="['stop', getDayColorClass(day.day), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id), 'has-thumb': !!routeStopImage(item) }]"
 						:data-step-id="item.id" :data-place-id="item.placeExternalId"
 						@pointerdown="onPointerDown"
                         @click.stop="handleStopClick(item)">
                         <span class="stop-num">{{ idx + 1 }}</span>
+                        <img
+                          v-if="routeStopImage(item)"
+                          class="stop-thumb"
+                          :src="routeStopImage(item)"
+                          :alt="item.title"
+                          loading="lazy"
+                        />
                         <div class="stop-content">
                           <strong>{{ item.title }}</strong>
                           <span class="small muted">{{ item.time }}</span>
@@ -2442,11 +2575,18 @@ function textAvatarStyle(index: unknown) {
                     <span class="line"></span>
                   </div>
                   <template v-for="(item, idx) in activePlan.items" :key="item.id">
-                    <div :class="['stop', getDayColorClass(activeDay), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id) }]"
+                    <div :class="['stop', getDayColorClass(activeDay), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id), 'has-thumb': !!routeStopImage(item) }]"
 					:data-step-id="item.id" :data-place-id="item.placeExternalId"
 					@pointerdown="onPointerDown"
                       @click.stop="handleStopClick(item)">
                       <span class="stop-num">{{ idx + 1 }}</span>
+                      <img
+                        v-if="routeStopImage(item)"
+                        class="stop-thumb"
+                        :src="routeStopImage(item)"
+                        :alt="item.title"
+                        loading="lazy"
+                      />
                       <div class="stop-content">
                         <strong>{{ item.title }}</strong>
                         <span class="small muted">{{ item.time }}</span>
@@ -2484,7 +2624,7 @@ function textAvatarStyle(index: unknown) {
                     <span class="material-symbols-rounded">search</span>
                     <div class="popover-item-text"><strong>장소 검색 추가</strong><span>관광지, 맛집, 숙소 찾기</span></div>
                   </button>
-                  <button class="popover-item" type="button" @click="isCustomEventModalOpen = true">
+                  <button class="popover-item" type="button" @click="openCustomScheduleForm">
                     <span class="material-symbols-rounded">edit_note</span>
                     <div class="popover-item-text"><strong>커스텀 일정 추가</strong><span>자유시간, 이동 등 직접 입력</span></div>
                   </button>
@@ -2533,7 +2673,7 @@ function textAvatarStyle(index: unknown) {
 
                 <PlaceDiscoveryPanel
                   :trip-id="tripId"
-                  :bbox="discoveryBbox"
+                  :bbox="viewportBbox"
                   :scheduled-place-keys="scheduledPlaceKeys"
                   @select="selectDiscoveredPlace"
                   @add="addPlaceToItinerary"
@@ -2707,19 +2847,45 @@ function textAvatarStyle(index: unknown) {
               <!-- Header -->
               <div class="detailbar-header-info">
                 <div class="detailbar-category-row">
-                  <span class="detailbar-category-pill">&#128161; 상세 정보</span>
+                  <span class="detailbar-category-pill">{{ selectedPlace.category || '상세 정보' }}</span>
                   <span class="detailbar-likes-badge" v-if="selectedPlace.likes"><span class="material-symbols-rounded">favorite</span> {{ selectedPlace.likes }}</span>
                 </div>
                 <h2 class="detailbar-main-title">{{ selectedPlace.title }}</h2>
-                <div class="detailbar-address-row">
+                <div v-if="selectedPlace.location" class="detailbar-address-row">
                   <span class="material-symbols-rounded">location_on</span>
                   <span>{{ selectedPlace.location }}</span>
                 </div>
+                <button
+                  v-if="selectedPlace.place"
+                  type="button"
+                  class="detailbar-add-plan-btn"
+                  :disabled="selectedPlaceIsScheduled || itinerary.mutating.value"
+                  @click="addSelectedPlaceToItinerary"
+                >
+                  <span class="material-symbols-rounded">{{ selectedPlaceIsScheduled ? 'check_circle' : 'add_circle' }}</span>
+                  {{ selectedPlaceIsScheduled ? '일정에 추가됨' : '여행 계획에 추가' }}
+                </button>
               </div>
 
               <!-- Description -->
               <div class="detailbar-desc-section">
-                <p class="detailbar-desc-text">{{ selectedPlace.description }}</p>
+                <p class="detailbar-desc-text" :class="{ 'is-expanded': descriptionExpanded }">
+                  <template v-if="selectedPlace.description">{{ displayedDescription }}{{ canExpandDescription && !descriptionExpanded ? '…' : '' }}</template>
+                  <template v-else>상세 설명이 제공되지 않았습니다.</template>
+                </p>
+                <button
+                  v-if="canExpandDescription"
+                  type="button"
+                  class="detailbar-desc-toggle"
+                  :aria-expanded="descriptionExpanded"
+                  @click="descriptionExpanded = !descriptionExpanded"
+                >
+                  {{ descriptionExpanded ? '접기' : '더보기' }}
+                  <span class="material-symbols-rounded">{{ descriptionExpanded ? 'expand_less' : 'expand_more' }}</span>
+                </button>
+                <div v-if="selectedPlace.tags.length" class="detailbar-tag-row">
+                  <span v-for="tag in selectedPlace.tags" :key="tag" class="detailbar-tag">#{{ tag }}</span>
+                </div>
               </div>
 
               <!-- Gallery -->
@@ -2745,95 +2911,55 @@ function textAvatarStyle(index: unknown) {
                       :style="textAvatarStyle(idx)">{{ u.avatar }}</span>
                   </template>
                 </div>
-                <span class="detailbar-likes-text"><strong>{{ selectedPlace.likedBy[0].name || '멤버' }}</strong>님{{ selectedPlace.likedBy.length > 3 ? ` 외 ${selectedPlace.likedBy.length - 3}명` : '' }}이 저장한 장소</span>
+                <span class="detailbar-likes-text"><strong>{{ selectedPlace.likedBy[0].name || '멤버' }}</strong>님{{ selectedPlace.likedBy.length > 1 ? ` 외 ${selectedPlace.likedBy.length - 1}명` : '' }}이 저장한 장소</span>
               </div>
 
               <!-- Quick Info -->
-              <div class="detailbar-info-card" v-if="hasAccessibilityInfo(selectedPlace.accessibility)">
+              <div class="detailbar-info-card">
                 <h4 class="section-title">이용 안내</h4>
                 <div class="detailbar-info-grid">
-                  <div v-if="selectedPlace.accessibility?.openingHours" class="info-item">
+                  <div class="info-item">
                     <span class="icon-wrap"><span class="material-symbols-rounded">schedule</span></span>
                     <div class="info-content">
                       <span class="label">이용시간</span>
-                      <strong class="value">{{ selectedPlace.accessibility.openingHours }}</strong>
+                      <strong class="value">{{ selectedPlace.accessibility?.openingHours || '-' }}</strong>
                     </div>
                   </div>
-                  <div v-if="selectedPlace.accessibility?.closedDays" class="info-item">
+                  <div class="info-item">
                     <span class="icon-wrap"><span class="material-symbols-rounded">event_busy</span></span>
                     <div class="info-content">
                       <span class="label">쉬는날</span>
-                      <strong class="value">{{ selectedPlace.accessibility.closedDays }}</strong>
+                      <strong class="value">{{ selectedPlace.accessibility?.closedDays || '-' }}</strong>
                     </div>
                   </div>
-                  <div v-if="selectedPlace.accessibility && selectedPlace.accessibility.parkingType !== 'UNKNOWN'" class="info-item">
+                  <div class="info-item">
                     <span class="icon-wrap"><span class="material-symbols-rounded">local_parking</span></span>
                     <div class="info-content">
                       <span class="label">주차시설</span>
-                      <strong class="value">{{ parkingTypeLabel(selectedPlace.accessibility.parkingType) }}</strong>
+                      <strong class="value">{{ selectedPlace.accessibility ? parkingTypeLabel(selectedPlace.accessibility.parkingType) : '-' }}</strong>
                     </div>
                   </div>
                 </div>
-                <div v-if="selectedPlace.accessibility?.flags.length" class="detailbar-acc-row">
-                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'WHEELCHAIR')" class="acc-pill enabled">
-                    <span class="material-symbols-rounded">accessible</span>
-                    <span>휠체어 가능</span>
-                  </div>
-                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'PET')" class="acc-pill enabled">
-                    <span class="material-symbols-rounded">pets</span>
-                    <span>반려동물 가능</span>
-                  </div>
-                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'STROLLER')" class="acc-pill enabled">
-                    <span class="material-symbols-rounded">stroller</span>
-                    <span>유모차 가능</span>
-                  </div>
-                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'DISABLED_TOILET')" class="acc-pill enabled">
-                    <span class="material-symbols-rounded">accessible_forward</span>
-                    <span>장애인 화장실</span>
-                  </div>
-                  <div v-if="hasAccessibilityFlag(selectedPlace.accessibility, 'ELDERLY')" class="acc-pill enabled">
-                    <span class="material-symbols-rounded">elderly</span>
-                    <span>노약자 편의</span>
+                <div class="detailbar-acc-row">
+                  <div
+                    v-for="item in accessibilityItems"
+                    :key="item.flag"
+                    :class="['acc-pill', accessibilityState(selectedPlace.accessibility, item.flag).className]"
+                  >
+                    <span class="material-symbols-rounded">{{ item.icon }}</span>
+                    <span>{{ item.label }} {{ accessibilityState(selectedPlace.accessibility, item.flag).suffix }}</span>
                   </div>
                 </div>
               </div>
 
               <!-- Secondary Info -->
-              <div class="detailbar-sec-info" v-if="selectedPlace.contact || selectedPlace.admission || selectedPlace.featuredMenu">
+              <div class="detailbar-sec-info" v-if="selectedPlace.contact">
                 <div class="detailbar-sec-row" v-if="selectedPlace.contact">
                   <span class="label">
                     <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px; vertical-align: middle;">phone</span>
                     전화번호
                   </span>
                   <span class="value">{{ selectedPlace.contact }}</span>
-                </div>
-                <div class="detailbar-sec-row" v-if="selectedPlace.admission">
-                  <span class="label">
-                    <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px; vertical-align: middle;">payments</span>
-                    입장료
-                  </span>
-                  <span class="value">{{ selectedPlace.admission }}</span>
-                </div>
-                <div class="detailbar-sec-row" v-if="selectedPlace.featuredMenu">
-                  <span class="label">
-                    <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px; vertical-align: middle;">restaurant</span>
-                    대표메뉴
-                  </span>
-                  <span class="value">{{ selectedPlace.featuredMenu }}</span>
-                </div>
-              </div>
-
-              <!-- Travel Stories -->
-              <div class="detailbar-stories-section" v-if="selectedPlace.travelStories?.length">
-                <h4 class="section-title">추천 여행 이야기</h4>
-                <div class="detailbar-stories-grid">
-                  <div v-for="story in selectedPlace.travelStories" :key="story.id" class="detailbar-story-card">
-                    <img :src="story.image" :alt="story.title" class="story-card-img">
-                    <div class="story-card-overlay">
-                      <span class="story-card-author">{{ story.author }} · {{ story.date }}</span>
-                      <h5 class="story-card-title">{{ story.title }}</h5>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -3096,50 +3222,6 @@ function textAvatarStyle(index: unknown) {
       </div>
     </div>
 
-    <!-- ═══ CUSTOM EVENT MODAL ═══ -->
-    <div id="custom-event-modal" :class="['modal-overlay', { show: isCustomEventModalOpen }]" @click.self="isCustomEventModalOpen = false">
-      <div class="modal-card advanced-modal" style="max-width:400px;">
-        <div class="modal-header">
-          <h3>커스텀 일정 추가</h3>
-          <button id="close-custom-modal-btn" class="icon-btn" aria-label="닫기" @click="isCustomEventModalOpen = false"><span class="material-symbols-rounded">close</span></button>
-        </div>
-        <div class="modal-body">
-          <form id="custom-event-form" class="modal-form" @submit.prevent>
-            <label class="form-label">
-              <span class="form-label-text">일정명</span>
-              <input class="field" type="text" id="custom-event-title" placeholder="예: 점심 식사, 이동, 자유 시간" required>
-            </label>
-
-            <label class="form-label">
-              <span class="form-label-text">카테고리</span>
-              <select class="field" id="custom-event-category" style="background-color:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;height:46px;padding:0 16px;font-size:14px;">
-                <option value="attraction">관광지</option>
-                <option value="food">맛집</option>
-                <option value="cafe">카페</option>
-                <option value="hotel">숙소</option>
-                <option value="custom" selected>기타/자유일정</option>
-              </select>
-            </label>
-
-            <div class="form-row-dates" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
-              <label class="form-label">
-                <span class="form-label-text">방문 일차</span>
-                <select class="field" id="custom-event-day" style="background-color:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;height:46px;padding:0 16px;font-size:14px;">
-                  <option v-for="day in dayPlans" :key="day.day" :value="day.day">{{ day.day }}일차</option>
-                </select>
-              </label>
-              <label class="form-label">
-                <span class="form-label-text">방문 시간</span>
-                <input class="field" type="time" id="custom-event-time" value="12:00">
-              </label>
-            </div>
-
-            <button type="submit" class="btn primary" style="width:100%;margin-top:24px;">일정 추가하기</button>
-          </form>
-        </div>
-      </div>
-    </div>
-
     <!-- Toast -->
     <Transition name="toast">
       <div v-if="toastVisible" :class="['toast-notification', `toast-notification--${toastType}`]" role="status" aria-live="polite">
@@ -3383,6 +3465,17 @@ function textAvatarStyle(index: unknown) {
   width: calc(100% - 12px);
   grid-template-columns: 24px minmax(0, 1fr) 24px;
   padding: 8px 12px !important;
+}
+.route-page-section .stop.has-thumb {
+  grid-template-columns: 24px 40px minmax(0, 1fr) 24px;
+  gap: 8px;
+}
+.route-page-section .stop-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: rgba(99, 102, 241, 0.08);
 }
 .route-page-section .stop-content {
   display: flex;
@@ -3951,6 +4044,23 @@ function textAvatarStyle(index: unknown) {
   align-items: center !important;
   text-align: center !important;
   flex: 1 !important;
+}
+
+.detailbar-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.detailbar-tag {
+  color: var(--violet);
+  font-size: 11px;
+  font-weight: 700;
+}
+.acc-pill.unknown {
+  color: var(--muted);
+  background: var(--surface);
+  border-color: var(--line);
 }
 </style>
 

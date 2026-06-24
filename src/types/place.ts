@@ -72,6 +72,7 @@ export interface PlaceRecommendation {
   rank: number | null
   distanceMeters: number | null
   recommendationReason: string | null
+  matchPercentage: number | null
 }
 
 /* ── Place Travel Story (UI helper) ── */

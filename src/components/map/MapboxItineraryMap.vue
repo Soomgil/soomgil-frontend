@@ -112,6 +112,9 @@ const ACCESSIBILITY_MARKERS: Partial<Record<AccessibilityFlag, { icon: string; l
 function createMarkerElement(stop: ItineraryMapStop) {
   const marker = document.createElement('button')
   marker.type = 'button'
+  // Mapbox positions the marker itself with translate(x, y). Keeping the
+  // element out of normal document flow is essential for that projection.
+  marker.style.position = 'absolute'
   marker.className = `map-pin-card map-pin-card--${props.cardDisplay} ${dayClass(stop.dayIndex)}`
   marker.setAttribute('aria-label', `${stop.title} 지도 위치`)
 
@@ -175,7 +178,8 @@ function createMarkerElement(stop: ItineraryMapStop) {
 }
 
 function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
-  const el = document.createElement('div')
+  const el = document.createElement('button')
+  el.type = 'button'
   el.className = 'map-nearby-place-marker'
   el.setAttribute('aria-label', `${place.title} 주변 관광지`)
 
@@ -189,7 +193,8 @@ function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement 
   label.textContent = place.title
   el.appendChild(label)
 
-  el.addEventListener('click', () => {
+  el.addEventListener('click', (event) => {
+    event.stopPropagation()
     emit('selectNearbyPlace', place.provider, place.externalPlaceId)
   })
 
@@ -285,8 +290,12 @@ function renderStops() {
     })
   }
 
-  props.nearbyPlaces.forEach((place) => {
-    markers.push(new mapbox.Marker({ element: createNearbyMarkerElement(place), anchor: 'bottom' })
+  props.nearbyPlaces.forEach((place, index) => {
+    const ring = Math.floor(index / 8)
+    const angle = (index % 8) * (Math.PI / 4)
+    const radius = 14 + ring * 8
+    const offset: [number, number] = [Math.round(Math.cos(angle) * radius), Math.round(Math.sin(angle) * radius)]
+    markers.push(new mapbox.Marker({ element: createNearbyMarkerElement(place), anchor: 'bottom', offset })
       .setLngLat([place.lng, place.lat])
       .addTo(map!))
   })
