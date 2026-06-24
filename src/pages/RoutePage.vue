@@ -351,6 +351,21 @@ async function loadTrip() {
   }
 }
 
+async function loadInitialRouteData() {
+  const results = await Promise.allSettled([
+    loadTrip(),
+    loadItinerary(),
+  ])
+  if (results.some((result) => result.status === 'rejected')) return
+
+  try {
+    await nextTick()
+    await syncScheduledDaysWithDateRange()
+  } catch {
+    itineraryActionError.value = '여행 기간에 맞춰 일차를 동기화하지 못했습니다.'
+  }
+}
+
 watch(itinerary.days, (days) => {
   dayPlans.value = toDayPlans(days)
   void loadRouteAccessibility(dayPlans.value)
@@ -367,8 +382,7 @@ watch(itinerary.days, (days) => {
 }, { deep: true })
 
 onMounted(() => {
-  void loadTrip()
-  void loadItinerary()
+  void loadInitialRouteData()
   void loadConversations()
   void loadNote()
   void loadChecklists()
@@ -1949,8 +1963,9 @@ function addDays(date: Date, days: number) {
 }
 
 async function syncScheduledDaysWithDateRange() {
-  const startStr = trip.value?.startDate?.slice(0, 10)
-  const endStr = trip.value?.endDate?.slice(0, 10)
+  const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
+  const startStr = detail?.startDate?.slice(0, 10)
+  const endStr = detail?.endDate?.slice(0, 10) || startStr
   if (!startStr || !endStr) return
   const start = parseDateInput(startStr)
   const end = parseDateInput(endStr)

@@ -281,11 +281,11 @@ onUnmounted(() => {
             </div>
 
             <label class="form-label">
-              <span class="form-label-text">여행 기간 설정 <span v-if="$route?.name !== 'Route'" style="font-weight:normal;color:var(--muted);font-size:12px;">(일정 페이지에서만 수정 가능)</span></span>
+              <span class="form-label-text">여행 기간 설정</span>
               <div style="display:flex;align-items:center;gap:8px;">
-                <input type="date" class="field" v-model="editStartDate" style="flex:1;" :disabled="$route?.name !== 'Route'">
+                <input type="date" class="field" v-model="editStartDate" style="flex:1;" data-testid="trip-start-date">
                 <span>-</span>
-                <input type="date" class="field" v-model="editEndDate" :min="editStartDate" style="flex:1;" :disabled="$route?.name !== 'Route'">
+                <input type="date" class="field" v-model="editEndDate" :min="editStartDate" style="flex:1;" data-testid="trip-end-date">
               </div>
               <div v-if="editStartDate && editEndDate" style="text-align:center;font-size:14px;color:var(--violet);font-weight:600;margin-top:8px;">
                 총 {{ editDayCount }}일 여행
@@ -304,6 +304,7 @@ onUnmounted(() => {
                 <button
                   type="button"
                   class="status-option"
+                  data-status="ACTIVE"
                   :class="{ active: status === 'ACTIVE' }"
                   role="radio"
                   :aria-checked="status === 'ACTIVE'"
@@ -319,6 +320,7 @@ onUnmounted(() => {
                 <button
                   type="button"
                   class="status-option"
+                  data-status="ARCHIVED"
                   :class="{ active: status === 'ARCHIVED' }"
                   role="radio"
                   :aria-checked="status === 'ARCHIVED'"

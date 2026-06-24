@@ -459,23 +459,47 @@ watch(
 
 <style scoped>
 .search-page {
-  width: 100%; /* defeat flex auto-margin content-sizing: force container width so
-                  the search bar stays the same width with or without results */
+  width: 100%;
   max-width: 1180px;
   margin: 0 auto;
   padding: 28px 24px 20px;
-  /* Lock the whole page to the viewport below the fixed 72px topbar so the
-     header (search bar + tabs) keeps a constant size and the result body
-     below fills the remaining space and scrolls internally — it no longer
-     grows with results or collapses when empty. */
-  height: calc(100vh - 72px);
   display: flex;
   flex-direction: column;
 }
 
-.search-head {
+.search-head.search-head.search-head {
   flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
   margin-bottom: 20px;
+  text-align: center;
+}
+
+.search-head .page-hero__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 1 auto;
+  width: 100%;
+  text-align: center;
+}
+
+.search-head .page-hero__eyebrow {
+  align-self: center;
+  justify-content: center;
+}
+
+.search-head .page-hero__title {
+  width: 100%;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.search-head .page-hero__lead {
+  max-width: 620px;
+  margin: 0 auto;
 }
 
 .search-head .eyebrow {
@@ -514,8 +538,7 @@ watch(
 .search-form {
   display: flex;
   align-items: stretch;
-  max-width: 680px; /* keep the search bar narrow and centered while the result
-                       grid below stays full-width */
+  max-width: 680px;
   margin: 0 auto;
 }
 
@@ -532,6 +555,12 @@ watch(
 
 .search-input-wrap--capsule {
   padding: 0 0 0 18px;
+  border: 0;
+}
+
+.search-input-wrap.search-input-wrap.search-input-wrap--capsule,
+.search-input-wrap.search-input-wrap.search-input-wrap--capsule:focus-within {
+  border: 0;
 }
 
 .search-input-icon {
@@ -550,7 +579,7 @@ watch(
   width: 100%;
   height: 48px;
   padding: 0 44px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 12px;
   background: #fff;
   font-size: 15px;
@@ -561,7 +590,6 @@ watch(
 
 .search-input:focus {
   outline: none;
-  border-color: var(--violet);
   box-shadow: 0 0 0 4px rgba(123, 104, 238, 0.12);
 }
 
@@ -748,17 +776,9 @@ watch(
 }
 
 .search-body {
-  flex: 1 1 auto;
-  min-height: 0; /* allow the flex item to shrink so overflow scrolling works */
+  flex: 0 0 auto;
   margin-top: 0;
   padding: 0 4px 24px 0;
-  overflow-y: auto;
-  overscroll-behavior: contain; /* don't chain scroll to the window */
-  scrollbar-width: none;
-}
-
-.search-body::-webkit-scrollbar {
-  display: none;
 }
 
 .search-section {
@@ -980,12 +1000,6 @@ watch(
 }
 
 @media (max-width: 480px) {
-  /* On narrow screens the global topbar wraps and body padding-top grows to
-     132px, so shrink the page height to match and keep it within the viewport. */
-  .search-page {
-    height: calc(100vh - 132px);
-  }
-
   .search-grid {
     grid-template-columns: 1fr;
   }

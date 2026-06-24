@@ -182,6 +182,14 @@ describe('RoutePage itinerary integration', () => {
           }],
         }
       }),
+      updateTrip: vi.fn(async (_tripId: string, data: Record<string, unknown>) => {
+        holder.tripStore.currentTrip = {
+          ...holder.tripStore.currentTrip,
+          ...data,
+        }
+        return holder.tripStore.currentTrip
+      }),
+      deleteTrip: vi.fn(),
     })
     holder.state.days.value = []
     holder.state.routes.value = []
@@ -1070,9 +1078,18 @@ describe('RoutePage itinerary integration', () => {
     holder.state.reorder.mockClear()
     holder.state.fetchItinerary.mockClear()
 
-    await wrapper.get('#edit-trip-start-date').setValue('2026-07-01')
-    await wrapper.get('#edit-trip-end-date').setValue('2026-07-02')
-    await wrapper.get('#trip-settings-form').trigger('submit')
+    await wrapper.get('.trip-settings-button').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="trip-start-date"]').setValue('2026-07-01')
+    await wrapper.get('[data-testid="trip-end-date"]').setValue('2026-07-02')
+    holder.tripStore.fetchTrip.mockImplementationOnce(async () => {
+      holder.tripStore.currentTrip = {
+        ...holder.tripStore.currentTrip,
+        startDate: '2026-07-01',
+        endDate: '2026-07-02',
+      }
+    })
+    await wrapper.get('.trip-create-form').trigger('submit')
     await flushPromises()
 
     expect(holder.state.updateDay).toHaveBeenCalledWith('day-1', {
@@ -1088,6 +1105,52 @@ describe('RoutePage itinerary integration', () => {
     })
     expect(holder.state.reorder).not.toHaveBeenCalled()
     expect(holder.state.fetchItinerary).toHaveBeenCalled()
+  })
+
+  it('페이지 재진입 시 저장된 여행 기간을 기준으로 일차 탭을 생성한다', async () => {
+    holder.tripStore.fetchTrip.mockImplementationOnce(async () => {
+      holder.tripStore.currentTrip = {
+        id: 'trip-1', title: '대전 여행', displayDestination: '대전광역시',
+        status: 'ACTIVE', myRole: 'OWNER', itineraryVersion: 3, createdAt: '2026-06-20',
+        startDate: '2026-07-01', endDate: '2026-07-03',
+        ownerUserId: 'user-1', regions: [], retrippedFromPostId: null,
+        members: [{
+          id: 'member-1', tripId: 'trip-1', role: 'OWNER', accessRole: 'OWNER', status: 'ACTIVE',
+          joinedAt: '2026-06-20', user: { id: 'user-1', displayName: '김지훈', profileImageUrl: null },
+        }],
+      }
+    })
+
+    mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(holder.state.updateDay).toHaveBeenCalledWith('day-1', {
+      dayNumber: 1,
+      date: '2026-07-01',
+      sortOrder: 1,
+    })
+    expect(holder.state.createDay).toHaveBeenCalledWith({
+      groupType: 'DAY',
+      dayNumber: 2,
+      date: '2026-07-02',
+      sortOrder: 2,
+    })
+    expect(holder.state.createDay).toHaveBeenCalledWith({
+      groupType: 'DAY',
+      dayNumber: 3,
+      date: '2026-07-03',
+      sortOrder: 3,
+    })
+    expect(holder.state.fetchItinerary).toHaveBeenCalledTimes(2)
   })
 
   it('장소 탐색 결과를 실제 장소 참조로 일정에 추가한다', async () => {

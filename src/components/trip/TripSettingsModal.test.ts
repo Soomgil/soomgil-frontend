@@ -24,6 +24,11 @@ const trip: TripSummary = {
   createdAt: '2026-06-20T00:00:00Z',
 }
 
+const expectedBaseUpdate = {
+  startDate: null,
+  endDate: null,
+}
+
 describe('TripSettingsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -46,6 +51,7 @@ describe('TripSettingsModal', () => {
     expect(store.updateTrip).toHaveBeenCalledWith(trip.id, {
       title: '여름 부산 여행',
       displayDestination: '부산광역시',
+      ...expectedBaseUpdate,
       status: 'ARCHIVED',
     })
     expect(wrapper.emitted('close')).toHaveLength(1)
@@ -62,6 +68,7 @@ describe('TripSettingsModal', () => {
       title: '부산 여행',
       displayDestination: '남해',
       legalRegionCodes: [],
+      ...expectedBaseUpdate,
       status: 'ACTIVE',
     })
   })
@@ -77,6 +84,42 @@ describe('TripSettingsModal', () => {
     expect(store.updateTrip).toHaveBeenCalledWith(trip.id, {
       title: '부산 여행',
       displayDestination: '부산광역시',
+      ...expectedBaseUpdate,
+      status: 'ACTIVE',
+    })
+  })
+
+  it('일정 페이지가 아니어도 여행 기간을 바로 수정해 저장한다', async () => {
+    store.updateTrip.mockResolvedValue({
+      ...trip,
+      startDate: '2026-07-10',
+      endDate: '2026-07-12',
+    })
+    const wrapper = mount(TripSettingsModal, {
+      props: { open: true, trip },
+      global: {
+        mocks: {
+          $route: { name: 'MyTrips' },
+        },
+      },
+    })
+
+    const startDateInput = wrapper.get('[data-testid="trip-start-date"]')
+    const endDateInput = wrapper.get('[data-testid="trip-end-date"]')
+
+    expect((startDateInput.element as HTMLInputElement).disabled).toBe(false)
+    expect((endDateInput.element as HTMLInputElement).disabled).toBe(false)
+    expect(wrapper.text()).not.toContain('일정 페이지에서만 수정 가능')
+
+    await startDateInput.setValue('2026-07-10')
+    await endDateInput.setValue('2026-07-12')
+    await wrapper.get('form').trigger('submit')
+
+    expect(store.updateTrip).toHaveBeenCalledWith(trip.id, {
+      title: '부산 여행',
+      displayDestination: '부산광역시',
+      startDate: '2026-07-10',
+      endDate: '2026-07-12',
       status: 'ACTIVE',
     })
   })
@@ -103,6 +146,7 @@ describe('TripSettingsModal', () => {
       title: '부산 여행',
       displayDestination: '서울특별시',
       legalRegionCodes: ['1100000000'],
+      ...expectedBaseUpdate,
       status: 'ACTIVE',
     })
     wrapper.unmount()

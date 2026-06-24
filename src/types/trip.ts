@@ -90,6 +90,8 @@ export interface TripCreateRequest {
   title: string
   displayDestination?: string
   legalRegionCodes?: string[]
+  startDate?: string | null
+  endDate?: string | null
 }
 
 export interface TripUpdateRequest {
