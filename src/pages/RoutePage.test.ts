@@ -39,6 +39,10 @@ const connectedApis = vi.hoisted(() => ({
   },
   swipe: {
     getRecommendations: vi.fn(),
+    listSaved: vi.fn(),
+    react: vi.fn(),
+    savePlace: vi.fn(),
+    unsavePlace: vi.fn(),
   },
 }))
 
@@ -53,7 +57,7 @@ vi.mock('@/components/place/PlaceDiscoveryPanel.vue', () => ({
   default: {
     name: 'PlaceDiscoveryPanel',
     props: ['tripId', 'bbox'],
-    emits: ['add', 'select'],
+    emits: ['select'],
     template: '<div data-testid="place-discovery" />',
   },
 }))
@@ -157,6 +161,25 @@ describe('RoutePage itinerary integration', () => {
       items: [],
       page: { page: 0, size: 30, totalElements: 0, totalPages: 0, sort: [] },
     })
+    connectedApis.swipe.listSaved.mockResolvedValue({
+      items: [],
+      page: { page: 0, size: 100, totalElements: 0, totalPages: 0, sort: [] },
+    })
+    connectedApis.swipe.react.mockResolvedValue({ reaction: 'SUPER_LIKE', savedPlaceEligible: true })
+    connectedApis.swipe.savePlace.mockResolvedValue({
+      id: 'saved-1',
+      place: {
+        provider: 'KTO',
+        externalPlaceId: 'nearby-1',
+        placeName: '주변 명소',
+        address: '대전광역시 중구',
+        lat: 36.355,
+        lng: 127.385,
+        thumbnailUrl: 'https://cdn.example.com/nearby.jpg',
+      },
+      createdAt: '2026-06-24T00:00:00Z',
+    })
+    connectedApis.swipe.unsavePlace.mockResolvedValue(undefined)
 		connectedApis.trip.getInvites.mockResolvedValue([])
 		connectedApis.trip.createInvite.mockResolvedValue({
 			id: 'invite-1', tripId: 'trip-1', inviteCode: 'CODE', inviteUrl: 'https://soomgil.test/invite/CODE',
@@ -167,7 +190,16 @@ describe('RoutePage itinerary integration', () => {
 		holder.state.updateDay.mockResolvedValue({})
 		holder.state.updateItem.mockResolvedValue({})
 		holder.state.deleteDay.mockResolvedValue({})
-		holder.state.ensureUnscheduledDay.mockResolvedValue({})
+		holder.state.ensureUnscheduledDay.mockResolvedValue({
+      id: 'unscheduled',
+      tripId: 'trip-1',
+      groupType: 'UNSCHEDULED',
+      dayNumber: null,
+      date: null,
+      title: null,
+      sortOrder: 1,
+      items: [],
+    })
 		holder.state.createDrawing.mockResolvedValue({ id: 'drawing-1' })
     holder.tripStore = reactive({
       currentTrip: null,
@@ -716,6 +748,79 @@ describe('RoutePage itinerary integration', () => {
 		})
 	})
 
+	it('연결된 카드 사이로 다른 여행 카드가 끼어들 수 없도록 그룹 앞에 배치한다', async () => {
+		holder.state.fetchItinerary.mockImplementationOnce(async () => {
+			holder.state.days.value = [{
+				id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+				date: '2026-07-01', title: null, sortOrder: 0,
+				items: [
+					{
+						id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '첫 번째 장소',
+						address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+					{
+						id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '두 번째 장소',
+						address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+					{
+						id: 'item-3', itineraryDayId: 'day-1', sortOrder: 2,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '세 번째 장소',
+						address: null, lat: 36.37, lng: 127.4, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+				],
+			}]
+			holder.state.routes.value = [{
+				id: 'route-1',
+				originItineraryItemId: 'item-1',
+				destinationItineraryItemId: 'item-2',
+			}]
+		})
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separator = wrapper.get('.day-separator')
+		const stops = wrapper.findAll('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 320, width: 320, height: 320,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separator.element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		;[40, 88, 136].forEach((top, index) => {
+			vi.spyOn(stops[index].element, 'getBoundingClientRect').mockReturnValue({
+				x: 12, y: top, top, left: 12, right: 300, bottom: top + 40, width: 288, height: 40,
+				toJSON: () => ({}),
+			} as DOMRect)
+		})
+
+		stops[2].find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 146 }))
+		stops[2].element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 80 }))
+		stops[2].element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 80 }))
+		await flushPromises()
+
+		expect(holder.state.reorder).toHaveBeenCalledWith({
+			days: [{
+				dayId: 'day-1',
+				sortOrder: 0,
+				itemOrders: [
+					{ itemId: 'item-3', sortOrder: 0 },
+					{ itemId: 'item-1', sortOrder: 1 },
+					{ itemId: 'item-2', sortOrder: 2 },
+				],
+			}],
+		})
+	})
+
   it('route의 trip 일정과 일차 미정을 실제 상태에서 표시한다', async () => {
     const wrapper = mount(RoutePage, {
       global: {
@@ -750,6 +855,79 @@ describe('RoutePage itinerary integration', () => {
       itemType: 'CUSTOM_PLACE',
       placeName: '점심 식사',
     })
+  })
+
+  it('경로 연결 펜에서 다른 지도 도구로 전환하면 활성 효과와 대기 선택을 해제한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const routePenButton = wrapper.get('[data-tool="route-pen"]')
+    const eraserButton = wrapper.get('[data-tool="eraser"]')
+
+    await routePenButton.trigger('click')
+    await wrapper.get('.stop').trigger('click')
+    await nextTick()
+
+    expect(routePenButton.classes()).toContain('active')
+    expect(wrapper.get('.map-canvas').classes()).toContain('navigation-guide-mode')
+    expect(wrapper.getComponent(MapboxItineraryMap).props('navigationMode')).toBe(true)
+    expect(wrapper.get('.stop').classes()).toContain('route-pen-pending')
+
+    await eraserButton.trigger('click')
+    await nextTick()
+
+    expect(routePenButton.classes()).not.toContain('active')
+    expect(eraserButton.classes()).toContain('active')
+    expect(wrapper.get('.map-canvas').classes()).not.toContain('navigation-guide-mode')
+    expect(wrapper.getComponent(MapboxItineraryMap).props('navigationMode')).toBe(false)
+    expect(wrapper.get('.stop').classes()).not.toContain('route-pen-pending')
+  })
+
+  it('기본 선택과 경로 연결 펜을 왕복 전환하면 활성 상태가 한 버튼에만 남는다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const cursorButton = wrapper.get('[data-tool="cursor"]')
+    const routePenButton = wrapper.get('[data-tool="route-pen"]')
+
+    expect(cursorButton.classes()).toContain('active')
+    expect(cursorButton.attributes('aria-pressed')).toBe('true')
+    expect(routePenButton.classes()).not.toContain('active')
+    expect(routePenButton.attributes('aria-pressed')).toBe('false')
+
+    await routePenButton.trigger('click')
+    await nextTick()
+
+    expect(cursorButton.classes()).not.toContain('active')
+    expect(cursorButton.attributes('aria-pressed')).toBe('false')
+    expect(routePenButton.classes()).toContain('active')
+    expect(routePenButton.attributes('aria-pressed')).toBe('true')
+
+    await cursorButton.trigger('click')
+    await nextTick()
+
+    expect(cursorButton.classes()).toContain('active')
+    expect(cursorButton.attributes('aria-pressed')).toBe('true')
+    expect(routePenButton.classes()).not.toContain('active')
+    expect(routePenButton.attributes('aria-pressed')).toBe('false')
   })
 
   it('KTO 일정 장소의 접근성을 batch 조회해 지도 마커에 전달한다', async () => {
@@ -934,6 +1112,279 @@ describe('RoutePage itinerary integration', () => {
     expect(request.coordinates.at(-1).lat).toBeCloseTo(36.3649)
   })
 
+  it('경로 펜에서 지도 위에 직접 그린 곡선으로 두 일정 장소를 연결한다', async () => {
+    holder.state.fetchItinerary.mockImplementationOnce(async () => {
+      holder.state.days.value = [{
+        id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+        date: '2026-07-01', title: null, sortOrder: 0,
+        items: [
+          {
+            id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '출발지',
+            address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+          {
+            id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '도착지',
+            address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+        ],
+      }]
+    })
+    holder.state.mapMatchRoute.mockResolvedValueOnce({
+      id: 'route-1',
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      provider: 'MAPBOX',
+      providerProfile: 'walking',
+      geometryFormat: 'GEOJSON',
+      geometry: {
+        type: 'LineString',
+        coordinates: [[127.38, 36.35], [127.385, 36.358], [127.39, 36.36]],
+      },
+      distanceMeters: null,
+      durationSeconds: null,
+      confidence: null,
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const draft = {
+      coordinates: [
+        { lng: 127.38, lat: 36.35 },
+        { lng: 127.385, lat: 36.358 },
+        { lng: 127.39, lat: 36.36 },
+      ],
+      color: '#6d4aff',
+      width: 5,
+    }
+
+    await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    map.vm.$emit('drawingCreate', draft)
+    await flushPromises()
+
+    const request = holder.state.mapMatchRoute.mock.calls[0][0]
+    expect(request).toEqual(expect.objectContaining({
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      tidy: false,
+    }))
+    expect(request.coordinates.length).toBeGreaterThan(draft.coordinates.length)
+    expect(request.coordinates[0]).toEqual(draft.coordinates[0])
+    expect(request.coordinates.at(-1)).toEqual(draft.coordinates.at(-1))
+    expect(holder.state.createDrawing).not.toHaveBeenCalled()
+    expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
+      tab: 'BASIC',
+      page: 0,
+      size: 30,
+    }))
+    expect(wrapper.find('.route-connector').exists()).toBe(true)
+    const groupedStops = wrapper.findAll('.stop.route-grouped')
+    expect(groupedStops).toHaveLength(2)
+    expect(groupedStops[0].classes()).toContain('route-group-start')
+    expect(groupedStops[1].classes()).toContain('route-group-end')
+  })
+
+  it('빠르게 그려 시작점이 빗나가도 stroke 앞뒤 구간에서 가까운 일정 장소를 찾아 경로를 연결한다', async () => {
+    holder.state.fetchItinerary.mockImplementationOnce(async () => {
+      holder.state.days.value = [{
+        id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+        date: '2026-07-01', title: null, sortOrder: 0,
+        items: [
+          {
+            id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '출발지',
+            address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+          {
+            id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '도착지',
+            address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+        ],
+      }]
+    })
+    holder.state.mapMatchRoute.mockResolvedValueOnce({
+      id: 'route-1',
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      provider: 'MAPBOX',
+      providerProfile: 'walking',
+      geometryFormat: 'GEOJSON',
+      geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
+      distanceMeters: null,
+      durationSeconds: null,
+      confidence: null,
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const coordinates = [
+      { lng: 127.372, lat: 36.342 },
+      { lng: 127.38, lat: 36.35 },
+      ...Array.from({ length: 16 }, (_, index) => ({
+        lng: 127.381 + index * 0.0005,
+        lat: 36.351 + index * 0.0005,
+      })),
+      { lng: 127.39, lat: 36.36 },
+      { lng: 127.398, lat: 36.368 },
+    ]
+
+    await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    map.vm.$emit('drawingCreate', { coordinates, color: '#6d4aff', width: 5 })
+    await flushPromises()
+
+    expect(holder.state.mapMatchRoute).toHaveBeenCalledWith(expect.objectContaining({
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      coordinates: expect.any(Array),
+      tidy: false,
+    }))
+    const request = holder.state.mapMatchRoute.mock.calls[0][0]
+    expect(request.coordinates.length).toBeLessThanOrEqual(80)
+    expect(request.coordinates[0]).toEqual(coordinates[0])
+    expect(request.coordinates.at(-1)).toEqual(coordinates.at(-1))
+  })
+
+  it('빠르게 그려 좌표가 두 개뿐이고 시작과 끝이 다소 빗나가도 보간된 선에서 경로 대상을 찾는다', async () => {
+    holder.state.fetchItinerary.mockImplementationOnce(async () => {
+      holder.state.days.value = [{
+        id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+        date: '2026-07-01', title: null, sortOrder: 0,
+        items: [
+          {
+            id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '출발지',
+            address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+          {
+            id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '도착지',
+            address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+        ],
+      }]
+    })
+    holder.state.mapMatchRoute.mockResolvedValueOnce({
+      id: 'route-1',
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      provider: 'MAPBOX',
+      providerProfile: 'walking',
+      geometryFormat: 'GEOJSON',
+      geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
+      distanceMeters: null,
+      durationSeconds: null,
+      confidence: null,
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const coordinates = [
+      { lng: 127.376, lat: 36.346 },
+      { lng: 127.394, lat: 36.364 },
+    ]
+
+    await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    map.vm.$emit('drawingCreate', { coordinates, color: '#6d4aff', width: 5 })
+    await flushPromises()
+
+    const request = holder.state.mapMatchRoute.mock.calls[0][0]
+    expect(request.originItineraryItemId).toBe('item-1')
+    expect(request.destinationItineraryItemId).toBe('item-2')
+    expect(request.coordinates.length).toBeGreaterThan(coordinates.length)
+    expect(request.coordinates.length).toBeLessThanOrEqual(80)
+    expect(request.coordinates[0]).toEqual(coordinates[0])
+    expect(request.coordinates.at(-1)).toEqual(coordinates[1])
+    expect(request.coordinates[1].lng).toBeGreaterThan(coordinates[0].lng)
+    expect(request.coordinates[1].lng).toBeLessThan(coordinates[1].lng)
+  })
+
+  it('2일차에 연결된 여행 카드 실선은 2일차 색상 클래스를 사용한다', async () => {
+    holder.state.fetchItinerary.mockImplementationOnce(async () => {
+      holder.state.days.value = [
+        {
+          id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+          date: '2026-07-01', title: null, sortOrder: 0,
+          items: [{
+            id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '첫째 날',
+            address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          }],
+        },
+        {
+          id: 'day-2', tripId: 'trip-1', groupType: 'DAY', dayNumber: 2,
+          date: '2026-07-02', title: null, sortOrder: 1,
+          items: [
+            {
+              id: 'item-2', itineraryDayId: 'day-2', sortOrder: 0,
+              itemType: 'CUSTOM_PLACE', place: null, placeName: '둘째 날 출발',
+              address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+            },
+            {
+              id: 'item-3', itineraryDayId: 'day-2', sortOrder: 1,
+              itemType: 'CUSTOM_PLACE', place: null, placeName: '둘째 날 도착',
+              address: null, lat: 36.37, lng: 127.4, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+            },
+          ],
+        },
+      ]
+      holder.state.routes.value = [{
+        id: 'route-2',
+        originItineraryItemId: 'item-2',
+        destinationItineraryItemId: 'item-3',
+      }]
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.route-connector').classes()).toContain('day-color-2')
+  })
+
   it('새로고침 후 기존 연결 경로로 주변 관광지를 다시 불러온다', async () => {
     holder.state.routes.value = [{
       id: 'route-1',
@@ -988,6 +1439,89 @@ describe('RoutePage itinerary integration', () => {
     })])
   })
 
+  it('생성된 경로가 없으면 주변 여행지를 일정 위치 기준으로 조회하지 않는다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('button[data-toggle="nearby"]').trigger('click')
+    await flushPromises()
+
+    expect(connectedApis.swipe.getRecommendations).not.toHaveBeenCalled()
+    expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toEqual([])
+  })
+
+  it('마지막 경로가 삭제되면 주변 여행지 표시를 끄고 마커를 비운다', async () => {
+    holder.state.fetchItinerary.mockImplementationOnce(async () => {
+      holder.state.days.value = [{
+        id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+        date: '2026-07-01', title: null, sortOrder: 0,
+        items: [
+          {
+            id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '출발지',
+            address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+          {
+            id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '도착지',
+            address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+        ],
+      }]
+      holder.state.routes.value = [{
+        id: 'route-1',
+        originItineraryItemId: 'item-1',
+        destinationItineraryItemId: 'item-2',
+        geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
+      }]
+    })
+    connectedApis.swipe.getRecommendations.mockResolvedValueOnce({
+      items: [{
+        place: {
+          provider: 'KTO',
+          externalPlaceId: 'nearby-1',
+          placeName: '주변 명소',
+          category: '관광지',
+          lat: 36.355,
+          lng: 127.385,
+        },
+      }],
+      page: { page: 0, size: 30, totalElements: 1, totalPages: 1, sort: [] },
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('button[data-toggle="nearby"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toHaveLength(1)
+
+    await wrapper.get('.route-connector').trigger('click')
+    await flushPromises()
+
+    expect(holder.state.deleteRoute).toHaveBeenCalledWith('route-1')
+    expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toEqual([])
+    expect(wrapper.get('button[data-toggle="nearby"]').attributes('aria-pressed')).toBe('false')
+  })
+
   it('주변 관광지 상세를 열고 상세 패널에서 일정에 추가한다', async () => {
     connectedApis.place.getPlace.mockResolvedValueOnce({
       provider: 'KTO',
@@ -1018,12 +1552,20 @@ describe('RoutePage itinerary integration', () => {
 
     expect(wrapper.get('.detailbar-main-title').text()).toBe('주변 명소')
     expect(wrapper.get('.detailbar-desc-text').text()).toContain('도심에서 산책하기 좋은')
+    const saveButton = wrapper.get('.detailbar-save-place-btn')
+    expect(saveButton.text()).toContain('장소 저장')
+    await saveButton.trigger('click')
+    await flushPromises()
+    expect(connectedApis.swipe.react).toHaveBeenCalledWith('KTO', 'nearby-1', 'SUPER_LIKE')
+    expect(connectedApis.swipe.savePlace).toHaveBeenCalledWith('KTO', 'nearby-1')
     const addButton = wrapper.get('.detailbar-add-plan-btn')
-    expect(addButton.text()).toContain('여행 계획에 추가')
+    expect(addButton.text()).toContain('일정에 추가')
     await addButton.trigger('click')
     await flushPromises()
 
     expect(holder.state.createItem).toHaveBeenCalledWith(expect.objectContaining({
+      itineraryDayId: 'unscheduled',
+      sortOrder: 0,
       itemType: 'PLACE',
       place: { provider: 'KTO', externalPlaceId: 'nearby-1' },
       placeName: '주변 명소',
@@ -1107,6 +1649,27 @@ describe('RoutePage itinerary integration', () => {
     expect(holder.state.fetchItinerary).toHaveBeenCalled()
   })
 
+  it('관리 모달을 열면 route 일정 날짜를 여행 기간 입력값에 자동 기입한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('.trip-settings-button').trigger('click')
+    await flushPromises()
+
+    expect((wrapper.get('[data-testid="trip-start-date"]').element as HTMLInputElement).value).toBe('2026-07-01')
+    expect((wrapper.get('[data-testid="trip-end-date"]').element as HTMLInputElement).value).toBe('2026-07-01')
+    expect(wrapper.text()).toContain('여행 상태 설정')
+  })
+
   it('페이지 재진입 시 저장된 여행 기간을 기준으로 일차 탭을 생성한다', async () => {
     holder.tripStore.fetchTrip.mockImplementationOnce(async () => {
       holder.tripStore.currentTrip = {
@@ -1153,7 +1716,19 @@ describe('RoutePage itinerary integration', () => {
     expect(holder.state.fetchItinerary).toHaveBeenCalledTimes(2)
   })
 
-  it('장소 탐색 결과를 실제 장소 참조로 일정에 추가한다', async () => {
+  it('장소 탐색 결과 상세 모달에서 실제 장소 참조로 일정에 추가한다', async () => {
+    connectedApis.place.getPlace.mockResolvedValueOnce({
+      provider: 'KTO',
+      externalPlaceId: '126508',
+      placeName: '해운대해수욕장',
+      address: '부산 해운대구',
+      lat: 35.1587,
+      lng: 129.1604,
+      thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
+      photos: [],
+      description: '부산을 대표하는 해변입니다.',
+      category: '관광지',
+    })
     const wrapper = mount(RoutePage, {
       global: {
         stubs: {
@@ -1169,7 +1744,7 @@ describe('RoutePage itinerary integration', () => {
     expect(discovery.props('tripId')).toBe('trip-1')
     expect(discovery.props('bbox')).toBe('')
 
-    discovery.vm.$emit('add', {
+    discovery.vm.$emit('select', {
       provider: 'KTO',
       externalPlaceId: '126508',
       placeName: '해운대해수욕장',
@@ -1179,10 +1754,13 @@ describe('RoutePage itinerary integration', () => {
       thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
     })
     await flushPromises()
+    await wrapper.get('.detailbar-add-plan-btn').trigger('click')
+    await flushPromises()
 
+    expect(holder.state.ensureUnscheduledDay).toHaveBeenCalled()
     expect(holder.state.createItem).toHaveBeenCalledWith({
-      itineraryDayId: 'day-1',
-      sortOrder: 1,
+      itineraryDayId: 'unscheduled',
+      sortOrder: 0,
       itemType: 'PLACE',
       place: { provider: 'KTO', externalPlaceId: '126508' },
       placeName: '해운대해수욕장',
@@ -1191,6 +1769,60 @@ describe('RoutePage itinerary integration', () => {
       lng: 129.1604,
       thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
     })
+  })
+
+  it('추천 관광지를 선택하면 지도에 임시 카드 위치를 전달한다', async () => {
+    connectedApis.place.getPlace.mockResolvedValueOnce({
+      provider: 'KTO',
+      externalPlaceId: '126508',
+      placeName: '해운대해수욕장',
+      address: '부산 해운대구',
+      lat: 35.1587,
+      lng: 129.1604,
+      thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
+      photos: [],
+      description: '부산을 대표하는 해변입니다.',
+      category: '관광지',
+    })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    wrapper.getComponent(PlaceDiscoveryPanel).vm.$emit('select', {
+      provider: 'KTO',
+      externalPlaceId: '126508',
+      placeName: '해운대해수욕장',
+      address: '부산 해운대구',
+      lat: 35.1587,
+      lng: 129.1604,
+      thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
+      category: '관광지',
+    })
+    await flushPromises()
+
+    expect(wrapper.getComponent(MapboxItineraryMap).props('previewPlace')).toEqual({
+      id: 'recommendation:KTO:126508',
+      provider: 'KTO',
+      externalPlaceId: '126508',
+      title: '해운대해수욕장',
+      category: '관광지',
+      lat: 35.1587,
+      lng: 129.1604,
+      image: 'https://cdn.example.com/haeundae.jpg',
+    })
+
+    await wrapper.get('.detailbar-add-plan-btn').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.getComponent(MapboxItineraryMap).props('previewPlace')).toBeNull()
   })
 
   it('지도 범위 동기화 실패를 표시하고 재시도한다', async () => {

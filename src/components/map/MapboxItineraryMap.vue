@@ -16,6 +16,7 @@ export interface ItineraryMapNearbyPlace {
   category: string | null
   lat: number
   lng: number
+  image?: string | null
 }
 
 export interface ItineraryMapStop {
@@ -42,21 +43,25 @@ const props = withDefaults(defineProps<{
   routeDisplay?: 'route' | 'dashed' | 'hidden'
   cardDisplay?: 'full' | 'min' | 'hidden'
   nearbyPlaces?: ItineraryMapNearbyPlace[]
+  previewPlace?: ItineraryMapNearbyPlace | null
   drawings?: MapDrawingStroke[]
   drawingTool?: MapDrawingTool
   drawingColor?: string
   drawingWidth?: number
   drawingsVisible?: boolean
+  navigationMode?: boolean
 }>(), {
   drawings: () => [],
   routes: () => [],
   nearbyPlaces: () => [],
+  previewPlace: null,
   routeDisplay: 'route',
   cardDisplay: 'full',
   drawingTool: 'cursor',
   drawingColor: '#1f2937',
   drawingWidth: 6,
   drawingsVisible: true,
+  navigationMode: false,
 })
 const emit = defineEmits<{
   selectPlace: [placeProvider: string | undefined, placeId: string | undefined, stopId: string]
@@ -85,6 +90,9 @@ let lastFittedStopsKey = ''
 const { isDarkMode } = useTheme()
 
 const mapStyle = computed(() => {
+  if (props.navigationMode) {
+    return 'mapbox://styles/mapbox/navigation-day-v1'
+  }
   if (isDarkMode.value) {
     return 'mapbox://styles/mapbox/dark-v11'
   } else {
@@ -201,6 +209,49 @@ function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement 
   return el
 }
 
+function createPreviewPlaceMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
+  const el = document.createElement('button')
+  el.type = 'button'
+  el.className = 'map-preview-place-card'
+  el.setAttribute('aria-label', `${place.title} 추천 관광지`)
+
+  const media = document.createElement('span')
+  media.className = 'map-preview-place-media'
+  if (place.image) {
+    const image = document.createElement('img')
+    image.src = place.image
+    image.alt = ''
+    media.appendChild(image)
+  } else {
+    const icon = document.createElement('span')
+    icon.className = 'material-symbols-rounded'
+    icon.textContent = 'location_on'
+    media.appendChild(icon)
+  }
+
+  const info = document.createElement('span')
+  info.className = 'map-preview-place-info'
+  const title = document.createElement('span')
+  title.className = 'map-preview-place-title'
+  title.textContent = place.title
+  info.appendChild(title)
+  if (place.category) {
+    const category = document.createElement('span')
+    category.className = 'map-preview-place-category'
+    category.textContent = place.category
+    info.appendChild(category)
+  }
+
+  const pointer = document.createElement('span')
+  pointer.className = 'map-preview-place-pointer'
+  el.append(media, info, pointer)
+  el.addEventListener('click', (event) => {
+    event.stopPropagation()
+    emit('selectNearbyPlace', place.provider, place.externalPlaceId)
+  })
+  return el
+}
+
 function clearMapContent() {
   markers.forEach((marker) => marker.remove())
   markers = []
@@ -300,8 +351,19 @@ function renderStops() {
       .addTo(map!))
   })
 
+  if (props.previewPlace) {
+    markers.push(new mapbox.Marker({
+      element: createPreviewPlaceMarkerElement(props.previewPlace),
+      anchor: 'bottom',
+      offset: [0, -18],
+    })
+      .setLngLat([props.previewPlace.lng, props.previewPlace.lat])
+      .addTo(map!))
+  }
+
   renderRoutes()
   fitToStopsIfNeeded(mapbox)
+  focusPreviewPlace()
 }
 
 function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
@@ -318,6 +380,11 @@ function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
     props.stops.forEach((stop) => bounds.extend([stop.lng, stop.lat]))
     map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 500 })
   }
+}
+
+function focusPreviewPlace() {
+  if (!map || !props.previewPlace) return
+  map.easeTo({ center: [props.previewPlace.lng, props.previewPlace.lat], zoom: 14 })
 }
 
 function emitViewport() {
@@ -426,7 +493,7 @@ function retry() {
   void initializeMap()
 }
 
-watch(() => [props.stops, props.nearbyPlaces, props.cardDisplay], renderStops, { deep: true })
+watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.cardDisplay], renderStops, { deep: true })
 watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {
@@ -467,6 +534,82 @@ onBeforeUnmount(() => {
 
 .itinerary-map {
   position: relative;
+}
+
+.itinerary-map :deep(.mapboxgl-marker) {
+  z-index: 2;
+}
+
+.itinerary-map :deep(.map-preview-place-card) {
+  position: absolute;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 190px;
+  min-height: 64px;
+  padding: 8px 10px 10px 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.itinerary-map :deep(.map-preview-place-media) {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.itinerary-map :deep(.map-preview-place-media img) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.itinerary-map :deep(.map-preview-place-info) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.itinerary-map :deep(.map-preview-place-title) {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itinerary-map :deep(.map-preview-place-category) {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itinerary-map :deep(.map-preview-place-pointer) {
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  border-right: 1px solid rgba(15, 23, 42, 0.12);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .itinerary-map__error {
