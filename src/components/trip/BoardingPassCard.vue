@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import QRCode from 'qrcode'
+import { toPng } from 'html-to-image'
 import { useAuthStore } from '@/stores/auth.store'
-import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { TripSummary } from '@/types/trip'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 
@@ -9,6 +10,25 @@ const props = withDefaults(defineProps<{ trip: TripSummary; position?: number; c
   position: 0,
   count: 1,
 })
+
+const ticketEl = ref<HTMLElement | null>(null)
+const qrDataUrl = ref('')
+const exporting = ref(false)
+const exportError = ref('')
+
+const tripUrl = computed(() => new URL(
+  `/trips/${encodeURIComponent(props.trip.id)}/route`,
+  window.location.origin,
+).href)
+
+watch(tripUrl, async (url) => {
+  qrDataUrl.value = await QRCode.toDataURL(url, {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 160,
+    color: { dark: '#111827', light: '#ffffff' },
+  })
+}, { immediate: true })
 
 defineEmits<{ detail: []; access: []; settings: [] }>()
 
@@ -33,10 +53,8 @@ const authStore = useAuthStore()
 const statusLabel = computed(() => props.trip.status === 'ARCHIVED' ? '보관된 여행' : '여행 준비 중')
 const roleLabel = computed(() => props.trip.myRole === 'OWNER' ? '방장' : '멤버')
 const passengerName = computed(() => authStore.user?.displayName || '사용자')
-const flightNumber = computed(() => props.trip.id.substring(0, 5).toUpperCase())
-const seatNumber = computed(() => props.trip.id.substring(5, 8).toUpperCase())
-const gateNumber = computed(() => props.trip.id.substring(8, 11).toUpperCase())
 const formatTripDate = (value: string | null | undefined) => value ? value.replace(/-/g, '.') : '미정'
+const createdDateLabel = computed(() => formatTripDate(props.trip.createdAt.slice(0, 10)))
 const periodLabel = computed(() => {
   if (!props.trip.startDate && !props.trip.endDate) return '여행 기간 미정'
   if (props.trip.startDate && props.trip.endDate) {
@@ -44,10 +62,42 @@ const periodLabel = computed(() => {
   }
   return formatTripDate(props.trip.startDate ?? props.trip.endDate)
 })
+const durationLabel = computed(() => {
+  if (!props.trip.startDate || !props.trip.endDate) return '일정 미정'
+  const start = Date.parse(`${props.trip.startDate}T00:00:00Z`)
+  const end = Date.parse(`${props.trip.endDate}T00:00:00Z`)
+  const nights = Math.max(0, Math.round((end - start) / 86_400_000))
+  return nights === 0 ? '당일치기' : `${nights}박 ${nights + 1}일`
+})
+
+async function exportTicket() {
+  if (!ticketEl.value || exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  await nextTick()
+
+  try {
+    const dataUrl = await toPng(ticketEl.value, {
+      backgroundColor: '#f4f9ff',
+      cacheBust: true,
+      pixelRatio: 2,
+      skipFonts: true,
+    })
+    const link = document.createElement('a')
+    const safeTitle = props.trip.title.replace(/[\\/:*?"<>|]/g, '-').trim() || 'soomgil-trip'
+    link.download = `${safeTitle}-ticket.png`
+    link.href = dataUrl
+    link.click()
+  } catch {
+    exportError.value = '티켓 이미지를 저장하지 못했습니다. 다시 시도해 주세요.'
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
-  <div class="boarding-pass-card boarding-pass-card--placeholder" data-testid="trip-ticket">
+  <div ref="ticketEl" class="boarding-pass-card boarding-pass-card--placeholder" :class="{ 'is-exporting': exporting }" data-testid="trip-ticket">
     <div class="ticket-main">
       <div class="ticket-header">
         <div class="ticket-logo">
@@ -65,24 +115,54 @@ const periodLabel = computed(() => {
         <div class="detail-item"><span class="label">PASSENGER</span><span class="value">{{ passengerName }}</span></div>
         <div class="detail-item"><span class="label">PERIOD</span><span class="value">{{ periodLabel }}</span></div>
         <div class="detail-item"><span class="label">DESTINATION</span><span class="value">{{ destinationName }}</span></div>
-        <div class="detail-item"><span class="label">FLIGHT</span><span class="value">{{ flightNumber }}</span></div>
-        <div class="detail-item"><span class="label">SEAT</span><span class="value">{{ seatNumber }}</span></div>
-        <div class="detail-item"><span class="label">GATE</span><span class="value">{{ gateNumber }}</span></div>
+        <div class="detail-item"><span class="label">CREATED</span><span class="value">{{ createdDateLabel }}</span></div>
+        <div class="detail-item"><span class="label">DURATION</span><span class="value">{{ durationLabel }}</span></div>
+        <div class="detail-item"><span class="label">STATUS</span><span class="value">{{ statusLabel }}</span></div>
       </div>
     </div>
     <div class="ticket-divider" aria-hidden="true"><span class="punch-hole top"></span><span class="dashed-line"></span><span class="punch-hole bottom"></span></div>
     <div class="ticket-stub">
       <div class="stub-header">
-        <span class="stub-title-label">BOARDING PASS</span><h2 class="stub-title">{{ trip.title }}</h2><p class="stub-date-info">{{ periodLabel }}</p>
-        <div class="ticket-members-wrapper" aria-label="여행 권한">
-          <span class="label">ROLE</span><div class="next-trip-members"><span class="avatar">{{ roleLabel }}</span></div>
+        <div class="stub-kicker-row">
+          <span class="stub-title-label">BOARDING PASS</span>
+          <div class="stub-ticket-badges">
+            <span class="stub-role-badge">{{ roleLabel }}</span>
+            <span class="stub-route-code">{{ destinationCode }}</span>
+          </div>
+        </div>
+        <h2 class="stub-title">{{ trip.title }}</h2>
+        <p class="stub-date-info">
+          <span class="material-symbols-rounded" aria-hidden="true">calendar_month</span>
+          {{ periodLabel }}
+        </p>
+      </div>
+
+      <div class="stub-qr-panel">
+        <div class="ticket-qr" aria-label="여행 상세 QR 코드">
+          <img v-if="qrDataUrl" :src="qrDataUrl" alt="여행 상세 페이지 QR 코드" data-testid="trip-qr">
+        </div>
+        <div class="stub-qr-copy">
+          <span>SCAN TO OPEN</span>
+          <strong>{{ destinationName }}</strong>
+          <small>{{ durationLabel }}</small>
         </div>
       </div>
-      <div class="stub-actions">
-        <button v-if="trip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click="$emit('access')"><span class="material-symbols-rounded" aria-hidden="true">group</span>멤버 및 초대</button>
-        <TripSettingsButton v-if="trip.myRole === 'OWNER'" variant="chip" @click="$emit('settings')" />
+
+      <div class="stub-actions" data-export-controls>
+        <div v-if="trip.myRole === 'OWNER'" class="stub-manage-actions">
+          <button class="stub-utility-btn" type="button" @click="$emit('access')">
+            <span class="material-symbols-rounded" aria-hidden="true">group</span>멤버
+          </button>
+          <button class="stub-utility-btn" type="button" @click="$emit('settings')">
+            <span class="material-symbols-rounded" aria-hidden="true">settings</span>설정
+          </button>
+        </div>
+        <button class="stub-export-btn" type="button" :disabled="exporting" data-testid="export-ticket" @click="exportTicket">
+          <span class="material-symbols-rounded" aria-hidden="true">download</span>{{ exporting ? '저장 중' : '티켓 이미지 저장' }}
+        </button>
       </div>
-      <button class="stub-detail-btn" type="button" @click="$emit('detail')"><span>자세히 보기</span><span class="material-symbols-rounded">arrow_forward</span></button>
+      <p v-if="exportError" class="ticket-export-error" role="alert">{{ exportError }}</p>
+      <button class="stub-detail-btn" type="button" @click="$emit('detail')"><span>여행 계획 열기</span><span class="material-symbols-rounded">arrow_forward</span></button>
       <div class="stub-controls">
         <div class="next-trip-dots carousel-dots-container" :aria-label="`${count}개 여행 중 ${position + 1}번째`">
           <span v-for="index in count" :key="index" class="carousel-dot" :class="{ active: index - 1 === position }"></span>
@@ -95,35 +175,219 @@ const periodLabel = computed(() => {
 <style scoped>
 .boarding-pass-card--placeholder { background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.98)) !important; }
 
-/* stub 내 액션 버튼 영역 */
-.stub-actions {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
+.ticket-stub {
+  gap: 14px;
+  justify-content: flex-start !important;
+  padding: 28px 26px 22px !important;
+  background:
+    linear-gradient(160deg, rgba(247, 250, 255, 0.98), rgba(237, 245, 255, 0.94)) !important;
 }
 
-.stub-action-btn {
+.stub-header {
+  display: block;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.stub-kicker-row {
   align-items: center;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.stub-route-code {
+  border: 1px solid rgba(0, 102, 255, 0.14);
   border-radius: 999px;
+  color: var(--violet);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 22px;
+  min-width: 38px;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.stub-ticket-badges {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+}
+
+.stub-title {
+  -webkit-line-clamp: 2;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  min-height: 48px;
+}
+
+.stub-date-info {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  margin-top: 7px !important;
+}
+
+.stub-date-info .material-symbols-rounded {
+  color: var(--violet);
+  font-size: 15px;
+}
+
+.stub-qr-panel {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(196, 213, 238, 0.9);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 76px minmax(0, 1fr);
+  margin-right: 22px;
+  padding: 10px;
+  box-shadow: 0 8px 20px rgba(31, 75, 140, 0.06);
+}
+
+.ticket-qr {
+  background: #fff;
+  border-radius: 5px;
+  padding: 4px;
+}
+
+.ticket-qr img {
+  display: block;
+  height: 68px;
+  image-rendering: pixelated;
+  width: 68px;
+}
+
+.stub-qr-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stub-qr-copy span {
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.stub-qr-copy strong {
+  color: var(--ink);
+  display: block;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.3;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stub-qr-copy small {
+  color: var(--violet);
+  font-size: 10px;
+  font-weight: 800;
+  margin-top: 3px;
+}
+
+.stub-role-badge {
+  background: rgba(0, 102, 255, 0.09);
+  border-radius: 999px;
+  color: var(--violet) !important;
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 22px;
+  padding: 0 8px;
+}
+
+.stub-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+}
+
+.stub-manage-actions {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.stub-utility-btn,
+.stub-export-btn {
+  align-items: center;
+  border: 1px solid rgba(196, 213, 238, 0.95);
+  border-radius: 7px;
   color: var(--ink);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
   font-weight: 800;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: 5px;
+  height: 32px;
+  justify-content: center;
+  padding: 0 9px;
   transition: background 160ms ease, border-color 160ms ease;
 }
 
-.stub-action-btn:hover {
+.stub-utility-btn {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.stub-export-btn {
+  background: #fff;
+  color: var(--violet);
+  width: 100%;
+}
+
+.stub-utility-btn:hover,
+.stub-export-btn:hover {
   background: #fff;
   border-color: var(--violet);
 }
 
-.stub-action-btn .material-symbols-rounded {
+.stub-export-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.stub-detail-btn {
+  background: linear-gradient(135deg, #0868ff, #0d8dff) !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 18px rgba(0, 102, 255, 0.2);
+  color: #fff !important;
+  flex: 0 0 38px;
+  font-size: 12px !important;
+  min-height: 38px;
+}
+
+.stub-detail-btn:hover {
+  box-shadow: 0 10px 22px rgba(0, 102, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+.stub-controls {
+  margin-top: auto;
+  padding-top: 1px;
+}
+
+.ticket-export-error {
+  color: #dc2626;
+  font-size: 11px;
+  margin: -5px 0 8px;
+}
+
+.boarding-pass-card.is-exporting .stub-actions,
+.boarding-pass-card.is-exporting .stub-detail-btn,
+.boarding-pass-card.is-exporting .stub-controls,
+.boarding-pass-card.is-exporting .ticket-export-error {
+  display: none;
+}
+
+.stub-utility-btn .material-symbols-rounded,
+.stub-export-btn .material-symbols-rounded {
   font-size: 15px;
 }
 </style>
