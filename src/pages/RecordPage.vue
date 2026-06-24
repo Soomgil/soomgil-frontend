@@ -67,19 +67,8 @@ function closeViewer() {
   viewerMediaId.value = null
 }
 
-function heightForPhoto(photo: TripRecordPhoto): number {
-  const width = photo.media.width
-  const height = photo.media.height
-  if (!width || !height) return 280
-  const ratio = width / height
-  if (ratio > 1.2) return 220
-  if (ratio < 0.8) return 340
-  return 280
-}
-
 const avatarColors = ['var(--rose)', 'var(--blue)', 'var(--cyan)', 'var(--violet)']
 const newestFirst = ref(true)
-const viewMode = ref<'masonry' | 'grid'>('masonry')
 const visiblePhotos = computed(() => photos.value
   .filter((photo) => Boolean(photoSource(photo)))
   .slice()
@@ -419,9 +408,6 @@ onBeforeUnmount(() => {
               <button class="btn ghost icon-btn record-action-icon" type="button" :aria-label="newestFirst ? '오래된 사진부터 보기' : '최신 사진부터 보기'" @click="newestFirst = !newestFirst">
                 <span class="material-symbols-rounded">sort</span>
               </button>
-              <button class="btn ghost icon-btn record-action-icon" type="button" :aria-label="viewMode === 'masonry' ? '격자 보기' : '자유 배치 보기'" :aria-pressed="viewMode === 'grid'" @click="viewMode = viewMode === 'masonry' ? 'grid' : 'masonry'">
-                <span class="material-symbols-rounded">{{ viewMode === 'masonry' ? 'grid_view' : 'view_quilt' }}</span>
-              </button>
             </div>
           </div>
         </div>
@@ -491,7 +477,7 @@ onBeforeUnmount(() => {
             icon="photo_library"
             message="아직 등록된 여행 기록 사진이 없습니다."
           />
-          <div v-else class="record-masonry" :class="{ 'is-uniform': viewMode === 'grid' }" data-record-masonry>
+          <div v-else class="record-masonry" data-record-masonry>
             <button
               v-for="(photo, i) in visiblePhotos"
               :key="`${photo.recordId}-${photo.media.id}`"
@@ -504,7 +490,8 @@ onBeforeUnmount(() => {
                 :src="photoSource(photo)"
                 :alt="photoLabel(photo)"
                 loading="lazy"
-                :style="{ height: (viewMode === 'grid' ? 260 : heightForPhoto(photo)) + 'px' }"
+                :width="photo.media.width || undefined"
+                :height="photo.media.height || undefined"
                 @error="refreshPhotoUrl(photo)"
               />
               <div class="record-masonry-overlay">
@@ -977,13 +964,6 @@ onBeforeUnmount(() => {
   column-count: 4;
   column-gap: 16px;
 }
-.record-masonry.is-uniform {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  column-count: unset;
-}
-.record-masonry.is-uniform .record-masonry-item { margin-bottom: 0; }
 .record-load-more-sentinel {
   width: 100%;
   height: 1px;
@@ -1032,6 +1012,7 @@ onBeforeUnmount(() => {
 }
 .record-masonry-item img {
   width: 100%;
+  height: auto;
   object-fit: cover;
   display: block;
 }
@@ -1098,17 +1079,16 @@ onBeforeUnmount(() => {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 1024px) { .record-masonry { column-count: 3; } .record-masonry.is-uniform { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1024px) { .record-masonry { column-count: 3; } }
 @media (max-width: 768px) {
   .record-masonry { column-count: 2; }
-  .record-masonry.is-uniform { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record-page-toolbar { gap: 10px; }
   .record-actions { gap: 6px; }
   .record-actions .btn.primary { padding-inline: 12px; }
   .record-trip-slider-btn.prev { left: 4px; }
   .record-trip-slider-btn.next { right: 4px; }
 }
-@media (max-width: 480px) { .record-masonry { column-count: 1; } .record-masonry.is-uniform { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .record-masonry { column-count: 1; } }
 
 /* Upload modal */
 .record-photo-card {
