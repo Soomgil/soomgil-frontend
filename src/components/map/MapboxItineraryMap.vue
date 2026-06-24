@@ -59,7 +59,7 @@ const props = withDefaults(defineProps<{
   drawingsVisible: true,
 })
 const emit = defineEmits<{
-  selectPlace: [placeProvider: string | undefined, placeId: string]
+  selectPlace: [placeProvider: string | undefined, placeId: string | undefined, stopId: string]
   selectNearbyPlace: [placeProvider: string, placeId: string]
   viewportChange: [viewport: Viewport]
   drawingCreate: [drawing: MapDrawingDraft]
@@ -80,15 +80,15 @@ let lineLayerIds: string[] = []
 let styleReady = false
 let initializationSequence = 0
 let lastEmittedViewport = ''
+let lastFittedStopsKey = ''
 
 const { isDarkMode } = useTheme()
 
 const mapStyle = computed(() => {
-  const isNav = props.drawingTool === 'route-pen'
   if (isDarkMode.value) {
-    return isNav ? 'mapbox://styles/mapbox/navigation-night-v1' : 'mapbox://styles/mapbox/dark-v11'
+    return 'mapbox://styles/mapbox/dark-v11'
   } else {
-    return isNav ? 'mapbox://styles/mapbox/navigation-day-v1' : 'mapbox://styles/mapbox/light-v11'
+    return 'mapbox://styles/mapbox/light-v11'
   }
 })
 
@@ -167,8 +167,10 @@ function createMarkerElement(stop: ItineraryMapStop) {
   const badge = document.createElement('span')
   badge.className = 'map-pin-badge'
   badge.textContent = String(stop.index)
-  marker.append(imageWrapper, info, badge)
-  if (stop.placeId) marker.addEventListener('click', () => emit('selectPlace', stop.placeProvider, stop.placeId!))
+  const pointer = document.createElement('span')
+  pointer.className = 'map-pin-pointer'
+  marker.append(imageWrapper, info, badge, pointer)
+  marker.addEventListener('click', () => emit('selectPlace', stop.placeProvider, stop.placeId, stop.id))
   return marker
 }
 
@@ -197,6 +199,9 @@ function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement 
 function clearMapContent() {
   markers.forEach((marker) => marker.remove())
   markers = []
+}
+
+function clearRouteLayers() {
   if (!map || !styleReady) {
     lineLayerIds = []
     return
@@ -208,6 +213,65 @@ function clearMapContent() {
   lineLayerIds = []
 }
 
+function routeLineString(route: ItineraryMapRoute): { type: 'LineString'; coordinates: [number, number][] } | null {
+  const geometry = route.geometry as { type?: unknown; geometry?: unknown; coordinates?: unknown }
+  const candidate = (
+    geometry.type === 'Feature' && typeof geometry.geometry === 'object' && geometry.geometry !== null
+      ? geometry.geometry as { type?: unknown; coordinates?: unknown }
+      : geometry
+  )
+  if (candidate.type !== 'LineString' || !Array.isArray(candidate.coordinates)) return null
+
+  const coordinates = candidate.coordinates.flatMap((coordinate) => {
+    if (Array.isArray(coordinate) && typeof coordinate[0] === 'number' && typeof coordinate[1] === 'number') {
+      return [[coordinate[0], coordinate[1]] as [number, number]]
+    }
+    if (
+      typeof coordinate === 'object' && coordinate !== null
+      && typeof (coordinate as { lng?: unknown }).lng === 'number'
+      && typeof (coordinate as { lat?: unknown }).lat === 'number'
+    ) {
+      return [[(coordinate as { lng: number }).lng, (coordinate as { lat: number }).lat] as [number, number]]
+    }
+    return []
+  })
+
+  return coordinates.length >= 2 ? { type: 'LineString', coordinates } : null
+}
+
+function renderRoutes() {
+  if (!map || !styleReady) return
+  clearRouteLayers()
+  if (props.routeDisplay === 'hidden') return
+
+  props.routes.forEach((route, index) => {
+    const geometry = routeLineString(route)
+    if (!geometry) return
+    const id = `itinerary-route-${route.id}`
+    map!.addSource(id, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        properties: { routeIndex: index },
+        geometry,
+      },
+    })
+    map!.addLayer({
+      id,
+      type: 'line',
+      source: id,
+      paint: {
+        'line-color': '#6d4aff',
+        'line-width': 5,
+        'line-opacity': 0.95,
+        ...(props.routeDisplay === 'dashed' ? { 'line-dasharray': [2, 2] } : {}),
+      },
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+    })
+    lineLayerIds.push(id)
+  })
+}
+
 function renderStops() {
   if (!map || !mapboxgl || !styleReady) return
   const mapbox = mapboxgl
@@ -215,7 +279,7 @@ function renderStops() {
 
   if (props.cardDisplay !== 'hidden') {
     props.stops.forEach((stop) => {
-      markers.push(new mapbox.Marker({ element: createMarkerElement(stop), anchor: 'bottom' })
+      markers.push(new mapbox.Marker({ element: createMarkerElement(stop), anchor: 'bottom', offset: [0, -10] })
         .setLngLat([stop.lng, stop.lat])
         .addTo(map!))
     })
@@ -227,33 +291,15 @@ function renderStops() {
       .addTo(map!))
   })
 
-	if (props.routeDisplay !== 'hidden') props.routes.forEach((route, index) => {
-		const geometry = route.geometry as { type?: string; coordinates?: unknown }
-		if (geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) return
-		const id = `itinerary-route-${route.id}`
-		map!.addSource(id, {
-			type: 'geojson',
-			data: {
-				type: 'Feature',
-				properties: { routeIndex: index },
-				geometry: route.geometry as { type: 'LineString'; coordinates: number[][] },
-			},
-		})
-		map!.addLayer({
-      id,
-      type: 'line',
-      source: id,
-			paint: {
-				'line-color': '#6d4aff',
-				'line-width': 4,
-				'line-opacity': 0.85,
-				...(props.routeDisplay === 'dashed' ? { 'line-dasharray': [2, 2] } : {}),
-			},
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-    })
-    lineLayerIds.push(id)
-  })
+  renderRoutes()
+  fitToStopsIfNeeded(mapbox)
+}
 
+function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
+  if (!map) return
+  const stopsKey = props.stops.map((stop) => `${stop.id}:${stop.lng}:${stop.lat}`).join('|')
+  if (stopsKey === lastFittedStopsKey) return
+  lastFittedStopsKey = stopsKey
   if (props.stops.length === 0) {
     map.easeTo({ center: DEFAULT_CENTER, zoom: 10 })
   } else if (props.stops.length === 1) {
@@ -301,10 +347,12 @@ function cleanupMapResources() {
   resizeObserver?.disconnect()
   resizeObserver = null
   clearMapContent()
+  clearRouteLayers()
   map?.remove()
   map = null
   styleReady = false
   lastEmittedViewport = ''
+  lastFittedStopsKey = ''
   updateDrawingProjection()
 }
 
@@ -370,7 +418,7 @@ function retry() {
 }
 
 watch(() => [props.stops, props.nearbyPlaces, props.cardDisplay], renderStops, { deep: true })
-watch(() => [props.routes, props.routeDisplay], renderStops, { deep: true })
+watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {
   initializationSequence++

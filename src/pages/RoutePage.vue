@@ -211,6 +211,18 @@ async function loadRouteAccessibility(plans: DayPlan[]) {
 const scheduledPlaceKeys = computed(() => dayPlans.value.flatMap((day) => day.items.flatMap((item) =>
   item.placeProvider && item.placeExternalId ? [`${item.placeProvider}:${item.placeExternalId}`] : [],
 )))
+
+function displayImageUrl(url?: string | null) {
+  const trimmed = url?.trim()
+  if (!trimmed) return ''
+  if (/^(https?:|data:|blob:|\/)/.test(trimmed)) return trimmed
+  return `/${trimmed.replace(/^\.?\//, '')}`
+}
+
+function placeDisplayImage(place: Pick<Place, 'thumbnailUrl' | 'photos'>) {
+  return displayImageUrl(place.thumbnailUrl) || displayImageUrl(place.photos?.find(Boolean))
+}
+
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
@@ -225,7 +237,7 @@ const mapStops = computed<ItineraryMapStop[]>(() => {
       index: currentIndex,
       lat: item.lat,
       lng: item.lng,
-      image: item.thumbnailUrl ?? '',
+      image: displayImageUrl(item.thumbnailUrl),
       accessibility: item.placeProvider && item.placeExternalId
         ? placeAccessibilityByKey.value[placeAccessibilityKey(item.placeProvider, item.placeExternalId)]
         : undefined,
@@ -463,20 +475,34 @@ async function removeRouteLinkBetween(id1: string, id2: string) {
 	pushUndoState('route-links')
 	try {
 		await itinerary.deleteRoute(link.id)
-		showToast('경로 연결이 해제되었습니다')
+		showToast('경로 연결이 해제되었습니다', 'success')
 	} catch {
-		itineraryActionError.value = '경로 연결을 해제하지 못했습니다.'
+		showToast('경로 연결을 해제하지 못했습니다.', 'error')
 	}
 }
 
-function routeCoordinatesOf(route: { geometry?: Record<string, unknown> }) {
-  const coordinates = route.geometry?.coordinates
-  if (!Array.isArray(coordinates)) return []
-  return coordinates.flatMap((coordinate) => (
-    Array.isArray(coordinate) && typeof coordinate[0] === 'number' && typeof coordinate[1] === 'number'
-      ? [{ lng: coordinate[0], lat: coordinate[1] }]
-      : []
-  ))
+function routeCoordinatesOf(route: { geometry?: Record<string, unknown> }): Array<{ lng: number; lat: number }> {
+  const geometry = route.geometry as { type?: unknown; geometry?: unknown; coordinates?: unknown }
+  if (!geometry) return []
+  const candidate = (
+    geometry.type === 'Feature' && typeof geometry.geometry === 'object' && geometry.geometry !== null
+      ? geometry.geometry as { type?: unknown; coordinates?: unknown }
+      : geometry
+  )
+  if (candidate.type !== 'LineString' || !Array.isArray(candidate.coordinates)) return []
+  return candidate.coordinates.flatMap((coordinate) => {
+    if (Array.isArray(coordinate) && typeof coordinate[0] === 'number' && typeof coordinate[1] === 'number') {
+      return [{ lng: coordinate[0], lat: coordinate[1] }]
+    }
+    if (
+      typeof coordinate === 'object' && coordinate !== null
+      && typeof (coordinate as { lng?: unknown }).lng === 'number'
+      && typeof (coordinate as { lat?: unknown }).lat === 'number'
+    ) {
+      return [{ lng: (coordinate as { lng: number }).lng, lat: (coordinate as { lat: number }).lat }]
+    }
+    return []
+  })
 }
 
 function routeBbox(routes: Array<{ geometry?: Record<string, unknown> }>) {
@@ -561,20 +587,34 @@ async function handleRoutePenClick(item: RouteStop) {
             ? [{ lng: coordinate[0], lat: coordinate[1] }]
             : []
         ))
+        if (routeCoordinates.length > 100) {
+          const sampled: typeof routeCoordinates = []
+          const total = routeCoordinates.length
+          sampled.push(routeCoordinates[0])
+          for (let i = 1; i < 99; i++) {
+            const idx = Math.floor((i * (total - 1)) / 99)
+            sampled.push(routeCoordinates[idx])
+          }
+          sampled.push(routeCoordinates[total - 1])
+          routeCoordinates = sampled
+        }
       }
     }
-		await itinerary.mapMatchRoute({
-			originItineraryItemId: origin.id,
-			destinationItineraryItemId: item.id,
-			mode: 'WALKING',
-			coordinates: routeCoordinates,
-			tidy: true,
-		})
+    const newRoute = await itinerary.mapMatchRoute({
+      originItineraryItemId: origin.id,
+      destinationItineraryItemId: item.id,
+      mode: 'WALKING',
+      coordinates: routeCoordinates,
+      tidy: true,
+    })
+    if (newRoute) {
+      itinerary.routes.value = [...itinerary.routes.value, newRoute]
+    }
     nearbyOn.value = true
     await loadRouteNearbyPlaces()
-		showToast('경로가 연결되었습니다')
+    showToast('경로가 연결되었습니다', 'success')
 	} catch {
-		itineraryActionError.value = '경로를 계산하지 못했습니다.'
+		showToast('경로를 계산하지 못했습니다.', 'error')
 	}
 	pendingRouteFrom.value = null
 }
@@ -584,12 +624,42 @@ function handleStopClick(item: RouteStop) {
 		void handleRoutePenClick(item)
     return
   }
-  if (item.placeExternalId) selectPlace(item.placeExternalId)
+  void selectPlace(item.placeExternalId || undefined, (item.placeProvider || 'KTO') as PlaceProvider, item.id)
 }
 
 /* ── Drag & Drop (data-driven) ── */
 const itineraryRef = ref<HTMLElement | null>(null)
 const dayTabsRef = ref<HTMLElement | null>(null)
+
+const isDraggingTabs = ref(false)
+const startX = ref(0)
+const scrollLeftTabs = ref(0)
+
+function onTabsMouseDown(e: MouseEvent) {
+  const el = dayTabsRef.value
+  if (!el) return
+  isDraggingTabs.value = true
+  startX.value = e.pageX - el.offsetLeft
+  scrollLeftTabs.value = el.scrollLeft
+}
+
+function onTabsMouseMove(e: MouseEvent) {
+  if (!isDraggingTabs.value) return
+  const el = dayTabsRef.value
+  if (!el) return
+  e.preventDefault()
+  const x = e.pageX - el.offsetLeft
+  const walk = (x - startX.value) * 1.5
+  el.scrollLeft = scrollLeftTabs.value - walk
+}
+
+function onTabsMouseUp() {
+  isDraggingTabs.value = false
+}
+
+function onTabsMouseLeave() {
+  isDraggingTabs.value = false
+}
 
 function scrollDayTabs(direction: 'prev' | 'next') {
   const el = dayTabsRef.value
@@ -1490,6 +1560,13 @@ async function deleteTodo(id: string) {
 const routeState = ref<'route' | 'dashed' | 'hidden'>('route')
 const cardState = ref<'full' | 'min' | 'hidden'>('full')
 const nearbyOn = ref(false)
+watch([nearbyOn, () => itinerary.routes.value], async ([isOn, routes]) => {
+  if (isOn && Array.isArray(routes) && routes.length > 0) {
+    await loadRouteNearbyPlaces()
+  } else if (!isOn) {
+    routeNearbyPlaces.value = []
+  }
+}, { immediate: true })
 const drawingOn = ref(true)
 const isPenPopoverOpen = ref(false)
 const penSize = ref(6)
@@ -1962,28 +2039,69 @@ function hasAccessibilityInfo(accessibility?: PlaceAccessibility) {
 // Make selectPlace available globally for map marker onclick
 ;(window as any).selectPlace = selectPlace
 
-function handleSelectPlace(provider: any, placeId: any) {
-  selectPlace(placeId, provider || 'KTO')
+function handleSelectPlace(provider: any, placeId: any, stopId?: string) {
+  selectPlace(placeId, provider || 'KTO', stopId)
 }
 
-async function selectPlace(placeId: string, provider: any = 'KTO') {
+function openStopDetail(item: RouteStop) {
+  const image = displayImageUrl(item.thumbnailUrl)
+  selectedPlace.value = {
+    id: item.placeExternalId || item.id,
+    title: item.title,
+    description: item.memo || '등록된 상세 설명이 없습니다.',
+    image,
+    category: '장소',
+    accessibility: item.placeProvider && item.placeExternalId
+      ? placeAccessibilityByKey.value[placeAccessibilityKey(item.placeProvider, item.placeExternalId)]
+      : null,
+    starred: false,
+    location: item.time === '시간 미정' ? '' : item.time,
+    photos: image ? [image] : [],
+    likedBy: [],
+    travelStories: [],
+  } as any
+  detailbarMainImg.value = image
+  isDetailbarOpen.value = true
+}
+
+async function selectPlace(placeId: string | undefined, provider: PlaceProvider = 'KTO', stopId?: string) {
   // Route-pen mode: link stops instead of opening detailbar
   if (activeTool.value === 'route-pen') {
-    for (const day of dayPlans.value) {
-      const item = day.items.find(i => i.placeExternalId === placeId)
-      if (item) { handleRoutePenClick(item); return }
+    if (stopId) {
+      for (const day of dayPlans.value) {
+        const item = day.items.find(i => i.id === stopId)
+        if (item) { handleRoutePenClick(item); return }
+      }
+    }
+    if (placeId) {
+      for (const day of dayPlans.value) {
+        const item = day.items.find(i => i.placeExternalId === placeId)
+        if (item) { handleRoutePenClick(item); return }
+      }
+    }
+    return
+  }
+  if (!placeId) {
+    if (stopId) {
+      for (const day of dayPlans.value) {
+        const item = day.items.find(i => i.id === stopId)
+        if (item) {
+          openStopDetail(item)
+          return
+        }
+      }
     }
     return
   }
   try {
-    const place = await placeApi.getPlace('KTO', placeId)
+    const place = await placeApi.getPlace(provider, placeId)
     let accessibility = place.accessibility
-      ?? placeAccessibilityByKey.value[placeAccessibilityKey('KTO', place.externalPlaceId)]
+      ?? placeAccessibilityByKey.value[placeAccessibilityKey(provider, place.externalPlaceId)]
 
     if (!accessibility) {
       try {
-        const batchRes = await placeApi.getAccessibilityBatch([{ provider: 'KTO', externalPlaceId: placeId }])
-        const key = `KTO:${placeId}`
+        const batchRes = await placeApi.getAccessibilityBatch([{ provider, externalPlaceId: placeId }])
+        const key = `${provider}:${placeId}`
         if (batchRes[key]) {
           accessibility = batchRes[key]
         }
@@ -1995,10 +2113,10 @@ async function selectPlace(placeId: string, provider: any = 'KTO') {
       id: place.externalPlaceId,
       title: place.placeName,
       description: place.description || place.summary,
-      image: place.thumbnailUrl || '',
+      image: placeDisplayImage(place),
       likes: '',
       location: place.address || '',
-      photos: place.photos || (place.thumbnailUrl ? [place.thumbnailUrl] : []),
+      photos: place.photos?.map(displayImageUrl).filter(Boolean) || (placeDisplayImage(place) ? [placeDisplayImage(place)] : []),
       accessibility,
       contact: place.contact,
       admission: '',
@@ -2008,6 +2126,16 @@ async function selectPlace(placeId: string, provider: any = 'KTO') {
     }
     detailbarMainImg.value = selectedPlace.value.image
   } catch (e) {
+    if (stopId) {
+      for (const day of dayPlans.value) {
+        const item = day.items.find(i => i.id === stopId)
+        if (item) {
+          openStopDetail(item)
+          return
+        }
+      }
+    }
+    showToast('장소 상세 정보를 불러오지 못했습니다.', 'error')
     return
   }
 
@@ -2015,7 +2143,7 @@ async function selectPlace(placeId: string, provider: any = 'KTO') {
 }
 
 async function selectDiscoveredPlace(place: Place) {
-  const image = place.thumbnailUrl ?? place.photos?.[0] ?? ''
+  const image = placeDisplayImage(place)
   let accessibility = place.accessibility
     ?? placeAccessibilityByKey.value[placeAccessibilityKey(place.provider, place.externalPlaceId)]
 
@@ -2038,7 +2166,7 @@ async function selectDiscoveredPlace(place: Place) {
     image,
     likes: place.likedBy?.length ?? 0,
     location: place.address ?? '',
-    photos: place.photos ?? (image ? [image] : []),
+    photos: place.photos?.map(displayImageUrl).filter(Boolean) ?? (image ? [image] : []),
     accessibility,
     contact: place.contact,
     admission: place.admission,
@@ -2060,14 +2188,32 @@ function closeDetailbar() {
 /* ── Toast ── */
 const toastMessage = ref('')
 const toastVisible = ref(false)
+const toastType = ref<'success' | 'error' | 'info'>('info')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-function showToast(msg: string) {
+function showToast(msg: string, type: 'success' | 'error' | 'info' = 'info') {
   toastMessage.value = msg
+  toastType.value = type
   toastVisible.value = true
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { toastVisible.value = false }, 3000)
 }
+
+watch(itineraryActionError, (message) => {
+  if (message) showToast(message, 'error')
+})
+
+watch(routeNearbyError, (message) => {
+  if (message) showToast(message, 'error')
+})
+
+watch(() => mapViewport.error.value, (message) => {
+  if (message) showToast(message, 'error')
+})
+
+watch(() => drawingRetryIds.value.length, (count, previousCount) => {
+  if (count > 0 && previousCount === 0) showToast('그림 좌표를 정리하지 못했습니다.', 'error')
+})
 
 async function addPlaceToItinerary(place: Place) {
   if (!hasPlaceReference(place)) {
@@ -2190,7 +2336,11 @@ function textAvatarStyle(index: unknown) {
                 <button class="day-scroll-btn prev" type="button" aria-label="이전 일차" @click="scrollDayTabs('prev')">
                   <span class="material-symbols-rounded">chevron_left</span>
                 </button>
-                <div class="day-tabs" id="day-tabs-scrollable" ref="dayTabsRef">
+                <div class="day-tabs" id="day-tabs-scrollable" ref="dayTabsRef"
+                  @mousedown="onTabsMouseDown"
+                  @mousemove="onTabsMouseMove"
+                  @mouseup="onTabsMouseUp"
+                  @mouseleave="onTabsMouseLeave">
                   <button :class="['day-tab', { active: activeDay === 0 }]" type="button" @click="activeDay = 0">
                     <span class="day-title">전체</span>
                   </button>
@@ -2290,8 +2440,6 @@ function textAvatarStyle(index: unknown) {
 
               <!-- Add stop: 원본처럼 버튼 클릭 시 바로 검색 패널 열기 -->
               <div class="add-stop-container">
-                <p v-if="itineraryActionError" class="itinerary-action-error" role="alert" style="text-align: center; margin-bottom: 8px;">{{ itineraryActionError }}</p>
-
                 <div class="trash-drop-zone" id="trash-drop-zone">
                   <span class="material-symbols-rounded">delete</span>
                   <span>여기로 끌어서 삭제</span>
@@ -2379,7 +2527,7 @@ function textAvatarStyle(index: unknown) {
               :drawing-width="penSize"
               :drawings-visible="drawingOn"
               @select-place="handleSelectPlace"
-              @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider)"
+              @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
               @viewport-change="mapViewport.updateViewport"
               @drawing-create="createLocalDrawing"
               @drawing-erase="eraseLocalDrawing"
@@ -2964,8 +3112,10 @@ function textAvatarStyle(index: unknown) {
 
     <!-- Toast -->
     <Transition name="toast">
-      <div v-if="toastVisible" class="toast-notification">
-        <span class="material-symbols-rounded" style="font-size:18px;color:var(--violet);">check_circle</span>
+      <div v-if="toastVisible" :class="['toast-notification', `toast-notification--${toastType}`]" role="status" aria-live="polite">
+        <span class="material-symbols-rounded" aria-hidden="true">
+          {{ toastType === 'success' ? 'check_circle' : toastType === 'error' ? 'error' : 'info' }}
+        </span>
         <span>{{ toastMessage }}</span>
       </div>
     </Transition>
@@ -3560,13 +3710,31 @@ function textAvatarStyle(index: unknown) {
 
 /* Toast */
 .toast-notification {
-  position:fixed;bottom:32px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:calc(20px + 56px + 12px);left:50vw;transform:translateX(-50%);
   display:flex;align-items:center;gap:10px;
-  padding:14px 24px;border-radius:16px;
+  max-width:min(420px, calc(100vw - 32px));
+  padding:12px 18px;border-radius:14px;
   background:rgba(255,255,255,0.95);backdrop-filter:blur(16px);
   border:1px solid var(--line);box-shadow:0 12px 40px rgba(0,0,0,0.12);
-  font-size:14px;font-weight:600;color:var(--ink);z-index:9999;
-  white-space:nowrap;
+  font-size:14px;font-weight:700;color:var(--ink);z-index:9999;
+  white-space:normal;
+  text-align:center;
+}
+.toast-notification .material-symbols-rounded {
+  flex:0 0 auto;
+  font-size:18px;
+}
+.toast-notification--success .material-symbols-rounded {
+  color:#059669;
+}
+.toast-notification--error {
+  border-color:#fecdd3;
+}
+.toast-notification--error .material-symbols-rounded {
+  color:#be123c;
+}
+.toast-notification--info .material-symbols-rounded {
+  color:var(--violet);
 }
 .toast-enter-active { transition:all .3s ease-out; }
 .toast-leave-active { transition:all .25s ease-in; }
@@ -3595,9 +3763,11 @@ function textAvatarStyle(index: unknown) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  margin: -5px 12px -2px 12px;
-  padding: 1px 0;
+  justify-content: center;
+  gap: 0;
+  height: 28px;
+  margin: -4px 12px;
+  padding: 0;
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.2s;
@@ -3611,22 +3781,33 @@ function textAvatarStyle(index: unknown) {
   opacity: 1;
   color: var(--rose);
 }
+.route-connector-line {
+  width: 3px;
+  height: 100%;
+  background: var(--violet);
+  border-radius: 999px;
+  transition: background 0.2s;
+}
 .route-connector:hover .route-connector-line {
   background: var(--rose);
 }
-.route-connector-line {
-  width: 2px;
-  height: 8px;
-  background: var(--violet);
-  transition: background 0.2s;
+.route-connector .route-connector-line + .route-unlink-icon + .route-connector-line {
+  display: none;
 }
 .route-unlink-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   font-size: 13px;
   color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 50%;
   opacity: 0;
   transition: opacity 0.2s, color 0.2s;
-  padding: 0;
-  margin: -2px 0;
+  padding: 2px;
+  margin: 0;
 }
 .route-connector:hover .route-unlink-icon {
   opacity: 1;
