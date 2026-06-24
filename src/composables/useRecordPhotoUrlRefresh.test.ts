@@ -8,7 +8,7 @@ vi.mock('@/api/media.api', () => ({ mediaApi }))
 import { useRecordPhotoUrlRefresh } from './useRecordPhotoUrlRefresh'
 
 const photo = (): TripRecordPhoto => ({
-  tripId: 'trip-1', tripTitle: '부산', recordId: 'record-1', itineraryDayId: null, itineraryItemId: null,
+  tripId: 'trip-1', tripTitle: '부산', recordId: 'record-1', itineraryDayId: null, dayNumber: null, itineraryItemId: null,
   media: {
     id: 'media-1', publicUrl: null, servingUrl: 'https://storage.example.com/expired',
     servingUrlExpiresAt: '2026-06-22T00:00:00Z', mimeType: 'image/jpeg', byteSize: 10,

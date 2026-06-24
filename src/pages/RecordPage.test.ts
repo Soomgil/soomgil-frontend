@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RecordPage from './RecordPage.vue'
 
 const tripApi = vi.hoisted(() => ({ getTrips: vi.fn() }))
+const photoMetadata = vi.hoisted(() => ({ readPhotoTakenAt: vi.fn() }))
 const mediaApi = vi.hoisted(() => ({
   getAllRecordPhotos: vi.fn(),
+  getRecordDays: vi.fn(),
   getRecordPhotos: vi.fn(),
   getRecordPhotoSummaries: vi.fn(),
   refreshRecordPhotoReadUrl: vi.fn(),
@@ -29,6 +31,10 @@ class IntersectionObserverStub {
 
 vi.mock('@/api/trip.api', () => ({ tripApi }))
 vi.mock('@/api/media.api', () => ({ mediaApi }))
+vi.mock('@/utils/record-photo-metadata', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/utils/record-photo-metadata')>()
+  return { ...original, readPhotoTakenAt: photoMetadata.readPhotoTakenAt }
+})
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: routeQuery.value }) }))
 
 const page = (items: unknown[], options: { page?: number; totalElements?: number; totalPages?: number } = {}) => ({
@@ -55,13 +61,13 @@ const trips = [
 
 const busanPhoto = {
   tripId: 'trip-1', tripTitle: '부산 여행', recordId: 'record-1',
-  itineraryDayId: null, itineraryItemId: null,
+  itineraryDayId: 'day-2', dayNumber: 2, itineraryItemId: null,
   media: {
     id: 'media-1', publicUrl: null, servingUrl: 'https://cdn.example.com/busan.jpg',
     servingUrlExpiresAt: '2026-06-01T00:30:00Z', mimeType: 'image/jpeg',
     byteSize: 100, width: 1200, height: 800, status: 'ACTIVE', createdAt: '2026-06-01T00:00:00Z',
   },
-  uploadedBy: { id: 'user-1', displayName: '여행자', profileImageUrl: null },
+  uploadedBy: { id: 'user-1', displayName: '민경철', profileImageUrl: 'https://cdn.example.com/profile.jpg' },
   takenAt: null,
   createdAt: '2026-06-01T00:00:00Z',
 }
@@ -80,7 +86,9 @@ describe('RecordPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     tripApi.getTrips.mockReset()
+    photoMetadata.readPhotoTakenAt.mockReset()
     mediaApi.getAllRecordPhotos.mockReset()
+    mediaApi.getRecordDays.mockReset()
     mediaApi.getRecordPhotos.mockReset()
     mediaApi.getRecordPhotoSummaries.mockReset()
     mediaApi.refreshRecordPhotoReadUrl.mockReset()
@@ -90,6 +98,11 @@ describe('RecordPage', () => {
     vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
     routeQuery.value = reactive({})
     tripApi.getTrips.mockResolvedValue(page(trips))
+    mediaApi.getRecordDays.mockResolvedValue([
+      { id: 'day-1', dayNumber: 1, date: '2026-06-20' },
+      { id: 'day-2', dayNumber: 2, date: '2026-06-21' },
+    ])
+    photoMetadata.readPhotoTakenAt.mockResolvedValue(null)
     mediaApi.getAllRecordPhotos.mockResolvedValue(page([busanPhoto]))
     mediaApi.getRecordPhotos.mockResolvedValue(page([busanPhoto]))
     mediaApi.getRecordPhotoSummaries.mockResolvedValue({
@@ -122,6 +135,15 @@ describe('RecordPage', () => {
     expect(image.attributes('height')).toBe('800')
     expect(image.attributes('style')).toBeUndefined()
     expect(wrapper.find('[aria-label="격자 보기"]').exists()).toBe(false)
+  })
+
+  it('shows the real uploader profile, name, and itinerary day together', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+
+    expect(wrapper.get('.record-uploader-avatar img').attributes('src')).toBe('https://cdn.example.com/profile.jpg')
+    expect(wrapper.get('.overlay-uploader').text()).toContain('민경철')
+    expect(wrapper.get('.overlay-uploader').text()).toContain('2일차')
   })
 
   it('loads only the selected trips photos', async () => {
@@ -377,6 +399,8 @@ describe('RecordPage', () => {
     })
     mediaApi.uploadFile.mockResolvedValue({ id: 'media-new' })
     mediaApi.createRecord.mockResolvedValue({ id: 'record-new' })
+    const capturedAt = new Date(2026, 5, 21, 14, 30)
+    photoMetadata.readPhotoTakenAt.mockResolvedValue(capturedAt)
     const wrapper = mountPage()
     await flushPromises()
     await wrapper.findAll('button').find((button) => button.text().includes('사진 추가'))!.trigger('click')
@@ -385,16 +409,49 @@ describe('RecordPage', () => {
     const input = wrapper.get('input[type="file"]')
     Object.defineProperty(input.element, 'files', { value: [file] })
     await input.trigger('change')
+    await flushPromises()
+
+    expect(wrapper.get('.record-photo-day-select').element).toHaveProperty('value', 'day-2')
 
     await wrapper.get('.record-photo-form').trigger('submit')
     await flushPromises()
 
     expect(mediaApi.uploadFile).toHaveBeenCalledWith(file, 'TRIP_RECORD')
     expect(mediaApi.createRecord).toHaveBeenCalledWith(
-      'trip-1', { mediaFileIds: ['media-new'] }, expect.any(String),
+      'trip-1', {
+        itineraryDayId: 'day-2',
+        takenAt: capturedAt.toISOString(),
+        mediaFileIds: ['media-new'],
+      }, expect.any(String),
     )
     expect(mediaApi.delete).not.toHaveBeenCalled()
     expect(wrapper.find('.record-photo-modal.show').exists()).toBe(false)
+  })
+
+  it('lets the user override the automatically detected day before upload', async () => {
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn().mockReturnValue('blob:preview')
+      static revokeObjectURL = vi.fn()
+    })
+    photoMetadata.readPhotoTakenAt.mockResolvedValue(new Date(2026, 5, 21, 14, 30))
+    mediaApi.uploadFile.mockResolvedValue({ id: 'media-new' })
+    mediaApi.createRecord.mockResolvedValue({ id: 'record-new' })
+    const wrapper = mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('사진 추가'))!.trigger('click')
+    await wrapper.get('select').setValue('trip-1')
+    await flushPromises()
+    const file = new File(['photo'], 'busan.jpg', { type: 'image/jpeg' })
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { value: [file] })
+    await input.trigger('change')
+    await flushPromises()
+
+    await wrapper.get('.record-photo-day-select').setValue('day-1')
+    await wrapper.get('.record-photo-form').trigger('submit')
+    await flushPromises()
+
+    expect(mediaApi.createRecord.mock.calls[0][1].itineraryDayId).toBe('day-1')
   })
 
   it('deletes uploaded media when record creation fails', async () => {
