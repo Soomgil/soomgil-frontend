@@ -55,6 +55,8 @@ describe('BoardingPassCard', () => {
     expect(wrapper.text()).not.toContain('FLIGHT')
     expect(wrapper.text()).not.toContain('SEAT')
     expect(wrapper.text()).not.toContain('GATE')
+    expect(wrapper.find('.material-symbols-rounded.plane-icon').exists()).toBe(false)
+    expect(wrapper.get('.stub-date-label').text()).toBe('DATE')
   })
 
   it('QR이 포함된 티켓을 PNG로 내보낸다', async () => {
@@ -67,8 +69,9 @@ describe('BoardingPassCard', () => {
 
     expect(image.toPng).toHaveBeenCalledWith(
       wrapper.get('[data-testid="trip-ticket"]').element,
-      expect.objectContaining({ pixelRatio: 2, skipFonts: true }),
+      expect.objectContaining({ pixelRatio: 2 }),
     )
+    expect(image.toPng.mock.calls[0]?.[1]).not.toHaveProperty('skipFonts')
     expect(click).toHaveBeenCalledOnce()
     click.mockRestore()
   })

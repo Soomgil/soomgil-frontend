@@ -60,13 +60,13 @@ async function exportTicket() {
   exporting.value = true
   exportError.value = ''
   await nextTick()
+  if (document.fonts) await document.fonts.ready
 
   try {
     const dataUrl = await toPng(ticketEl.value, {
       backgroundColor: '#f4f9ff',
       cacheBust: true,
       pixelRatio: 2,
-      skipFonts: true,
     })
     const link = document.createElement('a')
     const safeTitle = props.trip.title.replace(/[\\/:*?"<>|]/g, '-').trim() || 'soomgil-trip'
@@ -93,7 +93,7 @@ async function exportTicket() {
       </div>
       <div class="ticket-route">
         <div class="route-point departure"><span class="airport-code">SEL</span><span class="city-name">서울 (SEOUL)</span></div>
-        <div class="route-path" aria-hidden="true"><span class="line"></span><span class="material-symbols-rounded plane-icon">flight</span><span class="line"></span></div>
+        <div class="route-path" aria-hidden="true"><span class="line"></span><span class="plane-mark">&#9992;</span><span class="line"></span></div>
         <div class="route-point destination"><span class="airport-code">{{ destinationCode }}</span><span class="city-name">{{ destinationName }}</span></div>
       </div>
       <div class="ticket-reservation">
@@ -136,7 +136,7 @@ async function exportTicket() {
         </div>
         <h2 class="stub-title">{{ trip.title }}</h2>
         <p class="stub-date-info">
-          <span class="material-symbols-rounded" aria-hidden="true">calendar_month</span>
+          <span class="stub-date-label" aria-hidden="true">DATE</span>
           {{ periodLabel }}
         </p>
       </div>
@@ -191,6 +191,20 @@ async function exportTicket() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ticket-logo .logo-text,
+.stub-title-label {
+  white-space: nowrap;
+}
+
+.plane-mark {
+  color: var(--violet);
+  flex: 0 0 auto;
+  font-family: Arial, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .ticket-main .route-path .line,
@@ -329,9 +343,14 @@ async function exportTicket() {
   margin-top: 7px !important;
 }
 
-.stub-date-info .material-symbols-rounded {
+.stub-date-label {
+  border: 1px solid rgba(0, 102, 255, 0.22);
+  border-radius: 4px;
   color: var(--violet);
-  font-size: 15px;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 16px;
+  padding: 0 4px;
 }
 
 .stub-qr-panel {
@@ -444,6 +463,11 @@ async function exportTicket() {
 .boarding-pass-card.is-exporting .stub-detail-btn,
 .boarding-pass-card.is-exporting .ticket-export-error {
   display: none;
+}
+
+.boarding-pass-card.is-exporting .stub-qr-panel {
+  flex: 1 1 auto;
+  margin-bottom: 0;
 }
 
 .stub-export-btn .material-symbols-rounded {
