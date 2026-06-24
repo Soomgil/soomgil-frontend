@@ -8,10 +8,9 @@ import type { RecommendationTab } from '@/types/swipe'
 type DiscoveryMode = 'search' | 'basic' | 'super-like'
 type DiscoveryItem = { place: Place; recommendation?: PlaceRecommendation }
 
-const props = defineProps<{ tripId: string; bbox: string; scheduledPlaceKeys?: string[] }>()
+const props = defineProps<{ tripId: string; bbox: string }>()
 const emit = defineEmits<{
   select: [place: Place, recommendation?: PlaceRecommendation]
-  add: [place: Place]
 }>()
 
 const mode = ref<DiscoveryMode>('basic')
@@ -19,21 +18,20 @@ const query = ref('')
 const items = ref<DiscoveryItem[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
-const savedKeys = ref(new Set<string>())
-const savingKeys = ref(new Set<string>())
 const detailLoadingKey = ref<string | null>(null)
 let requestRevision = 0
 
 const emptyMessage = computed(() => mode.value === 'search' ? '검색 결과가 없습니다.' : '추천 장소가 아직 없습니다.')
-const scheduledKeys = computed(() => new Set(props.scheduledPlaceKeys ?? []))
-
 function placeKey(place: Place) {
   return `${place.provider}:${place.externalPlaceId}`
 }
 
 function matchText(item: DiscoveryItem) {
-  const count = item.recommendation?.matchedMembers.length ?? 0
+  const count = item.recommendation?.matchedMemberCount ?? item.recommendation?.matchedMembers.length ?? 0
+  const total = item.recommendation?.totalMemberCount ?? 0
   if (count === 0) return item.recommendation?.recommendationReason || ''
+  if (total > 0 && count === total) return '모든 멤버의 취향과 잘 맞아요'
+  if (total > 0) return `${count}/${total}명의 취향과 잘 맞아요`
   return `${count}명의 멤버가 좋아하는 곳`
 }
 
@@ -98,15 +96,6 @@ async function loadRecommendations(tab: RecommendationTab) {
   }
 }
 
-async function loadSavedPlaces() {
-  try {
-    const response = await swipeApi.listSaved(0, 100)
-    savedKeys.value = new Set(response.items.map((item) => placeKey(item.place)))
-  } catch {
-    // 저장 목록 실패가 추천 장소 자체를 가리지 않도록 조용히 비워 둔다.
-  }
-}
-
 async function submitSearch() {
   const revision = ++requestRevision
   loading.value = true
@@ -143,31 +132,6 @@ async function retry() {
   else await loadRecommendations(mode.value === 'basic' ? 'BASIC' : 'SUPER_LIKE')
 }
 
-async function toggleSaved(place: Place) {
-  const key = placeKey(place)
-  if (savingKeys.value.has(key)) return
-  savingKeys.value = new Set(savingKeys.value).add(key)
-  try {
-    if (savedKeys.value.has(key)) {
-      await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
-      const next = new Set(savedKeys.value)
-      next.delete(key)
-      savedKeys.value = next
-    } else {
-      // 저장 API는 SUPER_LIKE 반응이 있는 장소만 허용한다.
-      await swipeApi.react(place.provider, place.externalPlaceId, 'SUPER_LIKE')
-      await swipeApi.savePlace(place.provider, place.externalPlaceId)
-      savedKeys.value = new Set(savedKeys.value).add(key)
-    }
-  } catch {
-    error.value = '장소 저장 상태를 변경하지 못했습니다.'
-  } finally {
-    const next = new Set(savingKeys.value)
-    next.delete(key)
-    savingKeys.value = next
-  }
-}
-
 async function selectPlace(item: DiscoveryItem) {
   const key = placeKey(item.place)
   if (detailLoadingKey.value) return
@@ -184,7 +148,7 @@ async function selectPlace(item: DiscoveryItem) {
 }
 
 onMounted(() => {
-  void Promise.all([loadRecommendations('BASIC'), loadSavedPlaces()])
+  void loadRecommendations('BASIC')
 })
 
 watch(() => props.bbox, (bbox, previous) => {
@@ -244,7 +208,7 @@ watch(() => props.bbox, (bbox, previous) => {
               :class="['discovery-match-pill', matchTierClass(item.recommendation.matchPercentage)]"
               :title="`${item.recommendation.matchPercentage}% 일치`"
             >
-              <span class="material-symbols-rounded discovery-match-icon">favorite</span>
+              <span class="material-symbols-rounded discovery-match-icon full-heart">favorite</span>
               <strong class="discovery-match-value">{{ item.recommendation.matchPercentage }}%</strong>
               <span class="discovery-match-label">일치</span>
             </div>
@@ -263,30 +227,6 @@ watch(() => props.bbox, (bbox, previous) => {
           <p v-else-if="item.recommendation?.recommendationReason" class="discovery-reason discovery-reason--standalone">
             {{ item.recommendation.recommendationReason }}
           </p>
-        </div>
-        <div class="discovery-actions">
-          <button
-            type="button"
-            class="action-btn bookmark-btn btn-with-tooltip"
-            :class="{ 'is-saved': savedKeys.has(placeKey(item.place)) }"
-            :disabled="savingKeys.has(placeKey(item.place))"
-            :aria-label="`${item.place.placeName} ${savedKeys.has(placeKey(item.place)) ? '저장 취소' : '저장'}`"
-            @click.stop="toggleSaved(item.place)"
-          >
-            <span class="material-symbols-rounded">{{ savedKeys.has(placeKey(item.place)) ? 'bookmark' : 'bookmark_border' }}</span>
-            <div class="btn-tooltip">{{ savedKeys.has(placeKey(item.place)) ? '저장 취소' : '장소 저장' }}</div>
-          </button>
-          <button
-            type="button"
-            class="action-btn add-btn btn-with-tooltip"
-            :disabled="scheduledKeys.has(placeKey(item.place))"
-            :aria-label="`${item.place.placeName} 일정에 추가`"
-            :title="scheduledKeys.has(placeKey(item.place)) ? '이미 일정에 있는 장소' : '일정에 추가'"
-            @click.stop="emit('add', item.place)"
-          >
-            <span class="material-symbols-rounded">{{ scheduledKeys.has(placeKey(item.place)) ? 'check' : 'add' }}</span>
-            <div class="btn-tooltip">일정에 추가</div>
-          </button>
         </div>
       </li>
     </ul>
@@ -309,48 +249,32 @@ watch(() => props.bbox, (bbox, previous) => {
 .discovery-scheduled .material-symbols-rounded { font-size: 14px; }
 .discovery-results { width: calc(100% + 80px); margin: 0 -80px 0 0; padding: 0 80px 20px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; flex: 1; overflow-y: auto; overflow-x: hidden; list-style: none; scrollbar-width: none; -ms-overflow-style: none; min-height: 0; }
 .discovery-results::-webkit-scrollbar { display: none; }
-.discovery-result { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 14px; min-height: 134px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease; }
+.discovery-result { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; min-height: 148px; padding: 14px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease; }
 .discovery-result:hover { border-color: rgba(124, 58, 237, .4); box-shadow: 0 10px 24px rgb(15 23 42 / 10%); }
-.discovery-thumb { position: relative; width: 110px; height: 110px; border-radius: 8px; overflow: hidden; background: #eef2f7; color: var(--muted); align-self: center; flex-shrink: 0; }
+.discovery-thumb { position: relative; width: 110px; height: 120px; border-radius: 8px; overflow: hidden; background: #eef2f7; color: var(--muted); align-self: center; flex-shrink: 0; }
 .discovery-thumb img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .discovery-copy { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 .discovery-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 15px; font-weight: 700; margin-bottom: 2px; }
 .discovery-copy p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
 .discovery-match-row { align-items: center; display: flex; gap: 8px; justify-content: space-between; margin-top: 10px; min-width: 0; }
 .discovery-copy .discovery-reason { color: var(--violet); flex: 1; font-weight: 800; font-size: 11px; margin: 0; min-width: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-.discovery-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
-.discovery-match-pill { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; flex-shrink: 0; line-height: 1; color: #fff; }
-.discovery-match-pill .discovery-match-icon { font-size: 13px; color: inherit; }
-.discovery-match-pill .discovery-match-value { font-size: 13px; letter-spacing: -0.02em; color: inherit; }
-.discovery-match-pill .discovery-match-label { font-size: 10px; opacity: 0.9; color: inherit; }
-.discovery-match-pill.tier-high { background: linear-gradient(135deg, #0066ff, #00d1ff); box-shadow: 0 2px 6px rgba(0, 102, 255, 0.28); }
-.discovery-match-pill.tier-mid { background: #0066ff; }
-.discovery-match-pill.tier-low { background: #2c5aa0; }
-.discovery-match-pill.tier-base { background: #94a3b8; }
+.discovery-meta { display: flex; justify-content: flex-start; align-items: center; gap: 8px; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.discovery-match-pill { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 3px 8px 3px 6px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; flex-shrink: 0; line-height: 1; color: #fff; box-shadow: 0 3px 10px rgba(15, 23, 42, 0.14); }
+.discovery-match-pill .discovery-match-icon { font-size: 13px; color: #ef4444; font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20; }
+.discovery-match-pill .discovery-match-value { font-size: inherit; font-weight: inherit; letter-spacing: 0; color: inherit; }
+.discovery-match-pill .discovery-match-label { font-size: inherit; font-weight: inherit; opacity: 0.92; color: inherit; }
+.discovery-match-pill.tier-high { background: linear-gradient(135deg, #ff3d7f 0%, #8b5cf6 52%, #00b8d9 100%); }
+.discovery-match-pill.tier-mid { background: linear-gradient(135deg, #2563eb 0%, #14b8a6 100%); }
+.discovery-match-pill.tier-low { background: linear-gradient(135deg, #3b82f6 0%, #64748b 100%); }
+.discovery-match-pill.tier-base { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); }
 .discovery-meta-left { display: flex; align-items: center; gap: 8px; }
 .discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; color: #059669; font-size: 10px; font-weight: 850; margin-left: auto; flex-shrink: 0; }
 .discovery-scheduled .material-symbols-rounded { font-size: 14px; }
-.discovery-actions { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
-.discovery-actions .action-btn { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; cursor: pointer; transition: transform .14s ease, box-shadow .14s ease, background .14s ease, border-color .14s ease, color .14s ease; border: 1px solid var(--line); }
-.discovery-actions .action-btn.bookmark-btn { background: #f1f5f9; color: #3b82f6; border-color: #e2e8f0; }
-.discovery-actions .action-btn.bookmark-btn:hover:not(:disabled) { border-color: rgba(59, 130, 246, 0.45); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: #e2e8f0; }
-.discovery-actions .action-btn.bookmark-btn.is-saved { background: #f1f5f9; color: #3b82f6; border-color: #cbd5e1; }
-.discovery-actions .action-btn.bookmark-btn.is-saved:hover:not(:disabled) { background: #e2e8f0; }
-.discovery-actions .action-btn.add-btn { background: #f1f5f9; border-color: #e2e8f0; color: #10b981; }
-.discovery-actions .action-btn.add-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: #e2e8f0; border-color: #cbd5e1; }
-.discovery-actions .action-btn:disabled { cursor: not-allowed; color: #cbd5e1 !important; background: #ffffff !important; border-color: #e2e8f0 !important; box-shadow: none; opacity: 1 !important; transform: none; }
-.discovery-actions .material-symbols-rounded { font-size: 20px; }
-
-/* Custom tooltips for action buttons */
-.btn-with-tooltip { position: relative; }
-.btn-tooltip { position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%) scale(0.95); background: var(--ink); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: all 0.15s ease; z-index: 100000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-.btn-tooltip::after { content: ''; position: absolute; top: 50%; right: 100%; transform: translateY(-50%); border-width: 4px; border-style: solid; border-color: transparent var(--ink) transparent transparent; }
-.btn-with-tooltip:hover .btn-tooltip { opacity: 1; visibility: visible; transform: translateY(-50%) scale(1); }
 .discovery-members { display: flex; flex: 0 0 auto; }
 .discovery-members > span { width: 26px; height: 26px; margin-left: -6px; border: 2px solid #fff; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--violet); color: #fff; font-size: 11px; font-weight: 800; }
 .discovery-members > span img { width: 100%; height: 100%; object-fit: cover; }
 .discovery-members > span:first-child { margin-left: 0; }
 .discovery-members img { width: 100%; height: 100%; object-fit: cover; }
 @keyframes discovery-spin { to { transform: rotate(360deg); } }
-@media (max-width: 520px) { .discovery-result { grid-template-columns: 76px minmax(0, 1fr) auto; } .discovery-thumb { width: 76px; height: 86px; } .discovery-tabs button { font-size: 11px; } }
+@media (max-width: 520px) { .discovery-result { grid-template-columns: 76px minmax(0, 1fr); min-height: 118px; } .discovery-thumb { width: 76px; height: 96px; } .discovery-tabs button { font-size: 11px; } .discovery-match-pill { font-size: 10px; padding: 3px 6px 3px 5px; } .discovery-match-pill .discovery-match-icon { font-size: 12px; } }
 </style>

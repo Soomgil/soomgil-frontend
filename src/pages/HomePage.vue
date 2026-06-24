@@ -2,11 +2,13 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
+import StoryDetailOverlay from '@/components/community/StoryDetailOverlay.vue'
 import { tripApi, type NearestTripDto } from '@/api/trip.api'
 import { communityApi } from '@/api/community.api'
 import { placeApi } from '@/api/place.api'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToast } from '@/composables/useToast'
+import { communityPostToStory } from '@/utils/community'
 import type { TripSummary, TripDetailMember } from '@/types/trip'
 import type { CommunityPostSummary } from '@/types/community'
 import type { Place } from '@/types/place'
@@ -61,6 +63,19 @@ const nearestTripDday = computed(() => {
   if (diff > 0) return `D-${diff}`
   if (diff === 0) return 'D-DAY'
   return `D+${Math.abs(diff)}`
+})
+
+const nearestTripDateLabel = computed(() => {
+  if (!nearestTrip.value?.startDate) return '여행 기간 미정'
+  try {
+    return new Intl.DateTimeFormat('ko-KR', {
+      month: 'long',
+      day: 'numeric',
+      weekday: 'short',
+    }).format(new Date(nearestTrip.value.startDate))
+  } catch {
+    return nearestTrip.value.startDate
+  }
 })
 
 const userName = computed(() => authStore.user?.displayName?.trim() || '회원')
@@ -143,6 +158,12 @@ const nearestTripLoading = ref(true)
 /* ── Community Stories (Top 3) ───────────────────────── */
 const featuredStories = ref<CommunityPostSummary[]>([])
 const featuredStoriesLoading = ref(true)
+const selectedStoryId = ref<string | null>(null)
+const featuredStoryViews = computed(() => featuredStories.value.map(communityPostToStory))
+
+function openFeaturedStory(story: CommunityPostSummary) {
+  selectedStoryId.value = story.id
+}
 
 async function fetchHomeData() {
   try {
@@ -201,9 +222,8 @@ async function fetchHomeData() {
       <section class="home-search-hero">
         <div class="home-search-hero-inner">
           <h2 class="home-search-hero-title">어떤 여행을 찾고 계신가요?</h2>
-          <p class="home-search-hero-sub">지금 바로 검색해서 시작해보세요</p>
 
-          <div class="home-search-categories" role="tablist">
+          <div class="home-search-categories" role="tablist" style="margin-bottom: 16px; margin-top: 24px;">
             <button
               v-for="cat in searchCategories"
               :key="cat.key"
@@ -357,7 +377,7 @@ async function fetchHomeData() {
                 <span class="material-symbols-rounded home-section-state-icon">place</span>
                 <p>아직 인기 장소가 없어요.</p>
               </div>
-              <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" role="link" tabindex="0" @click="router.push({ path: '/search', query: { q: place.placeName, tab: '여행지' } })" @keydown.enter="router.push({ path: '/search', query: { q: place.placeName, tab: '여행지' } })">
+              <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" role="link" tabindex="0" @click="router.push({ path: '/search', query: { q: place.placeName, tab: '전체' } })" @keydown.enter="router.push({ path: '/search', query: { q: place.placeName, tab: '전체' } })">
                 <span class="home-toplikes-rank">{{ idx + 1 }}</span>
                 <img v-if="place.thumbnailUrl" class="home-toplikes-img" :src="place.thumbnailUrl" :alt="place.placeName" />
                 <div v-else class="home-toplikes-img" style="background: var(--bg); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">image</span></div>
@@ -384,33 +404,74 @@ async function fetchHomeData() {
             </div>
           </div>
           <a v-else-if="nearestTrip" class="home-nearest-card home-nearest-card--plain" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
-            <div class="home-nearest-plain">
-              <span class="home-nearest-dday-lg">{{ nearestTripDday ?? '날짜 미정' }}</span>
-              <p class="home-nearest-waiting">{{ userName }}을(를) 기다리는 여행</p>
-              <h3 class="home-nearest-trip-title">{{ nearestTrip.title }}</h3>
-              <div class="home-nearest-plain-foot">
-                <div class="home-nearest-members">
-                  <div class="avatars">
-                    <span
-                      v-for="(thumb, idx) in nearestTrip.memberThumbnails"
-                      :key="idx"
-                      class="avatar"
-                      :style="{ background: 'rgba(255,255,255,0.25)' }"
-                    >
-                      <img v-if="thumb" :src="thumb" alt="member avatar" style="width:100%; height:100%; border-radius:50%; object-fit:cover;"/>
-                      <span v-else>{{ '?' }}</span>
-                    </span>
-                  </div>
-                  <span class="member-count">{{ nearestTrip.memberCount }}명과 함께</span>
+            <div class="home-nearest-plain" style="padding-top: 14px;">
+              <div class="home-nearest-visual">
+                <img
+                  v-if="nearestTrip.coverImageUrl"
+                  :src="nearestTrip.coverImageUrl"
+                  :alt="nearestTrip.title"
+                />
+                <div v-else class="home-nearest-visual-fallback">
+                  <span class="material-symbols-rounded">travel_explore</span>
+                  <strong>{{ nearestTrip.displayDestination || '여행' }}</strong>
                 </div>
-                <span v-if="nearestTrip.displayDestination" class="home-nearest-destination">
-                  <span class="material-symbols-rounded" style="font-size:14px;">place</span>
-                  {{ nearestTrip.displayDestination }}
+                <span class="home-nearest-status">
+                  <span class="material-symbols-rounded">flight_takeoff</span>
+                  다가오는 여행
                 </span>
               </div>
-              <span class="home-nearest-link">
-                여행 계획 보기 <span class="material-symbols-rounded" style="font-size:18px;">arrow_forward</span>
-              </span>
+
+              <div class="home-nearest-info">
+                <div class="home-nearest-tools" aria-label="여행 카드 도구">
+                  <button type="button" class="home-nearest-tool-btn" aria-label="여행 공유" @click.stop.prevent="createAndCopyInviteLink">
+                    <span class="material-symbols-rounded">ios_share</span>
+                  </button>
+                  <button type="button" class="home-nearest-tool-btn" aria-label="더보기" @click.stop.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })">
+                    <span class="material-symbols-rounded">more_horiz</span>
+                  </button>
+                </div>
+
+                <div class="home-nearest-copy">
+                  <span class="home-nearest-dday-text">{{ nearestTripDday ?? '날짜 미정' }}</span>
+                  <p class="home-nearest-waiting">{{ userName }}님을 기다리는 일정</p>
+                  <h3 class="home-nearest-trip-title">{{ nearestTrip.title }}</h3>
+                </div>
+
+                <div class="home-nearest-meta-row">
+                  <span class="home-nearest-info-block">
+                    <span class="material-symbols-rounded">calendar_month</span>
+                    <span>{{ nearestTripDateLabel }}</span>
+                  </span>
+                  <span class="home-nearest-info-block">
+                    <span class="material-symbols-rounded">place</span>
+                    <span>{{ nearestTrip.displayDestination || '목적지 미정' }}</span>
+                  </span>
+                </div>
+
+                <div class="home-nearest-plain-foot">
+                  <div class="home-nearest-members">
+                    <span class="home-nearest-member-icon">
+                      <span class="material-symbols-rounded">group</span>
+                    </span>
+                    <div class="avatars">
+                      <span
+                        v-for="(thumb, idx) in nearestTrip.memberThumbnails.slice(0, 3)"
+                        :key="idx"
+                        class="avatar"
+                      >
+                        <img v-if="thumb" :src="thumb" alt="member avatar" />
+                        <span v-else>{{ '?' }}</span>
+                      </span>
+                      <span v-if="nearestTrip.memberThumbnails.length === 0" class="avatar">
+                        <span>{{ userName.charAt(0) }}</span>
+                      </span>
+                    </div>
+                  </div>
+                  <span class="home-nearest-link">
+                    여행 계획 보기 <span class="material-symbols-rounded">arrow_forward</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </a>
         </div>
@@ -433,7 +494,15 @@ async function fetchHomeData() {
           <a class="btn primary home-section-state-cta" href="#" @click.prevent="router.push('/community/story-write')">첫 여행기 작성하기</a>
         </div>
         <div v-else class="home-community-grid">
-          <div v-for="story in featuredStories" :key="story.id" class="home-community-card" @click="router.push({ path: '/community', query: { story: story.id } })">
+          <div
+            v-for="story in featuredStories"
+            :key="story.id"
+            class="home-community-card"
+            role="button"
+            tabindex="0"
+            @click="openFeaturedStory(story)"
+            @keydown.enter.prevent="openFeaturedStory(story)"
+          >
             <div class="home-community-card-img">
               <img v-if="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl" :src="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl ?? ''" :alt="story.title" />
               <div v-else class="home-community-placeholder">
@@ -498,6 +567,13 @@ async function fetchHomeData() {
       </section>
       </div>
     </main>
+    <StoryDetailOverlay
+      v-if="selectedStoryId"
+      :stories="featuredStoryViews"
+      :initial-story-id="selectedStoryId"
+      @close="selectedStoryId = null"
+      @changed="fetchHomeData"
+    />
   </AppShell>
 </template>
 
@@ -562,7 +638,7 @@ async function fetchHomeData() {
   letter-spacing: -0.03em;
   line-height: 1.3;
   color: var(--ink);
-  margin: 0 0 12px;
+  margin: 8px 0;
 }
 .home-search-hero-sub {
   font-size: 16px;
@@ -811,7 +887,8 @@ async function fetchHomeData() {
   margin-bottom: 56px;
 }
 .home-action-card {
-  display: flex; align-items: flex-start; gap: 14px;
+  display: flex; align-items: center; gap: 14px;
+  min-height: 94px;
   padding: 22px 20px; border-radius: 20px;
   background: #fff; box-shadow: var(--soft-shadow);
   cursor: pointer;
@@ -829,6 +906,12 @@ async function fetchHomeData() {
 .home-action-icon.icon-blue   { background: linear-gradient(135deg, var(--blue), var(--cyan)); }
 .home-action-icon.icon-rose   { background: linear-gradient(135deg, var(--rose), #ff8fab); }
 .home-action-icon.icon-cyan   { background: linear-gradient(135deg, var(--cyan), #34d8d0); }
+.home-action-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
 .home-action-text h3 { font-size: 14px; font-weight: 800; margin: 0 0 4px; }
 .home-action-text p  { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.4; }
 
@@ -903,38 +986,201 @@ async function fetchHomeData() {
 }
 .home-nearest-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
 
-/* Plain (image-less) variant: gradient bg + big D-day + waiting copy */
 .home-nearest-card--plain {
-  background: linear-gradient(135deg, var(--violet) 0%, var(--blue) 100%);
-  color: #fff;
-  justify-content: center;
-  padding: 36px 32px;
+  border: 1px solid rgba(214, 224, 241, 0.9);
+  background: linear-gradient(135deg, #ffffff, #f7fbff);
+  color: var(--ink);
+  justify-content: stretch;
+  padding: 0;
+  box-shadow: 0 22px 50px rgba(27, 45, 78, 0.1);
 }
 .home-nearest-plain {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(180px, 34%) minmax(0, 1fr);
+  gap: 0;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 320px;
+  padding: 0 14px 14px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at 96% 10%, rgba(0, 102, 255, 0.1), transparent 28%),
+    linear-gradient(135deg, rgba(241, 247, 255, 0.82), rgba(255, 255, 255, 0.96));
 }
-.home-nearest-dday-lg {
+.home-nearest-visual {
+  position: relative;
+  min-height: 292px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #dbeafe, #eff6ff);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+.home-nearest-visual img,
+.home-nearest-visual-fallback {
+  width: 100%;
+  height: 100%;
+  min-height: 292px;
+}
+.home-nearest-visual img {
+  display: block;
+  object-fit: cover;
+}
+.home-nearest-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 15, 31, 0.08), rgba(8, 15, 31, 0.74)),
+    linear-gradient(135deg, rgba(0, 102, 255, 0.18), transparent 55%);
+}
+.home-nearest-visual-fallback {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: #1d4ed8;
+  text-align: center;
+  background:
+    linear-gradient(135deg, rgba(219, 234, 254, 0.92), rgba(224, 242, 254, 0.86)),
+    #eff6ff;
+}
+.home-nearest-visual-fallback .material-symbols-rounded {
   font-size: 44px;
+}
+.home-nearest-visual-fallback strong {
+  max-width: 80%;
+  font-size: 15px;
   font-weight: 900;
-  letter-spacing: -0.03em;
+  line-height: 1.35;
+}
+.home-nearest-status {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  color: #fff;
+  backdrop-filter: blur(12px);
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+}
+.home-nearest-status .material-symbols-rounded {
+  font-size: 16px;
+  color: #fff;
+}
+.home-nearest-dday-text {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 8px;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
   line-height: 1;
-  margin: 0 0 10px;
+}
+.home-nearest-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 0 10px 8px 24px;
+}
+.home-nearest-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.home-nearest-tool-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(214, 224, 241, 0.92);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.82);
+  color: #64748b;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+.home-nearest-tool-btn:hover {
+  color: var(--blue);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 102, 255, 0.12);
+}
+.home-nearest-tool-btn .material-symbols-rounded {
+  font-size: 19px;
+}
+.home-nearest-copy {
+  min-width: 0;
+  margin-bottom: 20px;
 }
 .home-nearest-waiting {
-  margin: 0 0 4px;
-  font-size: 14px;
-  font-weight: 700;
-  opacity: 0.92;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #667085;
 }
 .home-nearest-trip-title {
-  font-size: 24px;
-  font-weight: 800;
-  margin: 0 0 20px;
-  line-height: 1.35;
+  font-size: clamp(28px, 3.2vw, 38px);
+  font-weight: 950;
+  margin: 0;
+  line-height: 1.14;
+  letter-spacing: 0;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.home-nearest-meta-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.home-nearest-info-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(222, 231, 244, 0.95);
+  color: #334155;
+  font-size: 13px;
+  font-weight: 850;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.045);
+}
+.home-nearest-info-block > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-nearest-info-block .material-symbols-rounded {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: rgba(0, 102, 255, 0.09);
+  color: var(--blue);
+  font-size: 18px;
 }
 .home-nearest-plain-foot {
   display: flex;
@@ -943,7 +1189,9 @@ async function fetchHomeData() {
   gap: 12px;
   width: 100%;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
 }
 .home-nearest-bg {
   position: absolute; inset: 0;
@@ -1016,26 +1264,62 @@ async function fetchHomeData() {
   margin: 0 0 8px;
 }
 .home-nearest-members {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 9px;
+  margin-bottom: 0;
 }
-.home-nearest-members .avatars { display: flex; }
+.home-nearest-member-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 102, 255, 0.09);
+  color: var(--blue);
+}
+.home-nearest-member-icon .material-symbols-rounded {
+  font-size: 18px;
+}
+.home-nearest-members .avatars { display: flex; margin-left: 2px; }
 .home-nearest-members .avatar {
   width: 30px; height: 30px; font-size: 11px;
-  margin-left: -8px; border: 2px solid rgba(255,255,255,0.6);
-  border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 800;
+  margin-left: -9px; border: 2px solid #fff;
+  border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--violet); font-weight: 800;
+  background: #eef4ff;
+  box-shadow: 0 7px 14px rgba(15, 23, 42, 0.1);
+  overflow: hidden;
 }
 .home-nearest-members .avatar:first-child { margin-left: 0; }
+.home-nearest-members .avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .home-nearest-members .member-count {
-  font-size: 12px; opacity: 0.8;
+  font-size: 12px;
+  color: #475569;
+  font-weight: 850;
 }
 .home-nearest-link {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 14px; font-weight: 700;
-  color: #fff; text-decoration: none;
-  padding: 8px 0;
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #00a6ff);
+  border: 0;
+  text-decoration: none;
+  box-shadow: 0 16px 30px rgba(0, 102, 255, 0.22);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.home-nearest-link:hover { text-decoration: underline; }
+.home-nearest-link .material-symbols-rounded {
+  font-size: 18px;
+}
+.home-nearest-card--plain:hover .home-nearest-link {
+  transform: translateX(2px);
+  box-shadow: 0 16px 28px rgba(0, 102, 255, 0.24);
+}
 
 /* === Community Reviews === */
 .home-community-grid {
@@ -1050,6 +1334,8 @@ async function fetchHomeData() {
   box-shadow: var(--soft-shadow);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
 }
 .home-community-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
 .home-community-card-img {
@@ -1090,7 +1376,12 @@ async function fetchHomeData() {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
-.home-community-card-body { padding: 20px; }
+.home-community-card-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: 20px;
+}
 .home-community-card-body .cmn-tag {
   display: inline-block; font-size: 11px; font-weight: 800;
   color: var(--violet); background: rgba(0,102,255,0.08);
@@ -1104,6 +1395,9 @@ async function fetchHomeData() {
 }
 .home-community-card-meta {
   display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 14px;
 }
 .home-community-author {
   display: flex; align-items: center; gap: 8px;
@@ -1247,6 +1541,16 @@ async function fetchHomeData() {
 @media (max-width: 768px) {
   .home-hero-content { grid-template-columns: 1fr 1fr; height: auto; }
   .home-community-grid { grid-template-columns: 1fr; }
+  .home-nearest-plain { grid-template-columns: 1fr; padding: 0 12px 12px; }
+  .home-nearest-visual,
+  .home-nearest-visual img,
+  .home-nearest-visual-fallback { min-height: 220px; }
+  .home-nearest-info { padding: 22px 8px 8px; }
+  .home-nearest-tools { margin-bottom: 16px; }
+  .home-nearest-meta-row { grid-template-columns: 1fr; }
+  .home-nearest-trip-title { font-size: 22px; }
+  .home-nearest-plain-foot { align-items: flex-start; flex-direction: column; }
+  .home-nearest-link { width: 100%; justify-content: center; }
   .home-invite-cta { flex-direction: column; text-align: center; padding: 28px 24px; }
   .home-invite-cta-left { flex-direction: column; }
   .home-invite-benefits { justify-content: center; }

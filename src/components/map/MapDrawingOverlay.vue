@@ -47,7 +47,7 @@ let activePreviewId: string | null = null
 let activePreviewSequence = 0
 let previewIdSequence = 0
 
-const editable = computed(() => props.enabled && (props.tool === 'pen' || props.tool === 'eraser'))
+const editable = computed(() => props.enabled && (props.tool === 'route-pen' || props.tool === 'pen' || props.tool === 'eraser'))
 const currentPointString = computed(() => currentPoints.value.map((point) => `${point.x},${point.y}`).join(' '))
 const projectedDrawings = computed(() => {
   void props.projectionRevision
@@ -61,7 +61,7 @@ const projectedDrawings = computed(() => {
   }))
 })
 
-function localPoint(event: PointerEvent): ScreenPoint | null {
+function localPoint(event: Pick<PointerEvent, 'clientX' | 'clientY'>): ScreenPoint | null {
   if (!surface.value) return null
   const bounds = surface.value.getBoundingClientRect()
   return { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
@@ -91,8 +91,22 @@ function emitPreview(phase: DrawingPreviewPhase, points = currentPoints.value) {
   })
 }
 
+function appendPoint(point: ScreenPoint) {
+  const previous = currentPoints.value.at(-1)
+  if (!previous || pointDistance(previous, point) >= 2) {
+    currentPoints.value.push(point)
+    return true
+  }
+  return false
+}
+
+function pointerSamples(event: PointerEvent): Array<Pick<PointerEvent, 'clientX' | 'clientY'>> {
+  const samples = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : []
+  return samples.length > 0 ? samples : [event]
+}
+
 function beginStroke(event: PointerEvent) {
-  if (!props.enabled || props.tool !== 'pen' || event.button !== 0) return
+  if (!props.enabled || (props.tool !== 'route-pen' && props.tool !== 'pen') || event.button !== 0) return
   const point = localPoint(event)
   if (!point) return
   event.preventDefault()
@@ -105,11 +119,12 @@ function beginStroke(event: PointerEvent) {
 
 function extendStroke(event: PointerEvent) {
   if (activePointerId !== event.pointerId || currentPoints.value.length === 0) return
-  const point = localPoint(event)
-  const previous = currentPoints.value.at(-1)
-  if (!point || !previous || pointDistance(previous, point) < 2) return
-  currentPoints.value.push(point)
-  emitPreview('UPDATE')
+  let changed = false
+  for (const sample of pointerSamples(event)) {
+    const point = localPoint(sample)
+    if (point) changed = appendPoint(point) || changed
+  }
+  if (changed) emitPreview('UPDATE')
 }
 
 function releasePointerCapture(pointerId: number) {
@@ -136,6 +151,21 @@ function finishStroke(event: PointerEvent) {
   emit('create', { coordinates, color: props.color, width: props.width })
 }
 
+function finishCapturedStroke(pointerId: number) {
+  const points = [...currentPoints.value]
+  emitPreview('END', points)
+  activePointerId = null
+  activePreviewId = null
+  currentPoints.value = []
+
+  const coordinates = points
+    .map(props.unproject)
+    .filter((coordinate): coordinate is LngLat => coordinate !== null)
+  if (coordinates.length < 2) return
+  emit('create', { coordinates, color: props.color, width: props.width })
+  releasePointerCapture(pointerId)
+}
+
 function cancelStroke(event: PointerEvent) {
   if (activePointerId !== event.pointerId) return
   emitPreview('CANCEL')
@@ -147,10 +177,7 @@ function cancelStroke(event: PointerEvent) {
 
 function handleLostPointerCapture(event: PointerEvent) {
   if (activePointerId !== event.pointerId) return
-  emitPreview('CANCEL')
-  activePointerId = null
-  activePreviewId = null
-  currentPoints.value = []
+  finishCapturedStroke(event.pointerId)
 }
 
 function eraseDrawing(event: PointerEvent, drawingId: string) {
@@ -170,6 +197,7 @@ function eraseDrawing(event: PointerEvent, drawingId: string) {
     aria-label="지도 그림 레이어"
     @pointerdown="beginStroke"
     @pointermove="extendStroke"
+    @pointerrawupdate="extendStroke"
     @pointerup="finishStroke"
     @pointercancel="cancelStroke"
     @lostpointercapture="handleLostPointerCapture"

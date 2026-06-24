@@ -9,6 +9,7 @@ import { communityPostToStory } from '@/utils/community'
 import type { UserSummary } from '@/types/auth'
 import type { Story } from '@/types/community'
 import { useModal } from '@/composables/useModal'
+import { useAuthStore } from '@/stores/auth.store'
 import LikedPlacesModal from '@/components/mypage/LikedPlacesModal.vue'
 import MyStoriesModal from '@/components/mypage/MyStoriesModal.vue'
 import FollowListModal from '@/components/common/FollowListModal.vue'
@@ -18,12 +19,25 @@ import { useToast } from '@/composables/useToast'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const auth = useAuthStore()
 
 const userId = computed(() => route.params.userId as string)
 const user = ref<any>(null)
 const userLoading = ref(true)
 
 const userStories = ref<Story[]>([])
+
+const isPrivateProfile = computed(() => user.value?.profileVisibility === 'PRIVATE')
+const isOwnProfile = computed(() => auth.user?.id === userId.value)
+const canViewProfileDetails = computed(() =>
+  !isPrivateProfile.value || isOwnProfile.value || user.value?.followedByMe === true || user.value?.followStatus === 'ACTIVE',
+)
+const followRequested = computed(() => user.value?.followStatus === 'PENDING')
+const followButtonLabel = computed(() => {
+  if (isFollowing.value) return '팔로잉'
+  if (followRequested.value) return '요청됨'
+  return isPrivateProfile.value ? '팔로우 요청' : '팔로우'
+})
 
 // 이 사용자가 좋아요한 장소 (API 연동 전까지 빈 배열)
 const likedPlaces = ref<Place[]>([])
@@ -59,14 +73,23 @@ const isFollowing = ref(false)
 async function toggleFollow() {
   if (!user.value) return
   try {
-    if (isFollowing.value) {
+    if (isFollowing.value || followRequested.value) {
       await userApi.unfollow(userId.value)
       isFollowing.value = false
-      if (user.value.followerCount !== undefined) user.value.followerCount--
+      user.value.followedByMe = false
+      user.value.followStatus = null
+      if (typeof user.value.followerCount === 'number') user.value.followerCount--
     } else {
       await userApi.follow(userId.value)
-      isFollowing.value = true
-      if (user.value.followerCount !== undefined) user.value.followerCount++
+      if (isPrivateProfile.value) {
+        user.value.followStatus = 'PENDING'
+        user.value.followedByMe = false
+      } else {
+        isFollowing.value = true
+        user.value.followStatus = 'ACTIVE'
+        user.value.followedByMe = true
+        if (typeof user.value.followerCount === 'number') user.value.followerCount++
+      }
     }
   } catch (err) {
     console.error('Failed to toggle follow status:', err)
@@ -114,6 +137,15 @@ async function loadUserProfile() {
     user.value = fetched
     isFollowing.value = fetched.followedByMe || fetched.followStatus === 'ACTIVE'
 
+    if (!canViewProfileDetails.value) {
+      likedPlaces.value = []
+      userStories.value = []
+      userFollowers.value = []
+      userFollowing.value = []
+      followingIds.value = new Set()
+      return
+    }
+
     const postPage = await communityApi.getPosts({ page: 0, size: 100 })
     userStories.value = postPage.items
       .filter((post) => post.publishedBy?.id === userId.value)
@@ -146,6 +178,7 @@ onMounted(loadUserProfile)
 watch(userId, loadUserProfile)
 
 function onStatClick(label: string) {
+  if (!canViewProfileDetails.value) return
   if (label === '팔로워') followersModal.open()
   else if (label === '팔로잉') followingModal.open()
   else if (label === '좋아요') {
@@ -182,76 +215,96 @@ function openCommunityStory(storyId: string) {
               <p class="page-hero__eyebrow" style="margin-bottom: 0;"><span class="material-symbols-rounded" aria-hidden="true">person</span> Profile</p>
             </div>
             <h1 id="user-profile-title" class="page-hero__title"><span class="page-hero__gradient">{{ user.displayName }}님의 여행 프로필</span>을 살펴보세요</h1>
-            <p class="page-hero__lead">공개된 여행기와 관심 장소를 통해 이 여행자의 취향과 여정을 확인할 수 있습니다.</p>
+            <p class="page-hero__lead">
+              {{ canViewProfileDetails ? '공개된 여행기와 관심 장소를 통해 이 여행자의 취향과 여정을 확인할 수 있습니다.' : '비공개 프로필입니다. 팔로우가 승인되면 상세 콘텐츠를 볼 수 있습니다.' }}
+            </p>
           </div>
         </div>
 
         <!-- 프로필 히어로 영역 -->
         <div class="mypage-hero" data-mypage-hero>
           <div class="mypage-hero__content">
-            <div class="mypage-profile-card">
-              <!-- Avatar + Info -->
-              <div class="profile-card-left-group">
-                <div class="mypage-hero__avatar-container">
-                  <span class="mypage-hero__avatar-ring">
-                    <span
-                      class="mypage-hero__avatar"
-                      :style="{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'var(--violet)',
-                        color: '#fff',
-                        fontWeight: 800,
-                        fontSize: '28px',
-                        overflow: 'hidden'
-                      }"
-                    >
-                      <img v-if="user.profileImageUrl" :src="user.profileImageUrl" alt="프로필 이미지" style="width: 100%; height: 100%; object-fit: cover;">
-                      <span v-else>{{ user.displayName.charAt(0) }}</span>
-                    </span>
+            <div class="mypage-profile-card profile-header-card">
+              <div class="profile-avatar-col">
+                <div class="profile-avatar-wrap">
+                  <span
+                    class="mypage-hero__avatar profile-avatar-img"
+                    :style="{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'var(--violet)',
+                      color: '#fff',
+                      fontWeight: 800,
+                      fontSize: '40px',
+                      overflow: 'hidden'
+                    }"
+                  >
+                    <img v-if="user.profileImageUrl" :src="user.profileImageUrl" alt="프로필 이미지" style="width: 100%; height: 100%; object-fit: cover;">
+                    <span v-else>{{ user.displayName.charAt(0) }}</span>
                   </span>
                 </div>
-                <div class="profile-card-details">
-                  <div class="mypage-hero__name-col">
-                    <div class="mypage-hero__name-row">
-                      <h2 class="mypage-hero__name">{{ user.displayName }}</h2>
-                      <span class="material-symbols-rounded verified-check-badge">verified</span>
-                    </div>
-                    <span v-if="user.email" class="mypage-hero__email">{{ user.email }}</span>
+              </div>
+
+              <div class="profile-info-col">
+                <h2 class="profile-display-name">{{ user.displayName }}</h2>
+                <span v-if="user.email" class="profile-handle">{{ user.email }}</span>
+                <p v-if="user.bio" class="profile-bio">{{ user.bio }}</p>
+
+                <div class="profile-stats-row">
+                  <div
+                    v-for="(stat, idx) in profileStats"
+                    :key="stat.label"
+                    class="profile-stat-item"
+                    :class="{ 'has-divider': idx > 0 }"
+                    style="cursor: pointer;"
+                    @click="onStatClick(stat.label)"
+                  >
+                    <span class="profile-stat-value">{{ stat.value }}</span>
+                    <span class="profile-stat-label">{{ stat.label }}</span>
                   </div>
-                  <p v-if="user.bio" class="mypage-hero__intro">{{ user.bio }}</p>
                 </div>
-              </div>
 
-              <!-- Stats -->
-              <div class="mypage-profile-minimal-stats">
-                <div v-for="stat in profileStats" :key="stat.label" class="minimal-stat-item"
-                  style="cursor: pointer;"
-                  @click="onStatClick(stat.label)">
-                  <span class="material-symbols-rounded minimal-stat-icon">{{ stat.icon }}</span>
-                  <span class="minimal-stat-value">{{ stat.value }}</span>
-                  <span class="minimal-stat-label">{{ stat.label }}</span>
+                <div class="profile-actions-row">
+                  <button
+                    type="button"
+                    class="profile-pill-btn primary"
+                    @click="toggleFollow"
+                  >
+                    <span class="material-symbols-rounded">{{ isFollowing ? 'person_remove' : followRequested ? 'hourglass_top' : 'person_add' }}</span>
+                    {{ followButtonLabel }}
+                  </button>
+                  <button type="button" class="profile-pill-btn secondary" @click="shareProfile">
+                    <span class="material-symbols-rounded">share</span>공유하기
+                  </button>
                 </div>
-              </div>
-
-              <!-- Actions: Follow + Share -->
-              <div class="mypage-profile-actions">
-                <button type="button" class="mypage-profile-btn"
-                  :class="{ edit: !isFollowing, share: isFollowing }"
-                  @click="toggleFollow">
-                  <span class="material-symbols-rounded">{{ isFollowing ? 'person_remove' : 'person_add' }}</span>
-                  {{ isFollowing ? '팔로잉' : '팔로우' }}
-                </button>
-                <button type="button" class="mypage-profile-btn share" @click="shareProfile">
-                  <span class="material-symbols-rounded">share</span>공유하기
-                </button>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="mypage-glass-container">
+        <div v-if="!canViewProfileDetails" class="mypage-glass-container">
+          <div class="mypage-body-container">
+            <section class="mypage-section private-profile-lock" aria-label="비공개 프로필 안내">
+              <span class="material-symbols-rounded private-profile-lock__icon">lock</span>
+              <h2>비공개 프로필입니다</h2>
+              <p>
+                {{ followRequested ? '팔로우 요청이 승인되면 여행기와 관심 장소를 볼 수 있습니다.' : '이 사용자의 상세 여행 기록은 승인된 팔로워에게만 공개됩니다.' }}
+              </p>
+              <button
+                v-if="!followRequested && !isFollowing"
+                type="button"
+                class="profile-pill-btn primary"
+                @click="toggleFollow"
+              >
+                <span class="material-symbols-rounded">person_add</span>
+                팔로우 요청
+              </button>
+            </section>
+          </div>
+        </div>
+
+        <div v-else class="mypage-glass-container">
           <div class="mypage-body-container">
 
               <!-- 1. 좋아요한 장소 섹션 -->
@@ -308,8 +361,8 @@ function openCommunityStory(storyId: string) {
                 </div>
               </section>
 
-              <!-- 2. 여행기 섹션 -->
-              <section class="mypage-section" aria-labelledby="section-my-stories-title">
+              <section class="mypage-section profile-bottom-grid">
+                <article class="profile-bottom-col">
                 <div class="mypage-section-header">
                   <h2 id="section-my-stories-title" class="mypage-section-title">
                     <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">auto_stories</span>{{ user.displayName }}님의 여행기
@@ -346,37 +399,21 @@ function openCommunityStory(storyId: string) {
                     </div>
                   </div>
                 </div>
-              </section>
+                </article>
 
-              <!-- 3. 하단 분석 통계 위젯 -->
-              <section class="mypage-insights-section" aria-labelledby="section-insights-title">
-                <div class="mypage-insights-grid">
-                  <!-- 좌측: 여행 지도 -->
-                  <article class="insight-card map-insight-card">
-                    <div class="insight-card-header">
-                      <h3 id="section-insights-title">여행 지도</h3>
-                      <p class="insight-subtitle">방문한 지역이 없습니다</p>
-                    </div>
-                    <div class="mypage-empty-state mypage-empty-state--inline">
-                      <span class="material-symbols-rounded mypage-empty-icon">public</span>
-                      <p class="mypage-empty-title">아직 방문한 지역이 없어요</p>
-                      <p class="mypage-empty-desc">여행을 기록하면 지도에 표시됩니다.</p>
-                    </div>
-                  </article>
-
-                  <!-- 우측: 여행 취향 -->
-                  <article class="insight-card preference-insight-card">
-                    <div class="insight-card-header">
-                      <h3>여행 취향</h3>
-                      <p class="insight-subtitle">데이터 기반 여행 스타일</p>
-                    </div>
-                    <div class="mypage-empty-state mypage-empty-state--inline">
-                      <span class="material-symbols-rounded mypage-empty-icon">explore</span>
-                      <p class="mypage-empty-title">아직 분석된 취향이 없어요</p>
-                      <p class="mypage-empty-desc">장소를 탐색하고 스와이프하면 취향이 분석됩니다.</p>
-                    </div>
-                  </article>
-                </div>
+                <article class="profile-bottom-col preference-panel">
+                  <div class="mypage-section-header">
+                    <h2 class="mypage-section-title">
+                      <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">explore</span>여행 취향
+                    </h2>
+                  </div>
+                  <p class="preference-intro">데이터 기반 여행 스타일</p>
+                  <div class="pref-empty" role="status">
+                    <span class="material-symbols-rounded pref-empty-icon">explore</span>
+                    <p class="pref-empty-title">아직 분석된 취향이 없어요</p>
+                    <p class="pref-empty-desc">공개된 취향 데이터가 준비되면 이곳에 표시됩니다.</p>
+                  </div>
+                </article>
               </section>
 
           </div>
@@ -403,6 +440,325 @@ function openCommunityStory(storyId: string) {
 </template>
 
 <style scoped>
+.profile-header-card {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 40px !important;
+  padding: 36px 40px !important;
+}
+
+.profile-avatar-col {
+  flex: 0 0 28%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-avatar-wrap {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  padding: 4px;
+  background: linear-gradient(135deg, rgba(0, 102, 255, 0.18), rgba(0, 209, 255, 0.18));
+  box-sizing: border-box;
+}
+
+.profile-avatar-wrap .profile-avatar-img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50% !important;
+  border: 4px solid #fff;
+  box-sizing: border-box;
+  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.12);
+}
+
+.profile-info-col {
+  flex: 1 1 72%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profile-display-name {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: var(--ink);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.profile-handle {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.profile-bio {
+  margin: 4px 0 8px;
+  font-size: 0.95rem;
+  color: var(--ink);
+  opacity: 0.78;
+  line-height: 1.6;
+  font-weight: 500;
+  max-width: 100%;
+}
+
+.profile-stats-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 8px 0 16px;
+}
+
+.profile-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 22px;
+  text-align: center;
+  min-width: 78px;
+}
+
+.profile-stat-item:first-child {
+  padding-left: 0;
+}
+
+.profile-stat-item.has-divider {
+  border-left: 1px solid var(--line);
+}
+
+.profile-stat-value {
+  font-size: 1.5rem;
+  font-weight: 950;
+  color: var(--ink);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.profile-stat-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.profile-actions-row {
+  display: flex;
+  gap: 10px;
+}
+
+.profile-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+  border: none;
+}
+
+.profile-pill-btn .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.profile-pill-btn.primary {
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(26, 32, 51, 0.18);
+}
+
+.profile-pill-btn.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(26, 32, 51, 0.26);
+}
+
+.profile-pill-btn.secondary {
+  background: #fff;
+  color: var(--ink);
+  border: 1.5px solid var(--line);
+}
+
+.profile-pill-btn.secondary:hover {
+  background: var(--surface-2);
+  border-color: var(--violet);
+  color: var(--violet);
+}
+
+.profile-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.profile-bottom-col {
+  background: #fff;
+  border-radius: 22px;
+  padding: 28px;
+  box-shadow: var(--soft-shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-bottom-col .mypage-section-header {
+  margin-bottom: 20px;
+}
+
+.preference-intro {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  font-weight: 600;
+}
+
+.pref-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 32px 16px;
+}
+
+.pref-empty-icon {
+  font-size: 44px;
+  color: var(--violet);
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+
+.pref-empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.pref-empty-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.private-profile-lock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  text-align: center;
+  padding: 56px 28px;
+}
+
+.private-profile-lock__icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  background: rgba(123, 104, 238, 0.1);
+  color: var(--violet);
+  font-size: 34px;
+}
+
+.private-profile-lock h2 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.private-profile-lock p {
+  max-width: 420px;
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.7;
+}
+
+@media (max-width: 1024px) {
+  .profile-header-card {
+    gap: 28px !important;
+    padding: 28px !important;
+  }
+
+  .profile-avatar-col {
+    flex-basis: 32%;
+  }
+}
+
+@media (max-width: 768px) {
+  .profile-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-header-card {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center;
+    gap: 20px !important;
+    padding: 28px 20px !important;
+  }
+
+  .profile-avatar-col {
+    flex-basis: auto;
+  }
+
+  .profile-info-col {
+    align-items: center;
+  }
+
+  .profile-stats-row {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .profile-avatar-wrap {
+    width: 128px;
+    height: 128px;
+  }
+
+  .profile-stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    row-gap: 16px;
+  }
+
+  .profile-stat-item {
+    padding: 0 12px;
+  }
+
+  .profile-stat-item.has-divider {
+    border-left: none;
+  }
+
+  .profile-actions-row {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .profile-pill-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* 빈 상태 박스 — 데이터 없는 섹션 공통 사용 */
 .mypage-empty-state {
   display: flex;

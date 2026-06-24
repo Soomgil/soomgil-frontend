@@ -49,7 +49,7 @@ describe('PlaceDiscoveryPanel', () => {
     unsavePlace.mockResolvedValue(undefined)
   })
 
-  it('loads basic recommendations, searches, emits add, and toggles save', async () => {
+  it('loads basic recommendations, searches, and emits selected detail', async () => {
     const wrapper = mount(PlaceDiscoveryPanel, {
       props: { tripId: 'trip-1', bbox: '129,35,130,36' },
     })
@@ -77,14 +77,10 @@ describe('PlaceDiscoveryPanel', () => {
     await flushPromises()
     expect(search).toHaveBeenCalledWith({ q: '해운대', bbox: '129,35,130,36', page: 0, size: 20 })
 
-    await wrapper.get('button[aria-label="해운대해수욕장 일정에 추가"]').trigger('click')
-    expect(wrapper.emitted('add')?.[0]).toEqual([place])
-
-    await wrapper.get('button[aria-label="해운대해수욕장 저장"]').trigger('click')
-    await flushPromises()
-    expect(react).toHaveBeenCalledWith('KTO', '126508', 'SUPER_LIKE')
-    expect(savePlace).toHaveBeenCalledWith('KTO', '126508')
-    expect(wrapper.find('button[aria-label="해운대해수욕장 저장 취소"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="해운대해수욕장 일정에 추가"]').exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="해운대해수욕장 저장"]').exists()).toBe(false)
+    expect(react).not.toHaveBeenCalled()
+    expect(savePlace).not.toHaveBeenCalled()
   })
 
   it('reloads recommendations when the map bbox changes', async () => {

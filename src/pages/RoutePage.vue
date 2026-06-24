@@ -49,6 +49,7 @@ interface ItineraryMapNearbyPlace {
   category: string | null
   lat: number
   lng: number
+  image?: string | null
 }
 interface MapboxDirectionsResponse {
   code?: string
@@ -182,17 +183,43 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
+const routeSettingsTrip = computed(() => {
+  const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
+  if (!detail) return null
+
+  return {
+    ...detail,
+    startDate: trip.value.startDate || detail.startDate || null,
+    endDate: trip.value.endDate || trip.value.startDate || detail.endDate || null,
+    myRole: detail.myRole || trip.value.myRole,
+  }
+})
 const placeAccessibilityByKey = ref<Record<string, PlaceAccessibility>>({})
 const routePlaceByKey = ref<Record<string, Place>>({})
 const routeNearbyPlaces = ref<Place[]>([])
 const routeNearbyLoading = ref(false)
 const routeNearbyError = ref('')
+const savedPlaceKeys = ref(new Set<string>())
+const savingPlaceKeys = ref(new Set<string>())
 let accessibilityRequestRevision = 0
 let routePlaceRequestRevision = 0
 let routeNearbyRequestRevision = 0
 
 function placeAccessibilityKey(provider: string, externalPlaceId: string) {
   return `${provider}:${externalPlaceId}`
+}
+
+function placeReferenceKey(place: Pick<Place, 'provider' | 'externalPlaceId'>) {
+  return `${place.provider}:${place.externalPlaceId}`
+}
+
+async function loadSavedPlaces() {
+  try {
+    const response = await swipeApi.listSaved(0, 100)
+    savedPlaceKeys.value = new Set(response.items.map((item) => placeReferenceKey(item.place)))
+  } catch {
+    // 저장 목록 실패가 일정 화면 진입을 막지 않도록 상세 액션만 비활성 상태로 둔다.
+  }
 }
 
 async function loadRouteAccessibility(plans: DayPlan[]) {
@@ -303,6 +330,7 @@ const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
     }]
   })
 })
+const selectedRecommendationMapPlace = ref<ItineraryMapNearbyPlace | null>(null)
 const discoveryBbox = computed(() => {
   if (mapStops.value.length > 0) {
     const lngs = mapStops.value.map((stop) => stop.lng)
@@ -383,6 +411,7 @@ watch(itinerary.days, (days) => {
 
 onMounted(() => {
   void loadInitialRouteData()
+  void loadSavedPlaces()
   void loadConversations()
   void loadNote()
   void loadChecklists()
@@ -524,6 +553,17 @@ function getLinkedPartner(itemId: string): string | null {
   return link.fromItemId === itemId ? link.toItemId : link.fromItemId
 }
 
+function routeGroupClass(itemId: string, previousItemId?: string, nextItemId?: string) {
+  const linkedPrevious = hasRouteLinkBetween(previousItemId, itemId)
+  const linkedNext = hasRouteLinkBetween(itemId, nextItemId)
+  return {
+    'route-grouped': linkedPrevious || linkedNext,
+    'route-group-start': linkedNext && !linkedPrevious,
+    'route-group-middle': linkedPrevious && linkedNext,
+    'route-group-end': linkedPrevious && !linkedNext,
+  }
+}
+
 function hasRouteLinkBetween(id1: string | undefined, id2: string | undefined): boolean {
   if (!id1 || !id2) return false
   return routeLinks.value.some(l =>
@@ -540,6 +580,11 @@ async function removeRouteLinkBetween(id1: string, id2: string) {
 	pushUndoState('route-links')
 	try {
 		await itinerary.deleteRoute(link.id)
+    itinerary.routes.value = itinerary.routes.value.filter((route) => route.id !== link.id)
+    if (!routeBbox(itinerary.routes.value as Array<{ geometry?: Record<string, unknown> }>)) {
+      nearbyOn.value = false
+      clearRouteNearbyPlaces()
+    }
 		showToast('경로 연결이 해제되었습니다', 'success')
 	} catch {
 		showToast('경로 연결을 해제하지 못했습니다.', 'error')
@@ -583,12 +628,25 @@ function routeBbox(routes: Array<{ geometry?: Record<string, unknown> }>) {
   ].join(',')
 }
 
+function clearRouteNearbyPlaces(message = '') {
+  routeNearbyRequestRevision += 1
+  routeNearbyPlaces.value = []
+  routeNearbyError.value = message
+  routeNearbyLoading.value = false
+}
+
+function upsertLocalRoute(route: { id: string }) {
+  itinerary.routes.value = [
+    ...itinerary.routes.value.filter((current) => current.id !== route.id),
+    route as (typeof itinerary.routes.value)[number],
+  ]
+}
+
 async function loadRouteNearbyPlaces() {
   const routes = itinerary.routes.value as Array<{ geometry?: Record<string, unknown> }>
-  const bbox = routeBbox(routes) || discoveryBbox.value
+  const bbox = routeBbox(routes)
   if (!bbox) {
-    routeNearbyPlaces.value = []
-    routeNearbyError.value = '일정에 위치가 있는 장소를 먼저 추가해 주세요.'
+    clearRouteNearbyPlaces('경로를 먼저 생성해 주세요.')
     return
   }
   const [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(Number)
@@ -686,7 +744,7 @@ async function handleRoutePenClick(item: RouteStop) {
       tidy: true,
     })
     if (newRoute) {
-      itinerary.routes.value = [...itinerary.routes.value, newRoute]
+      upsertLocalRoute(newRoute)
     }
     if (moveItemGroupAfter(origin.id, destinationChainIds)) {
       await persistItineraryOrder()
@@ -698,6 +756,174 @@ async function handleRoutePenClick(item: RouteStop) {
 		showToast('경로를 계산하지 못했습니다.', 'error')
 	}
 	pendingRouteFrom.value = null
+}
+
+const ROUTE_DRAWING_ENDPOINT_MAX_METERS = 700
+const ROUTE_DRAWING_SAMPLE_INTERVAL_METERS = 25
+const ROUTE_DRAWING_SAMPLE_MIN_POINTS = 8
+const ROUTE_DRAWING_SAMPLE_MAX_POINTS = 80
+
+function distanceMeters(left: { lng: number; lat: number }, right: { lng: number; lat: number }) {
+  const radius = 6371000
+  const toRadians = (degree: number) => degree * Math.PI / 180
+  const lat1 = toRadians(left.lat)
+  const lat2 = toRadians(right.lat)
+  const deltaLat = toRadians(right.lat - left.lat)
+  const deltaLng = toRadians(right.lng - left.lng)
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2
+  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function nearestRouteStop(coordinate: { lng: number; lat: number }) {
+  const candidates = dayPlans.value.flatMap((day) => day.items.flatMap((item) => (
+    item.lat == null || item.lng == null ? [] : [{
+      item,
+      distance: distanceMeters(coordinate, { lng: item.lng, lat: item.lat }),
+    }]
+  )))
+  return candidates.sort((left, right) => left.distance - right.distance)[0] ?? null
+}
+
+function nearestRouteStopInStrokeSection(
+  coordinates: Array<{ lng: number; lat: number }>,
+  section: 'start' | 'end',
+) {
+  const minimumSamples = coordinates.length >= 16 ? 12 : 1
+  const sampleCount = Math.min(
+    Math.ceil(coordinates.length / 2),
+    Math.max(1, Math.ceil(coordinates.length * 0.35), minimumSamples),
+  )
+  const samples = section === 'start'
+    ? coordinates.slice(0, sampleCount)
+    : coordinates.slice(-sampleCount)
+  return samples
+    .flatMap((coordinate) => {
+      const candidate = nearestRouteStop(coordinate)
+      return candidate ? [candidate] : []
+    })
+    .sort((left, right) => left.distance - right.distance)[0] ?? null
+}
+
+function interpolateCoordinate(
+  from: { lng: number; lat: number },
+  to: { lng: number; lat: number },
+  ratio: number,
+) {
+  return {
+    lng: from.lng + (to.lng - from.lng) * ratio,
+    lat: from.lat + (to.lat - from.lat) * ratio,
+  }
+}
+
+function dedupeRouteCoordinates(coordinates: Array<{ lng: number; lat: number }>) {
+  const cleaned: typeof coordinates = []
+  coordinates.forEach((coordinate) => {
+    const previous = cleaned[cleaned.length - 1]
+    if (!previous || distanceMeters(previous, coordinate) >= 1) {
+      cleaned.push(coordinate)
+    }
+  })
+  return cleaned
+}
+
+function sampleRouteCoordinates(
+  coordinates: Array<{ lng: number; lat: number }>,
+  intervalMeters = ROUTE_DRAWING_SAMPLE_INTERVAL_METERS,
+  minPoints = ROUTE_DRAWING_SAMPLE_MIN_POINTS,
+  maxPoints = ROUTE_DRAWING_SAMPLE_MAX_POINTS,
+) {
+  const cleaned = dedupeRouteCoordinates(coordinates)
+  if (cleaned.length <= 1) return cleaned
+
+  const cumulativeDistances = [0]
+  for (let index = 1; index < cleaned.length; index += 1) {
+    cumulativeDistances.push(
+      cumulativeDistances[index - 1] + distanceMeters(cleaned[index - 1], cleaned[index]),
+    )
+  }
+
+  const totalDistance = cumulativeDistances[cumulativeDistances.length - 1]
+  if (totalDistance <= 0) return [cleaned[0], cleaned[cleaned.length - 1]]
+
+  const targetPointCount = Math.min(
+    maxPoints,
+    Math.max(minPoints, Math.ceil(totalDistance / intervalMeters) + 1),
+  )
+  if (targetPointCount <= 2) return [cleaned[0], cleaned[cleaned.length - 1]]
+
+  const sampled: typeof cleaned = [cleaned[0]]
+  let segmentIndex = 1
+  for (let sampleIndex = 1; sampleIndex < targetPointCount - 1; sampleIndex += 1) {
+    const targetDistance = (totalDistance * sampleIndex) / (targetPointCount - 1)
+    while (
+      segmentIndex < cumulativeDistances.length - 1
+      && cumulativeDistances[segmentIndex] < targetDistance
+    ) {
+      segmentIndex += 1
+    }
+    const segmentStartDistance = cumulativeDistances[segmentIndex - 1]
+    const segmentEndDistance = cumulativeDistances[segmentIndex]
+    const segmentDistance = segmentEndDistance - segmentStartDistance
+    const ratio = segmentDistance <= 0
+      ? 0
+      : (targetDistance - segmentStartDistance) / segmentDistance
+    sampled.push(interpolateCoordinate(cleaned[segmentIndex - 1], cleaned[segmentIndex], ratio))
+  }
+  sampled.push(cleaned[cleaned.length - 1])
+  return sampled
+}
+
+async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
+  if (draft.coordinates.length < 2 || itinerary.mutating.value) return
+  const routeCoordinates = sampleRouteCoordinates(draft.coordinates)
+  if (routeCoordinates.length < 2) return
+  const originCandidate = nearestRouteStopInStrokeSection(routeCoordinates, 'start')
+  const destinationCandidate = nearestRouteStopInStrokeSection(routeCoordinates, 'end')
+  if (!originCandidate || !destinationCandidate) {
+    showToast('좌표가 있는 두 일정 장소 근처에서 경로를 그려주세요', 'error')
+    return
+  }
+  if (
+    originCandidate.distance > ROUTE_DRAWING_ENDPOINT_MAX_METERS
+    || destinationCandidate.distance > ROUTE_DRAWING_ENDPOINT_MAX_METERS
+  ) {
+    showToast('경로의 시작과 끝을 일정 장소 가까이에서 그려주세요', 'error')
+    return
+  }
+  const origin = originCandidate.item
+  const destination = destinationCandidate.item
+  if (origin.id === destination.id) {
+    showToast('서로 다른 두 장소를 잇도록 경로를 그려주세요')
+    return
+  }
+  if (hasRouteLinkBetween(origin.id, destination.id)) {
+    showToast('이미 연결된 경로입니다')
+    return
+  }
+
+  pushUndoState('route-links')
+  try {
+    const destinationChainIds = linkedChainIdsInCurrentOrder(destination.id)
+    const newRoute = await itinerary.mapMatchRoute({
+      originItineraryItemId: origin.id,
+      destinationItineraryItemId: destination.id,
+      mode: 'WALKING',
+      coordinates: routeCoordinates,
+      tidy: false,
+    })
+    if (newRoute) {
+      upsertLocalRoute(newRoute)
+    }
+    if (moveItemGroupAfter(origin.id, destinationChainIds)) {
+      await persistItineraryOrder()
+    }
+    nearbyOn.value = true
+    await loadRouteNearbyPlaces()
+    showToast('직접 그린 경로가 연결되었습니다', 'success')
+  } catch {
+    showToast('직접 그린 경로를 저장하지 못했습니다.', 'error')
+  }
 }
 
 function handleStopClick(item: RouteStop) {
@@ -814,6 +1040,32 @@ function movingFlatNodes(source: DragSource, flatNodes: FlatItineraryNode[], pla
   if (!sourceItem) return []
   const movingIds = new Set(linkedChainIdsInCurrentOrder(sourceItem.id, plans))
   return flatNodes.filter((node) => node.type === 'stop' && node.itemId && movingIds.has(node.itemId))
+}
+
+function normalizeFlatInsertIndex(
+  nodes: FlatItineraryNode[],
+  targetIdx: number,
+  plans: DayPlan[] = dayPlans.value,
+) {
+  const targetNode = nodes[targetIdx] ?? null
+  if (targetNode?.type !== 'stop' || !targetNode.itemId) return targetIdx
+
+  const linkedIds = new Set(linkedChainIdsInCurrentOrder(targetNode.itemId, plans))
+  if (linkedIds.size <= 1) return targetIdx
+
+  const firstLinkedIndex = nodes.findIndex((node) => (
+    node.type === 'stop' && node.itemId !== undefined && linkedIds.has(node.itemId)
+  ))
+  return firstLinkedIndex >= 0 ? firstLinkedIndex : targetIdx
+}
+
+function normalizeItemInsertIndex(items: RouteStop[], targetItemId: string | undefined) {
+  if (!targetItemId) return items.length
+  const linkedIds = new Set(linkedChainIdsInCurrentOrder(targetItemId))
+  if (linkedIds.size <= 1) return items.findIndex((item) => item.id === targetItemId)
+
+  const firstLinkedIndex = items.findIndex((item) => linkedIds.has(item.id))
+  return firstLinkedIndex >= 0 ? firstLinkedIndex : items.findIndex((item) => item.id === targetItemId)
 }
 
 function moveItemGroupAfter(anchorItemId: string, movingItemIds: string[]) {
@@ -1180,7 +1432,8 @@ function reorderAllDays(source: DragSource, targetIdx: number) {
   const remainingNodes = flatNodes.filter((node) => (
     !movingNodes.some((movingNode) => isSameFlatNode(movingNode, node))
   ))
-  const targetNode = remainingNodes[targetIdx] ?? null
+  const insertTargetIdx = normalizeFlatInsertIndex(remainingNodes, targetIdx, originalPlans)
+  const targetNode = remainingNodes[insertTargetIdx] ?? null
   if (targetNode && movingNodes.some((node) => isSameFlatNode(node, targetNode))) return false
 
   const insertAt = targetNode
@@ -1219,7 +1472,7 @@ function reorderSingleDay(source: DragSource, targetIdx: number) {
   if (targetNode?.type === 'separator') {
     insertAt = 0
   } else if (targetNode?.type === 'stop' && targetNode.itemId) {
-    const targetItemIndex = remainingItems.findIndex((item) => item.id === targetNode.itemId)
+    const targetItemIndex = normalizeItemInsertIndex(remainingItems, targetNode.itemId)
     if (targetItemIndex >= 0) insertAt = targetItemIndex
   }
 
@@ -1664,11 +1917,11 @@ async function deleteTodo(id: string) {
 const routeState = ref<'route' | 'dashed' | 'hidden'>('route')
 const cardState = ref<'full' | 'min' | 'hidden'>('full')
 const nearbyOn = ref(false)
-watch([nearbyOn, () => itinerary.routes.value, discoveryBbox], async ([isOn]) => {
+watch([nearbyOn, () => itinerary.routes.value], async ([isOn]) => {
   if (isOn) {
     await loadRouteNearbyPlaces()
   } else if (!isOn) {
-    routeNearbyPlaces.value = []
+    clearRouteNearbyPlaces()
   }
 }, { immediate: true })
 const drawingOn = ref(true)
@@ -1676,6 +1929,7 @@ const isPenPopoverOpen = ref(false)
 const penSize = ref(6)
 const penColor = ref('#1f2937')
 const activeTool = ref<MapDrawingTool>('cursor')
+const navigationGuideMode = computed(() => activeTool.value === 'route-pen')
 const localDrawings = ref<MapDrawingStroke[]>([])
 
 const penPopoverStyle = ref<{ left?: string }>({})
@@ -1704,7 +1958,29 @@ watch(activeTool, (newTool) => {
   if (newTool !== 'pen') {
     isPenPopoverOpen.value = false
   }
+  if (newTool !== 'route-pen') {
+    pendingRouteFrom.value = null
+  }
 })
+
+function selectMapTool(tool: MapDrawingTool) {
+  if (activeTool.value === tool) {
+    if (tool === 'pen') {
+      isPenPopoverOpen.value = !isPenPopoverOpen.value
+      if (isPenPopoverOpen.value) nextTick(updatePenPopoverPosition)
+    }
+    return
+  }
+
+  activeTool.value = tool
+  if (tool === 'pen' || tool === 'eraser') {
+    drawingOn.value = true
+  }
+  if (tool === 'pen') {
+    isPenPopoverOpen.value = true
+    nextTick(updatePenPopoverPosition)
+  }
+}
 const pendingDrawingIds = ref<string[]>([])
 const drawingRetryIds = ref<string[]>([])
 const simplifiedDrawingCoordinates = new Map<string, MapDrawingStroke['coordinates']>()
@@ -1800,6 +2076,14 @@ function createLocalDrawing(draft: MapDrawingDraft) {
   }
   localDrawings.value = [...localDrawings.value, drawing]
   void simplifyLocalDrawing(drawing.id)
+}
+
+function handleDrawingCreate(draft: MapDrawingDraft) {
+  if (activeTool.value === 'route-pen') {
+    void createRouteFromDrawnCurve(draft)
+    return
+  }
+  createLocalDrawing(draft)
 }
 
 async function eraseLocalDrawing(drawingId: string) {
@@ -2045,7 +2329,15 @@ interface DetailPlace {
 const selectedPlace = ref<DetailPlace | null>(null)
 const selectedPlaceIsScheduled = computed(() => {
   const place = selectedPlace.value?.place
-  return place ? scheduledPlaceKeys.value.includes(`${place.provider}:${place.externalPlaceId}`) : false
+  return place ? scheduledPlaceKeys.value.includes(placeReferenceKey(place)) : false
+})
+const selectedPlaceIsSaved = computed(() => {
+  const place = selectedPlace.value?.place
+  return place ? savedPlaceKeys.value.has(placeReferenceKey(place)) : false
+})
+const selectedPlaceIsSaving = computed(() => {
+  const place = selectedPlace.value?.place
+  return place ? savingPlaceKeys.value.has(placeReferenceKey(place)) : false
 })
 const detailbarMainImg = ref('')
 const descriptionExpanded = ref(false)
@@ -2250,12 +2542,27 @@ async function selectDiscoveredPlace(place: Place, recommendation?: PlaceRecomme
       : []),
   }
   detailbarMainImg.value = image
+  const previewLat = detailed.lat ?? place.lat
+  const previewLng = detailed.lng ?? place.lng
+  selectedRecommendationMapPlace.value = previewLat != null && previewLng != null
+    ? {
+        id: `recommendation:${detailed.provider}:${detailed.externalPlaceId}`,
+        provider: detailed.provider,
+        externalPlaceId: detailed.externalPlaceId,
+        title: detailed.placeName,
+        category: detailed.category ?? null,
+        lat: previewLat,
+        lng: previewLng,
+        image,
+      }
+    : null
   isDetailbarOpen.value = true
 }
 
 function closeDetailbar() {
   isDetailbarOpen.value = false
   selectedPlace.value = null
+  selectedRecommendationMapPlace.value = null
   descriptionExpanded.value = false
 }
 
@@ -2263,6 +2570,35 @@ async function addSelectedPlaceToItinerary() {
   const place = selectedPlace.value?.place
   if (!place) return
   await addPlaceToItinerary(place)
+  selectedRecommendationMapPlace.value = null
+}
+
+async function toggleSelectedPlaceSaved() {
+  const place = selectedPlace.value?.place
+  if (!place) return
+  const key = placeReferenceKey(place)
+  if (savingPlaceKeys.value.has(key)) return
+  savingPlaceKeys.value = new Set(savingPlaceKeys.value).add(key)
+  try {
+    if (savedPlaceKeys.value.has(key)) {
+      await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
+      const next = new Set(savedPlaceKeys.value)
+      next.delete(key)
+      savedPlaceKeys.value = next
+      showToast('저장한 장소에서 제거했습니다.')
+    } else {
+      await swipeApi.react(place.provider, place.externalPlaceId, 'SUPER_LIKE')
+      await swipeApi.savePlace(place.provider, place.externalPlaceId)
+      savedPlaceKeys.value = new Set(savedPlaceKeys.value).add(key)
+      showToast('장소를 저장했습니다.', 'success')
+    }
+  } catch {
+    showToast('장소 저장 상태를 변경하지 못했습니다.', 'error')
+  } finally {
+    const next = new Set(savingPlaceKeys.value)
+    next.delete(key)
+    savingPlaceKeys.value = next
+  }
 }
 
 /* ── Toast ── */
@@ -2304,14 +2640,9 @@ async function addPlaceToItinerary(place: Place) {
     showToast('이미 일정에 추가된 장소입니다.')
     return
   }
-  const defaultDay = dayPlans.value.find((day) => day.groupType === 'DAY')?.day ?? dayPlans.value[0]?.day ?? 1
-  const plan = targetPlan(activeDay.value === 0 ? defaultDay : activeDay.value)
-  if (!plan) {
-    itineraryActionError.value = '일정을 추가할 일차를 먼저 만들어 주세요.'
-    return
-  }
   itineraryActionError.value = ''
   try {
+    const plan = await itinerary.ensureUnscheduledDay()
     await itinerary.createItem({
       itineraryDayId: plan.id,
       sortOrder: plan.items.length,
@@ -2460,7 +2791,7 @@ function textAvatarStyle(index: unknown) {
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <template v-for="(item, idx) in day.items" :key="item.id">
-                      <div :class="['stop', getDayColorClass(day.day), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id), 'has-thumb': !!routeStopImage(item) }]"
+                      <div :class="['stop', getDayColorClass(day.day), routeGroupClass(item.id, day.items[idx - 1]?.id, day.items[idx + 1]?.id), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id), 'has-thumb': !!routeStopImage(item) }]"
 						:data-step-id="item.id" :data-place-id="item.placeExternalId"
 						@pointerdown="onPointerDown"
                         @click.stop="handleStopClick(item)">
@@ -2480,7 +2811,7 @@ function textAvatarStyle(index: unknown) {
                       </div>
                       <!-- Route connector between linked adjacent stops -->
                       <div v-if="idx < day.items.length - 1 && hasRouteLinkBetween(item.id, day.items[idx + 1].id)"
-                        class="route-connector"
+                        :class="['route-connector', getDayColorClass(day.day)]"
                         :data-from-id="item.id"
                         :data-to-id="day.items[idx + 1].id"
                         @click.stop="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
@@ -2500,7 +2831,7 @@ function textAvatarStyle(index: unknown) {
                     <span class="line"></span>
                   </div>
                   <template v-for="(item, idx) in activePlan.items" :key="item.id">
-                    <div :class="['stop', getDayColorClass(activeDay), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id), 'has-thumb': !!routeStopImage(item) }]"
+                    <div :class="['stop', getDayColorClass(activeDay), routeGroupClass(item.id, activePlan.items[idx - 1]?.id, activePlan.items[idx + 1]?.id), { 'route-pen-pending': pendingRouteFrom === item.id, 'route-linked': !!getLinkedPartner(item.id), 'has-thumb': !!routeStopImage(item) }]"
 					:data-step-id="item.id" :data-place-id="item.placeExternalId"
 					@pointerdown="onPointerDown"
                       @click.stop="handleStopClick(item)">
@@ -2520,7 +2851,7 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <!-- Route connector between linked adjacent stops -->
                     <div v-if="idx < activePlan.items.length - 1 && hasRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
-                      class="route-connector"
+                      :class="['route-connector', getDayColorClass(activeDay)]"
                       :data-from-id="item.id"
                       :data-to-id="activePlan.items[idx + 1].id"
                       @click.stop="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
@@ -2599,9 +2930,7 @@ function textAvatarStyle(index: unknown) {
                 <PlaceDiscoveryPanel
                   :trip-id="tripId"
                   :bbox="viewportBbox"
-                  :scheduled-place-keys="scheduledPlaceKeys"
                   @select="selectDiscoveredPlace"
-                  @add="addPlaceToItinerary"
                 />
               </div>
             </div>
@@ -2609,22 +2938,24 @@ function textAvatarStyle(index: unknown) {
           </aside>
 
           <!-- ═══ MAP CANVAS ═══ -->
-          <div class="map-canvas" :aria-label="`${trip.title} 지도`">
+          <div :class="['map-canvas', { 'navigation-guide-mode': navigationGuideMode }]" :aria-label="`${trip.title} 지도`">
 			<MapboxItineraryMap
 				:stops="mapStops"
 				:routes="itinerary.routes.value"
 				:route-display="routeState"
               :card-display="cardState"
               :nearby-places="routeNearbyMapPlaces"
+              :preview-place="selectedRecommendationMapPlace"
               :drawings="mapDrawings"
               :drawing-tool="activeTool"
               :drawing-color="penColor"
               :drawing-width="penSize"
               :drawings-visible="drawingOn"
+              :navigation-mode="navigationGuideMode"
               @select-place="handleSelectPlace"
               @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
               @viewport-change="mapViewport.updateViewport"
-              @drawing-create="createLocalDrawing"
+              @drawing-create="handleDrawingCreate"
               @drawing-erase="eraseLocalDrawing"
               @drawing-preview="publishDrawingPreview"
             />
@@ -2690,19 +3021,19 @@ function textAvatarStyle(index: unknown) {
             <!-- ===== Toolbox ===== -->
             <div class="map-tools">
               <!-- Drawing tools -->
-              <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" :disabled="itinerary.mutating.value" @click="activeTool = 'cursor'">
+              <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" data-tool="cursor" :aria-pressed="activeTool === 'cursor'" :disabled="itinerary.mutating.value" @click="selectMapTool('cursor')">
                 <span class="material-symbols-rounded">arrow_selector_tool</span>
                 <span class="tool-tip">기본 선택</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" data-tool="route-pen" :disabled="itinerary.mutating.value" @click="activeTool = 'route-pen'">
+              <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" data-tool="route-pen" :aria-pressed="activeTool === 'route-pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('route-pen')">
                 <span class="material-symbols-rounded">polyline</span>
                 <span class="tool-tip">경로 연결 펜</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" :disabled="itinerary.mutating.value" @click="activeTool = 'pen'; drawingOn = true; isPenPopoverOpen = !isPenPopoverOpen; if (isPenPopoverOpen) nextTick(updatePenPopoverPosition)">
+              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" :aria-pressed="activeTool === 'pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('pen')">
                 <span class="material-symbols-rounded">edit</span>
                 <span class="tool-tip">자유 그리기</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" data-tool="eraser" :disabled="itinerary.mutating.value" @click="activeTool = 'eraser'; drawingOn = true">
+              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" data-tool="eraser" :aria-pressed="activeTool === 'eraser'" :disabled="itinerary.mutating.value" @click="selectMapTool('eraser')">
                 <span class="material-symbols-rounded">ink_eraser</span>
                 <span class="tool-tip">그림 지우개</span>
               </button>
@@ -2770,26 +3101,15 @@ function textAvatarStyle(index: unknown) {
             <button class="detailbar-close" type="button" aria-label="닫기" @click="closeDetailbar"><span class="material-symbols-rounded">close</span></button>
             <div class="detailbar-scroll" v-if="selectedPlace">
               <!-- Header -->
-              <div class="detailbar-header-info">
+              <div class="detailbar-header-info" style="padding-bottom: 0px; padding-top: 0px;">
                 <div class="detailbar-category-row">
                   <span class="detailbar-category-pill">{{ selectedPlace.category || '상세 정보' }}</span>
-                  <span class="detailbar-likes-badge" v-if="selectedPlace.likes"><span class="material-symbols-rounded">favorite</span> {{ selectedPlace.likes }}</span>
                 </div>
                 <h2 class="detailbar-main-title">{{ selectedPlace.title }}</h2>
                 <div v-if="selectedPlace.location" class="detailbar-address-row">
                   <span class="material-symbols-rounded">location_on</span>
                   <span>{{ selectedPlace.location }}</span>
                 </div>
-                <button
-                  v-if="selectedPlace.place"
-                  type="button"
-                  class="detailbar-add-plan-btn"
-                  :disabled="selectedPlaceIsScheduled || itinerary.mutating.value"
-                  @click="addSelectedPlaceToItinerary"
-                >
-                  <span class="material-symbols-rounded">{{ selectedPlaceIsScheduled ? 'check_circle' : 'add_circle' }}</span>
-                  {{ selectedPlaceIsScheduled ? '일정에 추가됨' : '여행 계획에 추가' }}
-                </button>
               </div>
 
               <!-- Description -->
@@ -2814,7 +3134,7 @@ function textAvatarStyle(index: unknown) {
               </div>
 
               <!-- Gallery -->
-              <div class="detailbar-gallery" v-if="selectedPlace.image">
+              <div class="detailbar-gallery" v-if="selectedPlace.image" style="margin-bottom: 0px;">
                 <div class="detailbar-hero-wrapper">
                   <img class="detailbar-hero" :alt="selectedPlace.title" :src="detailbarMainImg || selectedPlace.image">
                 </div>
@@ -2827,16 +3147,42 @@ function textAvatarStyle(index: unknown) {
                 </div>
               </div>
 
+              <div v-if="selectedPlace.place" class="detailbar-action-row">
+                <button
+                  type="button"
+                  class="detailbar-save-place-btn"
+                  :class="{ 'is-saved': selectedPlaceIsSaved }"
+                  :disabled="selectedPlaceIsSaving"
+                  :aria-label="selectedPlaceIsSaved ? '장소 저장 취소' : '장소 저장'"
+                  @click="toggleSelectedPlaceSaved"
+                >
+                  <span class="material-symbols-rounded">{{ selectedPlaceIsSaved ? 'bookmark' : 'bookmark_border' }}</span>
+                  {{ selectedPlaceIsSaved ? '저장됨' : '장소 저장' }}
+                </button>
+                <button
+                  type="button"
+                  class="detailbar-add-plan-btn"
+                  :disabled="selectedPlaceIsScheduled || itinerary.mutating.value"
+                  @click="addSelectedPlaceToItinerary"
+                >
+                  <span class="material-symbols-rounded">{{ selectedPlaceIsScheduled ? 'check_circle' : 'add_circle' }}</span>
+                  {{ selectedPlaceIsScheduled ? '일정에 추가됨' : '일정에 추가' }}
+                </button>
+              </div>
+
               <!-- Social Likes -->
               <div class="detailbar-social-likes" v-if="selectedPlace.likedBy?.length">
                 <div class="detailbar-avatar-stack">
-                  <template v-for="(u, idx) in selectedPlace.likedBy.slice(0, 3)" :key="idx">
+                  <template v-for="(u, idx) in selectedPlace.likedBy.slice(0, 5)" :key="idx">
                     <img v-if="u.avatar && u.avatar.startsWith('http')" :src="u.avatar" class="detailbar-like-avatar" :style="{ zIndex: avatarStackZIndex(idx) }" :alt="u.name || ''">
                     <span v-else-if="u.avatar" class="detailbar-like-avatar-text"
                       :style="textAvatarStyle(idx)">{{ u.avatar }}</span>
                   </template>
                 </div>
-                <span class="detailbar-likes-text"><strong>{{ selectedPlace.likedBy[0].name || '멤버' }}</strong>님{{ selectedPlace.likedBy.length > 1 ? ` 외 ${selectedPlace.likedBy.length - 1}명` : '' }}이 저장한 장소</span>
+                <span class="detailbar-likes-text">
+                  <template v-if="selectedPlace.likedBy.length > 1"><strong>{{ selectedPlace.likedBy.length }}명</strong>이 저장한 장소</template>
+                  <template v-else><strong>{{ selectedPlace.likedBy[0].name || '멤버' }}</strong>님이 저장한 장소</template>
+                </span>
               </div>
 
               <!-- Quick Info -->
@@ -3072,7 +3418,7 @@ function textAvatarStyle(index: unknown) {
     <!-- ═══ TRIP SETTINGS MODAL ═══ -->
     <TripSettingsModal
       :open="isSettingsModalOpen"
-      :trip="tripStore.currentTrip ? { ...tripStore.currentTrip, myRole: trip?.myRole } : null"
+      :trip="routeSettingsTrip"
       :default-tab="settingsDefaultTab"
       @close="isSettingsModalOpen = false"
       @saved="handleSettingsSaved"
@@ -3222,6 +3568,10 @@ function textAvatarStyle(index: unknown) {
 .map-tools .tool-btn:disabled:hover {
   background: transparent;
   color: #b3bac8;
+}
+.map-tools .tool-btn.active:not(:disabled) {
+  background: var(--violet);
+  color: #fff;
 }
 .route-page-section .map-shell {
   flex: 1;
@@ -3447,6 +3797,46 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .map-canvas {
   height: 100%;
   min-height: 0;
+}
+
+.route-page-section .map-canvas.navigation-guide-mode {
+  background: #eef4ff;
+}
+
+.route-page-section .map-canvas.navigation-guide-mode::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    linear-gradient(180deg, rgba(3, 19, 53, 0.16), rgba(3, 19, 53, 0) 26%),
+    linear-gradient(0deg, rgba(37, 99, 235, 0.10), rgba(37, 99, 235, 0) 34%);
+}
+
+.route-page-section .map-canvas.navigation-guide-mode .itinerary-map {
+  filter: saturate(1.08) contrast(1.03);
+}
+
+.route-page-section .map-canvas.navigation-guide-mode .map-tools {
+  background: rgba(15, 23, 42, 0.88);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.26);
+}
+
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn.active:not(:disabled) {
+  background: #2563eb;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+  color: #fff;
+}
+
+.route-page-section .map-canvas.navigation-guide-mode .route-connector-line {
+  border-color: #2563eb !important;
+  background: #2563eb;
 }
 
 .map-viewport-status {
@@ -3738,6 +4128,32 @@ function textAvatarStyle(index: unknown) {
   border-left-width: 4px;
 }
 
+.route-page-section .day-color-2 {
+  --day-color: #06b6d4;
+  --day-color-bg: rgba(6, 182, 212, 0.08);
+  --day-color-border: rgba(6, 182, 212, 0.22);
+}
+
+.stop.route-grouped {
+  border-left-color: var(--day-color, var(--violet)) !important;
+  box-shadow: 0 1px 0 var(--day-color-bg, rgba(124, 58, 237, 0.08)), inset 4px 0 0 var(--day-color-border, rgba(124, 58, 237, 0.22));
+}
+
+.stop.route-group-start {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.stop.route-group-middle,
+.stop.route-group-end {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.stop.route-grouped.is-chain-dragging {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12), inset 4px 0 0 var(--day-color, var(--violet));
+}
+
 /* ── Route connector between linked stops (vertical) ── */
 .route-connector {
   display: flex;
@@ -3764,7 +4180,7 @@ function textAvatarStyle(index: unknown) {
 .route-connector-line {
   width: 3px;
   height: 100%;
-  background: var(--violet);
+  background: var(--day-color, var(--violet));
   border-radius: 999px;
   transition: background 0.2s;
 }
@@ -3881,7 +4297,7 @@ function textAvatarStyle(index: unknown) {
 
 .route-connector-line {
   width: 0 !important;
-  border-left: 3px solid var(--violet) !important;
+  border-left: 3px solid var(--day-color, var(--violet)) !important;
   background: none !important;
   border-radius: 999px !important;
 }

@@ -178,6 +178,33 @@ describe('MapboxItineraryMap', () => {
     expect(wrapper.emitted('selectNearbyPlace')).toEqual([['KTO', 'near-2']])
   })
 
+  it('선택된 추천 관광지를 카드 마커로 표시하고 해당 위치로 이동한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const previewPlace = {
+      id: 'recommendation:KTO:pick-1',
+      provider: 'KTO',
+      externalPlaceId: 'pick-1',
+      title: '추천 명소',
+      category: '관광지',
+      lat: 35.1587,
+      lng: 129.1604,
+      image: 'https://cdn.example.com/pick.jpg',
+    }
+    const wrapper = mount(MapboxItineraryMap, { props: { stops: [], previewPlace } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+
+    const markerOptions = mapbox.Marker.mock.calls[0]![0] as { element: HTMLButtonElement; offset: [number, number] }
+    expect(markerOptions.element.classList.contains('map-preview-place-card')).toBe(true)
+    expect(markerOptions.element.textContent).toContain('추천 명소')
+    expect((markerOptions.element.querySelector('img') as HTMLImageElement).src).toBe('https://cdn.example.com/pick.jpg')
+    expect(mapbox.map.easeTo).toHaveBeenLastCalledWith({ center: [129.1604, 35.1587], zoom: 14 })
+
+    markerOptions.element.click()
+    expect(wrapper.emitted('selectNearbyPlace')).toEqual([['KTO', 'pick-1']])
+  })
+
   it('경로 펜 전환과 카드 축소는 지도 스타일을 다시 로드하지 않고 마커만 갱신한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     const wrapper = mount(MapboxItineraryMap, { props: { stops, drawingTool: 'cursor', cardDisplay: 'full' } })
@@ -193,6 +220,20 @@ describe('MapboxItineraryMap', () => {
     const markerCall = mapbox.Marker.mock.calls.at(-1)
     const markerElement = (markerCall![0] as { element: HTMLButtonElement }).element
     expect(markerElement.classList.contains('map-pin-card--min')).toBe(true)
+  })
+
+  it('navigation mode를 켜면 Mapbox navigation day 스타일로 전환한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops, navigationMode: false } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+    mapbox.map.setStyle = vi.fn()
+
+    await wrapper.setProps({ navigationMode: true })
+    await nextTick()
+
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-day-v1')
   })
 
   it('경로 geometry 좌표 객체 배열도 GeoJSON 선으로 정규화해 그린다', async () => {
