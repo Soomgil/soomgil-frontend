@@ -469,6 +469,10 @@ function unprojectDrawingPoint(point: { x: number; y: number }) {
   return { lng: coordinate.lng, lat: coordinate.lat }
 }
 
+function panMapByOverlayDelta(delta: { x: number; y: number }) {
+  map?.panBy([-delta.x, -delta.y], { duration: 0 })
+}
+
 function cleanupMapResources() {
   resizeObserver?.disconnect()
   resizeObserver = null
@@ -575,6 +579,7 @@ onBeforeUnmount(() => {
       @erase="emit('drawingErase', $event)"
       @preview="emit('drawingPreview', $event)"
       @route-point="emit('routePoint', $event)"
+      @pan="panMapByOverlayDelta"
     />
     <div v-if="mapError" class="itinerary-map__error" role="alert">
       <span>{{ mapError }}</span>

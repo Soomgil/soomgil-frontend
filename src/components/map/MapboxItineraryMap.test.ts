@@ -16,6 +16,7 @@ const mapbox = vi.hoisted(() => {
     fitBounds: vi.fn(),
     getLayer: vi.fn(),
     getSource: vi.fn(),
+    panBy: vi.fn(),
     project: vi.fn(([lng, lat]: [number, number]) => ({ x: lng, y: lat })),
     unproject: vi.fn(([x, y]: [number, number]) => ({ lng: x, lat: y })),
     getBounds: vi.fn(() => ({
@@ -390,12 +391,14 @@ describe('MapboxItineraryMap', () => {
     overlay.vm.$emit('erase', drawing.id)
     overlay.vm.$emit('preview', preview)
     overlay.vm.$emit('routePoint', { lng: 127.4, lat: 36.4 })
+    overlay.vm.$emit('pan', { x: 12, y: -8 })
     await nextTick()
 
     expect(wrapper.emitted('drawingCreate')).toEqual([[draft]])
     expect(wrapper.emitted('drawingErase')).toEqual([[drawing.id]])
     expect(wrapper.emitted('drawingPreview')).toEqual([[preview]])
     expect(wrapper.emitted('routePoint')).toEqual([[{ lng: 127.4, lat: 36.4 }]])
+    expect(mapbox.map.panBy).toHaveBeenCalledWith([-12, 8], { duration: 0 })
   })
 
   it('route-pen에서는 지도 그림 표시가 꺼져도 중간점 클릭 레이어를 활성화한다', async () => {

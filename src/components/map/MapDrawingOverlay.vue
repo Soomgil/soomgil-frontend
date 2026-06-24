@@ -40,6 +40,7 @@ const emit = defineEmits<{
   erase: [drawingId: string]
   preview: [event: DrawingPreviewEvent]
   routePoint: [coordinate: LngLat]
+  pan: [delta: ScreenPoint]
 }>()
 
 const surface = ref<SVGSVGElement | null>(null)
@@ -50,6 +51,8 @@ let activePreviewSequence = 0
 let previewIdSequence = 0
 let activeRoutePointPointerId: number | null = null
 let routePointStart: ScreenPoint | null = null
+let activePanPointerId: number | null = null
+let lastPanPoint: ScreenPoint | null = null
 
 const editable = computed(() => props.enabled && (props.tool === 'route-pen' || props.tool === 'pen' || props.tool === 'eraser'))
 const currentPointString = computed(() => currentPoints.value.map((point) => `${point.x},${point.y}`).join(' '))
@@ -117,7 +120,17 @@ function pointerSamples(event: PointerEvent): Array<Pick<PointerEvent, 'clientX'
 }
 
 function beginStroke(event: PointerEvent) {
-  if (!props.enabled || (props.tool !== 'route-pen' && props.tool !== 'pen') || event.button !== 0) return
+  if (!props.enabled) return
+  if ((props.tool === 'route-pen' || props.tool === 'pen' || props.tool === 'eraser') && event.button === 2) {
+    const point = localPoint(event)
+    if (!point) return
+    event.preventDefault()
+    activePanPointerId = event.pointerId
+    lastPanPoint = point
+    surface.value?.setPointerCapture?.(event.pointerId)
+    return
+  }
+  if ((props.tool !== 'route-pen' && props.tool !== 'pen') || event.button !== 0) return
   const point = localPoint(event)
   if (!point) return
   event.preventDefault()
@@ -135,6 +148,17 @@ function beginStroke(event: PointerEvent) {
 }
 
 function extendStroke(event: PointerEvent) {
+  if (activePanPointerId === event.pointerId) {
+    const point = localPoint(event)
+    if (!point || !lastPanPoint) return
+    const delta = { x: point.x - lastPanPoint.x, y: point.y - lastPanPoint.y }
+    lastPanPoint = point
+    if (delta.x !== 0 || delta.y !== 0) {
+      event.preventDefault()
+      emit('pan', delta)
+    }
+    return
+  }
   if (activeRoutePointPointerId === event.pointerId) return
   if (activePointerId !== event.pointerId || currentPoints.value.length === 0) return
   let changed = false
@@ -153,6 +177,12 @@ function releasePointerCapture(pointerId: number) {
 }
 
 function finishStroke(event: PointerEvent) {
+  if (activePanPointerId === event.pointerId) {
+    activePanPointerId = null
+    lastPanPoint = null
+    releasePointerCapture(event.pointerId)
+    return
+  }
   if (activeRoutePointPointerId === event.pointerId) {
     finishRoutePoint(event)
     return
@@ -189,6 +219,12 @@ function finishCapturedStroke(pointerId: number) {
 }
 
 function cancelStroke(event: PointerEvent) {
+  if (activePanPointerId === event.pointerId) {
+    activePanPointerId = null
+    lastPanPoint = null
+    releasePointerCapture(event.pointerId)
+    return
+  }
   if (activeRoutePointPointerId === event.pointerId) {
     activeRoutePointPointerId = null
     routePointStart = null
@@ -204,6 +240,11 @@ function cancelStroke(event: PointerEvent) {
 }
 
 function handleLostPointerCapture(event: PointerEvent) {
+  if (activePanPointerId === event.pointerId) {
+    activePanPointerId = null
+    lastPanPoint = null
+    return
+  }
   if (activeRoutePointPointerId === event.pointerId) {
     activeRoutePointPointerId = null
     routePointStart = null
@@ -231,6 +272,12 @@ function eraseDrawing(event: PointerEvent, drawingId: string) {
   event.stopPropagation()
   emit('erase', drawingId)
 }
+
+function preventContextMenu(event: MouseEvent) {
+  if (props.enabled && (props.tool === 'route-pen' || props.tool === 'pen' || props.tool === 'eraser')) {
+    event.preventDefault()
+  }
+}
 </script>
 
 <template>
@@ -246,6 +293,7 @@ function eraseDrawing(event: PointerEvent, drawingId: string) {
     @pointerup="finishStroke"
     @pointercancel="cancelStroke"
     @lostpointercapture="handleLostPointerCapture"
+    @contextmenu="preventContextMenu"
   >
     <template v-for="drawing in projectedDrawings" :key="drawing.id">
       <polyline

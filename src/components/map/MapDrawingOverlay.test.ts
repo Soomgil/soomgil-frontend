@@ -141,6 +141,83 @@ describe('MapDrawingOverlay', () => {
     expect(wrapper.emitted('create')).toBeUndefined()
   })
 
+  it('그리기 도구에서 우클릭 드래그는 stroke 대신 지도 이동 delta로 전달한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [],
+        tool: 'pen',
+        color: '#ef4444',
+        width: 6,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    })
+
+    await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 2, clientX: 10, clientY: 20 })
+    await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, button: 2, clientX: 25, clientY: 35 })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, button: 2, clientX: 25, clientY: 35 })
+
+    expect(wrapper.emitted('pan')).toEqual([[{ x: 15, y: 15 }]])
+    expect(wrapper.emitted('create')).toBeUndefined()
+    expect(wrapper.emitted('routePoint')).toBeUndefined()
+  })
+
+  it('경로 연결 펜에서도 우클릭 드래그는 중간점 대신 지도 이동 delta로 전달한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [],
+        tool: 'route-pen',
+        color: '#6d4aff',
+        width: 5,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    })
+
+    await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 2, clientX: 30, clientY: 40 })
+    await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, button: 2, clientX: 20, clientY: 50 })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, button: 2, clientX: 20, clientY: 50 })
+
+    expect(wrapper.emitted('pan')).toEqual([[{ x: -10, y: 10 }]])
+    expect(wrapper.emitted('routePoint')).toBeUndefined()
+    expect(wrapper.emitted('create')).toBeUndefined()
+  })
+
+  it('그리기 도구에서는 우클릭 컨텍스트 메뉴를 막는다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [],
+        tool: 'pen',
+        color: '#ef4444',
+        width: 6,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+    const event = new MouseEvent('contextmenu', { cancelable: true })
+
+    wrapper.get('svg').element.dispatchEvent(event)
+    await nextTick()
+
+    expect(event.defaultPrevented).toBe(true)
+  })
+
   it('자유 그리기는 빠른 포인터 이동의 coalesced sample까지 stroke에 반영한다', async () => {
     const wrapper = mount(MapDrawingOverlay, {
       props: {
