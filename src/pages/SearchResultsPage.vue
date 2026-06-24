@@ -225,8 +225,8 @@ watch(
         </h1>
         <p class="search-head-lead">여행, 장소, 여행기, 사용자를 한 번에 찾아보세요.</p>
 
-        <form class="search-form" role="search" @submit.prevent="submitSearch">
-          <div class="search-input-wrap">
+        <form class="search-form search-form--capsule" role="search" @submit.prevent="submitSearch">
+          <div class="search-input-wrap search-input-wrap--capsule">
             <span class="material-symbols-rounded search-input-icon">search</span>
             <input
               v-model="searchInput"
@@ -239,11 +239,11 @@ watch(
             <button v-if="searchInput" type="button" class="search-clear-btn" aria-label="검색어 지우기" @click="searchInput = ''">
               <span class="material-symbols-rounded">close</span>
             </button>
+            <button type="submit" class="search-submit-btn">
+              <span class="material-symbols-rounded">search</span>
+              <span>검색</span>
+            </button>
           </div>
-          <button type="submit" class="btn primary search-submit-btn">
-            <span class="material-symbols-rounded">search</span>
-            <span>검색</span>
-          </button>
         </form>
 
         <div class="search-tabs" role="tablist" aria-label="검색 카테고리">
@@ -510,11 +510,14 @@ watch(
 
 .search-form {
   display: flex;
-  gap: 8px;
   align-items: stretch;
-  max-width: 560px; /* keep the search bar narrow and centered while the result
+  max-width: 680px; /* keep the search bar narrow and centered while the result
                        grid below stays full-width */
   margin: 0 auto;
+}
+
+.search-form--capsule {
+  width: 100%;
 }
 
 .search-input-wrap {
@@ -522,6 +525,10 @@ watch(
   position: relative;
   display: flex;
   align-items: center;
+}
+
+.search-input-wrap--capsule {
+  padding: 0 0 0 18px;
 }
 
 .search-input-icon {
@@ -534,10 +541,12 @@ watch(
   pointer-events: none;
 }
 
-.search-input {
+.search-input.search-input.search-input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   height: 48px;
-  padding: 0 44px 0 44px;
+  padding: 0 44px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
@@ -555,7 +564,7 @@ watch(
 
 .search-clear-btn {
   position: absolute;
-  right: 8px;
+  right: 102px;
   top: 50%;
   transform: translateY(-50%);
   width: 32px;
@@ -575,12 +584,18 @@ watch(
 }
 
 .search-submit-btn {
+  align-self: stretch;
+  min-width: 98px;
   height: 48px;
-  padding: 0 20px;
+  padding: 0 24px;
+  border: 0;
   display: inline-flex;
+  justify-content: center;
   align-items: center;
   gap: 6px;
   font-weight: 800;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .search-submit-btn .material-symbols-rounded {
@@ -933,12 +948,31 @@ watch(
   }
 
   .search-form {
-    flex-direction: column;
+    max-width: 100%;
   }
 
   .search-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+  }
+}
+
+@media (max-width: 520px) {
+  .search-input.search-input.search-input {
+    padding-right: 40px;
+  }
+
+  .search-clear-btn {
+    right: 58px;
+  }
+
+  .search-submit-btn {
+    min-width: 52px;
+    padding: 0 16px;
+  }
+
+  .search-submit-btn span:last-child {
+    display: none;
   }
 }
 

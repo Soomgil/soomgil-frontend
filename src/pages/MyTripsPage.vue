@@ -8,6 +8,7 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import BoardingPassCard from '@/components/trip/BoardingPassCard.vue'
+import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
 import { useAuthStore } from '@/stores/auth.store'
@@ -138,6 +139,10 @@ function getTripStatus(trip: TripSummary): string {
   if (status === 'ARCHIVED') return '지난 여행'
   if (status === 'DELETED') return '삭제됨'
   return '진행 중'
+}
+
+function getDestinationLabel(trip: TripSummary): string {
+  return trip.displayDestination?.trim() || '목적지 미정'
 }
 
 function getStatusCls(trip: TripSummary): string {
@@ -397,13 +402,13 @@ watch(filteredTrips, () => {
                   </div>
                   <div class="search-box trip-search" role="search">
                     <label class="sr-only" for="trip-search-input">여행 검색</label>
+                    <span class="material-symbols-rounded" aria-hidden="true">search</span>
                     <input
                       id="trip-search-input"
                       v-model="searchQuery"
                       type="search"
                       placeholder="여행명 또는 목적지 검색"
                     >
-                    <span class="material-symbols-rounded" aria-hidden="true" style="position: absolute; top: 50%; right: 16px; transform: translateY(-50%); color: var(--muted);">search</span>
                   </div>
                 </div>
               </div>
@@ -442,8 +447,11 @@ watch(filteredTrips, () => {
                       @keydown.enter="goTripDetail(trip.id)"
                     >
                       <div class="timeline-card-header">
-                        <span class="timeline-card-status-badge" :class="getStatusCls(trip)">{{ getTripStatus(trip) }}</span>
-                        <span class="timeline-card-role">{{ trip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
+                        <div class="timeline-card-badges">
+                          <span class="timeline-card-status-badge" :class="getStatusCls(trip)">{{ getTripStatus(trip) }}</span>
+                          <span class="timeline-card-role">{{ trip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
+                        </div>
+                        <span class="timeline-route-badge">SEL → {{ getDestCode(trip) }}</span>
                       </div>
                       <div class="timeline-card-body">
                         <div class="timeline-card-avatar-wrapper timeline-card-avatar-wrapper--placeholder">
@@ -451,25 +459,23 @@ watch(filteredTrips, () => {
                         </div>
                         <div class="timeline-card-info">
                           <h3 class="timeline-card-title">{{ trip.title }}</h3>
-                          <div class="timeline-card-meta-row">
-                            <span class="timeline-route-badge">SEL ✈ {{ getDestCode(trip) }}</span>
-                            <p class="timeline-card-date">
-                              <span class="material-symbols-rounded">calendar_month</span>
-                              <span>{{ formatCreatedAt(trip.createdAt) }}</span>
-                            </p>
-                          </div>
-                          <p v-if="trip.displayDestination" class="timeline-card-destination">{{ trip.displayDestination }}</p>
+                          <p class="timeline-card-destination">{{ getDestinationLabel(trip) }}</p>
+                          <p class="timeline-card-date">
+                            <span class="material-symbols-rounded">calendar_month</span>
+                            <span>{{ formatCreatedAt(trip.createdAt) }} 생성</span>
+                          </p>
                         </div>
                       </div>
                       <div class="timeline-card-actions" @click.stop>
+                        <button class="timeline-card-open" type="button" @click="goTripDetail(trip.id)">
+                          <span>계획 보기</span>
+                          <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
+                        </button>
                         <button class="timeline-card-action" type="button" @click="openTripAccess(trip)">
                           <span class="material-symbols-rounded" aria-hidden="true">group</span>
                           <span class="sr-only">{{ trip.myRole === 'OWNER' ? '멤버 및 초대' : '멤버 보기' }}</span>
                         </button>
-                        <button v-if="trip.myRole === 'OWNER'" class="timeline-card-action" type="button" @click="openTripSettings(trip)">
-                          <span class="material-symbols-rounded" aria-hidden="true">settings</span>
-                          <span class="sr-only">설정</span>
-                        </button>
+                        <TripSettingsButton v-if="trip.myRole === 'OWNER'" label="설정" variant="icon" @click="openTripSettings(trip)" />
                       </div>
                     </article>
                   </div>
@@ -623,11 +629,18 @@ watch(filteredTrips, () => {
   margin-top: 4px;
 }
 
+.timeline-card-badges {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
 .timeline-card-date {
   align-items: center;
   display: flex;
   gap: 4px;
-  margin: 0;
+  margin: 4px 0 0;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -637,7 +650,12 @@ watch(filteredTrips, () => {
 .timeline-card-destination {
   color: var(--muted);
   font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .timeline-card-role {
@@ -664,7 +682,7 @@ watch(filteredTrips, () => {
 .timeline-card-info {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   margin-left: 12px;
   min-width: 0;
 }
@@ -675,8 +693,12 @@ watch(filteredTrips, () => {
 
 .timeline-card-actions {
   display: flex;
-  gap: 4px;
-  margin-top: 10px;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(227, 234, 244, 0.82);
   position: relative;
   z-index: 2;
 }
@@ -692,8 +714,11 @@ watch(filteredTrips, () => {
   font-size: 11px;
   font-weight: 700;
   gap: 4px;
-  padding: 5px 10px;
+  height: 32px;
+  justify-content: center;
+  padding: 0;
   transition: background 160ms ease;
+  width: 32px;
 }
 
 .timeline-card-action:hover {
@@ -701,7 +726,35 @@ watch(filteredTrips, () => {
 }
 
 .timeline-card-action .material-symbols-rounded {
-  font-size: 15px;
+  font-size: 17px;
+}
+
+.timeline-card-open {
+  align-items: center;
+  background: var(--ink);
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 1 1 auto;
+  font-size: 12px;
+  font-weight: 850;
+  gap: 4px;
+  height: 32px;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 12px;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.timeline-card-open:hover {
+  background: var(--violet);
+  transform: translateY(-1px);
+}
+
+.timeline-card-open .material-symbols-rounded {
+  font-size: 16px;
 }
 
 .load-more-row {

@@ -5,6 +5,147 @@
 @import "mapbox-gl/dist/mapbox-gl.css";
 @import "./original.css";
 
+/* Shared search box treatment used across page-level search UIs. */
+:root {
+  --search-box-height: 48px;
+  --search-box-radius: 999px;
+  --search-box-border: 1px solid rgba(0, 102, 255, 0.16);
+  --search-box-bg: #fff;
+  --search-box-shadow: 0 10px 28px rgba(0, 50, 150, 0.08);
+  --search-box-focus: 0 0 0 4px rgba(0, 102, 255, 0.10), var(--search-box-shadow);
+}
+
+.search-box.search-box.search-box,
+.home-search-capsule.home-search-capsule.home-search-capsule,
+.search-input-wrap.search-input-wrap.search-input-wrap,
+.mypage-search-inline.mypage-search-inline.mypage-search-inline,
+.discovery-search.discovery-search.discovery-search,
+.search-input-wrapper.search-input-wrapper.search-input-wrapper {
+  min-height: var(--search-box-height);
+  border: var(--search-box-border);
+  border-radius: var(--search-box-radius);
+  background: var(--search-box-bg);
+  box-shadow: var(--search-box-shadow);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-box.search-box.search-box:focus-within,
+.home-search-capsule.home-search-capsule.home-search-capsule:focus-within,
+.search-input-wrap.search-input-wrap.search-input-wrap:focus-within,
+.mypage-search-inline.mypage-search-inline.mypage-search-inline:focus-within,
+.discovery-search.discovery-search.discovery-search:focus-within,
+.search-input-wrapper.search-input-wrapper.search-input-wrapper:focus-within {
+  border-color: var(--violet);
+  box-shadow: var(--search-box-focus);
+}
+
+.search-box.search-box.search-box input,
+.home-search-capsule.home-search-capsule .home-search-capsule-input,
+.search-input.search-input.search-input,
+.mypage-search-inline.mypage-search-inline.mypage-search-inline input,
+.discovery-search.discovery-search.discovery-search input,
+.search-input-wrapper.search-input-wrapper.search-input-wrapper input {
+  height: calc(var(--search-box-height) - 2px);
+  min-height: calc(var(--search-box-height) - 2px);
+  border: 0;
+  border-radius: var(--search-box-radius);
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  outline: none;
+  box-shadow: none;
+}
+
+.search-box.search-box.search-box input::placeholder,
+.home-search-capsule.home-search-capsule .home-search-capsule-input::placeholder,
+.search-input.search-input.search-input::placeholder,
+.mypage-search-inline.mypage-search-inline.mypage-search-inline input::placeholder,
+.discovery-search.discovery-search.discovery-search input::placeholder,
+.search-input-wrapper.search-input-wrapper.search-input-wrapper input::placeholder {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.search-input.search-input.search-input:focus,
+.mypage-search-inline.mypage-search-inline.mypage-search-inline input:focus,
+.search-input-wrapper.search-input-wrapper.search-input-wrapper input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.home-search-capsule.home-search-capsule.home-search-capsule {
+  max-width: 680px;
+  padding: 0 0 0 18px;
+}
+
+.search-input-wrap.search-input-wrap.search-input-wrap {
+  overflow: hidden;
+}
+
+.search-input.search-input.search-input {
+  padding: 0 44px 0 44px;
+}
+
+.search-submit-btn.search-submit-btn,
+.home-search-capsule-btn.home-search-capsule-btn,
+.discovery-search.discovery-search.discovery-search button,
+.search-input-wrapper.search-input-wrapper.search-input-wrapper .search-submit-btn {
+  min-height: 38px;
+  border-radius: var(--search-box-radius);
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  color: #fff;
+  font-weight: 850;
+  box-shadow: 0 8px 18px rgba(0, 102, 255, 0.20);
+}
+
+.search-box.search-box .search-box__button,
+.trip-search.trip-search .material-symbols-rounded,
+.community-story-search.community-story-search.community-story-search .search-box__button {
+  position: absolute;
+  left: 14px;
+  right: auto;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  transform: translateY(-50%);
+}
+
+.search-box.search-box.search-box input,
+.trip-search.trip-search.trip-search input,
+.community-story-search.community-story-search.community-story-search input {
+  padding: 0 16px 0 44px;
+}
+
+.mypage-search-inline.mypage-search-inline.mypage-search-inline input {
+  width: min(280px, 100%);
+  padding: 0 16px 0 42px;
+}
+
+.discovery-search.discovery-search.discovery-search {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  height: var(--search-box-height);
+  padding: 0 6px 0 16px;
+}
+
+@media (max-width: 720px) {
+  .search-form.search-form {
+    align-items: stretch;
+  }
+
+  .home-search-capsule.home-search-capsule.home-search-capsule {
+    padding-left: 16px;
+  }
+}
+
 @theme {
   --color-brand-violet: #0066ff;
   --color-brand-lavender: #80b3ff;

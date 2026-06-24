@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth.store'
+import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { TripSummary } from '@/types/trip'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 
@@ -75,7 +76,7 @@ const createdLabel = computed(() => {
       </div>
       <div class="stub-actions">
         <button v-if="trip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click="$emit('access')"><span class="material-symbols-rounded" aria-hidden="true">group</span>멤버 및 초대</button>
-        <button v-if="trip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click="$emit('settings')"><span class="material-symbols-rounded" aria-hidden="true">settings</span>설정</button>
+        <TripSettingsButton v-if="trip.myRole === 'OWNER'" variant="chip" @click="$emit('settings')" />
       </div>
       <button class="stub-detail-btn" type="button" @click="$emit('detail')"><span>자세히 보기</span><span class="material-symbols-rounded">arrow_forward</span></button>
       <div class="stub-controls">

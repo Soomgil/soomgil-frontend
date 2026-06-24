@@ -25,6 +25,7 @@ import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
+import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, Note, PlanningScope } from '@/types/planning'
@@ -2390,10 +2391,7 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <span class="members-count">{{ trip.members.length }}명</span>
                   </div>
-                  <button class="btn ghost compact-settings-btn" type="button" @click="() => openTripManagement()">
-                    <span class="material-symbols-rounded" style="font-size:14px;">settings</span>
-                    <span>관리</span>
-                  </button>
+                  <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
                 </div>
               </div>
 
