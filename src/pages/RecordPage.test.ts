@@ -137,6 +137,14 @@ describe('RecordPage', () => {
     expect(wrapper.find('[aria-label="격자 보기"]').exists()).toBe(false)
   })
 
+  it('keeps photo upload in the page toolbar without rendering a bottom masonry add tile', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+
+    expect(wrapper.find('.record-actions').text()).toContain('사진 추가')
+    expect(wrapper.find('.record-masonry-add').exists()).toBe(false)
+  })
+
   it('shows the real uploader profile, name, and itinerary day together', async () => {
     const wrapper = mountPage()
     await flushPromises()

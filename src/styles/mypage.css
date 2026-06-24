@@ -418,6 +418,11 @@
   background: rgba(255, 92, 141, 0.10);
 }
 
+.section-icon--sky {
+  color: #0284c7;
+  background: rgba(14, 165, 233, 0.10);
+}
+
 .section-icon--violet {
   color: var(--violet);
   background: rgba(0, 102, 255, 0.08);
@@ -440,7 +445,7 @@
   gap: 12px;
 }
 
-/* 좋아요한 장소 */
+/* 슈퍼라이크한 장소 */
 .liked-places-layout {
   display: grid;
   grid-template-columns: 1fr;
@@ -481,13 +486,6 @@
   border-color: var(--violet);
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
 }
-.mypage-search-count {
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 700;
-  white-space: nowrap;
-}
-
 .mypage-place-card,
 .mypage-story-magazine-item,
 .insight-card {
@@ -501,7 +499,7 @@
 .btn-create-route,
 .btn-more-map,
 .route-bookmark-btn,
-.place-heart-btn,
+.place-super-like-btn,
 .carousel-nav-next {
   cursor: pointer;
   transition:
@@ -577,7 +575,7 @@
   transform: scale(1.06);
 }
 
-.place-heart-btn {
+.place-super-like-btn {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -587,21 +585,21 @@
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 50%;
-  color: var(--rose);
+  color: #0284c7;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 8px 18px rgba(26, 32, 51, 0.14);
 }
 
-.place-heart-btn:hover {
+.place-super-like-btn:hover {
   transform: scale(1.06);
 }
 
-.place-heart-btn .material-symbols-rounded {
+.place-super-like-btn .material-symbols-rounded {
   font-size: 17px;
   font-variation-settings: "FILL" 1;
 }
 
-.place-heart-btn.is-unsaved {
+.place-super-like-btn.is-unsaved {
   color: var(--gray-400, #9ca3af);
 }
 

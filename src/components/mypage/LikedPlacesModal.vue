@@ -23,7 +23,7 @@ const filteredPlaces = computed(() => {
 </script>
 
 <template>
-  <div class="story-overlay" role="dialog" aria-modal="true" aria-label="좋아요한 장소 모두 보기">
+  <div class="story-overlay" role="dialog" aria-modal="true" aria-label="슈퍼라이크한 장소 모두 보기">
     <div class="story-overlay-backdrop" @click="$emit('close')"></div>
     <div class="story-overlay-panel" style="width: min(98vw, 1100px); max-height: 94vh;">
       <button class="story-overlay-close" type="button" aria-label="닫기" @click="$emit('close')">
@@ -33,14 +33,13 @@ const filteredPlaces = computed(() => {
       <div style="padding: 32px;">
         <div class="mypage-section-header" style="margin-bottom: 24px;">
           <h2 class="mypage-section-title">
-            <span class="material-symbols-rounded section-icon section-icon--rose" aria-hidden="true">favorite</span>좋아요한 장소
+            <span class="material-symbols-rounded section-icon section-icon--sky" aria-hidden="true">star</span>슈퍼라이크한 장소
           </h2>
           <div class="mypage-header-search-row">
             <div class="mypage-search-inline">
               <span class="material-symbols-rounded">search</span>
               <input type="search" v-model="searchQuery" placeholder="장소명, 지역, 태그로 검색" />
             </div>
-            <span class="mypage-search-count">{{ filteredPlaces.length }}곳</span>
           </div>
         </div>
 
@@ -50,8 +49,8 @@ const filteredPlaces = computed(() => {
               <div class="place-img-wrap">
                 <img v-if="place.thumbnailUrl && !failedImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markImageFailed(place)" />
                 <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
-                <button type="button" class="place-heart-btn" aria-label="좋아요 취소" @click="$emit('toggle', place)" :class="{ 'is-unsaved': unsavedKeys?.has(placeKey(place)) }">
-                  <span class="material-symbols-rounded">favorite</span>
+                <button type="button" class="place-super-like-btn" :aria-label="unsavedKeys?.has(placeKey(place)) ? '슈퍼라이크 다시 추가' : '슈퍼라이크 취소'" @click="$emit('toggle', place)" :class="{ 'is-unsaved': unsavedKeys?.has(placeKey(place)) }">
+                  <span class="material-symbols-rounded">star</span>
                 </button>
               </div>
               <div class="place-info-wrap">
@@ -110,12 +109,6 @@ const filteredPlaces = computed(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.mypage-search-count {
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 700;
-  white-space: nowrap;
 }
 .place-image-placeholder { width: 100%; height: 100%; display: grid; place-items: center; background: linear-gradient(135deg, #eef2ff, #f8fafc); color: var(--muted); }
 .place-image-placeholder .material-symbols-rounded { font-size: 36px; }

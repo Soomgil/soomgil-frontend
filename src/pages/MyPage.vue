@@ -60,11 +60,11 @@ onMounted(async () => {
   }
 })
 
-// 좋아요한 장소
+// 슈퍼라이크한 장소. 저장 장소는 백엔드 정책상 SUPER_LIKE만 등록할 수 있다.
 const likedPlacesSource = ref<Place[]>([])
 const failedPlaceImages = ref(new Set<string>())
 const removingPlaceKeys = ref(new Set<string>())
-const locallyUnsavedKeys = ref(new Set<string>())
+const locallyUnsuperLikedKeys = ref(new Set<string>())
 
 function placeKey(place: Place) {
   return `${place.provider}:${place.externalPlaceId}`
@@ -74,21 +74,33 @@ function markPlaceImageFailed(place: Place) {
   failedPlaceImages.value = new Set(failedPlaceImages.value).add(placeKey(place))
 }
 
-async function toggleLikedPlace(place: Place) {
+async function toggleSuperLikedPlace(place: Place) {
   const key = placeKey(place)
   if (removingPlaceKeys.value.has(key)) return
   removingPlaceKeys.value = new Set(removingPlaceKeys.value).add(key)
   try {
-    if (locallyUnsavedKeys.value.has(key)) {
-      await swipeApi.savePlace(place.provider, place.externalPlaceId)
-      const next = new Set(locallyUnsavedKeys.value)
+    if (locallyUnsuperLikedKeys.value.has(key)) {
+      await swipeApi.react(place.provider, place.externalPlaceId, 'SUPER_LIKE')
+      try {
+        await swipeApi.savePlace(place.provider, place.externalPlaceId)
+      } catch (error) {
+        await swipeApi.react(place.provider, place.externalPlaceId, 'LIKE')
+        throw error
+      }
+      const next = new Set(locallyUnsuperLikedKeys.value)
       next.delete(key)
-      locallyUnsavedKeys.value = next
-      toast.success('좋아요한 장소에 다시 추가했어요.')
+      locallyUnsuperLikedKeys.value = next
+      toast.success('슈퍼라이크한 장소에 다시 추가했어요.')
     } else {
-      await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
-      locallyUnsavedKeys.value = new Set(locallyUnsavedKeys.value).add(key)
-      toast.success('좋아요를 취소했어요.')
+      await swipeApi.react(place.provider, place.externalPlaceId, 'LIKE')
+      try {
+        await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
+      } catch (error) {
+        await swipeApi.react(place.provider, place.externalPlaceId, 'SUPER_LIKE')
+        throw error
+      }
+      locallyUnsuperLikedKeys.value = new Set(locallyUnsuperLikedKeys.value).add(key)
+      toast.success('슈퍼라이크를 취소했어요.')
     }
   } catch {
     toast.error('요청을 처리하지 못했습니다.')
@@ -104,7 +116,7 @@ async function loadLikedPlaces() {
   try {
     likedPlacesSource.value = await userApi.getSavedPlaces()
   } catch (err) {
-    console.error('Failed to load liked places', err)
+    console.error('Failed to load super-liked places', err)
   }
 }
 
@@ -296,7 +308,7 @@ async function shareProfile() {
 // Stats for profile card
 const profileStats = computed(() => [
   { icon: 'luggage', value: String(myTripCount.value), label: '내 여행' },
-  { icon: 'favorite', value: String(likedPlacesSource.value.length), label: '좋아요' },
+  { icon: 'star', value: String(likedPlacesSource.value.length), label: '슈퍼라이크' },
   { icon: 'auto_stories', value: String(myStories.value.length), label: '여행기' },
   { icon: 'group', value: String(followers.value.length), label: '팔로워' },
   { icon: 'person_add', value: String(following.value.length), label: '팔로잉' },
@@ -305,7 +317,7 @@ const profileStats = computed(() => [
 function onStatClick(label: string) {
   if (label === '팔로워') followersModal.open()
   else if (label === '팔로잉') followingModal.open()
-  else if (label === '좋아요') {
+  else if (label === '슈퍼라이크') {
     document.getElementById('section-liked-places-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   } else if (label === '여행기') {
     document.getElementById('section-my-stories-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -378,7 +390,7 @@ function handleUserClick(userId: string) {
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">person</span> My Page</p>
             <h1 id="mypage-title" class="page-hero__title"><span class="page-hero__gradient">나의 여행 프로필</span>을 관리하세요</h1>
-            <p class="page-hero__lead">좋아한 장소와 여행기, 취향 데이터를 모아 나만의 여행 기록을 살펴볼 수 있습니다.</p>
+            <p class="page-hero__lead">슈퍼라이크한 장소와 여행기, 취향 데이터를 모아 나만의 여행 기록을 살펴볼 수 있습니다.</p>
           </div>
         </div>
 
@@ -454,11 +466,11 @@ function handleUserClick(userId: string) {
           <!-- 개인 아카이브 콘텐츠 영역 -->
           <div class="mypage-body-container">
 
-        <!-- 1. 좋아요한 장소 섹션 -->
+        <!-- 1. 슈퍼라이크한 장소 섹션 -->
         <section class="mypage-section" aria-labelledby="section-liked-places-title">
           <div class="mypage-section-header">
             <h2 id="section-liked-places-title" class="mypage-section-title">
-              <span class="material-symbols-rounded section-icon section-icon--rose" aria-hidden="true">favorite</span>좋아요한 장소
+              <span class="material-symbols-rounded section-icon section-icon--sky" aria-hidden="true">star</span>슈퍼라이크한 장소
             </h2>
             <a v-if="likedPlaces.length > 0" href="#" class="mypage-more-link" @click.prevent="likedPlacesModal.open()">모두 보기 ›</a>
           </div>
@@ -466,9 +478,9 @@ function handleUserClick(userId: string) {
           <div class="mypage-section-content liked-places-layout">
             <!-- 빈 상태 -->
             <div v-if="likedPlaces.length === 0" class="mypage-empty-state">
-              <span class="material-symbols-rounded mypage-empty-icon">favorite_border</span>
-              <p class="mypage-empty-title">아직 좋아요한 장소가 없어요</p>
-              <p class="mypage-empty-desc">마음에 드는 장소에 좋아요를 눌러 모아보세요.</p>
+              <span class="material-symbols-rounded mypage-empty-icon">star_border</span>
+              <p class="mypage-empty-title">아직 슈퍼라이크한 장소가 없어요</p>
+              <p class="mypage-empty-desc">특히 마음에 드는 장소에 슈퍼라이크를 눌러 모아보세요.</p>
               <button type="button" class="mypage-empty-cta" @click="router.push('/search')">장소 둘러보기</button>
             </div>
 
@@ -482,8 +494,8 @@ function handleUserClick(userId: string) {
                   <div class="place-img-wrap">
                     <img v-if="place.thumbnailUrl && !failedPlaceImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markPlaceImageFailed(place)" />
                     <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
-                    <button type="button" class="place-heart-btn" aria-label="좋아요 취소" :disabled="removingPlaceKeys.has(placeKey(place))" @click="toggleLikedPlace(place)" :class="{ 'is-unsaved': locallyUnsavedKeys.has(placeKey(place)) }">
-                      <span class="material-symbols-rounded">favorite</span>
+                    <button type="button" class="place-super-like-btn" :aria-label="locallyUnsuperLikedKeys.has(placeKey(place)) ? '슈퍼라이크 다시 추가' : '슈퍼라이크 취소'" :disabled="removingPlaceKeys.has(placeKey(place))" @click="toggleSuperLikedPlace(place)" :class="{ 'is-unsaved': locallyUnsuperLikedKeys.has(placeKey(place)) }">
+                      <span class="material-symbols-rounded">star</span>
                     </button>
                   </div>
                   <div class="place-info-wrap">
@@ -597,7 +609,7 @@ function handleUserClick(userId: string) {
     </main>
 
     <!-- Modals -->
-    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" :unsaved-keys="locallyUnsavedKeys" @toggle="toggleLikedPlace" @close="likedPlacesModal.close()" />
+    <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlacesSource" :unsaved-keys="locallyUnsuperLikedKeys" @toggle="toggleSuperLikedPlace" @close="likedPlacesModal.close()" />
     <MyStoriesModal v-if="myStoriesModal.isOpen.value" :stories="myStories" @close="myStoriesModal.close()" @story-click="openCommunityStory" />
     <StoryDetailOverlay
       v-if="selectedStoryId"
