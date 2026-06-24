@@ -279,12 +279,12 @@ onMounted(() => {
 .discovery-scheduled .material-symbols-rounded { font-size: 14px; }
 .discovery-actions { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
 .discovery-actions .action-btn { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; cursor: pointer; transition: transform .14s ease, box-shadow .14s ease, background .14s ease, border-color .14s ease, color .14s ease; border: 1px solid var(--line); }
-.discovery-actions .action-btn.bookmark-btn { background: #f1f5f9; color: #3b82f6; border-color: #e2e8f0; }
-.discovery-actions .action-btn.bookmark-btn:hover:not(:disabled) { border-color: rgba(59, 130, 246, 0.45); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: #e2e8f0; }
-.discovery-actions .action-btn.bookmark-btn.is-saved { background: #f1f5f9; color: #3b82f6; border-color: #cbd5e1; }
-.discovery-actions .action-btn.bookmark-btn.is-saved:hover:not(:disabled) { background: #e2e8f0; }
-.discovery-actions .action-btn.add-btn { background: #f1f5f9; border-color: #e2e8f0; color: #10b981; }
-.discovery-actions .action-btn.add-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: #e2e8f0; border-color: #cbd5e1; }
+.discovery-actions .action-btn.bookmark-btn { background: #ffffff; color: #3b82f6; border-color: #cbd5e1; }
+.discovery-actions .action-btn.bookmark-btn:hover:not(:disabled) { border-color: rgba(59, 130, 246, 0.45); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: #f1f5f9; }
+.discovery-actions .action-btn.bookmark-btn.is-saved { background: #3b82f6; color: #ffffff; border-color: #3b82f6; }
+.discovery-actions .action-btn.bookmark-btn.is-saved:hover:not(:disabled) { background: #2563eb; border-color: #2563eb; }
+.discovery-actions .action-btn.add-btn { background: #10b981; border-color: #10b981; color: #ffffff; }
+.discovery-actions .action-btn.add-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2); background: #059669; border-color: #059669; }
 .discovery-actions .action-btn:disabled { cursor: not-allowed; color: #cbd5e1 !important; background: #ffffff !important; border-color: #e2e8f0 !important; box-shadow: none; opacity: 1 !important; transform: none; }
 .discovery-actions .material-symbols-rounded { font-size: 20px; }
 
