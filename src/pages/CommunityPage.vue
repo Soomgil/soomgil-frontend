@@ -2011,7 +2011,7 @@ watch(
   max-height: 900px;
   aspect-ratio: 4 / 3;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 32px 64px rgba(0, 50, 150, 0.15);

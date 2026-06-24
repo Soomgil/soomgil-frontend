@@ -192,6 +192,7 @@ async function deleteTrip() {
   try {
     await tripStore.deleteTrip(props.trip.id)
     emit('deleted', props.trip.id)
+    emit('close')
   } catch {
     error.value = '여행을 삭제하지 못했습니다.'
   }
@@ -201,6 +202,8 @@ const membersList = computed(() => {
   if (!props.trip) return []
   return (props.trip as any).members ?? []
 })
+
+const isOwner = computed(() => props.trip?.myRole === 'OWNER')
 
 onMounted(() => document.addEventListener('keydown', handleKeydown))
 onUnmounted(() => {
@@ -266,25 +269,57 @@ onUnmounted(() => {
               </div>
             </label>
 
-            <fieldset v-if="trip?.myRole === 'OWNER'" class="status-fieldset">
-              <legend>여행 상태</legend>
-              <div class="status-segments">
-                <button type="button" data-status="ACTIVE" :class="{ active: status === 'ACTIVE' }" @click="status = 'ACTIVE'">
-                  진행 중
+            <section v-if="isOwner" class="management-section" aria-labelledby="trip-status-title">
+              <div class="management-section-head">
+                <span class="material-symbols-rounded management-section-icon" aria-hidden="true">toggle_on</span>
+                <div>
+                  <h4 id="trip-status-title">여행 상태 설정</h4>
+                  <p>목록과 대시보드에서 이 여행이 표시되는 방식을 선택합니다.</p>
+                </div>
+              </div>
+              <div class="status-option-grid" role="radiogroup" aria-label="여행 상태">
+                <button
+                  type="button"
+                  class="status-option"
+                  :class="{ active: status === 'ACTIVE' }"
+                  role="radio"
+                  :aria-checked="status === 'ACTIVE'"
+                  @click="status = 'ACTIVE'"
+                >
+                  <span class="material-symbols-rounded status-option-icon" aria-hidden="true">directions_run</span>
+                  <span class="status-option-copy">
+                    <strong>진행 중</strong>
+                    <span>계획을 계속 편집하고 활성 여행으로 표시합니다.</span>
+                  </span>
+                  <span class="material-symbols-rounded status-option-check" aria-hidden="true">check_circle</span>
                 </button>
-                <button type="button" data-status="ARCHIVED" :class="{ active: status === 'ARCHIVED' }" @click="status = 'ARCHIVED'">
-                  보관됨
+                <button
+                  type="button"
+                  class="status-option"
+                  :class="{ active: status === 'ARCHIVED' }"
+                  role="radio"
+                  :aria-checked="status === 'ARCHIVED'"
+                  @click="status = 'ARCHIVED'"
+                >
+                  <span class="material-symbols-rounded status-option-icon" aria-hidden="true">inventory_2</span>
+                  <span class="status-option-copy">
+                    <strong>보관됨</strong>
+                    <span>끝난 여행으로 정리합니다. 언제든 다시 되돌릴 수 있습니다.</span>
+                  </span>
+                  <span class="material-symbols-rounded status-option-check" aria-hidden="true">check_circle</span>
                 </button>
               </div>
-              <small class="status-help">여행이 끝났다면 직접 ‘보관됨’으로 바꿀 수 있습니다. 언제든 다시 진행 중으로 되돌릴 수 있어요.</small>
-            </fieldset>
+            </section>
 
             <p v-if="error" class="trip-create-error" aria-live="polite" style="color:var(--rose);">{{ error }}</p>
 
-            <section v-if="trip?.myRole === 'OWNER'" class="danger-zone" aria-labelledby="delete-trip-title">
-              <div>
-                <h3 id="delete-trip-title">여행 삭제</h3>
-                <p>여행의 일정과 협업 데이터에 더 이상 접근할 수 없습니다.</p>
+            <section v-if="isOwner" class="management-section danger-zone" aria-labelledby="delete-trip-title">
+              <div class="management-section-head">
+                <span class="material-symbols-rounded management-section-icon management-section-icon--danger" aria-hidden="true">delete</span>
+                <div>
+                  <h4 id="delete-trip-title">여행 삭제</h4>
+                  <p>삭제하면 여행의 일정과 협업 데이터에 더 이상 접근할 수 없습니다.</p>
+                </div>
               </div>
               <button
                 v-if="!confirmingDelete"
@@ -380,80 +415,132 @@ onUnmounted(() => {
   font-size: 20px;
 }
 
-.status-fieldset {
-  border: 0;
-  margin: 0;
-  padding: 0;
-}
-
-.status-fieldset legend {
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: #374151;
-}
-
-.status-segments {
-  background: #f1f3f5;
-  border-radius: 12px;
-  display: grid;
-  gap: 4px;
-  grid-template-columns: 1fr 1fr;
-  padding: 6px;
-}
-
-.status-segments button {
-  background: transparent;
-  border: 0;
-  border-radius: 8px;
-  color: #6b7280;
-  cursor: pointer;
-  font-weight: 700;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 12px;
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.status-segments button.active {
+.management-section {
+  border: 1px solid rgba(227, 234, 244, 0.95);
+  border-radius: 18px;
   background: #fff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  color: #111827;
+  padding: 18px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
-.status-help {
-  display: block;
-  margin-top: 8px;
+.management-section-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.management-section-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(0, 102, 255, 0.08);
+  color: var(--violet);
+  font-size: 20px;
+}
+
+.management-section-icon--danger {
+  background: rgba(225, 29, 72, 0.08);
+  color: #e11d48;
+}
+
+.management-section h4 {
+  margin: 0 0 4px;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.management-section p {
+  margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
-.danger-zone {
+.status-option-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.status-option {
   align-items: center;
-  background: #fffafa;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  width: 100%;
+  min-height: 72px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fbfdff;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.status-option:hover {
+  border-color: rgba(0, 102, 255, 0.28);
+  background: #fff;
+}
+
+.status-option.active {
+  border-color: rgba(0, 102, 255, 0.42);
+  background: rgba(0, 102, 255, 0.04);
+  box-shadow: 0 8px 22px rgba(0, 102, 255, 0.08);
+}
+
+.status-option-icon {
+  color: var(--violet);
+  font-size: 22px;
+}
+
+.status-option-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.status-option-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.status-option-copy span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.status-option-check {
+  color: var(--violet);
+  font-size: 19px;
+  opacity: 0;
+}
+
+.status-option.active .status-option-check {
+  opacity: 1;
+}
+
+.danger-zone {
+  align-items: flex-start;
+  background: linear-gradient(135deg, #fffafa, #fff);
   border: 1px solid #ffe4e6;
-  border-radius: 16px;
   display: flex;
   gap: 16px;
   justify-content: space-between;
-  padding: 20px;
-  margin-top: 16px;
 }
 
-.danger-zone h3 {
-  color: #9f1239;
-  font-size: 15px;
-  margin: 0;
-}
-
-.danger-zone p {
-  color: #881337;
-  font-size: 13px;
-  margin: 4px 0 0 0;
+.danger-zone .management-section-head {
+  flex: 1 1 auto;
+  margin-bottom: 0;
 }
 
 .danger-button {
@@ -495,9 +582,16 @@ onUnmounted(() => {
 .delete-confirmation > button:not(.danger-button) {
   background: transparent;
   border: 0;
+  border-radius: 8px;
   cursor: pointer;
   font-weight: 700;
   color: #881337;
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.delete-confirmation > button:not(.danger-button):hover {
+  background: rgba(225, 29, 72, 0.08);
 }
 
 @media (max-width: 640px) {
