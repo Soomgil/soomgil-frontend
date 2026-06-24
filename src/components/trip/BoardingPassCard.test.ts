@@ -7,10 +7,6 @@ const image = vi.hoisted(() => ({ toPng: vi.fn() }))
 
 vi.mock('qrcode', () => ({ default: qr }))
 vi.mock('html-to-image', () => ({ toPng: image.toPng }))
-vi.mock('@/stores/auth.store', () => ({
-  useAuthStore: () => ({ user: { displayName: '김숨길' } }),
-}))
-
 const trip = {
   id: 'trip-qr-1',
   title: '제주도 여행',
@@ -40,15 +36,22 @@ describe('BoardingPassCard', () => {
     )
     expect(wrapper.get('[data-testid="trip-qr"]').attributes('src')).toBe('data:image/png;base64,qr')
     expect(wrapper.text()).toContain('2026.07.01 - 2026.07.04')
-    expect(wrapper.get('.stub-qr-copy').text()).toContain('제주특별자치도')
+    expect(wrapper.find('.stub-qr-copy').exists()).toBe(false)
+    expect(wrapper.get('.ticket-qr-label').text()).toBe('SCAN TO OPEN')
     expect(wrapper.get('.stub-role-badge').text()).toBe('방장')
     expect(wrapper.find('.stub-passenger-meta').exists()).toBe(false)
+    expect(wrapper.find('.stub-manage-actions').exists()).toBe(false)
+    expect(wrapper.find('.stub-controls').exists()).toBe(false)
     expect(wrapper.get('.stub-detail-btn').text()).toContain('여행 계획 열기')
-    expect(wrapper.text()).toContain('CREATED')
-    expect(wrapper.text()).toContain('2026.06.20')
-    expect(wrapper.text()).toContain('DURATION')
-    expect(wrapper.text()).toContain('3박 4일')
+    expect(wrapper.text()).toContain('TRIP RESERVATION')
+    expect(wrapper.text()).not.toContain('PASSENGER')
     expect(wrapper.text()).toContain('STATUS')
+    expect(wrapper.text()).toContain('여행 준비 중')
+    expect(wrapper.text()).toContain('DEPARTURE')
+    expect(wrapper.text()).toContain('2026.07.01')
+    expect(wrapper.text()).toContain('RETURN')
+    expect(wrapper.text()).toContain('2026.07.04')
+    expect(wrapper.text()).toContain('DESTINATION')
     expect(wrapper.text()).not.toContain('FLIGHT')
     expect(wrapper.text()).not.toContain('SEAT')
     expect(wrapper.text()).not.toContain('GATE')

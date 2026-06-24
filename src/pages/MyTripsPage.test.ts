@@ -225,4 +225,21 @@ describe('MyTripsPage', () => {
     expect(wrapper.text()).toContain('지난 부산 여행')
     expect(wrapper.text()).toContain('2026.07.10 - 2026.07.12')
   })
+
+  it('캐러셀 조작부를 티켓 바깥 아래에 표시한다', async () => {
+    store.trips = [trip, { ...trip, id: 'trip-2', title: '두 번째 여행' }]
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await flushPromises()
+
+    const panel = wrapper.get('.next-trip-panel')
+    const ticket = panel.get('[data-testid="trip-ticket"]')
+    const navigation = panel.get('.next-trip-nav')
+
+    expect(ticket.find('.next-trip-nav').exists()).toBe(false)
+    expect(navigation.element.parentElement).toBe(panel.element)
+    expect(navigation.findAll('.carousel-dot')).toHaveLength(2)
+    expect(navigation.findAll('button')).toHaveLength(2)
+  })
 })

@@ -274,11 +274,7 @@ watch(filteredTrips, () => {
             >
               <BoardingPassCard
                 :trip="currentTrip"
-                :position="carouselIndex"
-                :count="featuredTrips.length"
                 @detail="goTripDetail(currentTrip.id)"
-                @access="openTripAccess(currentTrip)"
-                @settings="openTripSettings(currentTrip)"
               />
               <div v-if="false" class="boarding-pass-card boarding-pass-card--placeholder" aria-hidden="true">
                 <div class="ticket-main">
@@ -386,6 +382,14 @@ watch(filteredTrips, () => {
                 <button class="carousel-btn prev-btn" type="button" aria-label="이전 여행" @click="prevCarousel">
                   <span class="material-symbols-rounded">chevron_left</span>
                 </button>
+                <div class="next-trip-dots carousel-dots-container" :aria-label="`${featuredTrips.length}개 여행 중 ${carouselIndex + 1}번째`">
+                  <span
+                    v-for="i in carouselDots"
+                    :key="i"
+                    class="carousel-dot"
+                    :class="{ active: i === carouselIndex }"
+                  ></span>
+                </div>
                 <button class="carousel-btn next-btn" type="button" aria-label="다음 여행" @click="nextCarousel">
                   <span class="material-symbols-rounded">chevron_right</span>
                 </button>
@@ -593,6 +597,29 @@ watch(filteredTrips, () => {
 /* 보딩패스 placeholder 배경 (커버 이미지 없을 때) */
 .boarding-pass-card--placeholder {
   background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.98)) !important;
+}
+
+.next-trip-panel.boarding-pass-container > .next-trip-nav {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  left: auto;
+  margin-top: 14px;
+  pointer-events: auto;
+  position: static;
+  right: auto;
+  transform: none;
+}
+
+.next-trip-panel.boarding-pass-container > .next-trip-nav .carousel-btn {
+  height: 36px;
+  width: 36px;
+}
+
+.next-trip-panel.boarding-pass-container > .next-trip-nav .next-trip-dots {
+  position: static;
+  transform: none;
 }
 
 /* stub 내 액션 버튼 영역 */
