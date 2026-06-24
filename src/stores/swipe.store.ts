@@ -236,6 +236,7 @@ export function createSwipeFeedQueue(gateway: SwipeFeedGateway) {
     prefetching,
     submitting,
     error,
+    lastParams,
     activeQueue,
     queueDepth,
     currentItem,

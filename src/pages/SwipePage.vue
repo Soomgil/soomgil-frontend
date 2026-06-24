@@ -12,9 +12,8 @@ import type { AccessibilityFlag, ParkingType } from '@/types/place'
 const router = useRouter()
 
 const {
-  items,
   currentItem,
-  completedCount,
+  lastParams,
   loading,
   submitting,
   error,
@@ -25,7 +24,27 @@ const {
   advance,
 } = useSwipeFeed()
 
-const totalPlaces = computed(() => completedCount.value + items.value.length)
+const regionOptions = [
+  { code: '', label: '전체 지역' },
+  { code: '1', label: '서울특별시' },
+  { code: '2', label: '인천광역시' },
+  { code: '3', label: '대전광역시' },
+  { code: '4', label: '대구광역시' },
+  { code: '5', label: '광주광역시' },
+  { code: '6', label: '부산광역시' },
+  { code: '7', label: '울산광역시' },
+  { code: '8', label: '세종특별자치시' },
+  { code: '31', label: '경기도' },
+  { code: '32', label: '강원특별자치도' },
+  { code: '33', label: '충청북도' },
+  { code: '34', label: '충청남도' },
+  { code: '35', label: '경상북도' },
+  { code: '36', label: '경상남도' },
+  { code: '37', label: '전북특별자치도' },
+  { code: '38', label: '전라남도' },
+  { code: '39', label: '제주특별자치도' },
+] as const
+const selectedRegionCode = ref(lastParams.value.legalRegionCode ?? '')
 const currentPlace = computed(() => currentItem.value?.place ?? null)
 const currentDescription = computed(() => (
   currentPlace.value?.description?.trim()
@@ -39,6 +58,16 @@ const descriptionExpanded = ref(false)
 const canExpandDescription = computed(() => currentDescription.value.length > 180)
 const currentAccessibility = computed(() => currentPlace.value?.accessibility)
 const stageRef = ref<HTMLElement | null>(null)
+
+async function changeRegion() {
+  resetCard()
+  activePhotoIdx.value = 0
+  await load({
+    ...(selectedRegionCode.value ? { legalRegionCode: selectedRegionCode.value } : {}),
+    limit: 10,
+    excludeRecent: true,
+  })
+}
 
 type AccessibilityState = 'supported' | 'unavailable' | 'unknown'
 
@@ -75,11 +104,6 @@ function parkingTypeLabel(type?: ParkingType) {
     UNKNOWN: '정보 없음',
   } satisfies Record<ParkingType, string>)[type ?? 'UNKNOWN']
 }
-
-/* ── XP Progress ──────────────────────────────────────── */
-const xpGoal = computed(() => Math.max(totalPlaces.value, 1))
-const xpCount = completedCount
-const xpPercent = computed(() => (xpCount.value / xpGoal.value) * 100)
 
 /* ── Swipe State ──────────────────────────────────────── */
 const decision = ref('')
@@ -294,6 +318,17 @@ onMounted(() => {
               마음에 드는 장소는 오른쪽으로, 아쉬운 장소는 왼쪽으로 밀어보세요. 슈퍼라이크는 멤버들에게 강력하게 추천하고 싶은 장소입니다.
             </p>
           </div>
+          <div class="page-hero__actions swipe-filter-actions">
+            <label class="swipe-region-filter">
+              <span class="material-symbols-rounded" aria-hidden="true">map</span>
+              <span>지역</span>
+              <select v-model="selectedRegionCode" aria-label="지역 필터" :disabled="loading || submitting" @change="changeRegion">
+                <option v-for="region in regionOptions" :key="region.code" :value="region.code">
+                  {{ region.label }}
+                </option>
+              </select>
+            </label>
+          </div>
         </div>
 
         <div class="swipe-workspace-card">
@@ -325,14 +360,6 @@ onMounted(() => {
                 />
 
                 <template v-else>
-                  <!-- XP bar overlay on card -->
-                  <div class="swipe-xp-bar">
-                    <div class="swipe-xp-track">
-                      <div class="swipe-xp-fill" :style="{ width: xpPercent + '%' }"></div>
-                    </div>
-                    <span class="swipe-xp-count">{{ xpCount }} / {{ xpGoal }}</span>
-                  </div>
-
                   <!-- Swipe Guides -->
                   <div style="position: absolute; left: 50%; top: 0px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; opacity: 0.9; z-index: 2;">
                     <span style="font-weight: 900; font-size: 15px; letter-spacing: 0.5px; background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">SUPER LIKE</span>
@@ -528,6 +555,42 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.swipe-filter-actions {
+  align-self: flex-end;
+}
+.swipe-region-filter {
+  display: grid;
+  grid-template-columns: 20px auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 10px 0 14px;
+  border: 1px solid rgba(214, 224, 238, 0.95);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+}
+.swipe-region-filter .material-symbols-rounded {
+  color: var(--violet);
+  font-size: 20px;
+}
+.swipe-region-filter select {
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+  cursor: pointer;
+}
+.swipe-region-filter select:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
 .swipe-card { display: grid; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
 .swipe-card > img { min-height: 0; object-fit: cover; }
 .swipe-body { min-width: 0; max-height: 230px; overflow-y: auto; overscroll-behavior: contain; }

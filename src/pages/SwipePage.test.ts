@@ -67,6 +67,7 @@ describe('SwipePage', () => {
     expect(wrapper.text()).toContain('장소 이야기')
     expect(wrapper.find('.swipe-body > p.muted').exists()).toBe(false)
     expect(wrapper.find('button[aria-label="LIKE"]').exists()).toBe(false)
+    expect(wrapper.find('.swipe-xp-bar').exists()).toBe(false)
 
     const descriptionToggle = wrapper.get('.place-description-toggle')
     expect(descriptionToggle.attributes('aria-expanded')).toBe('false')
@@ -87,6 +88,26 @@ describe('SwipePage', () => {
     await wrapper.get('a').trigger('click')
     expect(push).toHaveBeenCalledWith('/my-trips')
     vi.useRealTimers()
+  })
+
+  it('reloads the swipe queue with the selected province area code', async () => {
+    getFeed.mockResolvedValue({ items: [feedItem], nextSeed: null })
+    const wrapper = mount(SwipePage, {
+      global: { stubs: { AppHeader: true } },
+    })
+    await flushPromises()
+
+    const regionSelect = wrapper.get('select[aria-label="지역 필터"]')
+    expect(regionSelect.findAll('option').map((option) => option.text())).toContain('제주특별자치도')
+
+    await regionSelect.setValue('39')
+    await flushPromises()
+
+    expect(getFeed).toHaveBeenLastCalledWith({
+      legalRegionCode: '39',
+      limit: 10,
+      excludeRecent: true,
+    })
   })
 
   it('keeps description and guidance placeholders visible when KTO omits optional fields', async () => {
