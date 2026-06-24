@@ -846,8 +846,8 @@ onUnmounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.04);
   background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
-  width: min(500px, calc(100vw - 32px)) !important;
-  max-width: 500px !important;
+  width: min(var(--settings-modal-width, 580px), calc(100vw - 32px)) !important;
+  max-width: var(--settings-modal-width, 580px) !important;
 }
 
 .advanced-modal .modal-header {

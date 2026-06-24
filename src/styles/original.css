@@ -7698,7 +7698,8 @@
 
     /* Advanced Modal Styles */
     .advanced-modal {
-      max-width: 480px !important;
+      width: min(var(--settings-modal-width, 580px), calc(100vw - 32px)) !important;
+      max-width: var(--settings-modal-width, 580px) !important;
       padding: 24px !important;
     }
 

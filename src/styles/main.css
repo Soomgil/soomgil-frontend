@@ -91,6 +91,7 @@
 
 /* Shared search box treatment used across page-level search UIs. */
 :root {
+  --settings-modal-width: 580px;
   --search-box-height: 48px;
   --search-box-radius: 999px;
   --search-box-border: 1px solid rgba(0, 102, 255, 0.16);
