@@ -373,7 +373,7 @@ function handleUserClick(userId: string) {
 <template>
   <AppShell>
     <main>
-      <section class="section mypage-shell" aria-labelledby="mypage-title">
+      <section class="section mypage-shell page-with-hero" aria-labelledby="mypage-title">
         <div class="mypage-page-heading page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">person</span> My Page</p>

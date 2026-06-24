@@ -114,7 +114,7 @@ async function saveSettings() {
 
 <template>
   <AppShell>
-    <div class="settings-page max-w-2xl mx-auto px-6 py-12">
+    <div class="settings-page page-with-hero max-w-2xl mx-auto px-6 py-12">
       <header class="settings-heading page-hero">
         <div class="page-hero__copy">
           <p class="page-hero__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">tune</span> Preferences</p>

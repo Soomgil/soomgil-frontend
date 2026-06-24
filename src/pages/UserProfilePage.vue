@@ -172,7 +172,7 @@ function openCommunityStory(storyId: string) {
       <span class="material-symbols-rounded" style="font-size: 40px; color: var(--violet);">progress_activity</span>
     </main>
     <main v-else-if="user">
-      <section class="section mypage-shell" aria-labelledby="user-profile-title">
+      <section class="section mypage-shell page-with-hero" aria-labelledby="user-profile-title">
         <div class="mypage-page-heading page-hero">
           <div class="page-hero__copy">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">

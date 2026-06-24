@@ -203,7 +203,7 @@ watch(selectedTripId, (tripId) => {
 <template>
   <AppShell>
     <main>
-      <section class="section write-page" style="padding-top: 40px;">
+      <section class="section write-page page-with-hero" style="padding-top: 40px;">
         <div class="detail-topline" style="margin-bottom: 32px;">
           <a class="btn ghost" href="#" style="border-radius: 999px;" @click.prevent="router.back()">
             <span class="material-symbols-rounded" style="font-size: 18px;">arrow_back</span> 커뮤니티

@@ -240,7 +240,7 @@ watch(filteredTrips, () => {
     <AppHeader />
 
     <main>
-      <section class="section my-trips-dashboard">
+      <section class="section my-trips-dashboard page-with-hero">
         <div class="travel-page-head page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">

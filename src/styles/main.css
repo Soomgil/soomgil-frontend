@@ -5,15 +5,25 @@
 @import "mapbox-gl/dist/mapbox-gl.css";
 @import "./original.css";
 
+:root {
+  --page-hero-top-space: 56px;
+  --page-hero-bottom-space: 48px;
+}
+
 /* Shared page hero treatment, matched to the community page header. */
-.page-hero.page-hero {
+.page-hero.page-hero.page-hero {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 32px;
-  margin-bottom: 48px;
+  margin-top: 0;
+  margin-bottom: var(--page-hero-bottom-space);
   flex-wrap: wrap;
   padding: 0 4px;
+}
+
+.page-with-hero.page-with-hero.page-with-hero {
+  padding-top: var(--page-hero-top-space) !important;
 }
 
 .page-hero .page-hero__copy {
@@ -75,8 +85,9 @@
 }
 
 @media (max-width: 640px) {
-  .page-hero.page-hero {
-    margin-bottom: 36px;
+  :root {
+    --page-hero-top-space: 36px;
+    --page-hero-bottom-space: 36px;
   }
 
   .page-hero .page-hero__title {

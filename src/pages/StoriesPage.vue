@@ -37,7 +37,7 @@ onMounted(loadPosts)
 <template>
   <AppShell>
     <main>
-      <section class="section">
+      <section class="section page-with-hero">
         <div class="detail-topline">
           <a class="btn ghost" href="#" @click.prevent="goBack">커뮤니티로 돌아가기</a>
           <router-link class="btn primary" to="/community/story-write">여행기 작성</router-link>

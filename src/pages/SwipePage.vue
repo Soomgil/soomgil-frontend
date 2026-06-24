@@ -280,7 +280,7 @@ onMounted(() => {
     <AppHeader />
 
     <main>
-      <section class="section">
+      <section class="section page-with-hero">
         <div class="page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">

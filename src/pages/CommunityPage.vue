@@ -548,7 +548,7 @@ watch(
 <template>
   <AppShell>
     <main>
-      <section class="section community-page">
+      <section class="section community-page page-with-hero">
         <div class="community-hero-header">
           <div class="community-hero-text">
             <p class="eyebrow community-hero-eyebrow">
@@ -1259,7 +1259,7 @@ watch(
   align-items: flex-end;
   justify-content: space-between;
   gap: 32px;
-  margin-bottom: 48px;
+  margin-bottom: var(--page-hero-bottom-space);
   flex-wrap: wrap;
   padding: 0 4px;
 }

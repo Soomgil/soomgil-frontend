@@ -453,7 +453,7 @@ onBeforeUnmount(() => {
 <template>
   <AppShell>
     <main>
-      <section class="section record-page">
+      <section class="section record-page page-with-hero">
 
         <!-- 1. Page header -->
         <div class="record-page-head page-hero">

@@ -213,7 +213,7 @@ watch(
 
 <template>
   <AppShell>
-    <main class="search-page">
+    <main class="search-page page-with-hero">
       <!-- Search Header -->
       <section class="search-head page-hero">
         <div class="page-hero__copy">
