@@ -241,16 +241,21 @@ watch(filteredTrips, () => {
 
     <main>
       <section class="section my-trips-dashboard">
-        <div class="travel-page-head">
-          <div>
-            <p class="eyebrow">Travel Dashboard</p>
-            <h1><span>내 여행 준비</span>를 이어가세요</h1>
-            <p class="lead">다가오는 일정, 초대받은 여행을 한곳에서 확인하고 다음 계획으로 바로 이어가세요.</p>
+        <div class="travel-page-head page-hero">
+          <div class="page-hero__copy">
+            <p class="page-hero__eyebrow">
+              <span class="material-symbols-rounded" aria-hidden="true">luggage</span>
+              Travel Dashboard
+            </p>
+            <h1 class="page-hero__title"><span class="page-hero__gradient">내 여행 준비</span>를 이어가세요</h1>
+            <p class="page-hero__lead">다가오는 일정, 초대받은 여행을 한곳에서 확인하고 다음 계획으로 바로 이어가세요.</p>
           </div>
-          <button class="btn primary" type="button" @click="createModal.open">
-            <span class="material-symbols-rounded" aria-hidden="true">add</span>
-            새 여행 만들기
-          </button>
+          <div class="page-hero__actions">
+            <button class="btn primary" type="button" @click="createModal.open">
+              <span class="material-symbols-rounded" aria-hidden="true">add</span>
+              새 여행 만들기
+            </button>
+          </div>
         </div>
         <p v-if="intentMessage" class="trip-intent-guide" role="status"><span class="material-symbols-rounded">info</span>{{ intentMessage }}</p>
 

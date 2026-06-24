@@ -456,16 +456,16 @@ onBeforeUnmount(() => {
       <section class="section record-page">
 
         <!-- 1. Page header -->
-        <div class="record-page-head">
-          <div class="record-page-title">
-            <p class="eyebrow">
-              <span class="material-symbols-rounded" style="font-size:16px; vertical-align:middle">photo_library</span>
+        <div class="record-page-head page-hero">
+          <div class="record-page-title page-hero__copy">
+            <p class="page-hero__eyebrow">
+              <span class="material-symbols-rounded" aria-hidden="true">photo_library</span>
               Travel Memories
             </p>
-            <h1><span>여행의 기록</span>을 한눈에 모아보세요</h1>
+            <h1 class="page-hero__title"><span class="page-hero__gradient">여행의 기록</span>을 한눈에 모아보세요</h1>
+            <p class="page-hero__lead">함께 남긴 사진과 순간을 여행별로 정리하고, 다시 보고 싶은 추억을 빠르게 찾아보세요.</p>
           </div>
-          <div class="record-page-toolbar">
-            <p class="lead">함께 남긴 사진과 순간을 여행별로 정리하고, 다시 보고 싶은 추억을 빠르게 찾아보세요.</p>
+          <div class="record-page-toolbar page-hero__actions">
             <div class="record-actions" aria-label="기록 보기 도구">
               <button class="btn primary" type="button" @click="openUploadModal">
                 <span class="material-symbols-rounded">add_a_photo</span>사진 추가

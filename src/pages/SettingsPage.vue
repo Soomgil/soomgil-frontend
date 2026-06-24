@@ -115,10 +115,12 @@ async function saveSettings() {
 <template>
   <AppShell>
     <div class="settings-page max-w-2xl mx-auto px-6 py-12">
-      <header class="settings-heading">
-        <p class="eyebrow"><span class="material-symbols-rounded">tune</span> Preferences</p>
-        <h1>설정</h1>
-        <p>프로필은 마이페이지에서, 기기와 서비스 환경은 여기에서 관리합니다.</p>
+      <header class="settings-heading page-hero">
+        <div class="page-hero__copy">
+          <p class="page-hero__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">tune</span> Preferences</p>
+          <h1 class="page-hero__title"><span class="page-hero__gradient">서비스 환경</span>을 관리하세요</h1>
+          <p class="page-hero__lead">프로필은 마이페이지에서, 기기와 서비스 환경은 여기에서 관리합니다.</p>
+        </div>
       </header>
 
       <p v-if="loading" class="text-muted">불러오는 중…</p>

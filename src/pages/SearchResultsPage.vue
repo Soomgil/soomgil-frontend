@@ -215,15 +215,18 @@ watch(
   <AppShell>
     <main class="search-page">
       <!-- Search Header -->
-      <section class="search-head">
-        <p class="eyebrow">
-          <span class="material-symbols-rounded" style="font-size:16px; vertical-align:middle">search</span>
-          Unified Search
-        </p>
-        <h1 class="search-head-title">
-          <span>통합 검색</span>
-        </h1>
-        <p class="search-head-lead">여행, 장소, 여행기, 사용자를 한 번에 찾아보세요.</p>
+      <section class="search-head page-hero">
+        <div class="page-hero__copy">
+          <p class="page-hero__eyebrow">
+            <span class="material-symbols-rounded" aria-hidden="true">search</span>
+            Unified Search
+          </p>
+          <h1 class="page-hero__title">
+            <span class="page-hero__gradient">필요한 여행 정보</span>를<br />
+            한 번에 찾아보세요
+          </h1>
+          <p class="page-hero__lead">여행, 장소, 여행기, 사용자를 한 번에 검색하고 다음 여정을 빠르게 이어가세요.</p>
+        </div>
 
         <form class="search-form search-form--capsule" role="search" @submit.prevent="submitSearch">
           <div class="search-input-wrap search-input-wrap--capsule">
@@ -245,23 +248,23 @@ watch(
             </button>
           </div>
         </form>
-
-        <div class="search-tabs" role="tablist" aria-label="검색 카테고리">
-          <button
-            v-for="tab in tabs"
-            :key="tab.key"
-            type="button"
-            role="tab"
-            class="search-tab"
-            :class="{ active: activeTab === tab.key }"
-            :aria-selected="activeTab === tab.key"
-            @click="selectTab(tab.key)"
-          >
-            <span class="material-symbols-rounded">{{ tab.icon }}</span>
-            {{ tab.key }}
-          </button>
-        </div>
       </section>
+
+      <div class="search-tabs" role="tablist" aria-label="검색 카테고리">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          type="button"
+          role="tab"
+          class="search-tab"
+          :class="{ active: activeTab === tab.key }"
+          :aria-selected="activeTab === tab.key"
+          @click="selectTab(tab.key)"
+        >
+          <span class="material-symbols-rounded">{{ tab.icon }}</span>
+          {{ tab.key }}
+        </button>
+      </div>
 
       <!-- Result Body -->
       <section class="search-body">

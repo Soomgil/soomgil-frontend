@@ -217,11 +217,14 @@ watch(selectedTripId, (tripId) => {
         <div class="content-container">
           <div class="write-layout">
             <div class="write-main">
-              <div class="section-title" style="margin-bottom: 40px;">
-                <div>
-                  <p class="eyebrow" style="color: var(--violet)">Create Story</p>
-                  <h1 style="font-size: 38px; margin-bottom: 12px; font-weight: 850;">당신의 여행을 들려주세요</h1>
-                  <p class="lead" style="font-size: 17px; color: var(--muted);">사진과 글, 그리고 당신만의 감성을 자유롭게 담아보세요.</p>
+              <div class="page-hero write-page-hero">
+                <div class="page-hero__copy">
+                  <p class="page-hero__eyebrow">
+                    <span class="material-symbols-rounded" aria-hidden="true">edit_note</span>
+                    Create Story
+                  </p>
+                  <h1 class="page-hero__title"><span class="page-hero__gradient">당신의 여행</span>을 들려주세요</h1>
+                  <p class="page-hero__lead">사진과 글, 그리고 당신만의 감성을 자유롭게 담아보세요.</p>
                 </div>
               </div>
 

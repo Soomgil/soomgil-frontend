@@ -5,6 +5,90 @@
 @import "mapbox-gl/dist/mapbox-gl.css";
 @import "./original.css";
 
+/* Shared page hero treatment, matched to the community page header. */
+.page-hero.page-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 48px;
+  flex-wrap: wrap;
+  padding: 0 4px;
+}
+
+.page-hero .page-hero__copy {
+  flex: 1 1 480px;
+  min-width: 0;
+}
+
+.page-hero .page-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 102, 255, 0.08);
+  color: var(--violet);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.page-hero .page-hero__eyebrow .material-symbols-rounded {
+  font-size: 16px;
+}
+
+.page-hero .page-hero__title {
+  margin: 0 0 18px;
+  color: var(--ink);
+  font-size: clamp(32px, 4.2vw, 52px);
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.1;
+  word-break: keep-all;
+}
+
+.page-hero .page-hero__gradient {
+  background: linear-gradient(135deg, var(--violet) 0%, var(--blue) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.page-hero .page-hero__lead {
+  max-width: none;
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(15px, 1.2vw, 18px);
+  line-height: 1.75;
+}
+
+.page-hero .page-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .page-hero.page-hero {
+    margin-bottom: 36px;
+  }
+
+  .page-hero .page-hero__title {
+    font-size: clamp(28px, 8vw, 38px);
+  }
+
+  .page-hero .page-hero__actions,
+  .page-hero .page-hero__actions > .btn {
+    width: 100%;
+  }
+}
+
 /* Shared search box treatment used across page-level search UIs. */
 :root {
   --search-box-height: 48px;
