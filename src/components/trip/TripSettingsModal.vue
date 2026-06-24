@@ -171,7 +171,15 @@ async function save() {
     return
   }
 
-  if (editStartDate.value && editEndDate.value && new Date(editEndDate.value) < new Date(editStartDate.value)) {
+  if (editEndDate.value && !editStartDate.value) {
+    error.value = '시작 날짜를 먼저 선택해 주세요.'
+    return
+  }
+
+  const effectiveStartDate = editStartDate.value || null
+  const effectiveEndDate = editStartDate.value ? (editEndDate.value || editStartDate.value) : null
+
+  if (effectiveStartDate && effectiveEndDate && new Date(effectiveEndDate) < new Date(effectiveStartDate)) {
     error.value = '종료 날짜는 시작 날짜 이후로 선택해 주세요.'
     return
   }
@@ -182,22 +190,16 @@ async function save() {
     const regionCodesChanged = Boolean(selectedRegion.value)
       || (regionSelectionChanged.value && trimmedDestination !== initialDisplayDestination.value.trim())
     
-    // tripApi를 통해 수정
-    // (startDate, endDate 등은 tripStore.updateTrip 내부에서 지원 안 할 수도 있으나 UI상 처리)
     await tripStore.updateTrip(props.trip.id, {
       title: trimmedTitle,
       displayDestination: trimmedDestination,
       ...(regionCodesChanged
         ? { legalRegionCodes: selectedRegion.value ? [selectedRegion.value.code] : [] }
         : {}),
+      startDate: effectiveStartDate,
+      endDate: effectiveEndDate,
       status: status.value,
     })
-    
-    // RoutePage에서 날짜 동기화를 위해 변경된 날짜값들을 trip 객체에 임시 셋업
-    if (props.trip) {
-      props.trip.startDate = editStartDate.value || undefined
-      props.trip.endDate = editEndDate.value || undefined
-    }
 
     emit('saved', props.trip.id)
     emit('close')

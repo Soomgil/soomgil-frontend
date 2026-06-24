@@ -139,14 +139,16 @@ const trip = computed(() => {
     })
   }
 
-  // dayPlans 데이터에서 지정된 날짜가 있는 일차들을 필터링하여 오름차순 정렬
+  // 여행 설정 날짜를 우선 사용하고, 없으면 기존 일차 날짜에서 추론합니다.
   const dates = dayPlans.value
     .filter(d => d.groupType !== 'UNSCHEDULED' && d.date)
     .map(d => d.date)
     .sort()
 
-  const tripStartDate = dates.length > 0 ? dates[0] : ''
-  const tripEndDate = dates.length > 0 ? dates[dates.length - 1] : ''
+  const configuredStartDate = detail?.startDate?.slice(0, 10) ?? ''
+  const configuredEndDate = detail?.endDate?.slice(0, 10) ?? ''
+  const tripStartDate = configuredStartDate || (dates.length > 0 ? dates[0] : '')
+  const tripEndDate = configuredEndDate || configuredStartDate || (dates.length > 0 ? dates[dates.length - 1] : '')
 
   // 2. 날짜 연산 및 2박 3일 형식 포맷팅
   let dateText = '날짜 미지정'
