@@ -63,6 +63,12 @@ export interface CreateTripRecordRequest {
   mediaFileIds?: string[]
 }
 
+export interface TripRecordDay {
+  id: string
+  dayNumber: number
+  date: string | null
+}
+
 /* ── Trip Record Media (junction) ── */
 export interface TripRecordMedia {
   recordEntryId: string
@@ -76,6 +82,7 @@ export interface TripRecordPhoto {
   tripTitle: string | null
   recordId: string
   itineraryDayId: string | null
+  dayNumber: number | null
   itineraryItemId: string | null
   media: MediaFile
   uploadedBy: import('./auth').UserSummary | null

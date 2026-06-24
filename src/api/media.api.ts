@@ -8,11 +8,17 @@ import type {
   MediaUploadUrl,
   TripRecordEntry,
 	TripRecordPhoto,
+	TripRecordDay,
 	TripRecordPhotoReadUrl,
 	TripRecordPhotoSummaryResponse,
 } from '@/types/media'
 
 export const mediaApi = {
+  getRecordDays: async (tripId: string): Promise<TripRecordDay[]> => {
+    const response = await http.get<TripRecordDay[]>(`/trips/${tripId}/records/days`)
+    return response.data
+  },
+
   /** 선택한 여행방의 기록에 연결된 사진 목록 */
 	getRecordPhotos: async (tripId: string, page = 0, size = 100): Promise<PagedItems<TripRecordPhoto>> => {
 		const response = await http.get<PagedItems<TripRecordPhoto>>(`/trips/${tripId}/records/photos`, {

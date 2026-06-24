@@ -130,6 +130,7 @@ async function onCustomPhotosSelected(event: Event) {
         tripTitle: null,
         recordId: '',
         itineraryDayId: null,
+        dayNumber: null,
         itineraryItemId: null,
         media: mediaFile,
         uploadedBy: null,
