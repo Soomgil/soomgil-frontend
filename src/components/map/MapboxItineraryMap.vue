@@ -35,6 +35,8 @@ export interface ItineraryMapStop {
 export interface ItineraryMapRoute {
   id: string
   geometry: Record<string, unknown>
+  originItineraryItemId?: string | null
+  destinationItineraryItemId?: string | null
 }
 
 const props = withDefaults(defineProps<{
@@ -50,6 +52,7 @@ const props = withDefaults(defineProps<{
   drawingWidth?: number
   drawingsVisible?: boolean
   navigationMode?: boolean
+  routeWaypoints?: LngLat[]
 }>(), {
   drawings: () => [],
   routes: () => [],
@@ -62,6 +65,7 @@ const props = withDefaults(defineProps<{
   drawingWidth: 6,
   drawingsVisible: true,
   navigationMode: false,
+  routeWaypoints: () => [],
 })
 const emit = defineEmits<{
   selectPlace: [placeProvider: string | undefined, placeId: string | undefined, stopId: string]
@@ -70,6 +74,7 @@ const emit = defineEmits<{
   drawingCreate: [drawing: MapDrawingDraft]
   drawingErase: [drawingId: string]
   drawingPreview: [event: DrawingPreviewEvent]
+  routePoint: [coordinate: LngLat]
 }>()
 
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
@@ -83,29 +88,35 @@ let markers: MapboxMarker[] = []
 let resizeObserver: ResizeObserver | null = null
 let lineLayerIds: string[] = []
 let styleReady = false
+let appliedMapStyle = ''
 let initializationSequence = 0
 let lastEmittedViewport = ''
 let lastFittedStopsKey = ''
 
 const { isDarkMode } = useTheme()
 
+const MAPBOX_STYLE_LIGHT = 'mapbox://styles/mapbox/light-v11'
+const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/navigation-night-v1'
+const MAPBOX_STYLE_NAVIGATION_DAY = 'mapbox://styles/mapbox/navigation-day-v1'
+
 const mapStyle = computed(() => {
-  if (props.navigationMode) {
-    return 'mapbox://styles/mapbox/navigation-day-v1'
-  }
   if (isDarkMode.value) {
-    return 'mapbox://styles/mapbox/dark-v11'
-  } else {
-    return 'mapbox://styles/mapbox/light-v11'
+    return MAPBOX_STYLE_DARK
   }
+  if (props.navigationMode) {
+    return MAPBOX_STYLE_NAVIGATION_DAY
+  }
+  return MAPBOX_STYLE_LIGHT
 })
 
-watch(mapStyle, (newStyle) => {
-  if (map && styleReady) {
-    styleReady = false
-    map.setStyle(newStyle)
-  }
-})
+function applyMapStyle(style: string) {
+  if (!map || appliedMapStyle === style) return
+  styleReady = false
+  appliedMapStyle = style
+  map.setStyle(style)
+}
+
+watch(mapStyle, applyMapStyle)
 
 function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? 'day-color-5' : `day-color-${((dayIndex - 1) % 5) + 1}`
@@ -269,6 +280,43 @@ function clearRouteLayers() {
   lineLayerIds = []
 }
 
+function routeAnchorCoordinate(itemId?: string | null): [number, number] | null {
+  if (!itemId) return null
+  const stop = props.stops.find((candidate) => candidate.id === itemId)
+  return stop ? [stop.lng, stop.lat] : null
+}
+
+function coordinateDistance(left: [number, number], right: [number, number]) {
+  return Math.hypot(left[0] - right[0], left[1] - right[1])
+}
+
+function sameRouteCoordinate(left: [number, number], right: [number, number]) {
+  return coordinateDistance(left, right) < 0.000001
+}
+
+function anchorRouteLine(route: ItineraryMapRoute, coordinates: [number, number][]) {
+  const origin = routeAnchorCoordinate(route.originItineraryItemId)
+  const destination = routeAnchorCoordinate(route.destinationItineraryItemId)
+  if (!origin && !destination) return coordinates
+
+  let anchored = [...coordinates]
+  if (
+    origin && destination && anchored.length >= 2
+    && coordinateDistance(anchored[0], destination) < coordinateDistance(anchored[0], origin)
+    && coordinateDistance(anchored[anchored.length - 1], origin) < coordinateDistance(anchored[anchored.length - 1], destination)
+  ) {
+    anchored = anchored.reverse()
+  }
+
+  if (origin && !sameRouteCoordinate(anchored[0], origin)) {
+    anchored.unshift(origin)
+  }
+  if (destination && !sameRouteCoordinate(anchored[anchored.length - 1], destination)) {
+    anchored.push(destination)
+  }
+  return anchored
+}
+
 function routeLineString(route: ItineraryMapRoute): { type: 'LineString'; coordinates: [number, number][] } | null {
   const geometry = route.geometry as { type?: unknown; geometry?: unknown; coordinates?: unknown }
   const candidate = (
@@ -292,7 +340,9 @@ function routeLineString(route: ItineraryMapRoute): { type: 'LineString'; coordi
     return []
   })
 
-  return coordinates.length >= 2 ? { type: 'LineString', coordinates } : null
+  if (coordinates.length < 2) return null
+  const anchoredCoordinates = anchorRouteLine(route, coordinates)
+  return anchoredCoordinates.length >= 2 ? { type: 'LineString', coordinates: anchoredCoordinates } : null
 }
 
 function renderRoutes() {
@@ -427,6 +477,7 @@ function cleanupMapResources() {
   map?.remove()
   map = null
   styleReady = false
+  appliedMapStyle = ''
   lastEmittedViewport = ''
   lastFittedStopsKey = ''
   updateDrawingProjection()
@@ -456,9 +507,14 @@ async function initializeMap() {
       zoom: 10,
     })
     map = createdMap
-    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+    appliedMapStyle = mapStyle.value
+    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left')
     createdMap.on('style.load', () => {
       if (sequence !== initializationSequence || map !== createdMap) return
+      if (appliedMapStyle !== mapStyle.value) {
+        applyMapStyle(mapStyle.value)
+        return
+      }
       styleReady = true
       mapError.value = ''
       canRetry.value = false
@@ -510,13 +566,15 @@ onBeforeUnmount(() => {
       :tool="drawingTool"
       :color="drawingColor"
       :width="drawingWidth"
-      :enabled="drawingsVisible && !mapError"
+      :enabled="(drawingsVisible || drawingTool === 'route-pen') && !mapError"
       :projection-revision="projectionRevision"
+      :route-waypoints="routeWaypoints"
       :project="projectDrawingCoordinate"
       :unproject="unprojectDrawingPoint"
       @create="emit('drawingCreate', $event)"
       @erase="emit('drawingErase', $event)"
       @preview="emit('drawingPreview', $event)"
+      @route-point="emit('routePoint', $event)"
     />
     <div v-if="mapError" class="itinerary-map__error" role="alert">
       <span>{{ mapError }}</span>

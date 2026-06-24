@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from './MapboxItineraryMap.vue'
 import type { ItineraryMapStop } from './MapboxItineraryMap.vue'
 import MapDrawingOverlay from './MapDrawingOverlay.vue'
+import { useTheme } from '@/composables/useTheme'
 
 const mapbox = vi.hoisted(() => {
   const handlers = new Map<string, () => void>()
@@ -86,6 +87,8 @@ describe('MapboxItineraryMap', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mapbox.handlers.clear()
+    const { isDarkMode, toggleTheme } = useTheme()
+    if (isDarkMode.value) toggleTheme()
   })
   afterEach(() => {
     vi.unstubAllEnvs()
@@ -112,6 +115,7 @@ describe('MapboxItineraryMap', () => {
     await nextTick()
 
     expect(mapbox.Map).toHaveBeenCalledOnce()
+    expect(mapbox.map.addControl).toHaveBeenCalledWith(expect.any(Object), 'top-left')
     expect(mapbox.Marker).toHaveBeenCalledTimes(2)
     expect(mapbox.Marker).toHaveBeenNthCalledWith(1, expect.objectContaining({
       anchor: 'bottom',
@@ -156,6 +160,39 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.map.fitBounds).toHaveBeenCalledTimes(1)
     expect(mapbox.map.easeTo).not.toHaveBeenCalled()
     expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
+  })
+
+  it('route geometry가 도로 스냅 좌표에서 끝나도 실제 일정 마커 좌표까지 선을 잇는다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    mount(MapboxItineraryMap, {
+      props: {
+        stops,
+        routes: [{
+          id: 'route-snapped',
+          originItineraryItemId: 'item-1',
+          destinationItineraryItemId: 'item-2',
+          geometry: { type: 'LineString', coordinates: [[127.381, 36.351], [127.388, 36.358]] },
+        }],
+      },
+    })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+
+    expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-snapped', {
+      type: 'geojson',
+      data: expect.objectContaining({
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [127.38, 36.35],
+            [127.381, 36.351],
+            [127.388, 36.358],
+            [127.39, 36.36],
+          ],
+        },
+      }),
+    })
   })
 
   it('겹치는 주변 장소 마커를 분산하고 클릭한 장소 ID를 그대로 전달한다', async () => {
@@ -234,6 +271,34 @@ describe('MapboxItineraryMap', () => {
     await nextTick()
 
     expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-day-v1')
+  })
+
+  it('헤더 다크모드 토글이 지도 스타일을 Mapbox dark 스타일로 전환한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    mount(MapboxItineraryMap, { props: { stops, navigationMode: true } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+    mapbox.map.setStyle = vi.fn()
+
+    const { toggleTheme } = useTheme()
+    toggleTheme()
+    await nextTick()
+
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
+  })
+
+  it('지도 스타일 로딩 중 다크모드로 바뀌어도 load 후 Mapbox dark 스타일로 보정한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    mount(MapboxItineraryMap, { props: { stops, navigationMode: true } })
+    await flushPromises()
+
+    const { toggleTheme } = useTheme()
+    toggleTheme()
+    await nextTick()
+    mapbox.handlers.get('style.load')?.()
+
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
   })
 
   it('경로 geometry 좌표 객체 배열도 GeoJSON 선으로 정규화해 그린다', async () => {
@@ -324,10 +389,22 @@ describe('MapboxItineraryMap', () => {
     overlay.vm.$emit('create', draft)
     overlay.vm.$emit('erase', drawing.id)
     overlay.vm.$emit('preview', preview)
+    overlay.vm.$emit('routePoint', { lng: 127.4, lat: 36.4 })
     await nextTick()
 
     expect(wrapper.emitted('drawingCreate')).toEqual([[draft]])
     expect(wrapper.emitted('drawingErase')).toEqual([[drawing.id]])
     expect(wrapper.emitted('drawingPreview')).toEqual([[preview]])
+    expect(wrapper.emitted('routePoint')).toEqual([[{ lng: 127.4, lat: 36.4 }]])
+  })
+
+  it('route-pen에서는 지도 그림 표시가 꺼져도 중간점 클릭 레이어를 활성화한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, {
+      props: { stops: [], drawingTool: 'route-pen', drawingsVisible: false },
+    })
+    await flushPromises()
+
+    expect(wrapper.getComponent(MapDrawingOverlay).props('enabled')).toBe(true)
   })
 })

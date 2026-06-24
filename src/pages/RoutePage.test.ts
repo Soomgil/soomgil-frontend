@@ -331,6 +331,43 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.text()).toContain('AI 모델 연결 설정이 필요합니다.')
   })
 
+  it('여행방 채팅을 우측 사이드바의 독립 탭에서 전송한다', async () => {
+    connectedApis.chat.sendMessage.mockResolvedValue({
+      id: 'chat-1',
+      tripId: 'trip-1',
+      sender: { id: 'user-1', displayName: '김지훈', profileImageUrl: null },
+      content: '숙소 체크인 시간 확인',
+      deletedAt: null,
+      createdAt: '2026-06-22T00:00:00Z',
+    })
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+
+    const chatTab = wrapper.findAll('.route-utility-tab').find((button) => button.text().includes('채팅'))!
+    await chatTab.trigger('click')
+    await flushPromises()
+    await wrapper.get('#trip-chat-input').setValue('숙소 체크인 시간 확인')
+    await wrapper.get('#trip-chat-send-btn').trigger('click')
+    await flushPromises()
+
+    expect(connectedApis.chat.sendMessage).toHaveBeenCalledWith('trip-1', '숙소 체크인 시간 확인')
+    expect(wrapper.get('#trip-chat-panel').classes()).toContain('show')
+  })
+
+  it('우측 사이드바 접기 버튼으로 지도 영역을 확장한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+
+    await wrapper.get('.route-utility-collapse').trigger('click')
+
+    expect(wrapper.get('.map-shell').classes()).toContain('is-route-utility-collapsed')
+    expect(wrapper.get('.route-utility-sidebar').classes()).toContain('is-collapsed')
+  })
+
   it('지도 패널에서 여행 메모와 체크리스트 항목을 바로 저장한다', async () => {
     connectedApis.planning.saveNote.mockResolvedValue({
       note: {
@@ -1102,9 +1139,12 @@ describe('RoutePage itinerary integration', () => {
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
     map.vm.$emit('selectPlace', undefined, undefined, 'item-1')
     await nextTick()
+    map.vm.$emit('routePoint', { lng: 127.385, lat: 36.355 })
+    await nextTick()
     map.vm.$emit('selectPlace', undefined, undefined, 'item-2')
     await flushPromises()
 
+    expect(String((fetch as any).mock.calls[0][0])).toContain('/127.38,36.35;127.385,36.355;127.39,36.36')
     const request = holder.state.mapMatchRoute.mock.calls[0][0]
     expect(request.coordinates).toHaveLength(100)
     expect(request.coordinates[0]).toEqual({ lng: 127.38, lat: 36.35 })
@@ -1112,7 +1152,7 @@ describe('RoutePage itinerary integration', () => {
     expect(request.coordinates.at(-1).lat).toBeCloseTo(36.3649)
   })
 
-  it('경로 펜에서 지도 위에 직접 그린 곡선으로 두 일정 장소를 연결한다', async () => {
+  it('경로 펜에서 지도 위에 찍은 중간점을 포함해 두 일정 장소를 연결한다', async () => {
     holder.state.fetchItinerary.mockImplementationOnce(async () => {
       holder.state.days.value = [{
         id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
@@ -1160,30 +1200,30 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
     const map = wrapper.getComponent(MapboxItineraryMap)
-    const draft = {
-      coordinates: [
-        { lng: 127.38, lat: 36.35 },
-        { lng: 127.385, lat: 36.358 },
-        { lng: 127.39, lat: 36.36 },
-      ],
-      color: '#6d4aff',
-      width: 5,
-    }
+    const waypoint = { lng: 127.385, lat: 36.358 }
 
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
-    map.vm.$emit('drawingCreate', draft)
+    map.vm.$emit('selectPlace', undefined, undefined, 'item-1')
+    await nextTick()
+    map.vm.$emit('routePoint', waypoint)
+    await nextTick()
+    expect(wrapper.getComponent(MapboxItineraryMap).props('routeWaypoints')).toEqual([waypoint])
+
+    map.vm.$emit('selectPlace', undefined, undefined, 'item-2')
     await flushPromises()
 
-    const request = holder.state.mapMatchRoute.mock.calls[0][0]
-    expect(request).toEqual(expect.objectContaining({
+    expect(holder.state.mapMatchRoute).toHaveBeenCalledWith({
       originItineraryItemId: 'item-1',
       destinationItineraryItemId: 'item-2',
       mode: 'WALKING',
-      tidy: false,
-    }))
-    expect(request.coordinates.length).toBeGreaterThan(draft.coordinates.length)
-    expect(request.coordinates[0]).toEqual(draft.coordinates[0])
-    expect(request.coordinates.at(-1)).toEqual(draft.coordinates.at(-1))
+      coordinates: [
+        { lng: 127.38, lat: 36.35 },
+        waypoint,
+        { lng: 127.39, lat: 36.36 },
+      ],
+      tidy: true,
+    })
+    expect(wrapper.getComponent(MapboxItineraryMap).props('routeWaypoints')).toEqual([])
     expect(holder.state.createDrawing).not.toHaveBeenCalled()
     expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
       tab: 'BASIC',
@@ -1197,7 +1237,7 @@ describe('RoutePage itinerary integration', () => {
     expect(groupedStops[1].classes()).toContain('route-group-end')
   })
 
-  it('빠르게 그려 시작점이 빗나가도 stroke 앞뒤 구간에서 가까운 일정 장소를 찾아 경로를 연결한다', async () => {
+  it('출발 관광지 선택 전 찍은 경로 중간점은 저장하지 않는다', async () => {
     holder.state.fetchItinerary.mockImplementationOnce(async () => {
       holder.state.days.value = [{
         id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
@@ -1216,19 +1256,6 @@ describe('RoutePage itinerary integration', () => {
         ],
       }]
     })
-    holder.state.mapMatchRoute.mockResolvedValueOnce({
-      id: 'route-1',
-      originItineraryItemId: 'item-1',
-      destinationItineraryItemId: 'item-2',
-      mode: 'WALKING',
-      provider: 'MAPBOX',
-      providerProfile: 'walking',
-      geometryFormat: 'GEOJSON',
-      geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
-      distanceMeters: null,
-      durationSeconds: null,
-      confidence: null,
-    })
 
     const wrapper = mount(RoutePage, {
       global: {
@@ -1242,34 +1269,16 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
     const map = wrapper.getComponent(MapboxItineraryMap)
-    const coordinates = [
-      { lng: 127.372, lat: 36.342 },
-      { lng: 127.38, lat: 36.35 },
-      ...Array.from({ length: 16 }, (_, index) => ({
-        lng: 127.381 + index * 0.0005,
-        lat: 36.351 + index * 0.0005,
-      })),
-      { lng: 127.39, lat: 36.36 },
-      { lng: 127.398, lat: 36.368 },
-    ]
 
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
-    map.vm.$emit('drawingCreate', { coordinates, color: '#6d4aff', width: 5 })
-    await flushPromises()
+    map.vm.$emit('routePoint', { lng: 127.385, lat: 36.355 })
+    await nextTick()
 
-    expect(holder.state.mapMatchRoute).toHaveBeenCalledWith(expect.objectContaining({
-      originItineraryItemId: 'item-1',
-      destinationItineraryItemId: 'item-2',
-      coordinates: expect.any(Array),
-      tidy: false,
-    }))
-    const request = holder.state.mapMatchRoute.mock.calls[0][0]
-    expect(request.coordinates.length).toBeLessThanOrEqual(80)
-    expect(request.coordinates[0]).toEqual(coordinates[0])
-    expect(request.coordinates.at(-1)).toEqual(coordinates.at(-1))
+    expect(wrapper.getComponent(MapboxItineraryMap).props('routeWaypoints')).toEqual([])
+    expect(holder.state.mapMatchRoute).not.toHaveBeenCalled()
   })
 
-  it('빠르게 그려 좌표가 두 개뿐이고 시작과 끝이 다소 빗나가도 보간된 선에서 경로 대상을 찾는다', async () => {
+  it('경로 펜에서 들어온 drawingCreate 이벤트는 지도 그림이나 경로를 만들지 않는다', async () => {
     holder.state.fetchItinerary.mockImplementationOnce(async () => {
       holder.state.days.value = [{
         id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
@@ -1288,19 +1297,6 @@ describe('RoutePage itinerary integration', () => {
         ],
       }]
     })
-    holder.state.mapMatchRoute.mockResolvedValueOnce({
-      id: 'route-1',
-      originItineraryItemId: 'item-1',
-      destinationItineraryItemId: 'item-2',
-      mode: 'WALKING',
-      provider: 'MAPBOX',
-      providerProfile: 'walking',
-      geometryFormat: 'GEOJSON',
-      geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
-      distanceMeters: null,
-      durationSeconds: null,
-      confidence: null,
-    })
 
     const wrapper = mount(RoutePage, {
       global: {
@@ -1314,24 +1310,18 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
     const map = wrapper.getComponent(MapboxItineraryMap)
-    const coordinates = [
-      { lng: 127.376, lat: 36.346 },
-      { lng: 127.394, lat: 36.364 },
-    ]
 
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
-    map.vm.$emit('drawingCreate', { coordinates, color: '#6d4aff', width: 5 })
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127.376, lat: 36.346 }, { lng: 127.394, lat: 36.364 }],
+      color: '#6d4aff',
+      width: 5,
+    })
     await flushPromises()
 
-    const request = holder.state.mapMatchRoute.mock.calls[0][0]
-    expect(request.originItineraryItemId).toBe('item-1')
-    expect(request.destinationItineraryItemId).toBe('item-2')
-    expect(request.coordinates.length).toBeGreaterThan(coordinates.length)
-    expect(request.coordinates.length).toBeLessThanOrEqual(80)
-    expect(request.coordinates[0]).toEqual(coordinates[0])
-    expect(request.coordinates.at(-1)).toEqual(coordinates[1])
-    expect(request.coordinates[1].lng).toBeGreaterThan(coordinates[0].lng)
-    expect(request.coordinates[1].lng).toBeLessThan(coordinates[1].lng)
+    expect(holder.state.mapMatchRoute).not.toHaveBeenCalled()
+    expect(holder.state.createDrawing).not.toHaveBeenCalled()
+    expect(map.props('drawings')).toEqual([])
   })
 
   it('2일차에 연결된 여행 카드 실선은 2일차 색상 클래스를 사용한다', async () => {

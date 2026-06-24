@@ -88,7 +88,7 @@ describe('MapDrawingOverlay', () => {
     expect(wrapper.emitted('erase')).toEqual([['drawing-1']])
   })
 
-  it('경로 연결 펜에서도 포인터 이동을 지도 좌표 stroke로 변환한다', async () => {
+  it('경로 연결 펜은 클릭한 지도 좌표를 routePoint로 전달한다', async () => {
     const wrapper = mount(MapDrawingOverlay, {
       props: {
         drawings: [],
@@ -108,27 +108,44 @@ describe('MapDrawingOverlay', () => {
     })
 
     await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 0, clientX: 10, clientY: 20 })
-    await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, clientX: 18, clientY: 28 })
-    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 30, clientY: 40 })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 12, clientY: 22 })
 
-    expect(wrapper.emitted('create')).toEqual([[
-      {
-        coordinates: [
-          { lng: 10, lat: 20 },
-          { lng: 18, lat: 28 },
-          { lng: 30, lat: 40 },
-        ],
-        color: '#6d4aff',
-        width: 5,
-      },
-    ]])
+    expect(wrapper.emitted('routePoint')).toEqual([[{ lng: 12, lat: 22 }]])
+    expect(wrapper.emitted('create')).toBeUndefined()
   })
 
-  it('빠른 포인터 이동의 coalesced sample까지 stroke에 반영한다', async () => {
+  it('경로 연결 펜에서 드래그는 중간점으로 처리하지 않는다', async () => {
     const wrapper = mount(MapDrawingOverlay, {
       props: {
         drawings: [],
         tool: 'route-pen',
+        color: '#6d4aff',
+        width: 5,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    })
+
+    await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 0, clientX: 10, clientY: 20 })
+    await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, clientX: 30, clientY: 40 })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 30, clientY: 40 })
+
+    expect(wrapper.emitted('routePoint')).toBeUndefined()
+    expect(wrapper.emitted('create')).toBeUndefined()
+  })
+
+  it('자유 그리기는 빠른 포인터 이동의 coalesced sample까지 stroke에 반영한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [],
+        tool: 'pen',
         color: '#6d4aff',
         width: 5,
         enabled: true,

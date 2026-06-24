@@ -30,6 +30,7 @@ const props = defineProps<{
   width: number
   enabled: boolean
   projectionRevision: number
+  routeWaypoints?: LngLat[]
   project: (coordinate: LngLat) => ScreenPoint | null
   unproject: (point: ScreenPoint) => LngLat | null
 }>()
@@ -38,6 +39,7 @@ const emit = defineEmits<{
   create: [drawing: MapDrawingDraft]
   erase: [drawingId: string]
   preview: [event: DrawingPreviewEvent]
+  routePoint: [coordinate: LngLat]
 }>()
 
 const surface = ref<SVGSVGElement | null>(null)
@@ -46,9 +48,18 @@ let activePointerId: number | null = null
 let activePreviewId: string | null = null
 let activePreviewSequence = 0
 let previewIdSequence = 0
+let activeRoutePointPointerId: number | null = null
+let routePointStart: ScreenPoint | null = null
 
 const editable = computed(() => props.enabled && (props.tool === 'route-pen' || props.tool === 'pen' || props.tool === 'eraser'))
 const currentPointString = computed(() => currentPoints.value.map((point) => `${point.x},${point.y}`).join(' '))
+const projectedRouteWaypoints = computed(() => {
+  void props.projectionRevision
+  return (props.routeWaypoints ?? [])
+    .map(props.project)
+    .filter((point): point is ScreenPoint => point !== null)
+})
+const routeWaypointPointString = computed(() => projectedRouteWaypoints.value.map((point) => `${point.x},${point.y}`).join(' '))
 const projectedDrawings = computed(() => {
   void props.projectionRevision
   return props.drawings.map((drawing) => ({
@@ -110,6 +121,12 @@ function beginStroke(event: PointerEvent) {
   const point = localPoint(event)
   if (!point) return
   event.preventDefault()
+  if (props.tool === 'route-pen') {
+    activeRoutePointPointerId = event.pointerId
+    routePointStart = point
+    surface.value?.setPointerCapture?.(event.pointerId)
+    return
+  }
   activePointerId = event.pointerId
   activePreviewId = createPreviewId()
   activePreviewSequence = 0
@@ -118,6 +135,7 @@ function beginStroke(event: PointerEvent) {
 }
 
 function extendStroke(event: PointerEvent) {
+  if (activeRoutePointPointerId === event.pointerId) return
   if (activePointerId !== event.pointerId || currentPoints.value.length === 0) return
   let changed = false
   for (const sample of pointerSamples(event)) {
@@ -135,6 +153,10 @@ function releasePointerCapture(pointerId: number) {
 }
 
 function finishStroke(event: PointerEvent) {
+  if (activeRoutePointPointerId === event.pointerId) {
+    finishRoutePoint(event)
+    return
+  }
   if (activePointerId !== event.pointerId) return
   extendStroke(event)
   const points = [...currentPoints.value]
@@ -167,6 +189,12 @@ function finishCapturedStroke(pointerId: number) {
 }
 
 function cancelStroke(event: PointerEvent) {
+  if (activeRoutePointPointerId === event.pointerId) {
+    activeRoutePointPointerId = null
+    routePointStart = null
+    releasePointerCapture(event.pointerId)
+    return
+  }
   if (activePointerId !== event.pointerId) return
   emitPreview('CANCEL')
   activePointerId = null
@@ -176,8 +204,25 @@ function cancelStroke(event: PointerEvent) {
 }
 
 function handleLostPointerCapture(event: PointerEvent) {
+  if (activeRoutePointPointerId === event.pointerId) {
+    activeRoutePointPointerId = null
+    routePointStart = null
+    return
+  }
   if (activePointerId !== event.pointerId) return
   finishCapturedStroke(event.pointerId)
+}
+
+function finishRoutePoint(event: PointerEvent) {
+  if (activeRoutePointPointerId !== event.pointerId || !routePointStart) return
+  const point = localPoint(event)
+  const start = routePointStart
+  activeRoutePointPointerId = null
+  routePointStart = null
+  releasePointerCapture(event.pointerId)
+  if (!point || pointDistance(start, point) > 10) return
+  const coordinate = props.unproject(point)
+  if (coordinate) emit('routePoint', coordinate)
 }
 
 function eraseDrawing(event: PointerEvent, drawingId: string) {
@@ -225,6 +270,21 @@ function eraseDrawing(event: PointerEvent, drawingId: string) {
       :stroke="color"
       :stroke-width="width"
     />
+    <polyline
+      v-if="tool === 'route-pen' && projectedRouteWaypoints.length > 1"
+      class="map-route-waypoint-line"
+      :points="routeWaypointPointString"
+    />
+    <g v-if="tool === 'route-pen'">
+      <g
+        v-for="(point, index) in projectedRouteWaypoints"
+        :key="`${index}-${point.x}-${point.y}`"
+        class="map-route-waypoint"
+      >
+        <circle :cx="point.x" :cy="point.y" r="8" />
+        <text :x="point.x" :y="point.y + 4">{{ index + 1 }}</text>
+      </g>
+    </g>
   </svg>
 </template>
 
@@ -260,5 +320,32 @@ function eraseDrawing(event: PointerEvent, drawingId: string) {
   pointer-events: stroke;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.map-route-waypoint-line {
+  fill: none;
+  pointer-events: none;
+  stroke: #6d4aff;
+  stroke-dasharray: 6 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.map-route-waypoint {
+  pointer-events: none;
+}
+
+.map-route-waypoint circle {
+  fill: #6d4aff;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.map-route-waypoint text {
+  fill: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  text-anchor: middle;
 }
 </style>

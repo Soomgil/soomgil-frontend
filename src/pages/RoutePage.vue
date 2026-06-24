@@ -30,6 +30,7 @@ import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, Note, PlanningScope } from '@/types/planning'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
+import type { LngLat } from '@/types/geo'
 import type { AccessibilityFlag, ParkingType, Place, PlaceAccessibility, PlaceProvider, PlaceRecommendation } from '@/types/place'
 import type { ItineraryDay, ReorderItineraryInput } from '@/types/itinerary'
 
@@ -489,13 +490,13 @@ async function undo() {
   }
   if (previous.domain === 'route-links') {
     routeLinks.value = previous.links
-    pendingRouteFrom.value = null
+    clearPendingRouteSelection()
     nextTick(initDragDrop)
     return
   }
   const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(previous.plans)
   dayPlans.value = previous.plans
-  pendingRouteFrom.value = null
+  clearPendingRouteSelection()
   nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
 }
@@ -510,13 +511,13 @@ async function redo() {
   }
   if (next.domain === 'route-links') {
     routeLinks.value = next.links
-    pendingRouteFrom.value = null
+    clearPendingRouteSelection()
     nextTick(initDragDrop)
     return
   }
   const plansChanged = JSON.stringify(dayPlans.value) !== JSON.stringify(next.plans)
   dayPlans.value = next.plans
-  pendingRouteFrom.value = null
+  clearPendingRouteSelection()
   nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
 }
@@ -538,6 +539,13 @@ function handleKeydown(e: KeyboardEvent) {
 /* ── Route Links ── */
 const routeLinks = ref<RouteLink[]>([])
 const pendingRouteFrom = ref<string | null>(null)
+const routeWaypoints = ref<LngLat[]>([])
+const ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS = 23
+
+function clearPendingRouteSelection() {
+  pendingRouteFrom.value = null
+  routeWaypoints.value = []
+}
 
 watch(itinerary.routes, (routes) => {
 	routeLinks.value = routes.map(route => ({
@@ -682,33 +690,37 @@ async function loadRouteNearbyPlaces() {
 async function handleRoutePenClick(item: RouteStop) {
   if (!pendingRouteFrom.value) {
     pendingRouteFrom.value = item.id
-    showToast('연결할 도착 지점을 선택하세요')
+    routeWaypoints.value = []
+    showToast('지도 위 중간 지점을 찍고 도착 관광지를 선택하세요')
     return
   }
   if (pendingRouteFrom.value === item.id) {
-    pendingRouteFrom.value = null
+    clearPendingRouteSelection()
     return
   }
   if (hasRouteLinkBetween(pendingRouteFrom.value, item.id)) {
     showToast('이미 연결된 경로입니다')
-    pendingRouteFrom.value = null
+    clearPendingRouteSelection()
     return
   }
 	const origin = dayPlans.value.flatMap(day => day.items).find(candidate => candidate.id === pendingRouteFrom.value)
 	if (!origin || origin.lat == null || origin.lng == null || item.lat == null || item.lng == null) {
 		showToast('좌표가 있는 두 장소만 경로로 연결할 수 있습니다')
-		pendingRouteFrom.value = null
+		clearPendingRouteSelection()
 		return
 	}
 	pushUndoState('route-links')
 	try {
     const originCoordinate = { lng: origin.lng, lat: origin.lat }
     const destinationCoordinate = { lng: item.lng, lat: item.lat }
+    const waypointCoordinates = limitRouteWaypoints(routeWaypoints.value)
+    const routeStops = [originCoordinate, ...waypointCoordinates, destinationCoordinate]
     const destinationChainIds = linkedChainIdsInCurrentOrder(item.id)
-    let routeCoordinates = [originCoordinate, destinationCoordinate]
+    let routeCoordinates = routeStops
     const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim()
     if (accessToken) {
-      const url = new URL(`https://api.mapbox.com/directions/v5/mapbox/walking/${origin.lng},${origin.lat};${item.lng},${item.lat}`)
+      const waypointText = routeStops.map(coordinate => `${coordinate.lng},${coordinate.lat}`).join(';')
+      const url = new URL(`https://api.mapbox.com/directions/v5/mapbox/walking/${waypointText}`)
       url.searchParams.set('geometries', 'geojson')
       url.searchParams.set('overview', 'full')
       url.searchParams.set('access_token', accessToken)
@@ -718,11 +730,12 @@ async function handleRoutePenClick(item: RouteStop) {
       const directionsCoordinates = data.routes?.[0]?.geometry?.coordinates
       if (data.code && data.code !== 'Ok') throw new Error(data.message || 'Mapbox Directions failed.')
       if (Array.isArray(directionsCoordinates) && directionsCoordinates.length >= 2) {
-        routeCoordinates = directionsCoordinates.flatMap((coordinate) => (
+        const parsedCoordinates = directionsCoordinates.flatMap((coordinate) => (
           Array.isArray(coordinate) && typeof coordinate[0] === 'number' && typeof coordinate[1] === 'number'
             ? [{ lng: coordinate[0], lat: coordinate[1] }]
             : []
         ))
+        routeCoordinates = dedupeRouteCoordinates([originCoordinate, ...parsedCoordinates, destinationCoordinate])
         if (routeCoordinates.length > 100) {
           const sampled: typeof routeCoordinates = []
           const total = routeCoordinates.length
@@ -754,14 +767,38 @@ async function handleRoutePenClick(item: RouteStop) {
     showToast('경로가 연결되었습니다', 'success')
 	} catch {
 		showToast('경로를 계산하지 못했습니다.', 'error')
-	}
-	pendingRouteFrom.value = null
+	} finally {
+    clearPendingRouteSelection()
+  }
+}
+
+function limitRouteWaypoints(coordinates: LngLat[]) {
+  if (coordinates.length <= ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS) return coordinates
+  const lastIndex = coordinates.length - 1
+  return Array.from({ length: ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS }, (_, index) => {
+    const coordinateIndex = Math.round((index * lastIndex) / (ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS - 1))
+    return coordinates[coordinateIndex]
+  })
+}
+
+function addRouteWaypoint(coordinate: LngLat) {
+  if (activeTool.value !== 'route-pen') return
+  if (!pendingRouteFrom.value) {
+    showToast('출발 관광지를 먼저 선택한 뒤 중간 지점을 찍어주세요')
+    return
+  }
+  if (routeWaypoints.value.length >= ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS) {
+    showToast(`중간 지점은 최대 ${ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS}개까지 찍을 수 있습니다.`)
+    return
+  }
+  routeWaypoints.value = [...routeWaypoints.value, coordinate]
 }
 
 const ROUTE_DRAWING_ENDPOINT_MAX_METERS = 700
 const ROUTE_DRAWING_SAMPLE_INTERVAL_METERS = 25
 const ROUTE_DRAWING_SAMPLE_MIN_POINTS = 8
 const ROUTE_DRAWING_SAMPLE_MAX_POINTS = 80
+const ROUTE_DRAWING_MATCH_RADIUS_METERS = 50
 
 function distanceMeters(left: { lng: number; lat: number }, right: { lng: number; lat: number }) {
   const radius = 6371000
@@ -874,6 +911,37 @@ function sampleRouteCoordinates(
   return sampled
 }
 
+function coordinateForRouteStop(item: RouteStop) {
+  return item.lat == null || item.lng == null ? null : { lng: item.lng, lat: item.lat }
+}
+
+function nearestPathCoordinateIndex(
+  coordinates: Array<{ lng: number; lat: number }>,
+  target: { lng: number; lat: number },
+) {
+  return coordinates.reduce((nearest, coordinate, index) => {
+    const distance = distanceMeters(coordinate, target)
+    return distance < nearest.distance ? { index, distance } : nearest
+  }, { index: 0, distance: Number.POSITIVE_INFINITY }).index
+}
+
+function buildRouteRequestCoordinates(
+  coordinates: Array<{ lng: number; lat: number }>,
+  origin: RouteStop,
+  destination: RouteStop,
+) {
+  const originCoordinate = coordinateForRouteStop(origin)
+  const destinationCoordinate = coordinateForRouteStop(destination)
+  if (!originCoordinate || !destinationCoordinate) return coordinates
+
+  const originIndex = nearestPathCoordinateIndex(coordinates, originCoordinate)
+  const destinationIndex = nearestPathCoordinateIndex(coordinates, destinationCoordinate)
+  const pathSegment = originIndex <= destinationIndex
+    ? coordinates.slice(originIndex, destinationIndex + 1)
+    : coordinates.slice(destinationIndex, originIndex + 1).reverse()
+  return dedupeRouteCoordinates([originCoordinate, ...pathSegment, destinationCoordinate])
+}
+
 async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
   if (draft.coordinates.length < 2 || itinerary.mutating.value) return
   const routeCoordinates = sampleRouteCoordinates(draft.coordinates)
@@ -901,6 +969,8 @@ async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
     showToast('이미 연결된 경로입니다')
     return
   }
+  const requestCoordinates = buildRouteRequestCoordinates(routeCoordinates, origin, destination)
+  if (requestCoordinates.length < 2) return
 
   pushUndoState('route-links')
   try {
@@ -909,7 +979,8 @@ async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
       originItineraryItemId: origin.id,
       destinationItineraryItemId: destination.id,
       mode: 'WALKING',
-      coordinates: routeCoordinates,
+      coordinates: requestCoordinates,
+      radiuses: requestCoordinates.map(() => ROUTE_DRAWING_MATCH_RADIUS_METERS),
       tidy: false,
     })
     if (newRoute) {
@@ -1617,28 +1688,31 @@ watch(activeDay, () => {
 })
 
 /* ── Panels ── */
-const isAiChatOpen = ref(false)
-const isMemoOpen = ref(false)
-const isTodoOpen = ref(false)
+type RouteUtilityPanel = 'ai' | 'chat' | 'memo' | 'todo'
+
+const activeRoutePanel = ref<RouteUtilityPanel>('ai')
+const isRouteUtilityCollapsed = ref(false)
+const isAiChatOpen = computed(() => activeRoutePanel.value === 'ai')
+const isTripChatOpen = computed(() => activeRoutePanel.value === 'chat')
+const isMemoOpen = computed(() => activeRoutePanel.value === 'memo')
+const isTodoOpen = computed(() => activeRoutePanel.value === 'todo')
 const activeConversation = ref<'ai' | 'chat'>('ai')
 
-function togglePanel(panel: 'ai' | 'memo' | 'todo') {
-  if (panel === 'ai') {
-    isAiChatOpen.value = !isAiChatOpen.value
-    isMemoOpen.value = false
-    isTodoOpen.value = false
-    if (isAiChatOpen.value) void loadConversations()
+function togglePanel(panel: RouteUtilityPanel) {
+  activeRoutePanel.value = panel
+  isRouteUtilityCollapsed.value = false
+  if (panel === 'ai' || panel === 'chat') {
+    activeConversation.value = panel
+    void loadConversations()
   } else if (panel === 'memo') {
-    isMemoOpen.value = !isMemoOpen.value
-    isAiChatOpen.value = false
-    isTodoOpen.value = false
-    if (isMemoOpen.value) void loadNote()
+    void loadNote()
   } else {
-    isTodoOpen.value = !isTodoOpen.value
-    isAiChatOpen.value = false
-    isMemoOpen.value = false
-    if (isTodoOpen.value) void loadChecklists()
+    void loadChecklists()
   }
+}
+
+function toggleRouteUtilityCollapsed() {
+  isRouteUtilityCollapsed.value = !isRouteUtilityCollapsed.value
 }
 
 /* ── AI / trip chat ── */
@@ -1959,7 +2033,7 @@ watch(activeTool, (newTool) => {
     isPenPopoverOpen.value = false
   }
   if (newTool !== 'route-pen') {
-    pendingRouteFrom.value = null
+    clearPendingRouteSelection()
   }
 })
 
@@ -2080,7 +2154,6 @@ function createLocalDrawing(draft: MapDrawingDraft) {
 
 function handleDrawingCreate(draft: MapDrawingDraft) {
   if (activeTool.value === 'route-pen') {
-    void createRouteFromDrawnCurve(draft)
     return
   }
   createLocalDrawing(draft)
@@ -2696,7 +2769,7 @@ function textAvatarStyle(index: unknown) {
 <template>
   <AppShell>
     <section class="section full-screen route-page-section">
-      <div :class="['map-shell', { 'has-detailbar-open': isDetailbarOpen }]">
+      <div :class="['map-shell', { 'has-detailbar-open': isDetailbarOpen, 'is-route-utility-collapsed': isRouteUtilityCollapsed }]">
 
           <!-- ═══ SIDEBAR ═══ -->
           <aside class="sidebar">
@@ -2950,6 +3023,7 @@ function textAvatarStyle(index: unknown) {
               :drawing-tool="activeTool"
               :drawing-color="penColor"
               :drawing-width="penSize"
+              :route-waypoints="routeWaypoints"
               :drawings-visible="drawingOn"
               :navigation-mode="navigationGuideMode"
               @select-place="handleSelectPlace"
@@ -2958,6 +3032,7 @@ function textAvatarStyle(index: unknown) {
               @drawing-create="handleDrawingCreate"
               @drawing-erase="eraseLocalDrawing"
               @drawing-preview="publishDrawingPreview"
+              @route-point="addRouteWaypoint"
             />
 
             <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
@@ -3236,18 +3311,78 @@ function textAvatarStyle(index: unknown) {
             </div>
           </aside>
 
-          <!-- ═══ FLOATING ACTIONS ═══ -->
-          <div class="map-floating-actions" id="map-floating-actions">
-            <button class="btn primary ai-guide-fab" type="button" aria-label="AI 투어 가이드" title="AI 투어 가이드" @click="togglePanel('ai')">
-              <span class="material-symbols-rounded">auto_awesome</span>
-            </button>
-            <button class="btn memo-fab" id="memo-fab" type="button" aria-label="여행 메모" title="여행 메모" @click="togglePanel('memo')">
-              <span class="material-symbols-rounded">sticky_note_2</span>
-            </button>
-            <button class="btn todo-fab" id="todo-fab" type="button" aria-label="체크리스트" title="체크리스트" @click="togglePanel('todo')">
-              <span class="material-symbols-rounded">playlist_add_check</span>
-            </button>
-          </div>
+          <!-- ═══ ROUTE UTILITY SIDEBAR ═══ -->
+          <aside :class="['route-utility-sidebar', { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구">
+            <div class="route-utility-header">
+              <div class="route-utility-heading">
+                <span class="material-symbols-rounded" aria-hidden="true">dashboard_customize</span>
+                <div>
+                  <h3>여행 도구</h3>
+                  <p>AI, 채팅, 메모, 할 일</p>
+                </div>
+              </div>
+              <button
+                class="route-utility-collapse"
+                type="button"
+                :aria-label="isRouteUtilityCollapsed ? '우측 사이드바 펼치기' : '우측 사이드바 접기'"
+                :title="isRouteUtilityCollapsed ? '펼치기' : '접기'"
+                @click="toggleRouteUtilityCollapsed"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">{{ isRouteUtilityCollapsed ? 'left_panel_open' : 'right_panel_close' }}</span>
+              </button>
+            </div>
+            <div class="route-utility-tabs" role="tablist" aria-label="여행 도구">
+              <button
+                class="route-utility-tab"
+                :class="{ active: activeRoutePanel === 'ai' }"
+                type="button"
+                role="tab"
+                :aria-selected="activeRoutePanel === 'ai'"
+                aria-controls="ai-chat-panel"
+                @click="togglePanel('ai')"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
+                <span>AI</span>
+              </button>
+              <button
+                class="route-utility-tab"
+                :class="{ active: activeRoutePanel === 'chat' }"
+                type="button"
+                role="tab"
+                :aria-selected="activeRoutePanel === 'chat'"
+                aria-controls="trip-chat-panel"
+                @click="togglePanel('chat')"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">forum</span>
+                <span>채팅</span>
+              </button>
+              <button
+                class="route-utility-tab"
+                :class="{ active: activeRoutePanel === 'memo' }"
+                id="memo-fab"
+                type="button"
+                role="tab"
+                :aria-selected="activeRoutePanel === 'memo'"
+                aria-controls="memo-panel"
+                @click="togglePanel('memo')"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">sticky_note_2</span>
+                <span>메모</span>
+              </button>
+              <button
+                class="route-utility-tab"
+                :class="{ active: activeRoutePanel === 'todo' }"
+                id="todo-fab"
+                type="button"
+                role="tab"
+                :aria-selected="activeRoutePanel === 'todo'"
+                aria-controls="todo-panel"
+                @click="togglePanel('todo')"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">playlist_add_check</span>
+                <span>할 일</span>
+              </button>
+            </div>
 
           <!-- ═══ AI CHAT PANEL ═══ -->
           <div id="ai-chat-panel" :class="['ai-chat-panel', { show: isAiChatOpen }]">
@@ -3259,12 +3394,6 @@ function textAvatarStyle(index: unknown) {
                   <span class="ai-status">{{ conversationLoading ? '불러오는 중…' : (aiSessionStatus || '백엔드 연결됨') }}</span>
                 </div>
               </div>
-              <button id="ai-chat-close-btn" class="icon-btn" aria-label="닫기" @click="isAiChatOpen = false"><span class="material-symbols-rounded">close</span></button>
-            </div>
-
-            <div class="panel-tabs">
-              <button type="button" :class="['panel-tab-tag', { 'active-memo': activeConversation === 'ai' }]" @click="activeConversation = 'ai'">AI 가이드</button>
-              <button type="button" :class="['panel-tab-tag', { 'active-memo': activeConversation === 'chat' }]" @click="activeConversation = 'chat'">여행방 채팅</button>
             </div>
 
             <div class="ai-chat-messages-container" id="ai-chat-messages">
@@ -3272,23 +3401,11 @@ function textAvatarStyle(index: unknown) {
                 <span>{{ conversationError }}</span>
                 <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
               </div>
-              <template v-if="activeConversation === 'ai'">
-                <div v-for="msg in aiMessages" :key="msg.id" :class="['ai-message', msg.role === 'ASSISTANT' || msg.role === 'TOOL' ? 'assistant' : 'user']">
-                  <div v-if="msg.role === 'ASSISTANT' || msg.role === 'TOOL'" class="ai-message-avatar">&#10024;</div>
-                  <div class="ai-message-bubble" style="white-space:pre-wrap">{{ msg.content }}</div>
-                </div>
-                <p v-if="!conversationLoading && aiMessages.length === 0" class="text-sm text-muted">AI에게 첫 질문을 보내보세요.</p>
-              </template>
-              <template v-else>
-                <div v-for="msg in chatMessages" :key="msg.id" :class="['ai-message', msg.sender.id === currentUserId ? 'user' : 'assistant']">
-                  <div v-if="msg.sender.id !== currentUserId" class="ai-message-avatar">{{ msg.sender.displayName.charAt(0) }}</div>
-                  <div class="ai-message-bubble">
-                    <strong v-if="msg.sender.id !== currentUserId" style="display:block;font-size:11px;margin-bottom:3px">{{ msg.sender.displayName }}</strong>
-                    <span style="white-space:pre-wrap">{{ msg.deletedAt ? '삭제된 메시지입니다.' : msg.content }}</span>
-                  </div>
-                </div>
-                <p v-if="!conversationLoading && chatMessages.length === 0" class="text-sm text-muted">여행 멤버에게 첫 메시지를 보내보세요.</p>
-              </template>
+              <div v-for="msg in aiMessages" :key="msg.id" :class="['ai-message', msg.role === 'ASSISTANT' || msg.role === 'TOOL' ? 'assistant' : 'user']">
+                <div v-if="msg.role === 'ASSISTANT' || msg.role === 'TOOL'" class="ai-message-avatar">&#10024;</div>
+                <div class="ai-message-bubble" style="white-space:pre-wrap">{{ msg.content }}</div>
+              </div>
+              <p v-if="!conversationLoading && aiMessages.length === 0" class="text-sm text-muted">AI에게 첫 질문을 보내보세요.</p>
             </div>
 
             <!-- Quick Suggestions -->
@@ -3308,8 +3425,43 @@ function textAvatarStyle(index: unknown) {
                 <div class="voice-wave-bar"></div>
                 <span class="voice-wave-text">듣고 있습니다...</span>
               </div>
-              <input type="text" id="ai-chat-input" :aria-label="activeConversation === 'ai' ? 'AI 가이드에게 질문하기' : '여행방 메시지 입력'" :placeholder="activeConversation === 'ai' ? 'AI에게 일정에 관해 물어보세요...' : '여행 멤버에게 메시지를 보내세요...'" v-model="aiMessage" @keydown.enter="sendAiMessage" />
+              <input type="text" id="ai-chat-input" aria-label="AI 가이드에게 질문하기" placeholder="AI에게 일정에 관해 물어보세요..." v-model="aiMessage" @keydown.enter="sendAiMessage" />
               <button id="ai-chat-send-btn" class="btn primary compact-send-btn" type="button" @click="sendAiMessage">
+                <span class="material-symbols-rounded">send</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- ═══ TRIP CHAT PANEL ═══ -->
+          <div id="trip-chat-panel" :class="['ai-chat-panel', 'trip-chat-panel', { show: isTripChatOpen }]">
+            <div class="ai-chat-header trip-chat-header">
+              <div class="ai-chat-title-group">
+                <span class="material-symbols-rounded ai-spark-icon">forum</span>
+                <div>
+                  <h4>여행방 채팅</h4>
+                  <span class="ai-status">{{ conversationLoading ? '불러오는 중…' : `${trip.members.length}명 참여 중` }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="ai-chat-messages-container" id="trip-chat-messages">
+              <div v-if="conversationError" class="text-sm" style="color:var(--rose);display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span>{{ conversationError }}</span>
+                <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
+              </div>
+              <div v-for="msg in chatMessages" :key="msg.id" :class="['ai-message', msg.sender.id === currentUserId ? 'user' : 'assistant']">
+                <div v-if="msg.sender.id !== currentUserId" class="ai-message-avatar">{{ msg.sender.displayName.charAt(0) }}</div>
+                <div class="ai-message-bubble">
+                  <strong v-if="msg.sender.id !== currentUserId" style="display:block;font-size:11px;margin-bottom:3px">{{ msg.sender.displayName }}</strong>
+                  <span style="white-space:pre-wrap">{{ msg.deletedAt ? '삭제된 메시지입니다.' : msg.content }}</span>
+                </div>
+              </div>
+              <p v-if="!conversationLoading && chatMessages.length === 0" class="text-sm text-muted">여행 멤버에게 첫 메시지를 보내보세요.</p>
+            </div>
+
+            <div class="ai-chat-input-row">
+              <input type="text" id="trip-chat-input" aria-label="여행방 메시지 입력" placeholder="여행 멤버에게 메시지를 보내세요..." v-model="aiMessage" @keydown.enter="sendAiMessage" />
+              <button id="trip-chat-send-btn" class="btn primary compact-send-btn" type="button" @click="sendAiMessage">
                 <span class="material-symbols-rounded">send</span>
               </button>
             </div>
@@ -3325,7 +3477,6 @@ function textAvatarStyle(index: unknown) {
                   <span class="panel-status" id="memo-status">{{ memoStatus || (memoLoading ? '불러오는 중…' : '백엔드 연결됨') }}</span>
                 </div>
               </div>
-              <button id="memo-close-btn" class="icon-btn" aria-label="닫기" @click="isMemoOpen = false"><span class="material-symbols-rounded">close</span></button>
             </div>
             <!-- 일차별 태그(탭) 필터 -->
             <div class="panel-tabs" id="memo-day-tags">
@@ -3371,7 +3522,6 @@ function textAvatarStyle(index: unknown) {
                   <span class="panel-status" id="todo-progress-text">{{ completedCount }}/{{ totalCount }} 완료 ({{ progressPercent }}%)</span>
                 </div>
               </div>
-              <button id="todo-close-btn" class="icon-btn" aria-label="닫기" @click="isTodoOpen = false"><span class="material-symbols-rounded">close</span></button>
             </div>
             <!-- 일차별 태그(탭) 필터 -->
             <div class="panel-tabs" id="todo-day-tags">
@@ -3413,6 +3563,7 @@ function textAvatarStyle(index: unknown) {
               </div>
             </div>
           </div>
+          </aside>
         </div>
       </section>
     <!-- ═══ TRIP SETTINGS MODAL ═══ -->
@@ -3580,10 +3731,221 @@ function textAvatarStyle(index: unknown) {
   border-radius: 0;
   box-shadow: none;
   display: grid;
-  grid-template-columns: var(--sidebar-width, 360px) 1fr;
+  grid-template-columns: var(--sidebar-width, 360px) minmax(0, 1fr) var(--route-panel-width, 380px);
   --detailbar-width: 440px;
   --detailbar-offset: 16px;
   --detailbar-gap: 16px;
+  --route-panel-width: 380px;
+  transition: grid-template-columns 0.22s ease;
+}
+.route-page-section .map-shell.is-route-utility-collapsed {
+  --route-panel-width: 64px;
+}
+.route-utility-sidebar {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
+    #fff;
+  box-shadow: -14px 0 32px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+.route-utility-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 12px 10px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+}
+.route-utility-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+.route-utility-heading > .material-symbols-rounded {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.10);
+  color: var(--violet);
+  font-size: 20px;
+}
+.route-utility-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+.route-utility-heading p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.route-utility-collapse {
+  display: grid;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+}
+.route-utility-collapse:hover {
+  border-color: rgba(124, 58, 237, 0.24);
+  color: var(--violet);
+  background: rgba(124, 58, 237, 0.06);
+}
+.route-utility-collapse .material-symbols-rounded {
+  font-size: 20px;
+}
+.route-utility-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+}
+.route-utility-tab {
+  display: flex;
+  min-width: 0;
+  height: 58px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+.route-utility-tab:hover {
+  border-color: rgba(124, 58, 237, 0.18);
+  background: rgba(124, 58, 237, 0.05);
+  color: var(--violet);
+}
+.route-utility-tab.active {
+  border-color: rgba(124, 58, 237, 0.24);
+  background: #f3f0ff;
+  color: var(--violet);
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.08);
+}
+.route-utility-tab .material-symbols-rounded {
+  flex: 0 0 auto;
+  font-size: 21px;
+}
+.route-utility-sidebar.is-collapsed {
+  align-items: stretch;
+}
+.route-utility-sidebar.is-collapsed .route-utility-header {
+  justify-content: center;
+  padding: 12px 8px;
+}
+.route-utility-sidebar.is-collapsed .route-utility-heading {
+  display: none;
+}
+.route-utility-sidebar.is-collapsed .route-utility-tabs {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 8px;
+}
+.route-utility-sidebar.is-collapsed .route-utility-tab {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+}
+.route-utility-sidebar.is-collapsed .route-utility-tab span:not(.material-symbols-rounded) {
+  display: none;
+}
+.route-utility-sidebar .ai-chat-panel,
+.route-utility-sidebar .floating-panel {
+  position: relative !important;
+  right: auto !important;
+  bottom: auto !important;
+  display: none !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0;
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+  overflow: hidden;
+  pointer-events: auto;
+  transform: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: none;
+}
+.route-utility-sidebar .ai-chat-panel.show,
+.route-utility-sidebar .floating-panel.show {
+  display: flex !important;
+  transform: none;
+}
+.route-utility-sidebar.is-collapsed .ai-chat-panel,
+.route-utility-sidebar.is-collapsed .floating-panel {
+  display: none !important;
+}
+.route-utility-sidebar .ai-chat-header,
+.route-utility-sidebar .panel-header {
+  flex: 0 0 auto;
+  border-radius: 0;
+}
+.route-utility-sidebar .trip-chat-header {
+  background: linear-gradient(135deg, #0f766e 0%, #0891b2 100%);
+}
+.route-utility-sidebar .panel-tabs {
+  flex: 0 0 auto;
+}
+.route-utility-sidebar .panel-body,
+.route-utility-sidebar .ai-chat-messages-container {
+  flex: 1;
+  min-height: 0;
+  background: rgba(248, 250, 252, 0.72);
+}
+.route-utility-sidebar .ai-chat-input-row,
+.route-utility-sidebar .panel-footer {
+  flex: 0 0 auto;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+}
+.route-utility-sidebar .ai-chat-suggestions,
+.route-utility-sidebar .memo-toolbar,
+.route-utility-sidebar .panel-progress-container {
+  flex: 0 0 auto;
+  background: #fff;
+}
+.route-utility-sidebar .memo-body textarea {
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .route-page-section .sidebar {
   height: 100%;
@@ -3819,18 +4181,23 @@ function textAvatarStyle(index: unknown) {
 }
 
 .route-page-section .map-canvas.navigation-guide-mode .map-tools {
-  background: rgba(15, 23, 42, 0.88);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.26);
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.10);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18);
 }
 
 .route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn {
-  color: rgba(255, 255, 255, 0.74);
+  color: #475569;
 }
 
 .route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn.active:not(:disabled) {
   background: #2563eb;
   box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+  color: #fff;
+}
+
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn:is(.active, .is-on):not(:disabled),
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn:is(.active, .is-on):not(:disabled) .material-symbols-rounded {
   color: #fff;
 }
 
