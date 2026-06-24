@@ -468,6 +468,16 @@ async function exportTicket() {
 .boarding-pass-card.is-exporting .stub-qr-panel {
   flex: 1 1 auto;
   margin-bottom: 0;
+  margin-right: 0;
+}
+
+.boarding-pass-card.is-exporting .ticket-qr {
+  padding: 7px;
+}
+
+.boarding-pass-card.is-exporting .ticket-qr img {
+  height: 168px;
+  width: 168px;
 }
 
 .stub-export-btn .material-symbols-rounded {
