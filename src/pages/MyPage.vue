@@ -373,10 +373,13 @@ function handleUserClick(userId: string) {
 <template>
   <AppShell>
     <main>
-      <section class="section mypage-shell" aria-labelledby="mypage-title">
-        <div class="mypage-page-heading">
-          <p class="eyebrow"><span class="material-symbols-rounded" aria-hidden="true">person</span> My Page</p>
-          <h1 id="mypage-title"><span class="gradient-text">나의 여행 프로필</span></h1>
+      <section class="section mypage-shell page-with-hero" aria-labelledby="mypage-title">
+        <div class="mypage-page-heading page-hero">
+          <div class="page-hero__copy">
+            <p class="page-hero__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">person</span> My Page</p>
+            <h1 id="mypage-title" class="page-hero__title"><span class="page-hero__gradient">나의 여행 프로필</span>을 관리하세요</h1>
+            <p class="page-hero__lead">좋아한 장소와 여행기, 취향 데이터를 모아 나만의 여행 기록을 살펴볼 수 있습니다.</p>
+          </div>
         </div>
 
         <!-- 프로필 히어로 영역 -->

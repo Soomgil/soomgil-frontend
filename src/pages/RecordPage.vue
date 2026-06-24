@@ -453,19 +453,19 @@ onBeforeUnmount(() => {
 <template>
   <AppShell>
     <main>
-      <section class="section record-page">
+      <section class="section record-page page-with-hero">
 
         <!-- 1. Page header -->
-        <div class="record-page-head">
-          <div class="record-page-title">
-            <p class="eyebrow">
-              <span class="material-symbols-rounded" style="font-size:16px; vertical-align:middle">photo_library</span>
+        <div class="record-page-head page-hero">
+          <div class="record-page-title page-hero__copy">
+            <p class="page-hero__eyebrow">
+              <span class="material-symbols-rounded" aria-hidden="true">photo_library</span>
               Travel Memories
             </p>
-            <h1><span>여행의 기록</span>을 한눈에 모아보세요</h1>
+            <h1 class="page-hero__title"><span class="page-hero__gradient">여행의 기록</span>을 한눈에 모아보세요</h1>
+            <p class="page-hero__lead">함께 남긴 사진과 순간을 여행별로 정리하고, 다시 보고 싶은 추억을 빠르게 찾아보세요.</p>
           </div>
-          <div class="record-page-toolbar">
-            <p class="lead">함께 남긴 사진과 순간을 여행별로 정리하고, 다시 보고 싶은 추억을 빠르게 찾아보세요.</p>
+          <div class="record-page-toolbar page-hero__actions">
             <div class="record-actions" aria-label="기록 보기 도구">
               <button class="btn primary" type="button" @click="openUploadModal">
                 <span class="material-symbols-rounded">add_a_photo</span>사진 추가
@@ -691,12 +691,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .record-page-head {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 40px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: var(--page-hero-bottom-space);
 }
 .record-page-title {
-  width: 100%;
+  width: auto;
 }
 .record-page-head h1 {
   max-width: 820px;
@@ -717,9 +718,9 @@ onBeforeUnmount(() => {
 .record-page-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-  width: 100%;
+  width: auto;
   min-width: 0;
 }
 .record-page-toolbar .lead {

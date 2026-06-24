@@ -16,6 +16,10 @@
   padding-top: 48px;
 }
 
+.mypage-shell.page-with-hero {
+  gap: 0;
+}
+
 .mypage-glass-container {
   padding: 40px;
   border: 1px solid rgba(255, 255, 255, 0.5);
@@ -29,24 +33,24 @@
   -webkit-backdrop-filter: blur(32px);
 }
 
-.mypage-page-heading {
+.mypage-page-heading:not(.page-hero) {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.mypage-page-heading .eyebrow {
+.mypage-page-heading:not(.page-hero) .eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   margin: 0;
 }
 
-.mypage-page-heading .eyebrow .material-symbols-rounded {
+.mypage-page-heading:not(.page-hero) .eyebrow .material-symbols-rounded {
   font-size: 17px;
 }
 
-.mypage-page-heading h1 {
+.mypage-page-heading:not(.page-hero) h1 {
   max-width: none;
   margin: 0;
   font-size: clamp(2.25rem, 5vw, 4rem);
@@ -1567,6 +1571,30 @@
 /* ==========================================
    분석 통계 및 여행 취향 위젯 고도화 스타일
    ========================================== */
+
+.mypage-page-heading.page-hero.page-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.mypage-page-heading.page-hero .page-hero__title {
+  max-width: none;
+  margin: 0 0 18px;
+  font-size: clamp(32px, 4.2vw, 52px);
+}
+
+@media (max-width: 640px) {
+  .mypage-page-heading.page-hero.page-hero {
+    align-items: flex-start;
+    gap: 20px;
+  }
+
+  .mypage-page-heading.page-hero .page-hero__title {
+    font-size: clamp(28px, 8vw, 38px);
+  }
+}
 
 /* 1. 내 여행 지도 애니메이션 & 호버 피드백 */
 @keyframes pinPulse {

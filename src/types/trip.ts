@@ -96,6 +96,8 @@ export interface TripUpdateRequest {
   title?: string
   displayDestination?: string
   legalRegionCodes?: string[]
+  startDate?: string | null
+  endDate?: string | null
   status?: TripStatus
 }
 

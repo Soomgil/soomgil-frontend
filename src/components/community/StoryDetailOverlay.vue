@@ -941,7 +941,7 @@ watch(
   max-height: 900px;
   aspect-ratio: 4 / 3;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 32px 64px rgba(0, 50, 150, 0.15);
@@ -996,9 +996,11 @@ watch(
   overflow-y: auto;
   overflow-x: hidden;
   background: #fff;
+  box-shadow: var(--soft-shadow);
   box-sizing: border-box;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 .story-overlay .story-post::-webkit-scrollbar {
   display: none;
@@ -1037,17 +1039,17 @@ watch(
 }
 .story-overlay .story-feed-window {
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: calc(100% - 64px);
+  height: calc(100% - 80px);
   min-height: 0;
   padding: 0;
-  margin: 0;
-  overflow: hidden;
+  margin: 40px 24px 40px 40px;
+  overflow: visible;
   outline: none;
 }
 .story-overlay #overlay-feed-stories .story-post:hover {
-  transform: none;
-  box-shadow: none;
+  transform: translateY(-4px);
+  box-shadow: var(--shadow);
 }
 .story-overlay #overlay-feed-stories .story-post:hover img {
   transform: none;
@@ -1065,7 +1067,7 @@ watch(
   height: var(--overlay-feed-height);
   min-height: 0;
   justify-self: end;
-  margin: 40px 24px 40px 40px;
+  margin: 0;
   box-sizing: border-box;
 }
 .story-overlay .story-feed::before {
@@ -1100,17 +1102,26 @@ watch(
   min-height: 0;
   justify-self: start;
   padding-top: 0;
-  margin: 40px 40px 40px 24px;
+  margin: 0;
   box-sizing: border-box;
 }
 .story-overlay .feed-comment-widget.widget-card {
-  height: 100%;
+  width: calc(100% - 64px);
+  height: calc(100% - 80px);
   min-height: 0;
   padding: 0;
+  margin: 40px 40px 40px 24px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   border-radius: 28px;
+  box-shadow: var(--soft-shadow);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.story-overlay .feed-comment-widget.widget-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow);
 }
 
 .feed-comment-header {
@@ -1515,6 +1526,12 @@ watch(
   .story-overlay .story-feed,
   .story-overlay .feed-sidebar {
     height: var(--overlay-feed-height);
+    margin: 0;
+  }
+  .story-overlay .story-feed-window,
+  .story-overlay .feed-comment-widget.widget-card {
+    width: calc(100% - 48px);
+    height: calc(100% - 48px);
     margin: 24px;
   }
 }

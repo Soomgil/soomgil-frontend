@@ -172,15 +172,18 @@ function openCommunityStory(storyId: string) {
       <span class="material-symbols-rounded" style="font-size: 40px; color: var(--violet);">progress_activity</span>
     </main>
     <main v-else-if="user">
-      <section class="section mypage-shell" aria-labelledby="user-profile-title">
-        <div class="mypage-page-heading">
-          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-            <button type="button" style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" @click="router.back()">
-              <span class="material-symbols-rounded" style="font-size: 20px; color: var(--ink);">arrow_back</span>
-            </button>
-            <p class="eyebrow"><span class="material-symbols-rounded" aria-hidden="true">person</span> Profile</p>
+      <section class="section mypage-shell page-with-hero" aria-labelledby="user-profile-title">
+        <div class="mypage-page-heading page-hero">
+          <div class="page-hero__copy">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+              <button type="button" style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" @click="router.back()">
+                <span class="material-symbols-rounded" style="font-size: 20px; color: var(--ink);">arrow_back</span>
+              </button>
+              <p class="page-hero__eyebrow" style="margin-bottom: 0;"><span class="material-symbols-rounded" aria-hidden="true">person</span> Profile</p>
+            </div>
+            <h1 id="user-profile-title" class="page-hero__title"><span class="page-hero__gradient">{{ user.displayName }}님의 여행 프로필</span>을 살펴보세요</h1>
+            <p class="page-hero__lead">공개된 여행기와 관심 장소를 통해 이 여행자의 취향과 여정을 확인할 수 있습니다.</p>
           </div>
-          <h1 id="user-profile-title"><span class="gradient-text">{{ user.displayName }}님의 여행 프로필</span></h1>
         </div>
 
         <!-- 프로필 히어로 영역 -->

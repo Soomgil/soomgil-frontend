@@ -280,20 +280,17 @@ onMounted(() => {
     <AppHeader />
 
     <main>
-      <section class="section">
-        <div
-          class="section-title community-hero-header"
-          style="margin-bottom: 48px; align-items: end"
-        >
-          <div>
-            <p class="eyebrow">
-              <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle">bolt</span>
+      <section class="section page-with-hero">
+        <div class="page-hero">
+          <div class="page-hero__copy">
+            <p class="page-hero__eyebrow">
+              <span class="material-symbols-rounded" aria-hidden="true">bolt</span>
               Swipe Preference
             </p>
-            <h1 style="max-width: 100%; word-break: keep-all; font-size: clamp(36px, 4vw, 56px); margin-bottom: 18px">
-              <span style="background: linear-gradient(135deg, var(--violet), var(--blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent">우리만의 여행 취향</span>을<br />모아보세요
+            <h1 class="page-hero__title">
+              <span class="page-hero__gradient">우리만의 여행 취향</span>을<br />모아보세요
             </h1>
-            <p class="lead" style="max-width: 100%; word-break: keep-all; margin-top: 16px">
+            <p class="page-hero__lead">
               마음에 드는 장소는 오른쪽으로, 아쉬운 장소는 왼쪽으로 밀어보세요. 슈퍼라이크는 멤버들에게 강력하게 추천하고 싶은 장소입니다.
             </p>
           </div>

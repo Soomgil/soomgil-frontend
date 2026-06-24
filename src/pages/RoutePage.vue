@@ -25,6 +25,7 @@ import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
+import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, Note, PlanningScope } from '@/types/planning'
@@ -138,14 +139,16 @@ const trip = computed(() => {
     })
   }
 
-  // dayPlans 데이터에서 지정된 날짜가 있는 일차들을 필터링하여 오름차순 정렬
+  // 여행 설정 날짜를 우선 사용하고, 없으면 기존 일차 날짜에서 추론합니다.
   const dates = dayPlans.value
     .filter(d => d.groupType !== 'UNSCHEDULED' && d.date)
     .map(d => d.date)
     .sort()
 
-  const tripStartDate = dates.length > 0 ? dates[0] : ''
-  const tripEndDate = dates.length > 0 ? dates[dates.length - 1] : ''
+  const configuredStartDate = detail?.startDate?.slice(0, 10) ?? ''
+  const configuredEndDate = detail?.endDate?.slice(0, 10) ?? ''
+  const tripStartDate = configuredStartDate || (dates.length > 0 ? dates[0] : '')
+  const tripEndDate = configuredEndDate || configuredStartDate || (dates.length > 0 ? dates[dates.length - 1] : '')
 
   // 2. 날짜 연산 및 2박 3일 형식 포맷팅
   let dateText = '날짜 미지정'
@@ -2390,10 +2393,7 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <span class="members-count">{{ trip.members.length }}명</span>
                   </div>
-                  <button class="btn ghost compact-settings-btn" type="button" @click="() => openTripManagement()">
-                    <span class="material-symbols-rounded" style="font-size:14px;">settings</span>
-                    <span>관리</span>
-                  </button>
+                  <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
                 </div>
               </div>
 
