@@ -996,9 +996,11 @@ watch(
   overflow-y: auto;
   overflow-x: hidden;
   background: #fff;
+  box-shadow: var(--soft-shadow);
   box-sizing: border-box;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 .story-overlay .story-post::-webkit-scrollbar {
   display: none;
@@ -1042,12 +1044,12 @@ watch(
   min-height: 0;
   padding: 0;
   margin: 40px 24px 40px 40px;
-  overflow: hidden;
+  overflow: visible;
   outline: none;
 }
 .story-overlay #overlay-feed-stories .story-post:hover {
-  transform: none;
-  box-shadow: none;
+  transform: translateY(-4px);
+  box-shadow: var(--shadow);
 }
 .story-overlay #overlay-feed-stories .story-post:hover img {
   transform: none;
@@ -1113,6 +1115,13 @@ watch(
   display: flex;
   flex-direction: column;
   border-radius: 28px;
+  box-shadow: var(--soft-shadow);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.story-overlay .feed-comment-widget.widget-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow);
 }
 
 .feed-comment-header {
