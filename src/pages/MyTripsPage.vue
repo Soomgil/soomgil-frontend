@@ -165,6 +165,12 @@ function formatTripDate(value: string | null | undefined): string {
   return value.replace(/-/g, '.')
 }
 
+function formatTripPeriod(trip: TripSummary): string {
+  if (!trip.startDate && !trip.endDate) return '여행 기간 미정'
+  if (trip.startDate && trip.endDate) return `${formatTripDate(trip.startDate)} - ${formatTripDate(trip.endDate)}`
+  return formatTripDate(trip.startDate ?? trip.endDate)
+}
+
 async function loadTrips() {
   const status = activeFilter.value === 'upcoming'
     ? 'ACTIVE'
@@ -306,8 +312,8 @@ watch(filteredTrips, () => {
                       <span class="value">{{ getPassengerText(currentTrip) }}</span>
                     </div>
                     <div class="detail-item">
-                      <span class="label">CREATED</span>
-                      <span class="value">{{ formatCreatedAt(currentTrip.createdAt) }}</span>
+                      <span class="label">PERIOD</span>
+                      <span class="value">{{ formatTripPeriod(currentTrip) }}</span>
                     </div>
                     <div class="detail-item">
                       <span class="label">DESTINATIONS</span>
@@ -467,7 +473,7 @@ watch(filteredTrips, () => {
                           <p class="timeline-card-destination">{{ getDestinationLabel(trip) }}</p>
                           <p class="timeline-card-date">
                             <span class="material-symbols-rounded">calendar_month</span>
-                            <span>{{ formatCreatedAt(trip.createdAt) }} 생성</span>
+                            <span>{{ formatTripPeriod(trip) }}</span>
                           </p>
                         </div>
                       </div>
