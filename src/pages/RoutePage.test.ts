@@ -634,6 +634,80 @@ describe('RoutePage itinerary integration', () => {
 		})
 	})
 
+	it('연결된 카드 체인을 드래그하면 붙어 있는 그룹 단위로 이동하고 경로를 삭제하지 않는다', async () => {
+		holder.state.fetchItinerary.mockImplementationOnce(async () => {
+			holder.state.days.value = [{
+				id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+				date: '2026-07-01', title: null, sortOrder: 0,
+				items: [
+					{
+						id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '첫 번째 장소',
+						address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+					{
+						id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '두 번째 장소',
+						address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+					{
+						id: 'item-3', itineraryDayId: 'day-1', sortOrder: 2,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '세 번째 장소',
+						address: null, lat: 36.37, lng: 127.4, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+				],
+			}]
+			holder.state.routes.value = [{
+				id: 'route-1',
+				originItineraryItemId: 'item-1',
+				destinationItineraryItemId: 'item-2',
+			}]
+		})
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separator = wrapper.get('.day-separator')
+		const stops = wrapper.findAll('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 320, width: 320, height: 320,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separator.element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		;[40, 88, 136].forEach((top, index) => {
+			vi.spyOn(stops[index].element, 'getBoundingClientRect').mockReturnValue({
+				x: 12, y: top, top, left: 12, right: 300, bottom: top + 40, width: 288, height: 40,
+				toJSON: () => ({}),
+			} as DOMRect)
+		})
+
+		stops[1].find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 98 }))
+		stops[1].element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 190 }))
+		stops[1].element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 190 }))
+		await flushPromises()
+
+		expect(holder.state.deleteRoute).not.toHaveBeenCalled()
+		expect(holder.state.reorder).toHaveBeenCalledWith({
+			days: [{
+				dayId: 'day-1',
+				sortOrder: 0,
+				itemOrders: [
+					{ itemId: 'item-3', sortOrder: 0 },
+					{ itemId: 'item-1', sortOrder: 1 },
+					{ itemId: 'item-2', sortOrder: 2 },
+				],
+			}],
+		})
+	})
+
   it('route의 trip 일정과 일차 미정을 실제 상태에서 표시한다', async () => {
     const wrapper = mount(RoutePage, {
       global: {

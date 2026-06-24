@@ -569,6 +569,7 @@ async function handleRoutePenClick(item: RouteStop) {
 	try {
     const originCoordinate = { lng: origin.lng, lat: origin.lat }
     const destinationCoordinate = { lng: item.lng, lat: item.lat }
+    const destinationChainIds = linkedChainIdsInCurrentOrder(item.id)
     let routeCoordinates = [originCoordinate, destinationCoordinate]
     const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim()
     if (accessToken) {
@@ -610,6 +611,9 @@ async function handleRoutePenClick(item: RouteStop) {
     if (newRoute) {
       itinerary.routes.value = [...itinerary.routes.value, newRoute]
     }
+    if (moveItemGroupAfter(origin.id, destinationChainIds)) {
+      await persistItineraryOrder()
+    }
     nearbyOn.value = true
     await loadRouteNearbyPlaces()
     showToast('경로가 연결되었습니다', 'success')
@@ -620,6 +624,10 @@ async function handleRoutePenClick(item: RouteStop) {
 }
 
 function handleStopClick(item: RouteStop) {
+  if (suppressNextStopClick.value) {
+    suppressNextStopClick.value = false
+    return
+  }
   if (activeTool.value === 'route-pen') {
 		void handleRoutePenClick(item)
     return
@@ -630,6 +638,7 @@ function handleStopClick(item: RouteStop) {
 /* ── Drag & Drop (data-driven) ── */
 const itineraryRef = ref<HTMLElement | null>(null)
 const dayTabsRef = ref<HTMLElement | null>(null)
+const suppressNextStopClick = ref(false)
 
 const isDraggingTabs = ref(false)
 const startX = ref(0)
@@ -702,6 +711,70 @@ function getLinkedChain(itemId: string): string[] {
   return Array.from(visited)
 }
 
+function linkedChainIdsInCurrentOrder(itemId: string, plans: DayPlan[] = dayPlans.value) {
+  const linkedIds = new Set(getLinkedChain(itemId))
+  return plans.flatMap((day) => day.items.flatMap((item) => linkedIds.has(item.id) ? [item.id] : []))
+}
+
+function movingFlatNodes(source: DragSource, flatNodes: FlatItineraryNode[], plans: DayPlan[]) {
+  const sourceDay = plans[source.dayIdx]
+  const sourceItem = source.type === 'stop' ? sourceDay?.items[source.itemIdx] : null
+  const sourceNodeIndex = source.type === 'separator'
+    ? flatNodes.findIndex((node) => node.type === 'separator' && node.dayId === sourceDay?.id)
+    : flatNodes.findIndex((node) => node.type === 'stop' && node.itemId === sourceItem?.id)
+  if (sourceNodeIndex < 0) return []
+
+  if (source.type === 'separator') {
+    const nextSeparatorIndex = flatNodes.findIndex((node, index) => (
+      index > sourceNodeIndex && node.type === 'separator'
+    ))
+    return flatNodes.slice(
+      sourceNodeIndex,
+      nextSeparatorIndex === -1 ? flatNodes.length : nextSeparatorIndex,
+    )
+  }
+
+  if (!sourceItem) return []
+  const movingIds = new Set(linkedChainIdsInCurrentOrder(sourceItem.id, plans))
+  return flatNodes.filter((node) => node.type === 'stop' && node.itemId && movingIds.has(node.itemId))
+}
+
+function moveItemGroupAfter(anchorItemId: string, movingItemIds: string[]) {
+  const movingIdSet = new Set(movingItemIds)
+  if (movingIdSet.size === 0 || movingIdSet.has(anchorItemId)) return false
+
+  const movingItems = dayPlans.value.flatMap((day) => (
+    day.items.filter((item) => movingIdSet.has(item.id)).map((item) => ({ ...item }))
+  ))
+  if (movingItems.length === 0) return false
+
+  const strippedPlans = dayPlans.value.map((day) => ({
+    ...day,
+    items: day.items.filter((item) => !movingIdSet.has(item.id)),
+  }))
+  const anchorDayIndex = strippedPlans.findIndex((day) => day.items.some((item) => item.id === anchorItemId))
+  if (anchorDayIndex < 0) return false
+  const anchorDay = strippedPlans[anchorDayIndex]
+  const anchorIndex = anchorDay.items.findIndex((item) => item.id === anchorItemId)
+  if (anchorIndex < 0) return false
+
+  const nextItems = [...anchorDay.items]
+  nextItems.splice(anchorIndex + 1, 0, ...movingItems.map((item, offset) => ({
+    ...item,
+    day: anchorDay.day,
+    order: anchorIndex + 2 + offset,
+  })))
+  const nextPlans = strippedPlans.map((day, dayIndex) => (
+    dayIndex === anchorDayIndex
+      ? { ...day, items: nextItems.map((item, itemIndex) => ({ ...item, day: day.day, order: itemIndex + 1 })) }
+      : { ...day, items: day.items.map((item, itemIndex) => ({ ...item, day: day.day, order: itemIndex + 1 })) }
+  ))
+  if (itineraryOrderSignature(dayPlans.value) === itineraryOrderSignature(nextPlans)) return false
+  pushUndoState('itinerary')
+  dayPlans.value = nextPlans
+  return true
+}
+
 function onPointerDown(e: PointerEvent) {
   if ((e.target as HTMLElement).closest('button')) return
   const target = e.currentTarget as HTMLElement
@@ -746,6 +819,7 @@ function onPointerDown(e: PointerEvent) {
   const stopRect = stop.getBoundingClientRect()
   const offsetY = e.clientY - stopRect.top
   const originalY = stopRect.top - containerRect.top
+  let movedDuringDrag = false
 
   stop.classList.add('is-dragging')
   stop.style.zIndex = '100'
@@ -760,16 +834,18 @@ function onPointerDown(e: PointerEvent) {
   }
 
   const chainIds = source.type === 'stop' && sourceItem
-    ? getLinkedChain(sourceItem.id)
-    : []
+    ? linkedChainIdsInCurrentOrder(sourceItem.id)
+    : source.type === 'separator'
+      ? sourceDay?.items.map((item) => item.id) ?? []
+      : []
   const chainSet = new Set(chainIds)
 
   const dragElements: HTMLElement[] = []
-  if (source.type === 'stop' && sourceItem) {
+  if ((source.type === 'stop' && sourceItem) || source.type === 'separator') {
     const stopEls = dragContainer.querySelectorAll('.stop')
     stopEls.forEach((el) => {
       const stepId = el.getAttribute('data-step-id')
-      if (stepId && chainSet.has(stepId) && stepId !== sourceItem.id) {
+      if (stepId && chainSet.has(stepId) && stepId !== sourceItem?.id) {
         const htmlEl = el as HTMLElement
         htmlEl.classList.add('is-chain-dragging')
         htmlEl.style.zIndex = '100'
@@ -797,9 +873,13 @@ function onPointerDown(e: PointerEvent) {
   const allItems = Array.from(dragContainer.querySelectorAll('.stop, .day-separator'))
     .filter((itemEl) => {
       if (itemEl.classList.contains('is-dragging')) return false
-      if (source!.type === 'stop') {
+      if (source!.type === 'stop' || source!.type === 'separator') {
         const stepId = itemEl.getAttribute('data-step-id')
         if (stepId && chainSet.has(stepId)) return false
+        if (source!.type === 'separator' && itemEl.classList.contains('day-separator')) {
+          const dayNum = parseInt(itemEl.getAttribute('data-day') || '0', 10)
+          if (dayNum === source!.dayNum) return false
+        }
       }
       return true
     })
@@ -820,6 +900,7 @@ function onPointerDown(e: PointerEvent) {
 
     const dx = ev.clientX - e.clientX
     const dy = ev.clientY - e.clientY
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) movedDuringDrag = true
     if (Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 20) {
       return
     }
@@ -859,6 +940,12 @@ function onPointerDown(e: PointerEvent) {
   async function onPointerUp(ev: PointerEvent) {
     stop.removeEventListener('pointermove', onPointerMove)
     stop.removeEventListener('pointerup', onPointerUp)
+    if (movedDuringDrag) {
+      suppressNextStopClick.value = true
+      window.setTimeout(() => {
+        suppressNextStopClick.value = false
+      }, 0)
+    }
 
     const dragCenter = ev.clientY - offsetY + stopRect.height / 2
     let targetIdx = allItems.length
@@ -914,37 +1001,6 @@ function onPointerDown(e: PointerEvent) {
     dragContainer.querySelectorAll('.stop, .day-separator').forEach((item) => {
       item.classList.remove('is-drag-over', 'is-drag-over-separator', 'is-drag-over-top', 'is-drag-over-bottom', 'is-chain-dragging')
     })
-
-    if (source!.type === 'stop') {
-      const day = dayPlans.value[source!.dayIdx]
-      const movedItem = day?.items[source!.itemIdx]
-      if (movedItem) {
-        const currentChainIds = getLinkedChain(movedItem.id)
-        const movingIds = activeDay.value === 0
-          ? currentChainIds
-          : currentChainIds.filter(id => day.items.some(item => item.id === id))
-        const movingSet = new Set(movingIds)
-
-        const outerLinks = routeLinks.value.filter(link => {
-          const fromInMoving = movingSet.has(link.fromItemId)
-          const toInMoving = movingSet.has(link.toItemId)
-          return (fromInMoving && !toInMoving) || (!fromInMoving && toInMoving)
-        })
-
-        if (outerLinks.length > 0) {
-          pushUndoState('route-links')
-          try {
-            for (const link of outerLinks) {
-              await itinerary.deleteRoute(link.id)
-            }
-          } catch (err) {
-            itineraryActionError.value = '경로 연결을 해제하지 못해 순서를 변경하지 못했습니다.'
-            await loadItinerary()
-            return
-          }
-        }
-      }
-    }
 
     // Update data model directly
     const didReorder = activeDay.value === 0
@@ -1042,45 +1098,14 @@ function rebuildDayPlansFromFlatNodes(nodes: FlatItineraryNode[], originalPlans:
 function reorderAllDays(source: DragSource, targetIdx: number) {
   const originalPlans = dayPlans.value
   const flatNodes = flattenDayPlans(originalPlans)
-  const sourceDay = originalPlans[source.dayIdx]
-  const sourceItem = source.type === 'stop' ? sourceDay?.items[source.itemIdx] : null
-  const sourceNode: FlatItineraryNode | null = source.type === 'separator'
-    ? sourceDay ? { type: 'separator', dayId: sourceDay.id } : null
-    : sourceDay && sourceItem ? { type: 'stop', dayId: sourceDay.id, itemId: sourceItem.id } : null
-  if (!sourceNode) return false
-
-  const sourceNodeIndex = flatNodes.findIndex((node) => isSameFlatNode(node, sourceNode))
-  if (sourceNodeIndex < 0) return false
-
-  const visibleNodes = flatNodes.filter((node) => !isSameFlatNode(node, sourceNode))
-  const targetNode = visibleNodes[targetIdx] ?? null
-  let movingNodes: FlatItineraryNode[] = []
-
-  if (source.type === 'separator') {
-    const nextSeparatorIndex = flatNodes.findIndex((node, index) => (
-      index > sourceNodeIndex && node.type === 'separator'
-    ))
-    movingNodes = flatNodes.slice(
-      sourceNodeIndex,
-      nextSeparatorIndex === -1 ? flatNodes.length : nextSeparatorIndex,
-    )
-  } else {
-    const movingIndexes = [sourceNodeIndex]
-    const partnerId = sourceItem ? getLinkedPartner(sourceItem.id) : null
-    if (partnerId) {
-      const partnerIndex = flatNodes.findIndex((node) => node.type === 'stop' && node.itemId === partnerId)
-      if (partnerIndex >= 0) movingIndexes.push(partnerIndex)
-    }
-    movingNodes = [...new Set(movingIndexes)]
-      .sort((left, right) => left - right)
-      .map((index) => flatNodes[index])
-  }
-
-  if (targetNode && movingNodes.some((node) => isSameFlatNode(node, targetNode))) return false
-
+  const movingNodes = movingFlatNodes(source, flatNodes, originalPlans)
+  if (movingNodes.length === 0) return false
   const remainingNodes = flatNodes.filter((node) => (
     !movingNodes.some((movingNode) => isSameFlatNode(movingNode, node))
   ))
+  const targetNode = remainingNodes[targetIdx] ?? null
+  if (targetNode && movingNodes.some((node) => isSameFlatNode(node, targetNode))) return false
+
   const insertAt = targetNode
     ? remainingNodes.findIndex((node) => isSameFlatNode(node, targetNode))
     : remainingNodes.length
@@ -1103,14 +1128,16 @@ function reorderSingleDay(source: DragSource, targetIdx: number) {
   const moved = plan?.items[source.itemIdx]
   if (!plan || !moved) return false
 
+  const movingIds = new Set(linkedChainIdsInCurrentOrder(moved.id, [plan]))
+  const movingItems = plan.items.filter((item) => movingIds.has(item.id))
   const visibleNodes: FlatItineraryNode[] = [
     { type: 'separator', dayId: plan.id },
     ...plan.items
-      .filter((item) => item.id !== moved.id)
+      .filter((item) => !movingIds.has(item.id))
       .map((item) => ({ type: 'stop' as const, dayId: plan.id, itemId: item.id })),
   ]
   const targetNode = visibleNodes[targetIdx] ?? null
-  const remainingItems = plan.items.filter((item) => item.id !== moved.id)
+  const remainingItems = plan.items.filter((item) => !movingIds.has(item.id))
   let insertAt = remainingItems.length
   if (targetNode?.type === 'separator') {
     insertAt = 0
@@ -1120,7 +1147,7 @@ function reorderSingleDay(source: DragSource, targetIdx: number) {
   }
 
   const nextItems = [...remainingItems]
-  nextItems.splice(insertAt, 0, moved)
+  nextItems.splice(insertAt, 0, ...movingItems)
   if (plan.items.map((item) => item.id).join(',') === nextItems.map((item) => item.id).join(',')) return false
 
   pushUndoState('itinerary')
@@ -3886,6 +3913,21 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .itinerary.dragging-stop ~ .add-stop-container > .trash-drop-zone,
 .route-page-section .itinerary.dragging-separator ~ .add-stop-container > .trash-drop-zone {
   display: flex;
+}
+
+.route-connector {
+  height: 20px !important;
+  margin: -1px 12px !important;
+}
+
+.route-connector-line {
+  width: 0 !important;
+  border-left: 3px solid var(--violet) !important;
+  background: none !important;
+  border-radius: 999px !important;
+}
+.route-connector:hover .route-connector-line {
+  border-left-color: var(--rose) !important;
 }
 </style>
 

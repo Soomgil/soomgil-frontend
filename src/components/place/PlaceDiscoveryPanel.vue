@@ -33,6 +33,17 @@ function matchText(item: DiscoveryItem) {
   return `${count}명의 멤버가 좋아하는 곳`
 }
 
+function displayImageUrl(url?: string | null) {
+  const trimmed = url?.trim()
+  if (!trimmed) return ''
+  if (/^(https?:|data:|blob:|\/)/.test(trimmed)) return trimmed
+  return `/${trimmed.replace(/^\.?\//, '')}`
+}
+
+function placeImage(place: Place) {
+  return displayImageUrl(place.thumbnailUrl) || displayImageUrl(place.photos?.find(Boolean))
+}
+
 async function loadRecommendations(tab: RecommendationTab) {
   loading.value = true
   error.value = null
@@ -183,7 +194,7 @@ onMounted(() => {
         @click="selectPlace(item.place)"
       >
         <div class="discovery-thumb">
-          <img v-if="item.place.thumbnailUrl" :src="item.place.thumbnailUrl" :alt="item.place.placeName" />
+          <img v-if="placeImage(item.place)" :src="placeImage(item.place)" :alt="item.place.placeName" />
           <span v-else class="material-symbols-rounded" aria-hidden="true">landscape</span>
         </div>
         <div class="discovery-copy">
