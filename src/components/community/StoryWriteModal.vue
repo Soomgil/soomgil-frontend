@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import http from '@/api/http'
 import { communityApi } from '@/api/community.api'
 import { mediaApi } from '@/api/media.api'
+import StoryPostPreview from '@/components/community/StoryPostPreview.vue'
 import type { CommunityPostDetail, PageMeta } from '@/types/community'
 import type { TripRecordPhoto } from '@/types/media'
 import { useToast } from '@/composables/useToast'
@@ -59,30 +60,8 @@ watch(totalPhotoPages, (total) => {
 // Char counter
 const charCount = computed(() => content.value.length)
 
-// Parse markdown for preview
-function parseMarkdown(text: string): string {
-  if (!text) return ''
-  let html = text
-  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>')
-  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>')
-  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>')
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
-  html = html.replace(/^\s*-\s+(.*$)/gim, '<li>$1</li>')
-  html = html.replace(/^\s*\*\s+(.*$)/gim, '<li>$1</li>')
-  html = html.replace(/(<li>.*<\/li>)/gim, '<ul>$1</ul>')
-  html = html.replace(/<\/ul>\s*<ul>/g, '')
-  html = html.replace(/\n/g, '<br>')
-  return html
-}
-
-const previewHtml = computed(() => {
-  const parsed = parseMarkdown(content.value)
-  return parsed || '<span style="color: var(--muted)">본문 내용을 입력하세요.</span>'
-})
-
 const previewTitle = computed(() => title.value.trim() || '여행의 제목을 입력하세요')
+const previewSummary = computed(() => content.value.trim() || '본문 내용을 입력하세요.')
 const previewRegion = computed(() => {
   const trip = myTrips.value.find(t => t.id === selectedTripId.value)
   return trip ? trip.title : '여행계획을 선택하세요'
@@ -404,38 +383,17 @@ watch(selectedTripId, (tripId) => {
             <div style="display: flex; flex-direction: column; gap: 20px; height: 100%; min-height: 720px; justify-content: center; align-items: center;">
               <h3 style="font-size: 16px; color: var(--muted); margin: 0; font-weight: 800; align-self: flex-start; flex-shrink: 0;">작성 미리보기</h3>
 
-              <div style="width: 496px; height: 650px; flex-shrink: 0; display: flex; justify-content: center; align-items: center;">
-                <div class="story-post" style="border: 1px solid rgba(227, 231, 244, 0.6); margin: 0;">
-                  <div class="story-post-head" style="padding:16px 20px; flex-direction:column; align-items:flex-start; gap:12px; flex-shrink: 0; display: flex;">
-                    <div style="display:flex; align-items:center; justify-content:space-between; width:100%">
-                      <div class="story-author" style="display:flex; align-items:center; gap:12px;">
-                        <span class="avatar" style="width:40px; height:40px; background:var(--rose); font-weight: 800; color: #fff; font-size: 15px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">나</span>
-                        <div>
-                          <strong style="font-size:15px; color: var(--ink); display: block;">나</strong>
-                          <span style="display: block; font-size: 12px; margin-top: 2px; color: var(--muted);">{{ previewRegion }}</span>
-                        </div>
-                      </div>
-                      <span aria-hidden="true" style="border:0; padding:0; min-height:0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">more_horiz</span></span>
-                    </div>
-                  </div>
-
-                  <div class="feed-photo-frame" v-if="addedPhotos.length > 0" style="position: relative; overflow: hidden; display: block;">
-                    <button class="feed-photo-nav carousel-btn prev-btn prev" type="button" aria-label="이전 사진" :disabled="addedPhotos.length < 2" @click="carouselPrev"><span class="material-symbols-rounded">chevron_left</span></button>
-                    <div class="feed-photo-open">
-                      <img alt="여행기 미리보기 사진" :src="addedPhotos[previewImageIndex]">
-                    </div>
-                    <button class="feed-photo-nav carousel-btn next-btn next" type="button" aria-label="다음 사진" :disabled="addedPhotos.length < 2" @click="carouselNext"><span class="material-symbols-rounded">chevron_right</span></button>
-                    <span class="feed-photo-count">{{ previewImageIndex + 1 }} / {{ addedPhotos.length }}</span>
-                  </div>
-
-                  <div class="story-body" style="padding: 22px 24px; display: flex; flex-direction: column; height: auto; flex: 1;">
-                    <h3 style="font-size: 20px; line-height: 1.4; margin: 0 0 12px; font-weight: 850; color: var(--ink); flex-shrink: 0;">{{ previewTitle }}</h3>
-                    <div style="max-height: 180px; overflow-y: auto; margin-bottom: 16px; font-size: 15px; line-height: 1.7; color: var(--muted);" v-html="previewHtml"></div>
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; flex-shrink: 0;">
-                      <span v-for="tag in previewTags" :key="tag" class="tag">{{ tag }}</span>
-                    </div>
-                  </div>
-                </div>
+              <div class="write-preview-feed-frame">
+                <StoryPostPreview
+                  :title="previewTitle"
+                  :location="previewRegion"
+                  :summary="previewSummary"
+                  :tags="previewTags"
+                  :photos="addedPhotos"
+                  :photo-index="previewImageIndex"
+                  @prev="carouselPrev"
+                  @next="carouselNext"
+                />
               </div>
             </div>
           </aside>
@@ -446,17 +404,15 @@ watch(selectedTripId, (tripId) => {
 </template>
 
 <style scoped>
-.story-preview-body-content {
-  font-size: 15px;
-  line-height: 1.7;
-  color: var(--muted);
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-.feed-photo-frame {
-  aspect-ratio: 4 / 3;
-  flex: none !important;
+.write-preview-feed-frame {
+  aspect-ratio: 10 / 16;
+  width: min(100%, 456px);
+  height: auto;
+  max-height: 730px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 /* Tag chip input */

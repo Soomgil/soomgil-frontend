@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
+import StoryPostPreview from '@/components/community/StoryPostPreview.vue'
 import { communityApi } from '@/api/community.api'
 import { mediaApi } from '@/api/media.api'
 import { tripApi } from '@/api/trip.api'
@@ -39,30 +40,8 @@ const addedPhotos = computed(() => selectedMedia.value.flatMap((media) => {
 // Char counter
 const charCount = computed(() => content.value.length)
 
-// Parse markdown for preview
-function parseMarkdown(text: string): string {
-  if (!text) return ''
-  let html = text
-  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>')
-  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>')
-  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>')
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
-  html = html.replace(/^\s*-\s+(.*$)/gim, '<li>$1</li>')
-  html = html.replace(/^\s*\*\s+(.*$)/gim, '<li>$1</li>')
-  html = html.replace(/(<li>.*<\/li>)/gim, '<ul>$1</ul>')
-  html = html.replace(/<\/ul>\s*<ul>/g, '')
-  html = html.replace(/\n/g, '<br>')
-  return html
-}
-
-const previewHtml = computed(() => {
-  const parsed = parseMarkdown(content.value)
-  return parsed || '<span style="color: var(--muted)">본문 내용을 입력하세요.</span>'
-})
-
 const previewTitle = computed(() => title.value.trim() || '여행의 제목을 입력하세요')
+const previewSummary = computed(() => content.value.trim() || '본문 내용을 입력하세요.')
 const previewRegion = computed(() => {
   const trip = myTrips.value.find(t => t.id === selectedTripId.value)
   return trip ? trip.title : '여행계획을 선택하세요'
@@ -329,48 +308,17 @@ watch(selectedTripId, (tripId) => {
               <div style="position: sticky; top: 112px; display: flex; flex-direction: column; gap: 20px; height: 100%; min-height: 720px; justify-content: center; align-items: center;">
                 <h3 style="font-size: 16px; color: var(--muted); margin: 0; font-weight: 800; align-self: flex-start; flex-shrink: 0;">작성 미리보기</h3>
 
-                <!-- Wrapper matching exact feed card dimensions (496px width, 650px height) -->
-                <div style="width: 496px; height: 650px; flex-shrink: 0; display: flex; justify-content: center; align-items: center;">
-
-                  <!-- Preview card inherits styles.css rules (width: 100%, height: 100%) -->
-                  <div class="story-post" style="border: 1px solid rgba(227, 231, 244, 0.6); margin: 0;">
-
-                    <!-- Unified feed story post header format -->
-                    <div class="story-post-head" style="padding:16px 20px; flex-direction:column; align-items:flex-start; gap:12px; flex-shrink: 0; display: flex;">
-                      <div style="display:flex; align-items:center; justify-content:space-between; width:100%">
-                        <div class="story-author" style="display:flex; align-items:center; gap:12px;">
-                          <span class="avatar" style="width:40px; height:40px; background:var(--rose); font-weight: 800; color: #fff; font-size: 15px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">나</span>
-                          <div>
-                            <strong style="font-size:15px; color: var(--ink); display: block;">나</strong>
-                            <span class="small muted" style="display: block; font-size: 12px; margin-top: 2px;">{{ previewRegion }}</span>
-                          </div>
-                        </div>
-                        <span aria-hidden="true" class="btn ghost" style="border:0; padding:0; min-height:0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">more_horiz</span></span>
-                      </div>
-                    </div>
-
-                    <!-- Carousel frame -->
-                    <div class="feed-photo-frame" v-if="addedPhotos.length > 0" style="position: relative; overflow: hidden; display: block;">
-                      <button class="feed-photo-nav carousel-btn prev-btn prev" type="button" aria-label="이전 사진" :disabled="addedPhotos.length < 2" @click="carouselPrev"><span class="material-symbols-rounded">chevron_left</span></button>
-
-                      <div class="feed-photo-open">
-                        <img alt="여행기 미리보기 사진" :src="addedPhotos[previewImageIndex]">
-                      </div>
-
-                      <button class="feed-photo-nav carousel-btn next-btn next" type="button" aria-label="다음 사진" :disabled="addedPhotos.length < 2" @click="carouselNext"><span class="material-symbols-rounded">chevron_right</span></button>
-                      <span class="feed-photo-count">{{ previewImageIndex + 1 }} / {{ addedPhotos.length }}</span>
-                    </div>
-
-                    <!-- Story preview card body -->
-                    <div class="story-body" style="padding: 22px 24px; display: flex; flex-direction: column; height: auto; flex: 1;">
-                      <h3 style="font-size: 20px; line-height: 1.4; margin: 0 0 12px; font-weight: 850; color: var(--ink); flex-shrink: 0;">{{ previewTitle }}</h3>
-                      <div class="story-preview-body-content" style="max-height: 180px; overflow-y: auto; margin-bottom: 16px;" v-html="previewHtml"></div>
-                      <div class="tag-row" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; flex-shrink: 0;">
-                        <span v-for="tag in previewTags" :key="tag" class="tag">{{ tag }}</span>
-                      </div>
-                    </div>
-                  </div>
-
+                <div class="write-preview-feed-frame">
+                  <StoryPostPreview
+                    :title="previewTitle"
+                    :location="previewRegion"
+                    :summary="previewSummary"
+                    :tags="previewTags"
+                    :photos="addedPhotos"
+                    :photo-index="previewImageIndex"
+                    @prev="carouselPrev"
+                    @next="carouselNext"
+                  />
                 </div>
               </div>
             </aside>
@@ -447,6 +395,17 @@ textarea#story-content {
   gap: 48px !important;
 }
 
+.write-preview-feed-frame {
+  aspect-ratio: 10 / 16;
+  width: min(100%, 456px);
+  height: auto;
+  max-height: 730px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 @media (max-width: 1024px) {
   .write-layout {
     grid-template-columns: 1fr !important;
@@ -455,6 +414,9 @@ textarea#story-content {
   .write-page .content-container {
     padding: 24px !important;
     border-radius: 24px !important;
+  }
+  .write-preview-feed-frame {
+    width: min(100%, 420px);
   }
 }
 
@@ -493,39 +455,4 @@ textarea#story-content {
   width: 100%;
 }
 
-/* Preview Markdown Styling */
-.story-preview-body-content {
-  font-size: 15px;
-  line-height: 1.7;
-  color: var(--muted);
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-.story-preview-body-content h1,
-.story-preview-body-content h2,
-.story-preview-body-content h3 {
-  margin: 12px 0 6px 0;
-  color: var(--ink);
-  font-weight: 800;
-}
-.story-preview-body-content h1 { font-size: 18px; }
-.story-preview-body-content h2 { font-size: 16px; }
-.story-preview-body-content h3 { font-size: 14px; }
-.story-preview-body-content p {
-  margin: 0 0 10px 0;
-}
-.story-preview-body-content ul {
-  margin: 0 0 10px 0;
-  padding-left: 20px;
-}
-.story-preview-body-content li {
-  margin-bottom: 4px;
-}
-.story-preview-body-content strong {
-  color: var(--ink);
-  font-weight: 800;
-}
-.story-preview-body-content em {
-  font-style: italic;
-}
 </style>
