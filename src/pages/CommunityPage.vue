@@ -2020,7 +2020,7 @@ watch(
   --overlay-feed-height: calc(100% - 80px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: stretch;
+  align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
@@ -2137,6 +2137,7 @@ watch(
   height: var(--overlay-feed-height);
   min-height: 0;
   justify-self: end;
+  align-self: center;
   margin: 0;
   box-sizing: border-box;
 }
@@ -2171,6 +2172,7 @@ watch(
   height: var(--overlay-feed-height);
   min-height: 0;
   justify-self: start;
+  align-self: center;
   padding-top: 0;
   margin: 0;
   box-sizing: border-box;
