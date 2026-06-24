@@ -113,6 +113,17 @@ describe('RecordPage', () => {
     expect(wrapper.get('img[src="https://cdn.example.com/busan.jpg"]')).toBeTruthy()
   })
 
+  it('preserves each photo original aspect ratio in masonry view', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+
+    const image = wrapper.get('.record-masonry img')
+    expect(image.attributes('width')).toBe('1200')
+    expect(image.attributes('height')).toBe('800')
+    expect(image.attributes('style')).toBeUndefined()
+    expect(wrapper.find('[aria-label="격자 보기"]').exists()).toBe(false)
+  })
+
   it('loads only the selected trips photos', async () => {
     const wrapper = mountPage()
     await flushPromises()
