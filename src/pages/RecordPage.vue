@@ -8,8 +8,9 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import { mediaApi } from '@/api/media.api'
 import { tripApi } from '@/api/trip.api'
 import { useRecordPhotoUrlRefresh } from '@/composables/useRecordPhotoUrlRefresh'
+import { findItineraryDayByTakenAt, readPhotoTakenAt } from '@/utils/record-photo-metadata'
 import type { PagedItems } from '@/types/api'
-import type { TripRecordPhoto } from '@/types/media'
+import type { TripRecordDay, TripRecordPhoto } from '@/types/media'
 import type { TripSummary } from '@/types/trip'
 
 const route = useRoute()
@@ -19,8 +20,16 @@ const routeTripId = typeof route.query.tripId === 'string' ? route.query.tripId 
 const selectedTripId = ref<string | null>(routeTripId)
 const isUploadModalOpen = ref(false)
 const uploadTripId = ref('')
-const uploadFiles = ref<File[]>([])
-const uploadPreviews = ref<string[]>([])
+interface UploadPhoto {
+  file: File
+  previewUrl: string
+  takenAt: Date | null
+  itineraryDayId: string
+}
+const uploadPhotos = ref<UploadPhoto[]>([])
+const uploadFiles = computed(() => uploadPhotos.value.map((photo) => photo.file))
+const uploadDays = ref<TripRecordDay[]>([])
+const loadingUploadDays = ref(false)
 const uploadError = ref('')
 const uploadingPhoto = ref(false)
 const trips = ref<TripSummary[]>([])
@@ -38,6 +47,7 @@ const loadMoreError = ref<string | null>(null)
 const loadMoreSentinel = ref<HTMLElement | null>(null)
 let requestSequence = 0
 let tripMetadataSequence = 0
+let uploadDaySequence = 0
 let loadMoreObserver: IntersectionObserver | null = null
 const tripPhotoStateVersions: Record<string, number> = {}
 const viewerOpen = ref(false)
@@ -67,19 +77,8 @@ function closeViewer() {
   viewerMediaId.value = null
 }
 
-function heightForPhoto(photo: TripRecordPhoto): number {
-  const width = photo.media.width
-  const height = photo.media.height
-  if (!width || !height) return 280
-  const ratio = width / height
-  if (ratio > 1.2) return 220
-  if (ratio < 0.8) return 340
-  return 280
-}
-
 const avatarColors = ['var(--rose)', 'var(--blue)', 'var(--cyan)', 'var(--violet)']
 const newestFirst = ref(true)
-const viewMode = ref<'masonry' | 'grid'>('masonry')
 const visiblePhotos = computed(() => photos.value
   .filter((photo) => Boolean(photoSource(photo)))
   .slice()
@@ -99,6 +98,14 @@ function photoLabel(photo: TripRecordPhoto): string {
 
 function uploaderName(photo: TripRecordPhoto): string {
   return photo.uploadedBy?.displayName || '여행 멤버'
+}
+
+function uploaderProfileImage(photo: TripRecordPhoto): string | null {
+  return photo.uploadedBy?.profileImageUrl ?? null
+}
+
+function photoDayLabel(photo: TripRecordPhoto): string | null {
+  return photo.dayNumber == null ? null : `${photo.dayNumber}일차`
 }
 
 function formatDate(value: string): string {
@@ -280,9 +287,9 @@ function scrollSlider(direction: 'prev' | 'next') {
 }
 
 function clearUploadSelection() {
-  uploadPreviews.value.forEach((url) => URL.revokeObjectURL(url))
-  uploadPreviews.value = []
-  uploadFiles.value = []
+  uploadPhotos.value.forEach((photo) => URL.revokeObjectURL(photo.previewUrl))
+  uploadPhotos.value = []
+  uploadDays.value = []
 }
 
 function openUploadModal() {
@@ -299,7 +306,7 @@ function closeUploadModal() {
   uploadError.value = ''
 }
 
-function handleFileSelect(event: Event) {
+async function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
   const selected = [...(input.files ?? [])]
   if (selected.some((file) => !file.type.startsWith('image/'))) {
@@ -307,18 +314,69 @@ function handleFileSelect(event: Event) {
     input.value = ''
     return
   }
-  const remaining = Math.max(0, 10 - uploadFiles.value.length)
+  const remaining = Math.max(0, 10 - uploadPhotos.value.length)
   const accepted = selected.slice(0, remaining)
-  uploadFiles.value = [...uploadFiles.value, ...accepted]
-  uploadPreviews.value = [...uploadPreviews.value, ...accepted.map((file) => URL.createObjectURL(file))]
+  const additions = await Promise.all(accepted.map(async (file): Promise<UploadPhoto> => {
+    const takenAt = await readPhotoTakenAt(file)
+    const matchedDay = findItineraryDayByTakenAt(uploadDays.value, takenAt)
+    return {
+      file,
+      previewUrl: URL.createObjectURL(file),
+      takenAt,
+      itineraryDayId: matchedDay?.id ?? '',
+    }
+  }))
+  uploadPhotos.value = [...uploadPhotos.value, ...additions]
   uploadError.value = selected.length > remaining ? '사진은 한 번에 최대 10장까지 추가할 수 있습니다.' : ''
   input.value = ''
 }
 
 function removePreview(index: number) {
-  URL.revokeObjectURL(uploadPreviews.value[index])
-  uploadPreviews.value = uploadPreviews.value.filter((_, itemIndex) => itemIndex !== index)
-  uploadFiles.value = uploadFiles.value.filter((_, itemIndex) => itemIndex !== index)
+  URL.revokeObjectURL(uploadPhotos.value[index].previewUrl)
+  uploadPhotos.value = uploadPhotos.value.filter((_, itemIndex) => itemIndex !== index)
+}
+
+function uploadPhotoDayNumber(photo: UploadPhoto): number | null {
+  return uploadDays.value.find((day) => day.id === photo.itineraryDayId)?.dayNumber ?? null
+}
+
+async function loadUploadDays(tripId: string) {
+  const requestId = ++uploadDaySequence
+  uploadDays.value = []
+  if (!tripId) return
+  loadingUploadDays.value = true
+  try {
+    const days = await mediaApi.getRecordDays(tripId)
+    if (requestId !== uploadDaySequence) return
+    uploadDays.value = days
+      .sort((left, right) => (left.dayNumber ?? 0) - (right.dayNumber ?? 0))
+    uploadPhotos.value = uploadPhotos.value.map((photo) => ({
+      ...photo,
+      itineraryDayId: findItineraryDayByTakenAt(uploadDays.value, photo.takenAt)?.id ?? '',
+    }))
+  } catch {
+    if (requestId === uploadDaySequence) uploadError.value = '여행 일정을 불러오지 못해 일차 미정으로 추가됩니다.'
+  } finally {
+    if (requestId === uploadDaySequence) loadingUploadDays.value = false
+  }
+}
+
+async function createPhotoRecord(photo: UploadPhoto, mediaFileId: string) {
+  const idempotencyKey = crypto.randomUUID()
+  const request = {
+    itineraryDayId: photo.itineraryDayId || null,
+    takenAt: photo.takenAt?.toISOString() ?? null,
+    mediaFileIds: [mediaFileId],
+  }
+  try {
+    await mediaApi.createRecord(uploadTripId.value, request, idempotencyKey)
+  } catch (cause) {
+    const status = typeof cause === 'object' && cause !== null && 'response' in cause
+      ? (cause as { response?: { status?: number } }).response?.status
+      : undefined
+    if (status != null && status < 500) throw cause
+    await mediaApi.createRecord(uploadTripId.value, request, idempotencyKey)
+  }
 }
 
 async function submitPhoto() {
@@ -328,21 +386,13 @@ async function submitPhoto() {
   }
   uploadingPhoto.value = true
   uploadError.value = ''
-  const uploadedMediaIds: string[] = []
+  const unlinkedMediaIds = new Set<string>()
   try {
-    for (const file of uploadFiles.value) {
-      const media = await mediaApi.uploadFile(file, 'TRIP_RECORD')
-      uploadedMediaIds.push(media.id)
-    }
-    const idempotencyKey = crypto.randomUUID()
-    try {
-      await mediaApi.createRecord(uploadTripId.value, { mediaFileIds: uploadedMediaIds }, idempotencyKey)
-    } catch (cause) {
-      const status = typeof cause === 'object' && cause !== null && 'response' in cause
-        ? (cause as { response?: { status?: number } }).response?.status
-        : undefined
-      if (status != null && status < 500) throw cause
-      await mediaApi.createRecord(uploadTripId.value, { mediaFileIds: uploadedMediaIds }, idempotencyKey)
+    for (const photo of uploadPhotos.value) {
+      const media = await mediaApi.uploadFile(photo.file, 'TRIP_RECORD')
+      unlinkedMediaIds.add(media.id)
+      await createPhotoRecord(photo, media.id)
+      unlinkedMediaIds.delete(media.id)
     }
     const tripId = uploadTripId.value
     uploadingPhoto.value = false
@@ -353,8 +403,8 @@ async function submitPhoto() {
     const status = typeof cause === 'object' && cause !== null && 'response' in cause
       ? (cause as { response?: { status?: number } }).response?.status
       : undefined
-    if (uploadedMediaIds.length && status != null && status < 500) {
-      await Promise.all(uploadedMediaIds.map((mediaId) => mediaApi.delete(mediaId).catch(() => undefined)))
+    if (unlinkedMediaIds.size && status != null && status < 500) {
+      await Promise.all([...unlinkedMediaIds].map((mediaId) => mediaApi.delete(mediaId).catch(() => undefined)))
     }
     uploadError.value = '사진을 추가하지 못했습니다. 잠시 후 다시 시도해주세요.'
   } finally {
@@ -376,6 +426,10 @@ watch(() => route.query.tripId, (value) => {
     return
   }
   void showTrip(nextTripId)
+})
+
+watch(uploadTripId, (tripId) => {
+  void loadUploadDays(tripId)
 })
 
 onMounted(() => {
@@ -418,9 +472,6 @@ onBeforeUnmount(() => {
               </button>
               <button class="btn ghost icon-btn record-action-icon" type="button" :aria-label="newestFirst ? '오래된 사진부터 보기' : '최신 사진부터 보기'" @click="newestFirst = !newestFirst">
                 <span class="material-symbols-rounded">sort</span>
-              </button>
-              <button class="btn ghost icon-btn record-action-icon" type="button" :aria-label="viewMode === 'masonry' ? '격자 보기' : '자유 배치 보기'" :aria-pressed="viewMode === 'grid'" @click="viewMode = viewMode === 'masonry' ? 'grid' : 'masonry'">
-                <span class="material-symbols-rounded">{{ viewMode === 'masonry' ? 'grid_view' : 'view_quilt' }}</span>
               </button>
             </div>
           </div>
@@ -491,7 +542,7 @@ onBeforeUnmount(() => {
             icon="photo_library"
             message="아직 등록된 여행 기록 사진이 없습니다."
           />
-          <div v-else class="record-masonry" :class="{ 'is-uniform': viewMode === 'grid' }" data-record-masonry>
+          <div v-else class="record-masonry" data-record-masonry>
             <button
               v-for="(photo, i) in visiblePhotos"
               :key="`${photo.recordId}-${photo.media.id}`"
@@ -504,14 +555,19 @@ onBeforeUnmount(() => {
                 :src="photoSource(photo)"
                 :alt="photoLabel(photo)"
                 loading="lazy"
-                :style="{ height: (viewMode === 'grid' ? 260 : heightForPhoto(photo)) + 'px' }"
+                :width="photo.media.width || undefined"
+                :height="photo.media.height || undefined"
                 @error="refreshPhotoUrl(photo)"
               />
               <div class="record-masonry-overlay">
                 <p class="overlay-schedule">{{ photoLabel(photo) }}</p>
                 <p class="overlay-uploader">
-                  <span class="avatar" :style="{ width: '20px', height: '20px', fontSize: '9px', background: avatarColors[i % avatarColors.length] }">{{ uploaderName(photo).charAt(0) }}</span>
-                  {{ uploaderName(photo) }}
+                  <span class="avatar record-uploader-avatar" :style="{ background: avatarColors[i % avatarColors.length] }">
+                    <img v-if="uploaderProfileImage(photo)" :src="uploaderProfileImage(photo)!" alt="" />
+                    <span v-else>{{ uploaderName(photo).charAt(0) }}</span>
+                  </span>
+                  <span>{{ uploaderName(photo) }}</span>
+                  <span v-if="photoDayLabel(photo)" class="overlay-day">{{ photoDayLabel(photo) }}</span>
                 </p>
               </div>
             </button>
@@ -575,13 +631,32 @@ onBeforeUnmount(() => {
             <span class="record-upload-helper">JPG, PNG, WebP · 최대 10장 · 선택 후에도 사진을 더 추가할 수 있어요.</span>
           </label>
 
-          <div v-if="uploadPreviews.length" class="record-photo-preview-grid" aria-label="선택한 사진">
-            <div v-for="(preview, index) in uploadPreviews" :key="preview" class="record-photo-preview">
-              <img :src="preview" :alt="`선택한 사진 ${index + 1}`" />
-              <span class="record-photo-number">{{ index + 1 }}</span>
-              <button class="preview-remove-btn" type="button" @click="removePreview(index)" :aria-label="`${index + 1}번째 사진 삭제`">
-                <span class="material-symbols-rounded">close</span>
-              </button>
+          <div v-if="uploadPhotos.length" class="record-photo-preview-list" aria-label="선택한 사진">
+            <div v-for="(photo, index) in uploadPhotos" :key="photo.previewUrl" class="record-photo-preview-row">
+              <div class="record-photo-preview">
+                <img :src="photo.previewUrl" :alt="`선택한 사진 ${index + 1}`" />
+                <span class="record-photo-number">{{ index + 1 }}</span>
+                <button class="preview-remove-btn" type="button" @click="removePreview(index)" :aria-label="`${index + 1}번째 사진 삭제`">
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              </div>
+              <div class="record-photo-assignment">
+                <span class="record-photo-file-name">{{ photo.file.name }}</span>
+                <label>
+                  <span class="sr-only">{{ index + 1 }}번째 사진 여행 일차</span>
+                  <select v-model="photo.itineraryDayId" class="field record-photo-day-select" :disabled="loadingUploadDays">
+                    <option value="">일차 미정</option>
+                    <option v-for="day in uploadDays" :key="day.id" :value="day.id">
+                      {{ day.dayNumber }}일차{{ day.date ? ` · ${day.date}` : '' }}
+                    </option>
+                  </select>
+                </label>
+                <span class="record-photo-detection">
+                  {{ photo.takenAt
+                    ? `${photo.takenAt.toLocaleDateString('ko-KR')} 촬영 · ${uploadPhotoDayNumber(photo) ? `${uploadPhotoDayNumber(photo)}일차` : '일차 미정'}`
+                    : '촬영 정보 없음 · 일차를 직접 선택하세요' }}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -977,13 +1052,6 @@ onBeforeUnmount(() => {
   column-count: 4;
   column-gap: 16px;
 }
-.record-masonry.is-uniform {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  column-count: unset;
-}
-.record-masonry.is-uniform .record-masonry-item { margin-bottom: 0; }
 .record-load-more-sentinel {
   width: 100%;
   height: 1px;
@@ -1032,6 +1100,7 @@ onBeforeUnmount(() => {
 }
 .record-masonry-item img {
   width: 100%;
+  height: auto;
   object-fit: cover;
   display: block;
 }
@@ -1092,27 +1161,45 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
 }
+.record-uploader-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: 800;
+}
+.record-uploader-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.overlay-day::before {
+  content: '·';
+  margin-right: 6px;
+}
 
 @keyframes masonryFadeIn {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 1024px) { .record-masonry { column-count: 3; } .record-masonry.is-uniform { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1024px) { .record-masonry { column-count: 3; } }
 @media (max-width: 768px) {
   .record-masonry { column-count: 2; }
-  .record-masonry.is-uniform { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record-page-toolbar { gap: 10px; }
   .record-actions { gap: 6px; }
   .record-actions .btn.primary { padding-inline: 12px; }
   .record-trip-slider-btn.prev { left: 4px; }
   .record-trip-slider-btn.next { right: 4px; }
 }
-@media (max-width: 480px) { .record-masonry { column-count: 1; } .record-masonry.is-uniform { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .record-masonry { column-count: 1; } }
 
 /* Upload modal */
 .record-photo-card {
-  max-width: 480px !important;
+  max-width: 640px !important;
   background: rgba(255, 255, 255, 0.96) !important;
   border: 1px solid rgba(255, 255, 255, 0.8) !important;
   backdrop-filter: blur(24px) !important;
@@ -1219,35 +1306,66 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: var(--muted);
 }
-.record-photo-preview-grid {
+.record-photo-preview-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  max-height: 330px;
+  gap: 12px;
+  max-height: 360px;
   overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 18px;
+}
+.record-photo-preview-row {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
 }
 .record-photo-preview {
   position: relative;
   width: 100%;
-  max-height: 240px;
-  border-radius: 20px;
+  height: 92px;
+  border-radius: 6px;
   overflow: hidden;
-  margin-bottom: 20px;
-  box-shadow: 0 12px 28px rgba(0,0,0,0.1);
 }
 .record-photo-number { position: absolute; left: 9px; bottom: 9px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(15, 23, 42, .72); color: #fff; font-size: 11px; font-weight: 850; }
 .record-photo-preview img {
   width: 100%;
-  height: 240px;
+  height: 100%;
   object-fit: cover;
   display: block;
 }
+.record-photo-assignment {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.record-photo-file-name {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-photo-card .record-photo-day-select {
+  min-height: 38px;
+  padding-block: 6px;
+  font-size: 13px;
+}
+.record-photo-detection {
+  color: var(--muted);
+  font-size: 11px;
+}
 .preview-remove-btn {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 32px;
-  height: 32px;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: none;
   background: rgba(15, 23, 42, 0.65);
