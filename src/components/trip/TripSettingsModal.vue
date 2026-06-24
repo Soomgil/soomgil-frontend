@@ -37,6 +37,8 @@ const confirmingDelete = ref(false)
 const inviteLink = ref('')
 const inviteLoading = ref(false)
 const inviteError = ref('')
+const inviteCopied = ref(false)
+let inviteCopiedTimer: number | null = null
 
 const editDayCount = computed(() => {
   if (editStartDate.value && editEndDate.value) {
@@ -53,6 +55,7 @@ watch(
   ([open, trip, defaultTab]) => {
     if (!open) {
       inviteLink.value = ''
+      inviteCopied.value = false
       return
     }
     
@@ -117,17 +120,34 @@ async function copyInviteLink() {
   if (!inviteLink.value) return
   try {
     await navigator.clipboard.writeText(inviteLink.value)
-    // 간단한 로컬 피드백
     inviteError.value = ''
-    const btn = document.getElementById('copy-link-btn')
-    if (btn) {
-      const originalText = btn.textContent
-      btn.textContent = '복사됨!'
-      setTimeout(() => { btn.textContent = originalText }, 2000)
-    }
+    inviteCopied.value = true
+    if (inviteCopiedTimer) window.clearTimeout(inviteCopiedTimer)
+    inviteCopiedTimer = window.setTimeout(() => {
+      inviteCopied.value = false
+      inviteCopiedTimer = null
+    }, 2000)
   } catch {
     inviteError.value = '초대 링크를 복사하지 못했습니다.'
   }
+}
+
+async function shareInviteLink() {
+  if (!inviteLink.value) return
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: props.trip ? `${props.trip.title} 초대` : '여행 초대',
+        text: '숨길 여행에 함께 참여해 주세요.',
+        url: inviteLink.value,
+      })
+      inviteError.value = ''
+      return
+    } catch (error) {
+      if ((error as DOMException)?.name === 'AbortError') return
+    }
+  }
+  await copyInviteLink()
 }
 
 function close() {
@@ -209,6 +229,7 @@ onMounted(() => document.addEventListener('keydown', handleKeydown))
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
   document.body.style.overflow = ''
+  if (inviteCopiedTimer) window.clearTimeout(inviteCopiedTimer)
 })
 </script>
 
@@ -349,26 +370,52 @@ onUnmounted(() => {
         </div>
 
         <!-- Members Tab -->
-        <div v-show="activeTab === 'tab-members'" class="modal-tab-content" style="padding: 0 32px 32px;">
-          <span class="form-label-text" style="display:block;margin-bottom:8px;font-weight:700;">초대 링크 공유</span>
-          <div class="invite-link-box" style="display:flex;gap:8px;margin-bottom:20px;">
-            <input type="text" class="field" readonly :value="inviteLink" :placeholder="inviteLoading ? '초대 링크 생성 중…' : '권한이 없습니다.'" style="flex:1;">
-            <button id="copy-link-btn" type="button" class="btn primary" :disabled="inviteLoading || !inviteLink" @click="copyInviteLink" style="white-space:nowrap;">복사</button>
-          </div>
-          <p v-if="inviteError" class="text-sm" style="color:var(--rose);margin-top:-12px;margin-bottom:20px;">{{ inviteError }}</p>
-
-          <div class="modal-members-section">
-            <div class="members-header" style="display:flex;justify-content:space-between;margin-bottom:12px;align-items:center;">
-              <h4 style="margin:0;font-size:16px;color:#111827;">참여 중인 멤버</h4>
-              <span class="member-count" style="color:var(--violet);font-weight:700;">{{ membersList.length }}명</span>
+        <div v-show="activeTab === 'tab-members'" class="modal-tab-content members-tab-content">
+          <section class="management-section invite-share-section" aria-labelledby="invite-share-title">
+            <div class="management-section-head">
+              <span class="material-symbols-rounded management-section-icon" aria-hidden="true">link</span>
+              <div>
+                <h4 id="invite-share-title">초대 링크 공유</h4>
+                <p>링크를 받은 사용자는 이 여행에 참여 요청을 보낼 수 있습니다.</p>
+              </div>
             </div>
-            <ul class="member-list" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px;">
-              <li v-for="member in membersList" :key="member.id" class="member-item" style="display:flex;align-items:center;gap:12px;background:#f9fafb;padding:12px;border-radius:12px;">
-                <div class="member-avatar" style="width:40px;height:40px;border-radius:50%;background:var(--violet);color:white;display:grid;place-items:center;font-weight:700;overflow:hidden;">
-                  <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" style="width:100%;height:100%;object-fit:cover;" />
+            <div class="invite-link-box">
+              <span class="material-symbols-rounded invite-link-icon" aria-hidden="true">link</span>
+              <input
+                type="text"
+                readonly
+                :value="inviteLink"
+                :placeholder="inviteLoading ? '초대 링크 생성 중...' : '초대 링크를 사용할 수 없습니다.'"
+                aria-label="초대 링크"
+              >
+            </div>
+            <div class="invite-actions">
+              <button class="invite-action-btn invite-action-btn--ghost" type="button" :disabled="inviteLoading || !inviteLink" @click="shareInviteLink">
+                <span class="material-symbols-rounded" aria-hidden="true">ios_share</span>
+                공유
+              </button>
+              <button class="invite-action-btn invite-action-btn--primary" type="button" :disabled="inviteLoading || !inviteLink" @click="copyInviteLink">
+                <span class="material-symbols-rounded" aria-hidden="true">{{ inviteCopied ? 'check' : 'content_copy' }}</span>
+                {{ inviteCopied ? '복사됨' : '링크 복사' }}
+              </button>
+            </div>
+            <p v-if="inviteError" class="invite-error" role="alert">{{ inviteError }}</p>
+          </section>
+
+          <div class="modal-members-section management-section">
+            <div class="members-header">
+              <h4>참여 중인 멤버</h4>
+              <span class="member-count">{{ membersList.length }}명</span>
+            </div>
+            <ul class="member-list">
+              <li v-for="member in membersList" :key="member.id" class="member-item">
+                <div class="member-avatar">
+                  <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" />
                   <template v-else>{{ (member.displayName ?? '?').charAt(0) }}</template>
                 </div>
-                <div class="member-info"><span class="member-name" style="font-weight:700;color:#1f2937;">{{ member.displayName ?? '알 수 없음' }}</span></div>
+                <div class="member-info">
+                  <span class="member-name">{{ member.displayName ?? '알 수 없음' }}</span>
+                </div>
               </li>
             </ul>
           </div>
@@ -594,10 +641,197 @@ onUnmounted(() => {
   background: rgba(225, 29, 72, 0.08);
 }
 
+.members-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 0 32px 32px;
+}
+
+.invite-share-section {
+  background:
+    linear-gradient(135deg, rgba(0, 102, 255, 0.04), rgba(0, 209, 255, 0.03)),
+    #fff;
+}
+
+.invite-link-box {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid rgba(0, 102, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.invite-link-icon {
+  color: var(--violet);
+  flex: 0 0 auto;
+  font-size: 18px;
+}
+
+.invite-link-box input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 750;
+  outline: none;
+}
+
+.invite-link-box input::placeholder {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.invite-action-btn {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.invite-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.invite-action-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.invite-action-btn .material-symbols-rounded {
+  font-size: 17px;
+}
+
+.invite-action-btn--ghost {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+
+.invite-action-btn--ghost:not(:disabled):hover {
+  border-color: rgba(0, 102, 255, 0.28);
+  color: var(--violet);
+}
+
+.invite-action-btn--primary {
+  border: 0;
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(0, 102, 255, 0.18);
+}
+
+.invite-error {
+  margin: 10px 0 0;
+  color: var(--rose);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.modal-members-section {
+  box-shadow: none;
+}
+
+.members-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.members-header h4 {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.member-count {
+  color: var(--violet);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.member-item {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(227, 234, 244, 0.8);
+  border-radius: 14px;
+  background: #fbfdff;
+}
+
+.member-avatar {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  color: #fff;
+  font-weight: 850;
+}
+
+.member-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.member-name {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 @media (max-width: 640px) {
   .danger-zone {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .members-tab-content {
+    padding: 0 20px 24px;
+  }
+
+  .invite-actions {
+    flex-direction: column;
+  }
+
+  .invite-action-btn {
+    width: 100%;
   }
 }
 
@@ -612,8 +846,8 @@ onUnmounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.04);
   background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
-  width: 500px !important;
-  max-width: 90vw !important;
+  width: min(500px, calc(100vw - 32px)) !important;
+  max-width: 500px !important;
 }
 
 .advanced-modal .modal-header {

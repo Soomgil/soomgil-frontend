@@ -32,7 +32,7 @@ const defaultSettingsTab = ref<'tab-settings' | 'tab-members'>('tab-settings')
 const timelineEl = ref<HTMLElement | null>(null)
 const requestedIntent = computed(() => typeof route.query.intent === 'string' ? route.query.intent : null)
 const intentMessage = computed(() => requestedIntent.value === 'invite' || requestedIntent.value === 'share'
-  ? '초대할 여행의 티켓에서 멤버 버튼을 선택해 초대 링크를 만들거나 공유하세요.'
+  ? '초대할 여행의 설정 버튼을 눌러 멤버 관리 탭에서 초대 링크를 만들거나 공유하세요.'
   : null)
 
 function scrollTimeline(direction: number) {
@@ -470,10 +470,6 @@ watch(filteredTrips, () => {
                         <button class="timeline-card-open" type="button" @click="goTripDetail(trip.id)">
                           <span>계획 보기</span>
                           <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-                        </button>
-                        <button class="timeline-card-action" type="button" @click="openTripAccess(trip)">
-                          <span class="material-symbols-rounded" aria-hidden="true">group</span>
-                          <span class="sr-only">{{ trip.myRole === 'OWNER' ? '멤버 및 초대' : '멤버 보기' }}</span>
                         </button>
                         <TripSettingsButton v-if="trip.myRole === 'OWNER'" label="설정" variant="icon" @click="openTripSettings(trip)" />
                       </div>
