@@ -2107,11 +2107,11 @@ watch(
 }
 .story-overlay .story-feed-window {
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: calc(100% - 64px);
+  height: calc(100% - 80px);
   min-height: 0;
   padding: 0;
-  margin: 0;
+  margin: 40px 24px 40px 40px;
   overflow: hidden;
   outline: none;
 }
@@ -2135,7 +2135,7 @@ watch(
   height: var(--overlay-feed-height);
   min-height: 0;
   justify-self: end;
-  margin: 40px 24px 40px 40px;
+  margin: 0;
   box-sizing: border-box;
 }
 .story-overlay .story-feed::before {
@@ -2170,13 +2170,15 @@ watch(
   min-height: 0;
   justify-self: start;
   padding-top: 0;
-  margin: 40px 40px 40px 24px;
+  margin: 0;
   box-sizing: border-box;
 }
 .story-overlay .feed-comment-widget.widget-card {
-  height: 100%;
+  width: calc(100% - 64px);
+  height: calc(100% - 80px);
   min-height: 0;
   padding: 0;
+  margin: 40px 40px 40px 24px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2627,6 +2629,12 @@ watch(
   .story-overlay .story-feed,
   .story-overlay .feed-sidebar {
     height: var(--overlay-feed-height);
+    margin: 0;
+  }
+  .story-overlay .story-feed-window,
+  .story-overlay .feed-comment-widget.widget-card {
+    width: calc(100% - 48px);
+    height: calc(100% - 48px);
     margin: 24px;
   }
 }
