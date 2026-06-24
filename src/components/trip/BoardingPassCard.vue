@@ -53,16 +53,21 @@ const authStore = useAuthStore()
 const statusLabel = computed(() => props.trip.status === 'ARCHIVED' ? '보관된 여행' : '여행 준비 중')
 const roleLabel = computed(() => props.trip.myRole === 'OWNER' ? '방장' : '멤버')
 const passengerName = computed(() => authStore.user?.displayName || '사용자')
-const flightNumber = computed(() => props.trip.id.substring(0, 5).toUpperCase())
-const seatNumber = computed(() => props.trip.id.substring(5, 8).toUpperCase())
-const gateNumber = computed(() => props.trip.id.substring(8, 11).toUpperCase())
 const formatTripDate = (value: string | null | undefined) => value ? value.replace(/-/g, '.') : '미정'
+const createdDateLabel = computed(() => formatTripDate(props.trip.createdAt.slice(0, 10)))
 const periodLabel = computed(() => {
   if (!props.trip.startDate && !props.trip.endDate) return '여행 기간 미정'
   if (props.trip.startDate && props.trip.endDate) {
     return `${formatTripDate(props.trip.startDate)} - ${formatTripDate(props.trip.endDate)}`
   }
   return formatTripDate(props.trip.startDate ?? props.trip.endDate)
+})
+const durationLabel = computed(() => {
+  if (!props.trip.startDate || !props.trip.endDate) return '일정 미정'
+  const start = Date.parse(`${props.trip.startDate}T00:00:00Z`)
+  const end = Date.parse(`${props.trip.endDate}T00:00:00Z`)
+  const nights = Math.max(0, Math.round((end - start) / 86_400_000))
+  return nights === 0 ? '당일치기' : `${nights}박 ${nights + 1}일`
 })
 
 async function exportTicket() {
@@ -110,9 +115,9 @@ async function exportTicket() {
         <div class="detail-item"><span class="label">PASSENGER</span><span class="value">{{ passengerName }}</span></div>
         <div class="detail-item"><span class="label">PERIOD</span><span class="value">{{ periodLabel }}</span></div>
         <div class="detail-item"><span class="label">DESTINATION</span><span class="value">{{ destinationName }}</span></div>
-        <div class="detail-item"><span class="label">FLIGHT</span><span class="value">{{ flightNumber }}</span></div>
-        <div class="detail-item"><span class="label">SEAT</span><span class="value">{{ seatNumber }}</span></div>
-        <div class="detail-item"><span class="label">GATE</span><span class="value">{{ gateNumber }}</span></div>
+        <div class="detail-item"><span class="label">CREATED</span><span class="value">{{ createdDateLabel }}</span></div>
+        <div class="detail-item"><span class="label">DURATION</span><span class="value">{{ durationLabel }}</span></div>
+        <div class="detail-item"><span class="label">STATUS</span><span class="value">{{ statusLabel }}</span></div>
       </div>
     </div>
     <div class="ticket-divider" aria-hidden="true"><span class="punch-hole top"></span><span class="dashed-line"></span><span class="punch-hole bottom"></span></div>
@@ -139,7 +144,7 @@ async function exportTicket() {
         <div class="stub-qr-copy">
           <span>SCAN TO OPEN</span>
           <strong>{{ destinationName }}</strong>
-          <small>{{ flightNumber }}</small>
+          <small>{{ durationLabel }}</small>
         </div>
       </div>
 

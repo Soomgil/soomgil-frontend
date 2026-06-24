@@ -44,6 +44,14 @@ describe('BoardingPassCard', () => {
     expect(wrapper.get('.stub-role-badge').text()).toBe('방장')
     expect(wrapper.find('.stub-passenger-meta').exists()).toBe(false)
     expect(wrapper.get('.stub-detail-btn').text()).toContain('여행 계획 열기')
+    expect(wrapper.text()).toContain('CREATED')
+    expect(wrapper.text()).toContain('2026.06.20')
+    expect(wrapper.text()).toContain('DURATION')
+    expect(wrapper.text()).toContain('3박 4일')
+    expect(wrapper.text()).toContain('STATUS')
+    expect(wrapper.text()).not.toContain('FLIGHT')
+    expect(wrapper.text()).not.toContain('SEAT')
+    expect(wrapper.text()).not.toContain('GATE')
   })
 
   it('QR이 포함된 티켓을 PNG로 내보낸다', async () => {
