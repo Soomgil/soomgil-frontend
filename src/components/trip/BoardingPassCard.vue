@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import QRCode from 'qrcode'
+import { toPng } from 'html-to-image'
 import { useAuthStore } from '@/stores/auth.store'
 import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { TripSummary } from '@/types/trip'
@@ -9,6 +11,25 @@ const props = withDefaults(defineProps<{ trip: TripSummary; position?: number; c
   position: 0,
   count: 1,
 })
+
+const ticketEl = ref<HTMLElement | null>(null)
+const qrDataUrl = ref('')
+const exporting = ref(false)
+const exportError = ref('')
+
+const tripUrl = computed(() => new URL(
+  `/trips/${encodeURIComponent(props.trip.id)}/route`,
+  window.location.origin,
+).href)
+
+watch(tripUrl, async (url) => {
+  qrDataUrl.value = await QRCode.toDataURL(url, {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 160,
+    color: { dark: '#111827', light: '#ffffff' },
+  })
+}, { immediate: true })
 
 defineEmits<{ detail: []; access: []; settings: [] }>()
 
@@ -44,10 +65,35 @@ const periodLabel = computed(() => {
   }
   return formatTripDate(props.trip.startDate ?? props.trip.endDate)
 })
+
+async function exportTicket() {
+  if (!ticketEl.value || exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  await nextTick()
+
+  try {
+    const dataUrl = await toPng(ticketEl.value, {
+      backgroundColor: '#f4f9ff',
+      cacheBust: true,
+      pixelRatio: 2,
+      skipFonts: true,
+    })
+    const link = document.createElement('a')
+    const safeTitle = props.trip.title.replace(/[\\/:*?"<>|]/g, '-').trim() || 'soomgil-trip'
+    link.download = `${safeTitle}-ticket.png`
+    link.href = dataUrl
+    link.click()
+  } catch {
+    exportError.value = '티켓 이미지를 저장하지 못했습니다. 다시 시도해 주세요.'
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
-  <div class="boarding-pass-card boarding-pass-card--placeholder" data-testid="trip-ticket">
+  <div ref="ticketEl" class="boarding-pass-card boarding-pass-card--placeholder" :class="{ 'is-exporting': exporting }" data-testid="trip-ticket">
     <div class="ticket-main">
       <div class="ticket-header">
         <div class="ticket-logo">
@@ -74,6 +120,10 @@ const periodLabel = computed(() => {
     <div class="ticket-stub">
       <div class="stub-header">
         <span class="stub-title-label">BOARDING PASS</span><h2 class="stub-title">{{ trip.title }}</h2><p class="stub-date-info">{{ periodLabel }}</p>
+        <div class="ticket-qr" aria-label="여행 상세 QR 코드">
+          <img v-if="qrDataUrl" :src="qrDataUrl" alt="여행 상세 페이지 QR 코드" data-testid="trip-qr">
+          <span class="ticket-qr__label">SCAN TRIP</span>
+        </div>
         <div class="ticket-members-wrapper" aria-label="여행 권한">
           <span class="label">ROLE</span><div class="next-trip-members"><span class="avatar">{{ roleLabel }}</span></div>
         </div>
@@ -81,7 +131,11 @@ const periodLabel = computed(() => {
       <div class="stub-actions">
         <button v-if="trip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click="$emit('access')"><span class="material-symbols-rounded" aria-hidden="true">group</span>멤버 및 초대</button>
         <TripSettingsButton v-if="trip.myRole === 'OWNER'" variant="chip" @click="$emit('settings')" />
+        <button class="stub-action-btn" type="button" :disabled="exporting" data-testid="export-ticket" @click="exportTicket">
+          <span class="material-symbols-rounded" aria-hidden="true">download</span>{{ exporting ? '저장 중' : '티켓 내보내기' }}
+        </button>
       </div>
+      <p v-if="exportError" class="ticket-export-error" role="alert">{{ exportError }}</p>
       <button class="stub-detail-btn" type="button" @click="$emit('detail')"><span>자세히 보기</span><span class="material-symbols-rounded">arrow_forward</span></button>
       <div class="stub-controls">
         <div class="next-trip-dots carousel-dots-container" :aria-label="`${count}개 여행 중 ${position + 1}번째`">
@@ -94,6 +148,39 @@ const periodLabel = computed(() => {
 
 <style scoped>
 .boarding-pass-card--placeholder { background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.98)) !important; }
+
+.stub-header {
+  min-height: 112px;
+  padding-right: 78px;
+  position: relative;
+}
+
+.ticket-qr {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.ticket-qr img {
+  background: #fff;
+  border: 1px solid #dbe3ef;
+  border-radius: 4px;
+  height: 68px;
+  image-rendering: pixelated;
+  padding: 3px;
+  width: 68px;
+}
+
+.ticket-qr__label {
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin-top: 3px;
+}
 
 /* stub 내 액션 버튼 영역 */
 .stub-actions {
@@ -121,6 +208,24 @@ const periodLabel = computed(() => {
 .stub-action-btn:hover {
   background: #fff;
   border-color: var(--violet);
+}
+
+.stub-action-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.ticket-export-error {
+  color: #dc2626;
+  font-size: 11px;
+  margin: -5px 0 8px;
+}
+
+.boarding-pass-card.is-exporting .stub-actions,
+.boarding-pass-card.is-exporting .stub-detail-btn,
+.boarding-pass-card.is-exporting .stub-controls,
+.boarding-pass-card.is-exporting .ticket-export-error {
+  display: none;
 }
 
 .stub-action-btn .material-symbols-rounded {
