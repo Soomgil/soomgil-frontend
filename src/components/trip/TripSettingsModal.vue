@@ -235,12 +235,12 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="modal-overlay advanced-overlay"
-    :class="{ show: open }"
+    class="modal-overlay advanced-overlay trip-settings-overlay"
+    :class="{ show: open, 'is-open': open }"
     :aria-hidden="!open"
     @click.self="close"
   >
-    <div class="modal-card advanced-modal" role="dialog" aria-modal="true" aria-labelledby="trip-settings-title">
+    <div class="modal-card advanced-modal trip-settings-card" role="dialog" aria-modal="true" aria-labelledby="trip-settings-title">
       <div class="modal-header">
         <div>
           <p class="eyebrow">Trip Management</p>
@@ -262,7 +262,7 @@ onUnmounted(() => {
 
       <div class="modal-body">
         <!-- Settings Tab -->
-        <div v-show="activeTab === 'tab-settings'" class="modal-tab-content">
+        <div v-show="activeTab === 'tab-settings'" class="trip-settings-tab-content">
           <form class="trip-create-form" @submit.prevent="save">
             <label class="form-label">
               <span class="form-label-text">여행 이름</span>
@@ -370,7 +370,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Members Tab -->
-        <div v-show="activeTab === 'tab-members'" class="modal-tab-content members-tab-content">
+        <div v-show="activeTab === 'tab-members'" class="trip-settings-tab-content members-tab-content">
           <section class="management-section invite-share-section" aria-labelledby="invite-share-title">
             <div class="management-section-head">
               <span class="material-symbols-rounded management-section-icon" aria-hidden="true">link</span>
@@ -836,18 +836,48 @@ onUnmounted(() => {
 }
 
 /* Premium Advanced Modal Styles */
+.trip-settings-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 30000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.trip-settings-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .advanced-overlay {
   background: rgba(10, 10, 15, 0.4);
   backdrop-filter: blur(8px);
 }
 
-.advanced-modal {
+.advanced-modal.trip-settings-card {
   border-radius: 28px;
   border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.04);
   background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
   width: min(var(--settings-modal-width, 580px), calc(100vw - 32px)) !important;
   max-width: var(--settings-modal-width, 580px) !important;
+  padding: 0 !important;
+  overflow: hidden;
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+}
+
+.trip-settings-overlay.is-open .trip-settings-card {
+  transform: translateY(0);
+}
+
+.trip-settings-tab-content {
+  min-width: 0;
 }
 
 .advanced-modal .modal-header {
