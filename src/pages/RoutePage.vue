@@ -24,6 +24,7 @@ import { placeApi } from '@/api/place.api'
 import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
+import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, Note, PlanningScope } from '@/types/planning'
@@ -174,6 +175,7 @@ const trip = computed(() => {
     dateRangeText: dateText,
     durationText: durationText,
     members: uniqueMembers,
+    myRole: detail?.members.find(m => m.user?.id === currentUserId.value)?.role || 'MEMBER',
   }
 })
 const dayPlans = ref<DayPlan[]>([])
@@ -1849,90 +1851,21 @@ async function removeItineraryItem(item: RouteStop) {
 }
 
 /* ── Modals ── */
-const isInviteModalOpen = ref(false)
-const inviteTab = ref('tab-settings')
-const inviteLink = ref('')
-const inviteLoading = ref(false)
-const inviteError = ref('')
+const isSettingsModalOpen = ref(false)
+const settingsDefaultTab = ref<'tab-settings' | 'tab-members'>('tab-settings')
 
-async function openTripManagement() {
-	isInviteModalOpen.value = true
-	inviteError.value = ''
-
-	// 현재 trip 데이터 기반으로 날짜 및 일수 동기화
-	const tripVal = trip.value
-	if (tripVal.startDate) {
-		editStartDate.value = tripVal.startDate.slice(0, 10)
-	}
-	if (tripVal.endDate) {
-		editEndDate.value = tripVal.endDate.slice(0, 10)
-	}
-	// editDayCount: 날짜 범위 기반 계산 우선, 없으면 dayPlans 개수
-	if (tripVal.startDate && tripVal.endDate) {
-		const s = new Date(tripVal.startDate)
-		const e = new Date(tripVal.endDate)
-		const diff = Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
-		editDayCount.value = diff > 0 ? diff : 1
-	} else {
-		editDayCount.value = dayPlans.value.filter((d) => d.groupType === 'DAY').length || 1
-	}
-
-	if (inviteLink.value || !tripId) return
-	inviteLoading.value = true
-	try {
-		const invites = await tripApi.getInvites(tripId)
-		const activeInvite = invites.find(invite => invite.status === 'PENDING' && invite.inviteUrl)
-		const invite = activeInvite ?? await tripApi.createInvite(tripId)
-		inviteLink.value = invite.inviteUrl ?? `${window.location.origin}/trip-invites/${invite.inviteCode}`
-	} catch {
-		inviteError.value = '초대 링크를 준비하지 못했습니다.'
-	} finally {
-		inviteLoading.value = false
-	}
+function openTripManagement(tab: 'tab-settings' | 'tab-members' = 'tab-settings') {
+  settingsDefaultTab.value = tab
+  isSettingsModalOpen.value = true
 }
 
-async function copyInviteLink() {
-	if (!inviteLink.value) return
-	try {
-		await navigator.clipboard.writeText(inviteLink.value)
-		showToast('초대 링크를 복사했습니다')
-	} catch {
-		inviteError.value = '초대 링크를 복사하지 못했습니다.'
-	}
+async function handleSettingsSaved() {
+  await loadTrip()
+  await syncScheduledDaysWithDateRange()
 }
+
 const sidebarTheme = ref('theme-violet')
 const isCustomEventModalOpen = ref(false)
-
-/* ── Trip settings ── */
-const editTitle = ref('')
-const editDestination = ref('')
-const editDayCount = ref(1)
-const editStartDate = ref('')
-const editEndDate = ref('')
-const tripSettingsLoading = ref(false)
-const tripSettingsError = ref('')
-watch(trip, (value) => {
-	editTitle.value = value.title
-	editDestination.value = value.destinationName
-	if (value.startDate) {
-		editStartDate.value = value.startDate.slice(0, 10)
-	}
-	if (value.endDate) {
-		editEndDate.value = value.endDate.slice(0, 10)
-	}
-}, { immediate: true })
-
-watch([editStartDate, editEndDate], ([start, end]) => {
-  if (start && end) {
-    const s = new Date(start)
-    const e = new Date(end)
-    const diffTime = e.getTime() - s.getTime()
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
-    if (diffDays > 0) {
-      editDayCount.value = diffDays
-    }
-  }
-})
 
 function parseDateInput(value: string) {
   if (!value) return null
@@ -1955,8 +1888,11 @@ function addDays(date: Date, days: number) {
 }
 
 async function syncScheduledDaysWithDateRange() {
-  const start = parseDateInput(editStartDate.value)
-  const end = parseDateInput(editEndDate.value)
+  const startStr = trip.value?.startDate?.slice(0, 10)
+  const endStr = trip.value?.endDate?.slice(0, 10)
+  if (!startStr || !endStr) return
+  const start = parseDateInput(startStr)
+  const end = parseDateInput(endStr)
   if (!start && !end) return
   if (!start || !end || end < start) {
     throw new Error('INVALID_DATE_RANGE')
@@ -2012,32 +1948,6 @@ async function syncScheduledDaysWithDateRange() {
   }
   await loadItinerary()
 }
-
-async function saveTripSettings() {
-	if (!editTitle.value.trim() || tripSettingsLoading.value) return
-	tripSettingsLoading.value = true
-	tripSettingsError.value = ''
-	try {
-		await tripApi.updateTrip(tripId, {
-			title: editTitle.value.trim(),
-			displayDestination: editDestination.value.trim(),
-		})
-
-		await syncScheduledDaysWithDateRange()
-
-		await loadTrip()
-		isInviteModalOpen.value = false
-		showToast('여행 정보를 저장했습니다')
-	} catch (e: any) {
-		console.error(e)
-		tripSettingsError.value = e?.message === 'INVALID_DATE_RANGE'
-			? '종료 날짜는 시작 날짜 이후로 선택해 주세요.'
-			: '여행 정보를 저장하지 못했습니다.'
-	} finally {
-		tripSettingsLoading.value = false
-	}
-}
-
 /* ── Detailbar ── */
 const isDetailbarOpen = ref(false)
 const selectedPlace = ref<any>(null)
@@ -2354,7 +2264,7 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <span class="members-count">{{ trip.members.length }}명</span>
                   </div>
-                  <button class="btn ghost compact-settings-btn" type="button" @click="openTripManagement">
+                  <button class="btn ghost compact-settings-btn" type="button" @click="() => openTripManagement()">
                     <span class="material-symbols-rounded" style="font-size:14px;">settings</span>
                     <span>관리</span>
                   </button>
@@ -3018,83 +2928,15 @@ function textAvatarStyle(index: unknown) {
           </div>
         </div>
       </section>
-
-    <!-- ═══ INVITE MODAL ═══ -->
-    <div id="invite-modal" :class="['modal-overlay', { show: isInviteModalOpen }]" @click.self="isInviteModalOpen = false">
-      <div class="modal-card advanced-modal">
-        <div class="modal-header">
-          <h3>여행 설정 및 멤버 초대</h3>
-          <button id="close-modal-btn" class="icon-btn" aria-label="닫기" @click="isInviteModalOpen = false"><span class="material-symbols-rounded">close</span></button>
-        </div>
-
-        <!-- Modal Tab Navigation -->
-        <div class="modal-tabs">
-          <button :class="['modal-tab-btn', { active: inviteTab === 'tab-settings' }]" data-tab="tab-settings" type="button" @click="inviteTab = 'tab-settings'">
-            <span class="material-symbols-rounded">settings</span> 여행 정보 설정
-          </button>
-          <button :class="['modal-tab-btn', { active: inviteTab === 'tab-members' }]" data-tab="tab-members" type="button" @click="inviteTab = 'tab-members'">
-            <span class="material-symbols-rounded">group</span> 멤버 관리
-          </button>
-        </div>
-
-        <div class="modal-body">
-          <!-- TAB 1: Settings -->
-          <div :class="['modal-tab-content', { active: inviteTab === 'tab-settings' }]" id="tab-settings">
-            <form id="trip-settings-form" class="modal-form" @submit.prevent="saveTripSettings">
-              <label class="form-label">
-                <span class="form-label-text">여행 방 이름</span>
-                <input class="field" type="text" id="edit-trip-name" v-model="editTitle" placeholder="여행 방 이름을 입력하세요">
-              </label>
-              <label class="form-label">
-                <span class="form-label-text">대표 여행지</span>
-                <input class="field" type="text" id="edit-trip-destination" v-model="editDestination" placeholder="예: 부산">
-              </label>
-              <label class="form-label">
-                <span class="form-label-text">여행 기간 설정</span>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <input type="date" class="field" id="edit-trip-start-date" v-model="editStartDate" style="flex:1;">
-                  <span>-</span>
-                  <input type="date" class="field" id="edit-trip-end-date" v-model="editEndDate" :min="editStartDate" style="flex:1;">
-                </div>
-              </label>
-              <div style="text-align:center;font-size:14px;color:var(--violet);font-weight:600;margin-top:8px;">
-                총 {{ editDayCount }}일 여행
-              </div>
-              <p v-if="tripSettingsError" class="text-sm" style="color:var(--rose);">{{ tripSettingsError }}</p>
-              <button type="submit" class="btn primary" :disabled="tripSettingsLoading || !editTitle.trim()" style="width:100%;margin-top:16px;">{{ tripSettingsLoading ? '저장 중…' : '설정 저장하기' }}</button>
-            </form>
-          </div>
-
-          <!-- TAB 2: Members -->
-          <div :class="['modal-tab-content', { active: inviteTab === 'tab-members' }]" id="tab-members" v-show="inviteTab === 'tab-members'">
-            <!-- Share Link Section -->
-            <span class="form-label-text" style="display:block;margin-bottom:8px;">초대 링크 공유</span>
-            <div class="invite-link-box" style="margin-bottom:20px;">
-              <input type="text" readonly :value="inviteLink" :placeholder="inviteLoading ? '초대 링크 생성 중…' : ''" id="invite-link-input">
-              <button id="copy-link-btn" type="button" :disabled="inviteLoading || !inviteLink" @click="copyInviteLink" style="padding:8px 16px;font-size:14px;border-radius:12px;border:none;background:var(--violet);color:white;font-weight:700;cursor:pointer;">복사</button>
-            </div>
-            <p v-if="inviteError" class="text-sm" style="color:var(--rose);margin-top:-12px;margin-bottom:20px;">{{ inviteError }}</p>
-
-            <!-- Members Section -->
-            <div class="modal-members-section">
-              <div class="members-header">
-                <h4>참여 중인 멤버</h4>
-                <span class="member-count">{{ (trip.members ?? []).length }}명</span>
-              </div>
-              <ul class="member-list" id="invite-member-list">
-				<li v-for="member in (trip.members ?? [])" :key="member.id" class="member-item">
-					<div class="member-avatar" :style="{ backgroundColor: 'var(--violet)' }">
-						<img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" />
-						<template v-else>{{ (member.displayName ?? '?').charAt(0) }}</template>
-					</div>
-                  <div class="member-info"><span class="member-name">{{ member.displayName ?? '알 수 없음' }}</span></div>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- ═══ TRIP SETTINGS MODAL ═══ -->
+    <TripSettingsModal
+      :open="isSettingsModalOpen"
+      :trip="tripStore.currentTrip ? { ...tripStore.currentTrip, myRole: trip?.myRole } : null"
+      :default-tab="settingsDefaultTab"
+      @close="isSettingsModalOpen = false"
+      @saved="handleSettingsSaved"
+      @deleted="$router.push('/my-trips')"
+    />
 
     <!-- ═══ CUSTOM EVENT MODAL ═══ -->
     <div id="custom-event-modal" :class="['modal-overlay', { show: isCustomEventModalOpen }]" @click.self="isCustomEventModalOpen = false">

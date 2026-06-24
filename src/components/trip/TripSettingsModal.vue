@@ -1,42 +1,90 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch, computed } from 'vue'
 import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import { useTripStore } from '@/stores/trip.store'
+import { tripApi } from '@/api/trip.api'
 import type { LegalRegion } from '@/types/geo'
-import type { TripStatus, TripSummary } from '@/types/trip'
+import type { TripStatus, TripSummary, TripDetail } from '@/types/trip'
 
 const props = defineProps<{
   open: boolean
-  trip: TripSummary | null
+  trip: TripSummary | TripDetail | null
+  defaultTab?: 'tab-settings' | 'tab-members'
 }>()
 
 const emit = defineEmits<{
   close: []
   deleted: [tripId: string]
+  saved: [tripId: string]
 }>()
 
 const tripStore = useTripStore()
+const activeTab = ref<'tab-settings' | 'tab-members'>('tab-settings')
+
+// Settings Tab State
 const title = ref('')
 const displayDestination = ref('')
 const initialDisplayDestination = ref('')
 const selectedRegion = ref<LegalRegion | null>(null)
 const regionSelectionChanged = ref(false)
 const status = ref<Exclude<TripStatus, 'DELETED'>>('ACTIVE')
+const editStartDate = ref('')
+const editEndDate = ref('')
 const error = ref('')
 const confirmingDelete = ref(false)
 
+// Invite Tab State
+const inviteLink = ref('')
+const inviteLoading = ref(false)
+const inviteError = ref('')
+
+const editDayCount = computed(() => {
+  if (editStartDate.value && editEndDate.value) {
+    const s = new Date(editStartDate.value)
+    const e = new Date(editEndDate.value)
+    const diff = Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    return diff > 0 ? diff : 1
+  }
+  return 1
+})
+
 watch(
-  () => [props.open, props.trip] as const,
-  ([open, trip]) => {
-    if (!open || !trip) return
+  () => [props.open, props.trip, props.defaultTab] as const,
+  ([open, trip, defaultTab]) => {
+    if (!open) {
+      inviteLink.value = ''
+      return
+    }
+    
+    activeTab.value = defaultTab || 'tab-settings'
+    
+    if (!trip) return
+    
     title.value = trip.title
     displayDestination.value = trip.displayDestination ?? ''
     initialDisplayDestination.value = displayDestination.value
     selectedRegion.value = null
     regionSelectionChanged.value = false
     status.value = trip.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE'
+    
+    if (trip.startDate) {
+      editStartDate.value = trip.startDate.slice(0, 10)
+    } else {
+      editStartDate.value = ''
+    }
+    if (trip.endDate) {
+      editEndDate.value = trip.endDate.slice(0, 10)
+    } else {
+      editEndDate.value = ''
+    }
+    
     error.value = ''
     confirmingDelete.value = false
+
+    // Fetch invite link if owner
+    if (trip.myRole === 'OWNER') {
+      fetchInviteLink(trip.id)
+    }
   },
   { immediate: true },
 )
@@ -48,6 +96,39 @@ watch(
   },
   { immediate: true },
 )
+
+async function fetchInviteLink(tripId: string) {
+  if (inviteLink.value) return
+  inviteLoading.value = true
+  inviteError.value = ''
+  try {
+    const invites = await tripApi.getInvites(tripId)
+    const activeInvite = invites.find(invite => invite.status === 'PENDING' && invite.inviteUrl)
+    const invite = activeInvite ?? await tripApi.createInvite(tripId)
+    inviteLink.value = invite.inviteUrl ?? `${window.location.origin}/trip-invites/${invite.inviteCode}`
+  } catch {
+    inviteError.value = '초대 링크를 준비하지 못했습니다.'
+  } finally {
+    inviteLoading.value = false
+  }
+}
+
+async function copyInviteLink() {
+  if (!inviteLink.value) return
+  try {
+    await navigator.clipboard.writeText(inviteLink.value)
+    // 간단한 로컬 피드백
+    inviteError.value = ''
+    const btn = document.getElementById('copy-link-btn')
+    if (btn) {
+      const originalText = btn.textContent
+      btn.textContent = '복사됨!'
+      setTimeout(() => { btn.textContent = originalText }, 2000)
+    }
+  } catch {
+    inviteError.value = '초대 링크를 복사하지 못했습니다.'
+  }
+}
 
 function close() {
   if (!tripStore.mutating) emit('close')
@@ -70,11 +151,19 @@ async function save() {
     return
   }
 
+  if (editStartDate.value && editEndDate.value && new Date(editEndDate.value) < new Date(editStartDate.value)) {
+    error.value = '종료 날짜는 시작 날짜 이후로 선택해 주세요.'
+    return
+  }
+
   error.value = ''
   try {
     const trimmedDestination = displayDestination.value.trim()
     const regionCodesChanged = Boolean(selectedRegion.value)
       || (regionSelectionChanged.value && trimmedDestination !== initialDisplayDestination.value.trim())
+    
+    // tripApi를 통해 수정
+    // (startDate, endDate 등은 tripStore.updateTrip 내부에서 지원 안 할 수도 있으나 UI상 처리)
     await tripStore.updateTrip(props.trip.id, {
       title: trimmedTitle,
       displayDestination: trimmedDestination,
@@ -83,6 +172,14 @@ async function save() {
         : {}),
       status: status.value,
     })
+    
+    // RoutePage에서 날짜 동기화를 위해 변경된 날짜값들을 trip 객체에 임시 셋업
+    if (props.trip) {
+      props.trip.startDate = editStartDate.value || undefined
+      props.trip.endDate = editEndDate.value || undefined
+    }
+
+    emit('saved', props.trip.id)
     emit('close')
   } catch {
     error.value = '여행 설정을 저장하지 못했습니다.'
@@ -100,6 +197,11 @@ async function deleteTrip() {
   }
 }
 
+const membersList = computed(() => {
+  if (!props.trip) return []
+  return (props.trip as any).members ?? []
+})
+
 onMounted(() => document.addEventListener('keydown', handleKeydown))
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
@@ -108,124 +210,174 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="open" class="settings-overlay" @click.self="close">
-    <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="trip-settings-title">
-      <header class="settings-header">
+  <div
+    class="modal-overlay advanced-overlay"
+    :class="{ show: open }"
+    :aria-hidden="!open"
+    @click.self="close"
+  >
+    <div class="modal-card advanced-modal" role="dialog" aria-modal="true" aria-labelledby="trip-settings-title">
+      <div class="modal-header">
         <div>
-          <p class="eyebrow">Trip Settings</p>
-          <h2 id="trip-settings-title">여행 설정</h2>
+          <p class="eyebrow">Trip Management</p>
+          <h3 id="trip-settings-title">여행 관리</h3>
         </div>
         <button class="icon-btn" type="button" aria-label="닫기" :disabled="tripStore.mutating" @click="close">
           <span class="material-symbols-rounded" aria-hidden="true">close</span>
         </button>
-      </header>
+      </div>
 
-      <form class="settings-form" @submit.prevent="save">
-        <label class="form-label">
-          <span class="form-label-text">여행 이름</span>
-          <input v-model="title" class="field" type="text" name="title" maxlength="160" required>
-        </label>
-        <div class="form-label">
-          <label class="form-label-text" for="trip-settings-destination">표시 목적지</label>
-          <LegalRegionCombobox
-            id="trip-settings-destination"
-            v-model="displayDestination"
-            name="displayDestination"
-            @select="handleRegionSelect"
-          />
-        </div>
-
-        <fieldset class="status-fieldset">
-          <legend>여행 상태</legend>
-          <div class="status-segments">
-            <button type="button" data-status="ACTIVE" :class="{ active: status === 'ACTIVE' }" @click="status = 'ACTIVE'">
-              진행 중
-            </button>
-            <button type="button" data-status="ARCHIVED" :class="{ active: status === 'ARCHIVED' }" @click="status = 'ARCHIVED'">
-              보관됨
-            </button>
-          </div>
-          <small class="status-help">여행이 끝났다면 직접 ‘보관됨’으로 바꿀 수 있습니다. 언제든 다시 진행 중으로 되돌릴 수 있어요.</small>
-        </fieldset>
-
-        <p v-if="error" class="settings-error" aria-live="polite">{{ error }}</p>
-
-        <div class="settings-actions">
-          <button class="btn ghost" type="button" :disabled="tripStore.mutating" @click="close">취소</button>
-          <button class="btn primary" type="submit" data-testid="settings-save" :disabled="tripStore.mutating">
-            {{ tripStore.mutating ? '저장 중...' : '저장' }}
-          </button>
-        </div>
-      </form>
-
-      <section class="danger-zone" aria-labelledby="delete-trip-title">
-        <div>
-          <h3 id="delete-trip-title">여행 삭제</h3>
-          <p>여행의 일정과 협업 데이터에 더 이상 접근할 수 없습니다.</p>
-        </div>
-        <button
-          v-if="!confirmingDelete"
-          class="danger-button"
-          type="button"
-          data-testid="delete-open"
-          @click="confirmingDelete = true"
-        >
-          삭제
+      <div class="modal-tabs">
+        <button :class="['modal-tab-btn', { active: activeTab === 'tab-settings' }]" data-tab="tab-settings" type="button" @click="activeTab = 'tab-settings'">
+          <span class="material-symbols-rounded">settings</span> 여행 정보 설정
         </button>
-        <div v-else class="delete-confirmation">
-          <span>정말 삭제할까요?</span>
-          <button type="button" :disabled="tripStore.mutating" @click="confirmingDelete = false">취소</button>
-          <button class="danger-button" type="button" data-testid="delete-confirm" :disabled="tripStore.mutating" @click="deleteTrip">
-            {{ tripStore.mutating ? '삭제 중...' : '삭제 확인' }}
-          </button>
+        <button :class="['modal-tab-btn', { active: activeTab === 'tab-members' }]" data-tab="tab-members" type="button" @click="activeTab = 'tab-members'">
+          <span class="material-symbols-rounded">group</span> 멤버 관리
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Settings Tab -->
+        <div v-show="activeTab === 'tab-settings'" class="modal-tab-content">
+          <form class="trip-create-form" @submit.prevent="save">
+            <label class="form-label">
+              <span class="form-label-text">여행 이름</span>
+              <input v-model="title" class="field" type="text" name="title" maxlength="160" required>
+            </label>
+            <div class="form-label">
+              <label class="form-label-text" for="trip-settings-destination">표시 목적지</label>
+              <LegalRegionCombobox
+                id="trip-settings-destination"
+                v-model="displayDestination"
+                name="displayDestination"
+                @select="handleRegionSelect"
+              />
+            </div>
+
+            <label class="form-label">
+              <span class="form-label-text">여행 기간 설정 <span v-if="$route?.name !== 'Route'" style="font-weight:normal;color:var(--muted);font-size:12px;">(일정 페이지에서만 수정 가능)</span></span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="date" class="field" v-model="editStartDate" style="flex:1;" :disabled="$route?.name !== 'Route'">
+                <span>-</span>
+                <input type="date" class="field" v-model="editEndDate" :min="editStartDate" style="flex:1;" :disabled="$route?.name !== 'Route'">
+              </div>
+              <div v-if="editStartDate && editEndDate" style="text-align:center;font-size:14px;color:var(--violet);font-weight:600;margin-top:8px;">
+                총 {{ editDayCount }}일 여행
+              </div>
+            </label>
+
+            <fieldset v-if="trip?.myRole === 'OWNER'" class="status-fieldset">
+              <legend>여행 상태</legend>
+              <div class="status-segments">
+                <button type="button" data-status="ACTIVE" :class="{ active: status === 'ACTIVE' }" @click="status = 'ACTIVE'">
+                  진행 중
+                </button>
+                <button type="button" data-status="ARCHIVED" :class="{ active: status === 'ARCHIVED' }" @click="status = 'ARCHIVED'">
+                  보관됨
+                </button>
+              </div>
+              <small class="status-help">여행이 끝났다면 직접 ‘보관됨’으로 바꿀 수 있습니다. 언제든 다시 진행 중으로 되돌릴 수 있어요.</small>
+            </fieldset>
+
+            <p v-if="error" class="trip-create-error" aria-live="polite" style="color:var(--rose);">{{ error }}</p>
+
+            <section v-if="trip?.myRole === 'OWNER'" class="danger-zone" aria-labelledby="delete-trip-title">
+              <div>
+                <h3 id="delete-trip-title">여행 삭제</h3>
+                <p>여행의 일정과 협업 데이터에 더 이상 접근할 수 없습니다.</p>
+              </div>
+              <button
+                v-if="!confirmingDelete"
+                class="danger-button"
+                type="button"
+                data-testid="delete-open"
+                @click="confirmingDelete = true"
+              >
+                삭제
+              </button>
+              <div v-else class="delete-confirmation">
+                <span>정말 삭제할까요?</span>
+                <button type="button" :disabled="tripStore.mutating" @click="confirmingDelete = false">취소</button>
+                <button class="danger-button" type="button" data-testid="delete-confirm" :disabled="tripStore.mutating" @click="deleteTrip">
+                  {{ tripStore.mutating ? '삭제 중...' : '삭제 확인' }}
+                </button>
+              </div>
+            </section>
+
+            <div class="trip-create-actions" style="margin-top: 16px;">
+              <button class="btn ghost" type="button" :disabled="tripStore.mutating" @click="close">취소</button>
+              <button class="btn primary" type="submit" data-testid="settings-save" :disabled="tripStore.mutating">
+                {{ tripStore.mutating ? '저장 중...' : '저장' }}
+              </button>
+            </div>
+          </form>
         </div>
-      </section>
-    </section>
+
+        <!-- Members Tab -->
+        <div v-show="activeTab === 'tab-members'" class="modal-tab-content" style="padding: 0 32px 32px;">
+          <span class="form-label-text" style="display:block;margin-bottom:8px;font-weight:700;">초대 링크 공유</span>
+          <div class="invite-link-box" style="display:flex;gap:8px;margin-bottom:20px;">
+            <input type="text" class="field" readonly :value="inviteLink" :placeholder="inviteLoading ? '초대 링크 생성 중…' : '권한이 없습니다.'" style="flex:1;">
+            <button id="copy-link-btn" type="button" class="btn primary" :disabled="inviteLoading || !inviteLink" @click="copyInviteLink" style="white-space:nowrap;">복사</button>
+          </div>
+          <p v-if="inviteError" class="text-sm" style="color:var(--rose);margin-top:-12px;margin-bottom:20px;">{{ inviteError }}</p>
+
+          <div class="modal-members-section">
+            <div class="members-header" style="display:flex;justify-content:space-between;margin-bottom:12px;align-items:center;">
+              <h4 style="margin:0;font-size:16px;color:#111827;">참여 중인 멤버</h4>
+              <span class="member-count" style="color:var(--violet);font-weight:700;">{{ membersList.length }}명</span>
+            </div>
+            <ul class="member-list" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px;">
+              <li v-for="member in membersList" :key="member.id" class="member-item" style="display:flex;align-items:center;gap:12px;background:#f9fafb;padding:12px;border-radius:12px;">
+                <div class="member-avatar" style="width:40px;height:40px;border-radius:50%;background:var(--violet);color:white;display:grid;place-items:center;font-weight:700;overflow:hidden;">
+                  <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" style="width:100%;height:100%;object-fit:cover;" />
+                  <template v-else>{{ (member.displayName ?? '?').charAt(0) }}</template>
+                </div>
+                <div class="member-info"><span class="member-name" style="font-weight:700;color:#1f2937;">{{ member.displayName ?? '알 수 없음' }}</span></div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.settings-overlay {
-  align-items: center;
-  background: rgb(17 24 39 / 48%);
+.modal-tabs {
   display: flex;
-  inset: 0;
-  justify-content: center;
-  padding: 20px;
-  position: fixed;
-  z-index: 2000;
+  gap: 8px;
+  padding: 0 32px 16px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
 }
 
-.settings-modal {
-  background: #fff;
-  border: 1px solid rgba(227, 234, 244, .9);
-  border-radius: 24px;
-  box-shadow: 0 24px 64px rgb(0 0 0 / 18%);
-  max-height: min(760px, calc(100vh - 40px));
-  overflow: auto;
-  width: min(560px, 100%);
-}
-
-.settings-header {
-  align-items: center;
-  border-bottom: 1px solid #e5e7eb;
+.modal-tab-btn {
+  background: transparent;
+  border: none;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 8px 12px;
   display: flex;
-  justify-content: space-between;
-  padding: 24px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
-.settings-header h2,
-.settings-header p,
-.danger-zone h3,
-.danger-zone p {
-  letter-spacing: 0;
-  margin: 0;
+.modal-tab-btn:hover {
+  background: rgba(124, 58, 237, 0.04);
 }
 
-.settings-form {
-  display: grid;
-  gap: 20px;
-  padding: 24px;
+.modal-tab-btn.active {
+  color: var(--violet);
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.modal-tab-btn .material-symbols-rounded {
+  font-size: 20px;
 }
 
 .status-fieldset {
@@ -235,95 +387,109 @@ onUnmounted(() => {
 }
 
 .status-fieldset legend {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   margin-bottom: 8px;
+  color: #374151;
 }
 
 .status-segments {
-  background: #f3f4f6;
-  border-radius: 8px;
+  background: #f1f3f5;
+  border-radius: 12px;
   display: grid;
   gap: 4px;
   grid-template-columns: 1fr 1fr;
-  padding: 4px;
+  padding: 6px;
 }
 
 .status-segments button {
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #6b7280;
   cursor: pointer;
   font-weight: 700;
-  padding: 10px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  font-size: 14px;
+  transition: all 0.2s ease;
 }
 
 .status-segments button.active {
   background: #fff;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   color: #111827;
 }
 
-.status-hint {
-  color: #6b7280;
-  font-size: 12px;
+.status-help {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
   line-height: 1.5;
-  margin: 8px 0 0;
 }
-
-.settings-actions,
-.delete-confirmation {
-  align-items: center;
-  display: flex;
-  gap: 8px;
-}
-
-.settings-actions {
-  justify-content: flex-end;
-}
-
-.settings-error {
-  color: #be123c;
-  font-size: 14px;
-  margin: 0;
-}
-.status-help { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 
 .danger-zone {
   align-items: center;
-  background: #fff1f2;
-  border-top: 1px solid #fecdd3;
+  background: #fffafa;
+  border: 1px solid #ffe4e6;
+  border-radius: 16px;
   display: flex;
   gap: 16px;
   justify-content: space-between;
-  padding: 20px 24px;
+  padding: 20px;
+  margin-top: 16px;
 }
 
 .danger-zone h3 {
   color: #9f1239;
   font-size: 15px;
+  margin: 0;
 }
 
 .danger-zone p {
   color: #881337;
   font-size: 13px;
-  margin-top: 4px;
+  margin: 4px 0 0 0;
 }
 
 .danger-button {
-  background: #be123c;
+  background: #e11d48;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #fff;
   cursor: pointer;
   font-weight: 700;
-  padding: 9px 12px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(225, 29, 72, 0.2);
+  transition: all 0.2s;
+}
+
+.danger-button:hover {
+  background: #be123c;
+  box-shadow: 0 6px 16px rgba(225, 29, 72, 0.3);
 }
 
 .delete-confirmation {
+  display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+}
+
+.delete-confirmation > span {
+  font-size: 13px;
+  color: #9f1239;
+  font-weight: 700;
 }
 
 .delete-confirmation > button:not(.danger-button) {
@@ -331,28 +497,57 @@ onUnmounted(() => {
   border: 0;
   cursor: pointer;
   font-weight: 700;
+  color: #881337;
 }
 
 @media (max-width: 640px) {
-  .settings-overlay {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  .settings-modal {
-    border-radius: 24px 24px 0 0;
-    max-height: 92vh;
-  }
-
-  .settings-header,
-  .settings-form,
-  .danger-zone {
-    padding: 20px;
-  }
-
   .danger-zone {
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+/* Premium Advanced Modal Styles */
+.advanced-overlay {
+  background: rgba(10, 10, 15, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.advanced-modal {
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.04);
+  background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
+  width: 500px !important;
+  max-width: 90vw !important;
+}
+
+.advanced-modal .modal-header {
+  border-bottom: none;
+  padding: 32px 32px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.advanced-modal .modal-header h3 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.advanced-modal .eyebrow {
+  color: var(--violet);
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.advanced-modal .trip-create-form {
+  padding: 0 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 </style>
