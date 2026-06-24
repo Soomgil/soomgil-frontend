@@ -305,7 +305,7 @@ function onStatClick(label: string) {
   }
 }
 
-// 여행 취향 — 실제 preference 도메인 데이터로 채워짐 (API 실패 시 mock 폴백)
+// 여행 취향 — 실제 preference 도메인 데이터만 표시한다.
 const GROUP_COLORS: Record<string, string> = {
   nature_scene: '#10b981',
   history_culture: '#7c3aed',
@@ -315,34 +315,26 @@ const GROUP_COLORS: Record<string, string> = {
 }
 const DEFAULT_COLOR = '#6b7280'
 
+type PreferenceStatus = 'loading' | 'ready' | 'pending'
+
+const preferenceStatus = ref<PreferenceStatus>('pending')
 const travelPreferences = ref<{
   tags: string[]
   styles: { label: string; percent: number; color: string }[]
   insight: string
-  isEmpty: boolean
 }>({
-  tags: ['도시 산책', '역사/문화', '야경 명소', '사진 여행', '혼행'],
-  styles: [
-    { label: '도시 여행', percent: 82, color: '#0066ff' },
-    { label: '역사/문화 여행', percent: 74, color: '#7c3aed' },
-    { label: '야경/감성 여행', percent: 68, color: '#ec4899' },
-    { label: '자연/힐링', percent: 56, color: '#10b981' },
-    { label: '맛집/미식', percent: 42, color: '#f59e0b' },
-  ],
-  insight: '도시의 감성과 역사적인 장소를 함께 즐기는 여행을 선호해요. 다음 여행은 근교의 역사 도시를 추천해요.',
-  isEmpty: false,
+  tags: [],
+  styles: [],
+  insight: '',
 })
 
 async function loadPreferences() {
+  preferenceStatus.value = 'loading'
   try {
     const data = await userApi.getPreferences()
     if (data.topCategories.length === 0) {
-      travelPreferences.value = {
-        tags: [],
-        styles: [],
-        insight: data.travelStyle,
-        isEmpty: true,
-      }
+      travelPreferences.value = { tags: [], styles: [], insight: '' }
+      preferenceStatus.value = 'pending'
       return
     }
     travelPreferences.value = {
@@ -353,11 +345,12 @@ async function loadPreferences() {
         color: GROUP_COLORS[c.groupCode] ?? DEFAULT_COLOR,
       })),
       insight: data.travelStyle,
-      isEmpty: false,
     }
+    preferenceStatus.value = 'ready'
   } catch (err) {
     console.error('Failed to load preferences', err)
-    // API 실패 시 기존 mock 유지
+    travelPreferences.value = { tags: [], styles: [], insight: '' }
+    preferenceStatus.value = 'pending'
   }
 }
 
@@ -550,11 +543,12 @@ function handleUserClick(userId: string) {
             </div>
             <p class="preference-intro">데이터 기반 나의 여행 스타일</p>
 
-            <div v-if="travelPreferences.isEmpty" class="pref-empty">
-              <span class="material-symbols-rounded pref-empty-icon">swipe</span>
-              <p class="pref-empty-title">아직 학습된 취향이 없어요</p>
-              <p class="pref-empty-desc">스와이프로 장소에 반응하면<br>나만의 여행 스타일이 표시됩니다.</p>
-              <button type="button" class="pref-empty-cta" @click="router.push('/search')">취향 알아보기</button>
+            <div v-if="preferenceStatus !== 'ready'" class="pref-empty" role="status">
+              <span class="material-symbols-rounded pref-empty-icon">hourglass_top</span>
+              <p class="pref-empty-title">분석 결과를 기다리고 있어요</p>
+              <p class="pref-empty-desc">
+                {{ preferenceStatus === 'loading' ? '여행 취향을 불러오는 중입니다.' : '분석이 완료되면 나만의 여행 스타일이 표시됩니다.' }}
+              </p>
             </div>
 
             <template v-else>
