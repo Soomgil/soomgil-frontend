@@ -30,11 +30,11 @@ describe('itinerary view model', () => {
 
     const plans = toDayPlans(days)
 
-    expect(plans.map((day) => day.id)).toEqual(['day-1', 'unscheduled'])
-    expect(plans[0].items.map((item) => item.id)).toEqual(['item-1', 'item-2'])
-    expect(plans[0].items[1].placeExternalId).toBe('kto-2')
-    expect(dayPlanLabel(plans[0])).toBe('1일차')
-    expect(dayPlanLabel(plans[1])).toBe('일차 미정')
-    expect(plans[1].day).toBe(-1)
+    expect(plans.map((day) => day.id)).toEqual(['unscheduled', 'day-1'])
+    expect(plans[1].items.map((item) => item.id)).toEqual(['item-1', 'item-2'])
+    expect(plans[1].items[1].placeExternalId).toBe('kto-2')
+    expect(dayPlanLabel(plans[0])).toBe('일차 미정')
+    expect(dayPlanLabel(plans[1])).toBe('1일차 (7/1)')
+    expect(plans[0].day).toBe(-1)
   })
 })

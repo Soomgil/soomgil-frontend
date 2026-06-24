@@ -248,7 +248,7 @@ async function handleLogout() {
     <div class="header-actions" style="min-width:220px; display:flex; justify-content:flex-end; align-items:center; gap:8px;">
 
       <!-- Theme Toggle -->
-      <button type="button" class="btn ghost icon-btn" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; cursor:pointer;" :title="isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'" @click="toggleTheme">
+      <button v-if="route.path.startsWith('/trips/') && route.path.endsWith('/route')" type="button" class="btn ghost icon-btn" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; cursor:pointer;" :title="isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'" @click="toggleTheme">
         <span class="material-symbols-rounded">{{ isDarkMode ? 'light_mode' : 'dark_mode' }}</span>
       </button>
 
@@ -480,5 +480,9 @@ async function handleLogout() {
   .header-actions .btn {
     flex: 0 0 auto;
   }
+}
+
+.header-actions .material-symbols-rounded {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
 }
 </style>

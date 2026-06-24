@@ -29,6 +29,7 @@ const mapbox = vi.hoisted(() => {
     removeLayer: vi.fn(),
     removeSource: vi.fn(),
     resize: vi.fn(),
+    setStyle: vi.fn(),
   }
   const marker = {
     addTo: vi.fn().mockReturnThis(),
@@ -65,6 +66,7 @@ const stops: ItineraryMapStop[] = [
     index: 1,
     lat: 36.35,
     lng: 127.38,
+    image: 'https://images.example.test/place.jpg',
     accessibility: {
       openingHours: null,
       closedDays: null,
@@ -111,6 +113,10 @@ describe('MapboxItineraryMap', () => {
 
     expect(mapbox.Map).toHaveBeenCalledOnce()
     expect(mapbox.Marker).toHaveBeenCalledTimes(2)
+    expect(mapbox.Marker).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      anchor: 'bottom',
+      offset: [0, -10],
+    }))
 	expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
 	expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'itinerary-route-route-1', type: 'line' }))
     expect(mapbox.map.fitBounds).toHaveBeenCalledOnce()
@@ -128,11 +134,77 @@ describe('MapboxItineraryMap', () => {
 
     const markerCall = mapbox.Marker.mock.calls[0]
     const markerElement = (markerCall![0] as { element: HTMLButtonElement }).element
+    expect((markerElement.querySelector('.map-pin-img') as HTMLImageElement)?.src).toBe('https://images.example.test/place.jpg')
     expect(getComputedStyle(markerElement.querySelector('.map-pin-info')!).display).toBe('block')
     expect(markerElement.querySelector('.map-pin-accessibility')?.getAttribute('aria-label')).toBe('접근성: 휠체어, 반려동물')
     markerElement.click()
     await nextTick()
-    expect(wrapper.emitted('selectPlace')).toEqual([[undefined, 'place-1']])
+    expect(wrapper.emitted('selectPlace')).toEqual([[undefined, 'place-1', 'item-1']])
+  })
+
+  it('경로 표시 변경만으로 지도 viewport를 다시 맞추지 않는다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops, routes: [] } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+    expect(mapbox.map.fitBounds).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ routes })
+
+    expect(mapbox.map.fitBounds).toHaveBeenCalledTimes(1)
+    expect(mapbox.map.easeTo).not.toHaveBeenCalled()
+    expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
+  })
+
+  it('경로 펜 전환과 카드 축소는 지도 스타일을 다시 로드하지 않고 마커만 갱신한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops, drawingTool: 'cursor', cardDisplay: 'full' } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+    mapbox.map.setStyle = vi.fn()
+
+    await wrapper.setProps({ drawingTool: 'route-pen', cardDisplay: 'min' })
+    await nextTick()
+
+    expect(mapbox.map.setStyle).not.toHaveBeenCalled()
+    const markerCall = mapbox.Marker.mock.calls.at(-1)
+    const markerElement = (markerCall![0] as { element: HTMLButtonElement }).element
+    expect(markerElement.classList.contains('map-pin-card--min')).toBe(true)
+  })
+
+  it('경로 geometry 좌표 객체 배열도 GeoJSON 선으로 정규화해 그린다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    mount(MapboxItineraryMap, {
+      props: {
+        stops,
+        routes: [{
+          id: 'route-object-coordinates',
+          geometry: {
+            type: 'LineString',
+            coordinates: [{ lng: 127.38, lat: 36.35 }, { lng: 127.39, lat: 36.36 }],
+          },
+        }],
+      },
+    })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+
+    expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-object-coordinates', {
+      type: 'geojson',
+      data: expect.objectContaining({
+        geometry: {
+          type: 'LineString',
+          coordinates: [[127.38, 36.35], [127.39, 36.36]],
+        },
+      }),
+    })
+    expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'itinerary-route-route-object-coordinates',
+      type: 'line',
+    }))
   })
 
   it('초기 오류 후 load가 성공하면 오류를 해제하고 재시도 시 observer를 정리한다', async () => {

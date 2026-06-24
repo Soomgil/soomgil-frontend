@@ -35,6 +35,7 @@ export interface Place {
   tags?: string[]
   contact?: string
   admission?: string
+  featuredMenu?: string | null
   photos?: string[]
   likedBy?: (PlaceReaction | { extra: number })[]
   accessibility?: PlaceAccessibility

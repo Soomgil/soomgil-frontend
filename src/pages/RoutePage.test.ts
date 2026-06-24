@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
 import RoutePage from './RoutePage.vue'
@@ -37,6 +37,9 @@ const connectedApis = vi.hoisted(() => ({
     getPlace: vi.fn(),
     getAccessibilityBatch: vi.fn(),
   },
+  swipe: {
+    getRecommendations: vi.fn(),
+  },
 }))
 
 vi.mock('@/api/ai.api', () => ({ aiApi: connectedApis.ai }))
@@ -44,6 +47,7 @@ vi.mock('@/api/chat.api', () => ({ chatApi: connectedApis.chat }))
 vi.mock('@/api/planning.api', () => ({ planningApi: connectedApis.planning }))
 vi.mock('@/api/trip.api', () => ({ tripApi: connectedApis.trip }))
 vi.mock('@/api/place.api', () => ({ placeApi: connectedApis.place }))
+vi.mock('@/api/swipe.api', () => ({ swipeApi: connectedApis.swipe }))
 
 vi.mock('@/components/place/PlaceDiscoveryPanel.vue', () => ({
   default: {
@@ -149,6 +153,10 @@ describe('RoutePage itinerary integration', () => {
     connectedApis.planning.getNote.mockRejectedValue({ response: { status: 404 } })
     connectedApis.planning.getChecklists.mockResolvedValue([])
 		connectedApis.place.getAccessibilityBatch.mockResolvedValue({})
+    connectedApis.swipe.getRecommendations.mockResolvedValue({
+      items: [],
+      page: { page: 0, size: 30, totalElements: 0, totalPages: 0, sort: [] },
+    })
 		connectedApis.trip.getInvites.mockResolvedValue([])
 		connectedApis.trip.createInvite.mockResolvedValue({
 			id: 'invite-1', tripId: 'trip-1', inviteCode: 'CODE', inviteUrl: 'https://soomgil.test/invite/CODE',
@@ -176,6 +184,8 @@ describe('RoutePage itinerary integration', () => {
       }),
     })
     holder.state.days.value = []
+    holder.state.routes.value = []
+    holder.state.mapDrawings.value = []
     holder.state.error.value = null
     holder.viewportState.loading.value = false
     holder.viewportState.error.value = null
@@ -205,6 +215,11 @@ describe('RoutePage itinerary integration', () => {
         },
       ]
     })
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
   })
 
   it('지도 화면 진입 시 AI·메모·체크리스트를 백엔드에서 불러온다', async () => {
@@ -619,6 +634,80 @@ describe('RoutePage itinerary integration', () => {
 		})
 	})
 
+	it('연결된 카드 체인을 드래그하면 붙어 있는 그룹 단위로 이동하고 경로를 삭제하지 않는다', async () => {
+		holder.state.fetchItinerary.mockImplementationOnce(async () => {
+			holder.state.days.value = [{
+				id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+				date: '2026-07-01', title: null, sortOrder: 0,
+				items: [
+					{
+						id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '첫 번째 장소',
+						address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+					{
+						id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '두 번째 장소',
+						address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+					{
+						id: 'item-3', itineraryDayId: 'day-1', sortOrder: 2,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '세 번째 장소',
+						address: null, lat: 36.37, lng: 127.4, thumbnailUrl: null,
+						sourceStatus: 'AVAILABLE',
+					},
+				],
+			}]
+			holder.state.routes.value = [{
+				id: 'route-1',
+				originItineraryItemId: 'item-1',
+				destinationItineraryItemId: 'item-2',
+			}]
+		})
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separator = wrapper.get('.day-separator')
+		const stops = wrapper.findAll('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 320, width: 320, height: 320,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separator.element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		;[40, 88, 136].forEach((top, index) => {
+			vi.spyOn(stops[index].element, 'getBoundingClientRect').mockReturnValue({
+				x: 12, y: top, top, left: 12, right: 300, bottom: top + 40, width: 288, height: 40,
+				toJSON: () => ({}),
+			} as DOMRect)
+		})
+
+		stops[1].find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 98 }))
+		stops[1].element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 190 }))
+		stops[1].element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 190 }))
+		await flushPromises()
+
+		expect(holder.state.deleteRoute).not.toHaveBeenCalled()
+		expect(holder.state.reorder).toHaveBeenCalledWith({
+			days: [{
+				dayId: 'day-1',
+				sortOrder: 0,
+				itemOrders: [
+					{ itemId: 'item-3', sortOrder: 0 },
+					{ itemId: 'item-1', sortOrder: 1 },
+					{ itemId: 'item-2', sortOrder: 2 },
+				],
+			}],
+		})
+	})
+
   it('route의 trip 일정과 일차 미정을 실제 상태에서 표시한다', async () => {
     const wrapper = mount(RoutePage, {
       global: {
@@ -698,6 +787,197 @@ describe('RoutePage itinerary integration', () => {
         accessibility: expect.objectContaining({ flags: ['WHEELCHAIR'] }),
       }),
     ])
+  })
+
+  it('경로 펜에서 지도 마커의 일정 item id로 두 장소를 연결한다', async () => {
+    holder.state.fetchItinerary.mockImplementationOnce(async () => {
+      holder.state.days.value = [{
+        id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+        date: '2026-07-01', title: null, sortOrder: 0,
+        items: [
+          {
+            id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '출발지',
+            address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+          {
+            id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '도착지',
+            address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+        ],
+      }]
+    })
+    holder.state.mapMatchRoute.mockResolvedValueOnce({
+      id: 'route-1',
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      provider: 'MAPBOX',
+      providerProfile: 'walking',
+      geometryFormat: 'GEOJSON',
+      geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
+      distanceMeters: null,
+      durationSeconds: null,
+      confidence: null,
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+
+    await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    map.vm.$emit('selectPlace', undefined, undefined, 'item-1')
+    await nextTick()
+    map.vm.$emit('selectPlace', undefined, undefined, 'item-2')
+    await flushPromises()
+
+    expect(holder.state.mapMatchRoute).toHaveBeenCalledWith({
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      coordinates: [{ lng: 127.38, lat: 36.35 }, { lng: 127.39, lat: 36.36 }],
+      tidy: true,
+    })
+    expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
+      tab: 'BASIC',
+      page: 0,
+      size: 30,
+    }))
+  })
+
+  it('Mapbox 상세 경로 좌표가 많아도 경로 매칭 요청은 100개 이하로 보낸다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'mapbox-token')
+    const directionsCoordinates = Array.from({ length: 150 }, (_, index) => [
+      127.38 + index / 10000,
+      36.35 + index / 10000,
+    ])
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        code: 'Ok',
+        routes: [{ geometry: { coordinates: directionsCoordinates } }],
+      }),
+    }))
+    holder.state.fetchItinerary.mockImplementationOnce(async () => {
+      holder.state.days.value = [{
+        id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+        date: '2026-07-01', title: null, sortOrder: 0,
+        items: [
+          {
+            id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '출발지',
+            address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+          {
+            id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+            itemType: 'CUSTOM_PLACE', place: null, placeName: '도착지',
+            address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+          },
+        ],
+      }]
+    })
+    holder.state.mapMatchRoute.mockResolvedValueOnce({
+      id: 'route-1',
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      provider: 'MAPBOX',
+      providerProfile: 'walking',
+      geometryFormat: 'GEOJSON',
+      geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
+      distanceMeters: null,
+      durationSeconds: null,
+      confidence: null,
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+
+    await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    map.vm.$emit('selectPlace', undefined, undefined, 'item-1')
+    await nextTick()
+    map.vm.$emit('selectPlace', undefined, undefined, 'item-2')
+    await flushPromises()
+
+    const request = holder.state.mapMatchRoute.mock.calls[0][0]
+    expect(request.coordinates).toHaveLength(100)
+    expect(request.coordinates[0]).toEqual({ lng: 127.38, lat: 36.35 })
+    expect(request.coordinates.at(-1).lng).toBeCloseTo(127.3949)
+    expect(request.coordinates.at(-1).lat).toBeCloseTo(36.3649)
+  })
+
+  it('새로고침 후 기존 연결 경로로 주변 관광지를 다시 불러온다', async () => {
+    holder.state.routes.value = [{
+      id: 'route-1',
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      geometry: {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [{ lng: 127.38, lat: 36.35 }, { lng: 127.39, lat: 36.36 }],
+        },
+      },
+    }]
+    connectedApis.swipe.getRecommendations.mockResolvedValueOnce({
+      items: [{
+        place: {
+          provider: 'KTO',
+          externalPlaceId: 'nearby-1',
+          placeName: '주변 명소',
+          category: '관광지',
+          lat: 36.355,
+          lng: 127.385,
+        },
+      }],
+      page: { page: 0, size: 30, totalElements: 1, totalPages: 1, sort: [] },
+    })
+
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('button[data-toggle="nearby"]').trigger('click')
+    await flushPromises()
+
+    expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
+      bbox: '127.365,36.335,127.405,36.375',
+      tab: 'BASIC',
+      page: 0,
+      size: 30,
+    }))
+    expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toEqual([expect.objectContaining({
+      externalPlaceId: 'nearby-1',
+      title: '주변 명소',
+    })])
   })
 
   it('관리 모달에서 여행 날짜를 수정할 때 순서 저장을 다시 호출하지 않는다', async () => {

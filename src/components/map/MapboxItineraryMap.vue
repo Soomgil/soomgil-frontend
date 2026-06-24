@@ -8,6 +8,16 @@ import type { LngLat, Viewport } from '@/types/geo'
 import type { AccessibilityFlag, PlaceAccessibility } from '@/types/place'
 import { useTheme } from '@/composables/useTheme'
 
+export interface ItineraryMapNearbyPlace {
+  id: string
+  provider: string
+  externalPlaceId: string
+  title: string
+  category: string | null
+  lat: number
+  lng: number
+}
+
 export interface ItineraryMapStop {
   id: string
   placeProvider?: string
@@ -30,6 +40,8 @@ const props = withDefaults(defineProps<{
   stops: ItineraryMapStop[]
   routes?: ItineraryMapRoute[]
   routeDisplay?: 'route' | 'dashed' | 'hidden'
+  cardDisplay?: 'full' | 'min' | 'hidden'
+  nearbyPlaces?: ItineraryMapNearbyPlace[]
   drawings?: MapDrawingStroke[]
   drawingTool?: MapDrawingTool
   drawingColor?: string
@@ -38,14 +50,17 @@ const props = withDefaults(defineProps<{
 }>(), {
   drawings: () => [],
   routes: () => [],
+  nearbyPlaces: () => [],
   routeDisplay: 'route',
+  cardDisplay: 'full',
   drawingTool: 'cursor',
   drawingColor: '#1f2937',
   drawingWidth: 6,
   drawingsVisible: true,
 })
 const emit = defineEmits<{
-  selectPlace: [placeProvider: string | undefined, placeId: string]
+  selectPlace: [placeProvider: string | undefined, placeId: string | undefined, stopId: string]
+  selectNearbyPlace: [placeProvider: string, placeId: string]
   viewportChange: [viewport: Viewport]
   drawingCreate: [drawing: MapDrawingDraft]
   drawingErase: [drawingId: string]
@@ -65,15 +80,15 @@ let lineLayerIds: string[] = []
 let styleReady = false
 let initializationSequence = 0
 let lastEmittedViewport = ''
+let lastFittedStopsKey = ''
 
 const { isDarkMode } = useTheme()
 
 const mapStyle = computed(() => {
-  const isNav = props.drawingTool === 'route-pen'
   if (isDarkMode.value) {
-    return isNav ? 'mapbox://styles/mapbox/navigation-night-v1' : 'mapbox://styles/mapbox/dark-v11'
+    return 'mapbox://styles/mapbox/dark-v11'
   } else {
-    return isNav ? 'mapbox://styles/mapbox/navigation-day-v1' : 'mapbox://styles/mapbox/light-v11'
+    return 'mapbox://styles/mapbox/light-v11'
   }
 })
 
@@ -97,7 +112,7 @@ const ACCESSIBILITY_MARKERS: Partial<Record<AccessibilityFlag, { icon: string; l
 function createMarkerElement(stop: ItineraryMapStop) {
   const marker = document.createElement('button')
   marker.type = 'button'
-  marker.className = `map-pin-card ${dayClass(stop.dayIndex)}`
+  marker.className = `map-pin-card map-pin-card--${props.cardDisplay} ${dayClass(stop.dayIndex)}`
   marker.setAttribute('aria-label', `${stop.title} 지도 위치`)
 
   const imageWrapper = document.createElement('span')
@@ -152,14 +167,41 @@ function createMarkerElement(stop: ItineraryMapStop) {
   const badge = document.createElement('span')
   badge.className = 'map-pin-badge'
   badge.textContent = String(stop.index)
-  marker.append(imageWrapper, info, badge)
-  if (stop.placeId) marker.addEventListener('click', () => emit('selectPlace', stop.placeProvider, stop.placeId!))
+  const pointer = document.createElement('span')
+  pointer.className = 'map-pin-pointer'
+  marker.append(imageWrapper, info, badge, pointer)
+  marker.addEventListener('click', () => emit('selectPlace', stop.placeProvider, stop.placeId, stop.id))
   return marker
+}
+
+function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
+  const el = document.createElement('div')
+  el.className = 'map-nearby-place-marker'
+  el.setAttribute('aria-label', `${place.title} 주변 관광지`)
+
+  const icon = document.createElement('span')
+  icon.className = 'material-symbols-rounded'
+  icon.textContent = 'explore'
+  el.appendChild(icon)
+
+  const label = document.createElement('span')
+  label.className = 'map-nearby-place-label'
+  label.textContent = place.title
+  el.appendChild(label)
+
+  el.addEventListener('click', () => {
+    emit('selectNearbyPlace', place.provider, place.externalPlaceId)
+  })
+
+  return el
 }
 
 function clearMapContent() {
   markers.forEach((marker) => marker.remove())
   markers = []
+}
+
+function clearRouteLayers() {
   if (!map || !styleReady) {
     lineLayerIds = []
     return
@@ -171,44 +213,93 @@ function clearMapContent() {
   lineLayerIds = []
 }
 
+function routeLineString(route: ItineraryMapRoute): { type: 'LineString'; coordinates: [number, number][] } | null {
+  const geometry = route.geometry as { type?: unknown; geometry?: unknown; coordinates?: unknown }
+  const candidate = (
+    geometry.type === 'Feature' && typeof geometry.geometry === 'object' && geometry.geometry !== null
+      ? geometry.geometry as { type?: unknown; coordinates?: unknown }
+      : geometry
+  )
+  if (candidate.type !== 'LineString' || !Array.isArray(candidate.coordinates)) return null
+
+  const coordinates = candidate.coordinates.flatMap((coordinate) => {
+    if (Array.isArray(coordinate) && typeof coordinate[0] === 'number' && typeof coordinate[1] === 'number') {
+      return [[coordinate[0], coordinate[1]] as [number, number]]
+    }
+    if (
+      typeof coordinate === 'object' && coordinate !== null
+      && typeof (coordinate as { lng?: unknown }).lng === 'number'
+      && typeof (coordinate as { lat?: unknown }).lat === 'number'
+    ) {
+      return [[(coordinate as { lng: number }).lng, (coordinate as { lat: number }).lat] as [number, number]]
+    }
+    return []
+  })
+
+  return coordinates.length >= 2 ? { type: 'LineString', coordinates } : null
+}
+
+function renderRoutes() {
+  if (!map || !styleReady) return
+  clearRouteLayers()
+  if (props.routeDisplay === 'hidden') return
+
+  props.routes.forEach((route, index) => {
+    const geometry = routeLineString(route)
+    if (!geometry) return
+    const id = `itinerary-route-${route.id}`
+    map!.addSource(id, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        properties: { routeIndex: index },
+        geometry,
+      },
+    })
+    map!.addLayer({
+      id,
+      type: 'line',
+      source: id,
+      paint: {
+        'line-color': '#6d4aff',
+        'line-width': 5,
+        'line-opacity': 0.95,
+        ...(props.routeDisplay === 'dashed' ? { 'line-dasharray': [2, 2] } : {}),
+      },
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+    })
+    lineLayerIds.push(id)
+  })
+}
+
 function renderStops() {
   if (!map || !mapboxgl || !styleReady) return
   const mapbox = mapboxgl
   clearMapContent()
 
-  props.stops.forEach((stop) => {
-    markers.push(new mapbox.Marker({ element: createMarkerElement(stop), anchor: 'bottom' })
-      .setLngLat([stop.lng, stop.lat])
+  if (props.cardDisplay !== 'hidden') {
+    props.stops.forEach((stop) => {
+      markers.push(new mapbox.Marker({ element: createMarkerElement(stop), anchor: 'bottom', offset: [0, -10] })
+        .setLngLat([stop.lng, stop.lat])
+        .addTo(map!))
+    })
+  }
+
+  props.nearbyPlaces.forEach((place) => {
+    markers.push(new mapbox.Marker({ element: createNearbyMarkerElement(place), anchor: 'bottom' })
+      .setLngLat([place.lng, place.lat])
       .addTo(map!))
   })
 
-	if (props.routeDisplay !== 'hidden') props.routes.forEach((route, index) => {
-		const geometry = route.geometry as { type?: string; coordinates?: unknown }
-		if (geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) return
-		const id = `itinerary-route-${route.id}`
-		map!.addSource(id, {
-			type: 'geojson',
-			data: {
-				type: 'Feature',
-				properties: { routeIndex: index },
-				geometry: route.geometry as { type: 'LineString'; coordinates: number[][] },
-			},
-		})
-		map!.addLayer({
-      id,
-      type: 'line',
-      source: id,
-			paint: {
-				'line-color': '#6d4aff',
-				'line-width': 4,
-				'line-opacity': 0.85,
-				...(props.routeDisplay === 'dashed' ? { 'line-dasharray': [2, 2] } : {}),
-			},
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-    })
-    lineLayerIds.push(id)
-  })
+  renderRoutes()
+  fitToStopsIfNeeded(mapbox)
+}
 
+function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
+  if (!map) return
+  const stopsKey = props.stops.map((stop) => `${stop.id}:${stop.lng}:${stop.lat}`).join('|')
+  if (stopsKey === lastFittedStopsKey) return
+  lastFittedStopsKey = stopsKey
   if (props.stops.length === 0) {
     map.easeTo({ center: DEFAULT_CENTER, zoom: 10 })
   } else if (props.stops.length === 1) {
@@ -256,10 +347,12 @@ function cleanupMapResources() {
   resizeObserver?.disconnect()
   resizeObserver = null
   clearMapContent()
+  clearRouteLayers()
   map?.remove()
   map = null
   styleReady = false
   lastEmittedViewport = ''
+  lastFittedStopsKey = ''
   updateDrawingProjection()
 }
 
@@ -287,7 +380,7 @@ async function initializeMap() {
       zoom: 10,
     })
     map = createdMap
-    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right')
+    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     createdMap.on('style.load', () => {
       if (sequence !== initializationSequence || map !== createdMap) return
       styleReady = true
@@ -324,8 +417,8 @@ function retry() {
   void initializeMap()
 }
 
-watch(() => props.stops, renderStops, { deep: true })
-watch(() => [props.routes, props.routeDisplay], renderStops, { deep: true })
+watch(() => [props.stops, props.nearbyPlaces, props.cardDisplay], renderStops, { deep: true })
+watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {
   initializationSequence++

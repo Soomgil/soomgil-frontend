@@ -99,4 +99,23 @@ describe('PlaceDiscoveryPanel', () => {
     await flushPromises()
     expect(getRecommendations).toHaveBeenLastCalledWith('trip-1', expect.objectContaining({ tab: 'SUPER_LIKE' }))
   })
+
+  it('renders a real place image from photos when thumbnail is missing', async () => {
+    getRecommendations.mockResolvedValueOnce({
+      items: [{
+        place: { ...place, photos: ['images/해운대/해운대_1.jpg'] },
+        matchedMembers: [],
+        rank: 1,
+        distanceMeters: 120,
+        recommendationReason: null,
+      }],
+      page: { page: 0, size: 20, totalElements: 1, totalPages: 1, sort: [] },
+    })
+    const wrapper = mount(PlaceDiscoveryPanel, {
+      props: { tripId: 'trip-1', bbox: '129,35,130,36' },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.discovery-thumb img').attributes('src')).toBe('/images/해운대/해운대_1.jpg')
+  })
 })
