@@ -658,16 +658,7 @@ watch(
                     >#{{ tag }}</span
                   >
                 </div>
-                <div class="today-pick-actions">
-                  <button
-                    type="button"
-                    class="btn primary today-pick-cta"
-                    @click="openStory(currentPopular)"
-                  >
-                    자세히 보기
-                    <span class="material-symbols-rounded">arrow_forward</span>
-                  </button>
-                </div>
+
               </div>
             </div>
           </section>

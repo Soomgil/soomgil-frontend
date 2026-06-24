@@ -5,12 +5,12 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
-import TripAccessModal from '@/components/trip/TripAccessModal.vue'
 import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import BoardingPassCard from '@/components/trip/BoardingPassCard.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
+import { useAuthStore } from '@/stores/auth.store'
 import type { TripFilter, TripSummary } from '@/types/trip'
 import type { LegalRegion } from '@/types/geo'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
@@ -18,6 +18,7 @@ import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 const router = useRouter()
 const route = useRoute()
 const tripStore = useTripStore()
+const authStore = useAuthStore()
 const createModal = useModal()
 const activeFilter = ref<TripFilter>('all')
 const searchQuery = ref('')
@@ -25,8 +26,8 @@ const newTitle = ref('')
 const newDestination = ref('')
 const selectedRegion = ref<LegalRegion | null>(null)
 const createError = ref('')
-const accessTrip = ref<TripSummary | null>(null)
-const settingsTrip = ref<TripSummary | null>(null)
+const activeSettingsTrip = ref<TripSummary | null>(null)
+const defaultSettingsTab = ref<'tab-settings' | 'tab-members'>('tab-settings')
 const timelineEl = ref<HTMLElement | null>(null)
 const requestedIntent = computed(() => typeof route.query.intent === 'string' ? route.query.intent : null)
 const intentMessage = computed(() => requestedIntent.value === 'invite' || requestedIntent.value === 'share'
@@ -147,9 +148,12 @@ function getStatusCls(trip: TripSummary): string {
 }
 
 function getPassengerText(trip: TripSummary): string {
-  if (trip.myRole === 'OWNER') return '방장'
-  return '멤버'
+  return authStore.user?.displayName || '사용자'
 }
+
+function getFlight(trip: TripSummary): string { return trip.id.substring(0, 5).toUpperCase() }
+function getSeat(trip: TripSummary): string { return trip.id.substring(5, 8).toUpperCase() }
+function getGate(trip: TripSummary): string { return trip.id.substring(8, 11).toUpperCase() }
 
 function formatTripDate(value: string | null | undefined): string {
   if (!value) return '미정'
@@ -166,19 +170,17 @@ async function loadTrips() {
 }
 
 function openTripAccess(trip: TripSummary) {
-  accessTrip.value = trip
-}
-
-function closeTripAccess() {
-  accessTrip.value = null
+  activeSettingsTrip.value = trip
+  defaultSettingsTab.value = 'tab-members'
 }
 
 function openTripSettings(trip: TripSummary) {
-  settingsTrip.value = trip
+  activeSettingsTrip.value = trip
+  defaultSettingsTab.value = 'tab-settings'
 }
 
 function closeTripSettings() {
-  settingsTrip.value = null
+  activeSettingsTrip.value = null
 }
 
 async function handleCreateTrip() {
@@ -301,12 +303,17 @@ watch(filteredTrips, () => {
                       <span class="label">DESTINATIONS</span>
                       <span class="value">{{ getDestName(currentTrip) }}</span>
                     </div>
-                  </div>
-
-                  <div class="ticket-members-wrapper" aria-label="여행 권한">
-                    <span class="label">ROLE</span>
-                    <div class="next-trip-members">
-                      <span class="avatar">{{ currentTrip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
+                    <div class="detail-item">
+                      <span class="label">FLIGHT</span>
+                      <span class="value">{{ getFlight(currentTrip) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="label">SEAT</span>
+                      <span class="value">{{ getSeat(currentTrip) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="label">GATE</span>
+                      <span class="value">{{ getGate(currentTrip) }}</span>
                     </div>
                   </div>
                 </div>
@@ -322,23 +329,29 @@ watch(filteredTrips, () => {
                     <span class="stub-title-label">BOARDING PASS</span>
                     <h2 class="stub-title">{{ currentTrip.title }}</h2>
                     <p class="stub-date-info">{{ formatCreatedAt(currentTrip.createdAt) }} 생성</p>
+                    <div class="ticket-members-wrapper" aria-label="여행 권한">
+                      <span class="label">ROLE</span>
+                      <div class="next-trip-members">
+                        <span class="avatar">{{ currentTrip.myRole === 'OWNER' ? '방장' : '멤버' }}</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <a class="stub-detail-btn" href="#" @click.prevent="goTripDetail(currentTrip.id)">
-                    <span>자세히 보기</span>
-                    <span class="material-symbols-rounded">arrow_forward</span>
-                  </a>
-
                   <div class="stub-actions">
-                    <button class="stub-action-btn" type="button" @click.stop="openTripAccess(currentTrip)">
+                    <button v-if="currentTrip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click.stop="openTripAccess(currentTrip)">
                       <span class="material-symbols-rounded" aria-hidden="true">group</span>
-                      {{ currentTrip.myRole === 'OWNER' ? '멤버 및 초대' : '멤버 보기' }}
+                      멤버 및 초대
                     </button>
                     <button v-if="currentTrip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click.stop="openTripSettings(currentTrip)">
                       <span class="material-symbols-rounded" aria-hidden="true">settings</span>
                       설정
                     </button>
                   </div>
+
+                  <a class="stub-detail-btn" href="#" @click.prevent="goTripDetail(currentTrip.id)">
+                    <span>자세히 보기</span>
+                    <span class="material-symbols-rounded">arrow_forward</span>
+                  </a>
 
                   <div class="stub-controls">
                     <div class="next-trip-dots carousel-dots-container" aria-label="여행 개수와 현재 위치">
@@ -529,19 +542,21 @@ watch(filteredTrips, () => {
       </div>
     </div>
 
-    <TripAccessModal :open="Boolean(accessTrip)" :trip="accessTrip" @close="closeTripAccess" />
+    <!-- 여행 설정/접근 모달 통합 -->
     <TripSettingsModal
-      :open="Boolean(settingsTrip)"
-      :trip="settingsTrip"
+      :open="!!activeSettingsTrip"
+      :trip="activeSettingsTrip"
+      :default-tab="defaultSettingsTab"
       @close="closeTripSettings"
-      @deleted="closeTripSettings"
+      @saved="loadTrips"
+      @deleted="loadTrips"
     />
   </div>
 </template>
 
 <style scoped>
 .trip-list-head {
-  align-items: center;
+  align-items: flex-end;
   display: flex;
   gap: 20px;
   justify-content: space-between;
@@ -554,7 +569,12 @@ watch(filteredTrips, () => {
   align-items: center;
   display: flex;
   gap: 16px;
-  flex-wrap: wrap;
+  flex: 1;
+  flex-wrap: nowrap;
+}
+
+.trip-search {
+  margin-left: auto;
 }
 
 /* 보딩패스 placeholder 배경 (커버 이미지 없을 때) */
@@ -566,7 +586,7 @@ watch(filteredTrips, () => {
 .stub-actions {
   display: flex;
   gap: 6px;
-  margin-top: 12px;
+  margin-bottom: 12px;
   flex-wrap: wrap;
 }
 
@@ -595,7 +615,19 @@ watch(filteredTrips, () => {
 }
 
 /* 타임라인 카드 추가 요소 */
-.timeline-card-role {
+.timeline-card-meta-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.timeline-card-date {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  margin: 0;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -605,7 +637,14 @@ watch(filteredTrips, () => {
 .timeline-card-destination {
   color: var(--muted);
   font-size: 12px;
-  margin: 4px 0 0;
+  margin: 0;
+}
+
+.timeline-card-role {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .timeline-card-avatar-wrapper--placeholder {
@@ -613,6 +652,21 @@ watch(filteredTrips, () => {
   color: #fff;
   display: grid;
   place-items: center;
+}
+
+/* Removed past trip visual changes based on user request */
+
+
+.my-trips-timeline-wrapper {
+  position: relative;
+}
+
+.timeline-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 12px;
+  min-width: 0;
 }
 
 .timeline-card-avatar-wrapper--placeholder .material-symbols-rounded {
