@@ -36,6 +36,9 @@ function matchText(item: DiscoveryItem) {
 function displayImageUrl(url?: string | null) {
   const trimmed = url?.trim()
   if (!trimmed) return ''
+  if (trimmed.includes('cdn.soomgil.test')) {
+    return '/images/대전오월드/대전오월드_1_공공3유형.jpg'
+  }
   if (/^(https?:|data:|blob:|\/)/.test(trimmed)) return trimmed
   return `/${trimmed.replace(/^\.?\//, '')}`
 }
@@ -202,8 +205,8 @@ onMounted(() => {
             <div class="discovery-meta-left">
               <span>{{ item.place.category || '장소' }}</span>
               <span v-if="item.recommendation?.distanceMeters != null">{{ Math.round(item.recommendation.distanceMeters) }}m</span>
+              <span v-if="scheduledKeys.has(placeKey(item.place))" class="discovery-scheduled"><span class="material-symbols-rounded">check_circle</span>일정에 추가됨</span>
             </div>
-            <span v-if="scheduledKeys.has(placeKey(item.place))" class="discovery-scheduled"><span class="material-symbols-rounded">check_circle</span>일정에 추가됨</span>
           </div>
           <strong>{{ item.place.placeName }}</strong>
           <p>{{ item.place.address || '주소 정보 없음' }}</p>
@@ -220,11 +223,12 @@ onMounted(() => {
           <button
             type="button"
             class="action-btn bookmark-btn btn-with-tooltip"
+            :class="{ 'is-saved': savedKeys.has(placeKey(item.place)) }"
             :disabled="savingKeys.has(placeKey(item.place))"
             :aria-label="`${item.place.placeName} ${savedKeys.has(placeKey(item.place)) ? '저장 취소' : '저장'}`"
             @click.stop="toggleSaved(item.place)"
           >
-            <span class="material-symbols-rounded">{{ savedKeys.has(placeKey(item.place)) ? 'bookmark' : 'bookmark_add' }}</span>
+            <span class="material-symbols-rounded">{{ savedKeys.has(placeKey(item.place)) ? 'bookmark' : 'bookmark_border' }}</span>
             <div class="btn-tooltip">{{ savedKeys.has(placeKey(item.place)) ? '저장 취소' : '장소 저장' }}</div>
           </button>
           <button
@@ -235,7 +239,7 @@ onMounted(() => {
             :title="scheduledKeys.has(placeKey(item.place)) ? '이미 일정에 있는 장소' : '일정에 추가'"
             @click.stop="emit('add', item.place)"
           >
-            <span class="material-symbols-rounded">add</span>
+            <span class="material-symbols-rounded">{{ scheduledKeys.has(placeKey(item.place)) ? 'check' : 'add' }}</span>
             <div class="btn-tooltip">일정에 추가</div>
           </button>
         </div>
@@ -256,7 +260,7 @@ onMounted(() => {
 .discovery-state { flex: 1; min-height: 150px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; text-align: center; }
 .discovery-state--error { flex-direction: column; color: var(--rose); }
 .discovery-spinner { width: 20px; height: 20px; border: 2px solid var(--line); border-top-color: var(--violet); border-radius: 50%; animation: discovery-spin .8s linear infinite; }
-.discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; color: #059669; font-size: 10px; font-weight: 850; }
+.discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; color: #059669; font-size: 10px; font-weight: 850; }
 .discovery-scheduled .material-symbols-rounded { font-size: 14px; }
 .discovery-results { width: calc(100% + 80px); margin: 0 -80px 0 0; padding: 0 80px 20px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; flex: 1; overflow-y: auto; overflow-x: hidden; list-style: none; scrollbar-width: none; -ms-overflow-style: none; min-height: 0; }
 .discovery-results::-webkit-scrollbar { display: none; }
@@ -275,11 +279,13 @@ onMounted(() => {
 .discovery-scheduled .material-symbols-rounded { font-size: 14px; }
 .discovery-actions { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
 .discovery-actions .action-btn { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; cursor: pointer; transition: transform .14s ease, box-shadow .14s ease, background .14s ease, border-color .14s ease, color .14s ease; border: 1px solid var(--line); }
-.discovery-actions .action-btn.bookmark-btn { background: #fff; color: var(--violet); }
-.discovery-actions .action-btn.bookmark-btn:hover { border-color: rgba(99, 102, 241, .45); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-.discovery-actions .action-btn.add-btn { background: var(--violet); border-color: var(--violet); color: #fff; box-shadow: 0 4px 10px rgba(124, 58, 237, 0.2); }
-.discovery-actions .action-btn.add-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(124, 58, 237, 0.3); background: #6d28d9; border-color: #6d28d9; }
-.discovery-actions .action-btn:disabled { cursor: default; color: #059669; background: #ecfdf5; border-color: #bbf7d0; box-shadow: none; opacity: .78; transform: none; }
+.discovery-actions .action-btn.bookmark-btn { background: #f1f5f9; color: #3b82f6; border-color: #e2e8f0; }
+.discovery-actions .action-btn.bookmark-btn:hover:not(:disabled) { border-color: rgba(59, 130, 246, 0.45); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: #e2e8f0; }
+.discovery-actions .action-btn.bookmark-btn.is-saved { background: #f1f5f9; color: #3b82f6; border-color: #cbd5e1; }
+.discovery-actions .action-btn.bookmark-btn.is-saved:hover:not(:disabled) { background: #e2e8f0; }
+.discovery-actions .action-btn.add-btn { background: #f1f5f9; border-color: #e2e8f0; color: #10b981; }
+.discovery-actions .action-btn.add-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: #e2e8f0; border-color: #cbd5e1; }
+.discovery-actions .action-btn:disabled { cursor: not-allowed; color: #cbd5e1 !important; background: #ffffff !important; border-color: #e2e8f0 !important; box-shadow: none; opacity: 1 !important; transform: none; }
 .discovery-actions .material-symbols-rounded { font-size: 20px; }
 
 /* Custom tooltips for action buttons */

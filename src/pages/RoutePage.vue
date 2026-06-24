@@ -215,6 +215,9 @@ const scheduledPlaceKeys = computed(() => dayPlans.value.flatMap((day) => day.it
 function displayImageUrl(url?: string | null) {
   const trimmed = url?.trim()
   if (!trimmed) return ''
+  if (trimmed.includes('cdn.soomgil.test')) {
+    return '/images/대전오월드/대전오월드_1_공공3유형.jpg'
+  }
   if (/^(https?:|data:|blob:|\/)/.test(trimmed)) return trimmed
   return `/${trimmed.replace(/^\.?\//, '')}`
 }
@@ -2622,19 +2625,19 @@ function textAvatarStyle(index: unknown) {
             <!-- ===== Toolbox ===== -->
             <div class="map-tools">
               <!-- Drawing tools -->
-              <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" @click="activeTool = 'cursor'">
+              <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" :disabled="itinerary.mutating.value" @click="activeTool = 'cursor'">
                 <span class="material-symbols-rounded">arrow_selector_tool</span>
                 <span class="tool-tip">기본 선택</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" data-tool="route-pen" @click="activeTool = 'route-pen'">
+              <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" data-tool="route-pen" :disabled="itinerary.mutating.value" @click="activeTool = 'route-pen'">
                 <span class="material-symbols-rounded">polyline</span>
                 <span class="tool-tip">경로 연결 펜</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" @click="activeTool = 'pen'; drawingOn = true; isPenPopoverOpen = !isPenPopoverOpen; if (isPenPopoverOpen) nextTick(updatePenPopoverPosition)">
+              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" :disabled="itinerary.mutating.value" @click="activeTool = 'pen'; drawingOn = true; isPenPopoverOpen = !isPenPopoverOpen; if (isPenPopoverOpen) nextTick(updatePenPopoverPosition)">
                 <span class="material-symbols-rounded">edit</span>
                 <span class="tool-tip">자유 그리기</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" data-tool="eraser" @click="activeTool = 'eraser'; drawingOn = true">
+              <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" data-tool="eraser" :disabled="itinerary.mutating.value" @click="activeTool = 'eraser'; drawingOn = true">
                 <span class="material-symbols-rounded">ink_eraser</span>
                 <span class="tool-tip">그림 지우개</span>
               </button>
@@ -2643,7 +2646,7 @@ function textAvatarStyle(index: unknown) {
 
               <!-- View toggles -->
               <button class="tool-btn" :class="routeState !== 'hidden' ? 'is-on' : 'is-off'" type="button"
-                id="route-state-toggle"
+                id="route-state-toggle" :disabled="itinerary.mutating.value"
                 :data-route-state="routeState"
                 :aria-pressed="routeState !== 'hidden'"
                 @click="toggleRouteState">
@@ -2653,7 +2656,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="tool-tip">{{ routeState === 'route' ? '경로 표시: 실선' : routeState === 'dashed' ? '경로 표시: 점선' : '경로 표시: 숨김' }}</span>
               </button>
               <button class="tool-btn" :class="cardState !== 'hidden' ? 'is-on' : 'is-off'" type="button"
-                id="card-state-toggle"
+                id="card-state-toggle" :disabled="itinerary.mutating.value"
                 :data-card-state="cardState"
                 :aria-pressed="cardState !== 'hidden'"
                 @click="toggleCardState">
@@ -2663,14 +2666,14 @@ function textAvatarStyle(index: unknown) {
                 <span class="tool-tip">{{ cardState === 'full' ? '여행지 카드: 전체 보기' : cardState === 'min' ? '여행지 카드: 최소화 (핀)' : '여행지 카드: 숨김' }}</span>
               </button>
               <button :class="['tool-btn', nearbyOn ? 'is-on' : 'is-off']" type="button"
-                data-toggle="nearby"
+                data-toggle="nearby" :disabled="itinerary.mutating.value"
                 :aria-pressed="nearbyOn"
                 @click="nearbyOn = !nearbyOn">
                 <span class="material-symbols-rounded">explore</span>
                 <span class="tool-tip">주변 여행지 표시</span>
               </button>
               <button :class="['tool-btn', drawingOn ? 'is-on' : 'is-off']" type="button"
-                data-toggle="drawing"
+                data-toggle="drawing" :disabled="itinerary.mutating.value"
                 :aria-pressed="drawingOn"
                 @click="drawingOn = !drawingOn">
                 <span class="material-symbols-rounded">brush</span>
@@ -3915,6 +3918,12 @@ function textAvatarStyle(index: unknown) {
   display: flex;
 }
 
+.map-tools .tool-btn[data-action="undo"].is-on,
+.map-tools .tool-btn[data-action="redo"].is-on {
+  background: transparent !important;
+  color: #000000 !important;
+}
+
 .route-connector {
   height: 20px !important;
   margin: -1px 12px !important;
@@ -3928,6 +3937,20 @@ function textAvatarStyle(index: unknown) {
 }
 .route-connector:hover .route-connector-line {
   border-left-color: var(--rose) !important;
+}
+
+.trip-stats-grid {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 8px 0 !important;
+}
+.trip-stat-item {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
+  flex: 1 !important;
 }
 </style>
 
