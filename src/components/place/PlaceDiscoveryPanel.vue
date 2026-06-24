@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { placeApi } from '@/api/place.api'
 import { swipeApi } from '@/api/swipe.api'
 import type { Place, PlaceRecommendation } from '@/types/place'
@@ -9,7 +9,10 @@ type DiscoveryMode = 'search' | 'basic' | 'super-like'
 type DiscoveryItem = { place: Place; recommendation?: PlaceRecommendation }
 
 const props = defineProps<{ tripId: string; bbox: string; scheduledPlaceKeys?: string[] }>()
-const emit = defineEmits<{ select: [place: Place]; add: [place: Place] }>()
+const emit = defineEmits<{
+  select: [place: Place, recommendation?: PlaceRecommendation]
+  add: [place: Place]
+}>()
 
 const mode = ref<DiscoveryMode>('basic')
 const query = ref('')
@@ -19,6 +22,7 @@ const error = ref<string | null>(null)
 const savedKeys = ref(new Set<string>())
 const savingKeys = ref(new Set<string>())
 const detailLoadingKey = ref<string | null>(null)
+let requestRevision = 0
 
 const emptyMessage = computed(() => mode.value === 'search' ? '검색 결과가 없습니다.' : '추천 장소가 아직 없습니다.')
 const scheduledKeys = computed(() => new Set(props.scheduledPlaceKeys ?? []))
@@ -33,12 +37,18 @@ function matchText(item: DiscoveryItem) {
   return `${count}명의 멤버가 좋아하는 곳`
 }
 
+function matchTierClass(pct: number | null | undefined) {
+  if (pct == null) return 'tier-base'
+  if (pct >= 80) return 'tier-high'
+  if (pct >= 60) return 'tier-mid'
+  if (pct >= 40) return 'tier-low'
+  return 'tier-base'
+}
+
 function displayImageUrl(url?: string | null) {
   const trimmed = url?.trim()
   if (!trimmed) return ''
-  if (trimmed.includes('cdn.soomgil.test')) {
-    return '/images/대전오월드/대전오월드_1_공공3유형.jpg'
-  }
+  if (trimmed.includes('cdn.soomgil.test')) return ''
   if (/^(https?:|data:|blob:|\/)/.test(trimmed)) return trimmed
   return `/${trimmed.replace(/^\.?\//, '')}`
 }
@@ -47,25 +57,44 @@ function placeImage(place: Place) {
   return displayImageUrl(place.thumbnailUrl) || displayImageUrl(place.photos?.find(Boolean))
 }
 
+function bboxCenter(bbox: string) {
+  const values = bbox.split(',').map(Number)
+  if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) return {}
+  return {
+    centerLng: (values[0] + values[2]) / 2,
+    centerLat: (values[1] + values[3]) / 2,
+  }
+}
+
 async function loadRecommendations(tab: RecommendationTab) {
+  const bbox = props.bbox.trim()
+  if (!bbox) {
+    items.value = []
+    error.value = null
+    return
+  }
+  const revision = ++requestRevision
   loading.value = true
   error.value = null
   try {
     const response = await swipeApi.getRecommendations(props.tripId, {
-      bbox: props.bbox,
+      bbox,
+      ...bboxCenter(bbox),
       tab,
       page: 0,
       size: 20,
     })
+    if (revision !== requestRevision) return
     items.value = response.items.map((recommendation) => ({
       place: recommendation.place,
       recommendation,
     }))
   } catch {
+    if (revision !== requestRevision) return
     items.value = []
     error.value = '추천 장소를 불러오지 못했습니다.'
   } finally {
-    loading.value = false
+    if (revision === requestRevision) loading.value = false
   }
 }
 
@@ -79,21 +108,24 @@ async function loadSavedPlaces() {
 }
 
 async function submitSearch() {
+  const revision = ++requestRevision
   loading.value = true
   error.value = null
   try {
     const response = await placeApi.search({
       q: query.value.trim() || undefined,
-      bbox: props.bbox,
+      bbox: props.bbox.trim() || undefined,
       page: 0,
       size: 20,
     })
+    if (revision !== requestRevision) return
     items.value = response.items.map((place) => ({ place }))
   } catch {
+    if (revision !== requestRevision) return
     items.value = []
     error.value = '장소 검색에 실패했습니다.'
   } finally {
-    loading.value = false
+    if (revision === requestRevision) loading.value = false
   }
 }
 
@@ -136,14 +168,14 @@ async function toggleSaved(place: Place) {
   }
 }
 
-async function selectPlace(place: Place) {
-  const key = placeKey(place)
+async function selectPlace(item: DiscoveryItem) {
+  const key = placeKey(item.place)
   if (detailLoadingKey.value) return
   detailLoadingKey.value = key
   error.value = null
   try {
-    const detail = await placeApi.getPlace(place.provider, place.externalPlaceId)
-    emit('select', detail)
+    const detail = await placeApi.getPlace(item.place.provider, item.place.externalPlaceId)
+    emit('select', detail, item.recommendation)
   } catch {
     error.value = '장소 상세 정보를 불러오지 못했습니다.'
   } finally {
@@ -153,6 +185,11 @@ async function selectPlace(place: Place) {
 
 onMounted(() => {
   void Promise.all([loadRecommendations('BASIC'), loadSavedPlaces()])
+})
+
+watch(() => props.bbox, (bbox, previous) => {
+  if (!bbox || bbox === previous || mode.value === 'search') return
+  void loadRecommendations(mode.value === 'basic' ? 'BASIC' : 'SUPER_LIKE')
 })
 </script>
 
@@ -194,7 +231,7 @@ onMounted(() => {
         :key="placeKey(item.place)"
         class="discovery-result"
         :aria-busy="detailLoadingKey === placeKey(item.place)"
-        @click="selectPlace(item.place)"
+        @click="selectPlace(item)"
       >
         <div class="discovery-thumb">
           <img v-if="placeImage(item.place)" :src="placeImage(item.place)" :alt="item.place.placeName" />
@@ -202,10 +239,14 @@ onMounted(() => {
         </div>
         <div class="discovery-copy">
           <div class="discovery-meta">
-            <div class="discovery-meta-left">
-              <span>{{ item.place.category || '장소' }}</span>
-              <span v-if="item.recommendation?.distanceMeters != null">{{ Math.round(item.recommendation.distanceMeters) }}m</span>
-              <span v-if="scheduledKeys.has(placeKey(item.place))" class="discovery-scheduled"><span class="material-symbols-rounded">check_circle</span>일정에 추가됨</span>
+            <div
+              v-if="item.recommendation?.matchPercentage != null"
+              :class="['discovery-match-pill', matchTierClass(item.recommendation.matchPercentage)]"
+              :title="`${item.recommendation.matchPercentage}% 일치`"
+            >
+              <span class="material-symbols-rounded discovery-match-icon">favorite</span>
+              <strong class="discovery-match-value">{{ item.recommendation.matchPercentage }}%</strong>
+              <span class="discovery-match-label">일치</span>
             </div>
           </div>
           <strong>{{ item.place.placeName }}</strong>
@@ -217,7 +258,11 @@ onMounted(() => {
                 <span v-else class="material-symbols-rounded" style="font-size: 16px;">person</span>
               </span>
             </div>
+            <p class="discovery-reason">{{ matchText(item) }}</p>
           </div>
+          <p v-else-if="item.recommendation?.recommendationReason" class="discovery-reason discovery-reason--standalone">
+            {{ item.recommendation.recommendationReason }}
+          </p>
         </div>
         <div class="discovery-actions">
           <button
@@ -274,6 +319,14 @@ onMounted(() => {
 .discovery-match-row { align-items: center; display: flex; gap: 8px; justify-content: space-between; margin-top: 10px; min-width: 0; }
 .discovery-copy .discovery-reason { color: var(--violet); flex: 1; font-weight: 800; font-size: 11px; margin: 0; min-width: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 .discovery-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.discovery-match-pill { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; flex-shrink: 0; line-height: 1; color: #fff; }
+.discovery-match-pill .discovery-match-icon { font-size: 13px; color: inherit; }
+.discovery-match-pill .discovery-match-value { font-size: 13px; letter-spacing: -0.02em; color: inherit; }
+.discovery-match-pill .discovery-match-label { font-size: 10px; opacity: 0.9; color: inherit; }
+.discovery-match-pill.tier-high { background: linear-gradient(135deg, #0066ff, #00d1ff); box-shadow: 0 2px 6px rgba(0, 102, 255, 0.28); }
+.discovery-match-pill.tier-mid { background: #0066ff; }
+.discovery-match-pill.tier-low { background: #2c5aa0; }
+.discovery-match-pill.tier-base { background: #94a3b8; }
 .discovery-meta-left { display: flex; align-items: center; gap: 8px; }
 .discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; color: #059669; font-size: 10px; font-weight: 850; margin-left: auto; flex-shrink: 0; }
 .discovery-scheduled .material-symbols-rounded { font-size: 14px; }

@@ -134,6 +134,7 @@ describe('MapboxItineraryMap', () => {
 
     const markerCall = mapbox.Marker.mock.calls[0]
     const markerElement = (markerCall![0] as { element: HTMLButtonElement }).element
+    expect(markerElement.style.position).toBe('absolute')
     expect((markerElement.querySelector('.map-pin-img') as HTMLImageElement)?.src).toBe('https://images.example.test/place.jpg')
     expect(getComputedStyle(markerElement.querySelector('.map-pin-info')!).display).toBe('block')
     expect(markerElement.querySelector('.map-pin-accessibility')?.getAttribute('aria-label')).toBe('접근성: 휠체어, 반려동물')
@@ -155,6 +156,26 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.map.fitBounds).toHaveBeenCalledTimes(1)
     expect(mapbox.map.easeTo).not.toHaveBeenCalled()
     expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
+  })
+
+  it('겹치는 주변 장소 마커를 분산하고 클릭한 장소 ID를 그대로 전달한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const nearbyPlaces = [
+      { id: 'KTO:near-1', provider: 'KTO' as const, externalPlaceId: 'near-1', title: '창덕궁', category: null, lat: 37.58, lng: 126.99 },
+      { id: 'KTO:near-2', provider: 'KTO' as const, externalPlaceId: 'near-2', title: '창경궁', category: null, lat: 37.58, lng: 126.99 },
+    ]
+    const wrapper = mount(MapboxItineraryMap, { props: { stops: [], nearbyPlaces } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+
+    const firstOptions = mapbox.Marker.mock.calls[0]![0] as { element: HTMLButtonElement; offset: [number, number] }
+    const secondOptions = mapbox.Marker.mock.calls[1]![0] as { element: HTMLButtonElement; offset: [number, number] }
+    expect(firstOptions.element.tagName).toBe('BUTTON')
+    expect(firstOptions.offset).not.toEqual(secondOptions.offset)
+
+    secondOptions.element.click()
+    expect(wrapper.emitted('selectNearbyPlace')).toEqual([['KTO', 'near-2']])
   })
 
   it('경로 펜 전환과 카드 축소는 지도 스타일을 다시 로드하지 않고 마커만 갱신한다', async () => {

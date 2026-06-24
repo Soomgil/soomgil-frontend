@@ -8503,9 +8503,10 @@
 
     /* Premium Kakao Map Pin Card Styles */
     .map-pin-card {
-      position: relative;
+      position: absolute;
       cursor: pointer;
       width: 100px;
+      height: 132px;
       box-sizing: border-box;
       background: #ffffff;
       border-radius: 14px;
@@ -8513,6 +8514,8 @@
       border: 2px solid var(--day-color, var(--violet));
       transition: box-shadow 0.25s ease, border-color 0.25s;
       overflow: visible;
+      display: flex;
+      flex-direction: column;
     }
 
     .map-pin-card--full .map-pin-img-wrapper,
@@ -8664,6 +8667,8 @@
     }
 
     .map-nearby-place-marker {
+      appearance: none;
+      font: inherit;
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -8677,12 +8682,11 @@
       box-shadow: 0 8px 20px rgba(5, 150, 105, 0.28), 0 2px 8px rgba(15, 23, 42, 0.12);
       cursor: pointer;
       pointer-events: auto;
-      transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+      transition: box-shadow 0.16s ease, background-color 0.16s ease;
     }
 
     .map-nearby-place-marker:hover {
       background: #047857;
-      transform: translateY(-1px) scale(1.04);
       box-shadow: 0 12px 28px rgba(5, 150, 105, 0.34), 0 3px 10px rgba(15, 23, 42, 0.16);
     }
 
@@ -9196,6 +9200,41 @@
       color: var(--violet);
     }
 
+    .detailbar-add-plan-btn {
+      width: 100%;
+      min-height: 42px;
+      margin-top: 14px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--violet);
+      color: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 7px 18px rgba(99, 102, 241, 0.24);
+      transition: background-color 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .detailbar-add-plan-btn:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--violet) 84%, #000);
+      box-shadow: 0 9px 22px rgba(99, 102, 241, 0.3);
+    }
+
+    .detailbar-add-plan-btn:disabled {
+      background: #e5e7eb;
+      color: #6b7280;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .detailbar-add-plan-btn .material-symbols-rounded {
+      font-size: 19px;
+    }
+
     .detailbar-gallery {
       margin-bottom: 20px;
     }
@@ -9322,6 +9361,30 @@
       opacity: 0.85;
       margin: 0;
       font-weight: 500;
+    }
+
+    .detailbar-desc-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      padding: 4px 10px;
+      border: none;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.08);
+      color: var(--violet, #6366f1);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .detailbar-desc-toggle:hover {
+      background: rgba(99, 102, 241, 0.16);
+    }
+
+    .detailbar-desc-toggle .material-symbols-rounded {
+      font-size: 16px;
     }
 
     /* Info Card Container */

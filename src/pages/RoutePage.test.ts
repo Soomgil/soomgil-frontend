@@ -980,6 +980,81 @@ describe('RoutePage itinerary integration', () => {
     })])
   })
 
+  it('주변 관광지 상세를 열고 상세 패널에서 일정에 추가한다', async () => {
+    connectedApis.place.getPlace.mockResolvedValueOnce({
+      provider: 'KTO',
+      externalPlaceId: 'nearby-1',
+      placeName: '주변 명소',
+      address: '대전광역시 중구',
+      lat: 36.355,
+      lng: 127.385,
+      thumbnailUrl: 'https://cdn.example.com/nearby.jpg',
+      photos: ['https://cdn.example.com/nearby-detail.jpg'],
+      description: '도심에서 산책하기 좋은 주변 관광지입니다.',
+      category: '관광지',
+    })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    wrapper.getComponent(MapboxItineraryMap).vm.$emit('selectNearbyPlace', 'KTO', 'nearby-1')
+    await flushPromises()
+
+    expect(wrapper.get('.detailbar-main-title').text()).toBe('주변 명소')
+    expect(wrapper.get('.detailbar-desc-text').text()).toContain('도심에서 산책하기 좋은')
+    const addButton = wrapper.get('.detailbar-add-plan-btn')
+    expect(addButton.text()).toContain('여행 계획에 추가')
+    await addButton.trigger('click')
+    await flushPromises()
+
+    expect(holder.state.createItem).toHaveBeenCalledWith(expect.objectContaining({
+      itemType: 'PLACE',
+      place: { provider: 'KTO', externalPlaceId: 'nearby-1' },
+      placeName: '주변 명소',
+      thumbnailUrl: 'https://cdn.example.com/nearby.jpg',
+    }))
+  })
+
+  it('저장된 썸네일이 없으면 장소 상세 이미지로 지도 카드를 보충한다', async () => {
+    connectedApis.place.getPlace.mockResolvedValueOnce({
+      provider: 'KTO', externalPlaceId: '10001', placeName: '경복궁', address: '서울 종로구',
+      lat: 37.5796, lng: 126.977, thumbnailUrl: 'https://cdn.example.com/gyeongbokgung.jpg', photos: [],
+    })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    holder.state.days.value = [{
+      id: 'day-image', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+      date: '2026-07-01', title: null, sortOrder: 0,
+      items: [{
+        id: 'item-image', itineraryDayId: 'day-image', sortOrder: 0, itemType: 'PLACE',
+        place: { provider: 'KTO', externalPlaceId: '10001' }, placeName: '경복궁',
+        address: '서울 종로구', lat: 37.5796, lng: 126.977, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+      }],
+    }]
+    await flushPromises()
+
+    expect(wrapper.getComponent(MapboxItineraryMap).props('stops')).toEqual([
+      expect.objectContaining({ image: 'https://cdn.example.com/gyeongbokgung.jpg' }),
+    ])
+  })
+
   it('관리 모달에서 여행 날짜를 수정할 때 순서 저장을 다시 호출하지 않는다', async () => {
     const wrapper = mount(RoutePage, {
       global: {
@@ -1029,7 +1104,7 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     const discovery = wrapper.getComponent(PlaceDiscoveryPanel)
     expect(discovery.props('tripId')).toBe('trip-1')
-    expect(discovery.props('bbox')).toBe('127.38,36.35,127.38,36.35')
+    expect(discovery.props('bbox')).toBe('')
 
     discovery.vm.$emit('add', {
       provider: 'KTO',

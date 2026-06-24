@@ -43,6 +43,7 @@ interface RecommendationDto {
   rank: number | null
   distanceMeters: number | null
   recommendationReason: string | null
+  matchPercentage: number | null
 }
 
 export interface SwipeFeedParams {

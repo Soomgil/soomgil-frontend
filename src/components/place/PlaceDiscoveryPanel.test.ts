@@ -57,6 +57,8 @@ describe('PlaceDiscoveryPanel', () => {
 
     expect(getRecommendations).toHaveBeenCalledWith('trip-1', {
       bbox: '129,35,130,36',
+      centerLat: 35.5,
+      centerLng: 129.5,
       tab: 'BASIC',
       page: 0,
       size: 20,
@@ -67,6 +69,7 @@ describe('PlaceDiscoveryPanel', () => {
     await flushPromises()
     expect(getPlace).toHaveBeenCalledWith('KTO', '126508')
     expect(wrapper.emitted('select')?.[0]?.[0]).toEqual(expect.objectContaining({ description: '부산을 대표하는 해변입니다.' }))
+    expect(wrapper.emitted('select')?.[0]?.[1]).toEqual(expect.objectContaining({ recommendationReason: '그룹 취향과 잘 맞아요' }))
 
     await wrapper.get('button[data-mode="search"]').trigger('click')
     await wrapper.get('input[type="search"]').setValue('해운대')
@@ -82,6 +85,22 @@ describe('PlaceDiscoveryPanel', () => {
     expect(react).toHaveBeenCalledWith('KTO', '126508', 'SUPER_LIKE')
     expect(savePlace).toHaveBeenCalledWith('KTO', '126508')
     expect(wrapper.find('button[aria-label="해운대해수욕장 저장 취소"]').exists()).toBe(true)
+  })
+
+  it('reloads recommendations when the map bbox changes', async () => {
+    const wrapper = mount(PlaceDiscoveryPanel, {
+      props: { tripId: 'trip-1', bbox: '129,35,130,36' },
+    })
+    await flushPromises()
+
+    await wrapper.setProps({ bbox: '126,37,127,38' })
+    await flushPromises()
+
+    expect(getRecommendations).toHaveBeenLastCalledWith('trip-1', expect.objectContaining({
+      bbox: '126,37,127,38',
+      centerLat: 37.5,
+      centerLng: 126.5,
+    }))
   })
 
   it('loads the separate SUPER_LIKE tab and exposes retry on failure', async () => {
