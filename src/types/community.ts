@@ -62,6 +62,8 @@ export interface CommunityPostDetail extends CommunityPostSummary {
 export interface CommunityPostSnapshot {
   days: CommunitySnapshotDay[]
   routes: unknown[]
+  notes: CommunitySnapshotNote[]
+  checklists: CommunitySnapshotChecklist[]
   authorDisplay: UserSummary | null
 }
 
@@ -77,9 +79,43 @@ export interface CommunitySnapshotDay {
 
 export interface CommunitySnapshotItem {
   id?: string
+  place?: CommunitySnapshotPlaceRef | null
+  placeRef?: CommunitySnapshotPlaceRef | null
   placeName: string
   address?: string | null
   thumbnailUrl?: string | null
+}
+
+export interface CommunitySnapshotPlaceRef {
+  provider: string
+  externalPlaceId: string
+}
+
+export interface CommunitySnapshotNote {
+  id: string
+  tripId: string
+  scopeType: 'TRIP' | 'DAY'
+  itineraryDayId: string | null
+  content: string
+  deletedAt: string | null
+}
+
+export interface CommunitySnapshotChecklist {
+  id: string
+  tripId: string
+  scopeType: 'TRIP' | 'DAY'
+  itineraryDayId: string | null
+  title: string | null
+  items: CommunitySnapshotChecklistItem[]
+}
+
+export interface CommunitySnapshotChecklistItem {
+  id: string
+  checklistId: string
+  sortOrder: number
+  content: string
+  memberStatuses: unknown[]
+  deletedAt: string | null
 }
 
 export interface CommunityComment {
