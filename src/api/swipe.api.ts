@@ -40,6 +40,8 @@ interface SavedPlaceDto {
 interface RecommendationDto {
   place: PlaceSummaryDto
   matchedMembers: UserSummary[]
+  matchedMemberCount?: number | null
+  totalMemberCount?: number | null
   rank: number | null
   distanceMeters: number | null
   recommendationReason: string | null
@@ -119,7 +121,12 @@ export const swipeApi = {
       { params },
     )
     return {
-      items: response.data.items.map((item) => ({ ...item, place: mapPlace(item.place) })),
+      items: response.data.items.map((item) => ({
+        ...item,
+        matchedMemberCount: item.matchedMemberCount ?? item.matchedMembers.length,
+        totalMemberCount: item.totalMemberCount ?? item.matchedMembers.length,
+        place: mapPlace(item.place),
+      })),
       page: response.data.page,
     }
   },

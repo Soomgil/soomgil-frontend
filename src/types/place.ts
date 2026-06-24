@@ -69,6 +69,8 @@ export interface UserSummary {
 export interface PlaceRecommendation {
   place: Place
   matchedMembers: UserSummary[]
+  matchedMemberCount: number
+  totalMemberCount: number
   rank: number | null
   distanceMeters: number | null
   recommendationReason: string | null

@@ -2990,11 +2990,11 @@
       left: calc(var(--sidebar-width, 360px) + 8px);
       bottom: 16px;
       width: var(--detailbar-width, 440px);
-      background: #ffffff;
+      background: rgba(250, 251, 255, .96);
       border: 1px solid rgba(0, 0, 0, 0.08);
       border-radius: 28px;
       box-shadow: 0 20px 56px rgba(99, 102, 241, 0.12);
-      z-index: 9;
+      z-index: 40;
       padding: 0;
       display: flex;
       flex-direction: column;
@@ -3036,23 +3036,17 @@
     .detailbar-scroll {
       padding: 24px;
       overflow-y: auto;
+      background: rgba(250, 251, 255, .96);
+      border-radius: inherit;
       display: flex;
       flex-direction: column;
       gap: 20px;
       flex: 1;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
     }
     .detailbar-scroll::-webkit-scrollbar {
-      width: 6px;
-    }
-    .detailbar-scroll::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    .detailbar-scroll::-webkit-scrollbar-thumb {
-      background: rgba(99, 102, 241, 0.15);
-      border-radius: 999px;
-    }
-    .detailbar-scroll::-webkit-scrollbar-thumb:hover {
-      background: rgba(99, 102, 241, 0.3);
+      display: none;
     }
 
     .detailbar-hero {
@@ -9162,23 +9156,6 @@
       letter-spacing: -0.01em;
     }
 
-    .detailbar-likes-badge {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 11px;
-      font-weight: 700;
-      color: #ef4444;
-      background: #fef2f2;
-      padding: 4px 10px;
-      border-radius: 20px;
-    }
-
-    .detailbar-likes-badge .material-symbols-rounded {
-      font-size: 14px;
-      font-variation-settings: 'FILL' 1;
-    }
-
     .detailbar-main-title {
       font-size: 22px;
       font-weight: 850;
@@ -9201,14 +9178,19 @@
       color: var(--violet);
     }
 
-    .detailbar-add-plan-btn {
+    .detailbar-action-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+      margin: 0 0 4px;
+    }
+
+    .detailbar-add-plan-btn,
+    .detailbar-save-place-btn {
       width: 100%;
-      min-height: 42px;
-      margin-top: 14px;
+      min-height: 46px;
       border: 0;
-      border-radius: 12px;
-      background: var(--violet);
-      color: #ffffff;
+      border-radius: 14px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -9216,23 +9198,53 @@
       font-size: 13px;
       font-weight: 800;
       cursor: pointer;
-      box-shadow: 0 7px 18px rgba(99, 102, 241, 0.24);
-      transition: background-color 0.16s ease, box-shadow 0.16s ease;
+      letter-spacing: 0;
+      transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+
+    .detailbar-add-plan-btn {
+      background: var(--violet);
+      color: #ffffff;
+      box-shadow: 0 10px 22px rgba(0, 102, 255, 0.22);
+    }
+
+    .detailbar-save-place-btn {
+      background: #ffffff;
+      color: #2563eb;
+      border: 1px solid rgba(0, 102, 255, 0.16);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+    }
+
+    .detailbar-save-place-btn.is-saved {
+      background: rgba(0, 102, 255, 0.09);
+      color: #1d4ed8;
+      border-color: rgba(0, 102, 255, 0.28);
     }
 
     .detailbar-add-plan-btn:hover:not(:disabled) {
       background: color-mix(in srgb, var(--violet) 84%, #000);
       box-shadow: 0 9px 22px rgba(99, 102, 241, 0.3);
+      transform: translateY(-1px);
     }
 
-    .detailbar-add-plan-btn:disabled {
+    .detailbar-save-place-btn:hover:not(:disabled) {
+      background: var(--surface-2);
+      border-color: rgba(0, 102, 255, 0.26);
+      transform: translateY(-1px);
+    }
+
+    .detailbar-add-plan-btn:disabled,
+    .detailbar-save-place-btn:disabled {
       background: #e5e7eb;
       color: #6b7280;
       cursor: default;
       box-shadow: none;
+      border-color: transparent;
+      transform: none;
     }
 
-    .detailbar-add-plan-btn .material-symbols-rounded {
+    .detailbar-add-plan-btn .material-symbols-rounded,
+    .detailbar-save-place-btn .material-symbols-rounded {
       font-size: 19px;
     }
 
@@ -9263,7 +9275,7 @@
       display: flex;
       gap: 8px;
       overflow-x: auto;
-      padding-bottom: 4px;
+      margin: 8px;
       scrollbar-width: none;
     }
 
@@ -9283,10 +9295,16 @@
       opacity: 0.65;
     }
 
-    .detailbar-thumb-item:hover,
+    .detailbar-thumb-item:hover {
+      opacity: 1;
+      border-color: var(--violet);
+      transform: scale(1.05);
+    }
+
     .detailbar-thumb-item.active {
       opacity: 1;
       border-color: var(--violet);
+      margin: 8px;
       transform: scale(1.05);
     }
 
