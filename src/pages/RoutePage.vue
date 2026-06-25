@@ -404,6 +404,7 @@ async function loadInitialRouteData() {
 }
 
 watch(itinerary.days, (days) => {
+  const preservedScrollTop = pendingItineraryScrollTop
   dayPlans.value = toDayPlans(days)
   void loadRouteAccessibility(dayPlans.value)
   void loadRoutePlaceDetails(dayPlans.value)
@@ -415,6 +416,7 @@ watch(itinerary.days, (days) => {
   }
   nextTick(() => {
     initDragDrop()
+    if (preservedScrollTop !== null) restoreItineraryScroll(preservedScrollTop)
   })
 }, { deep: true })
 
@@ -1003,26 +1005,37 @@ function restoreItineraryScroll(scrollTop: number) {
   })
 }
 
+function releasePendingItineraryScroll(scrollTop: number) {
+  window.setTimeout(() => {
+    if (pendingItineraryScrollTop === scrollTop) pendingItineraryScrollTop = null
+  }, 0)
+}
+
 async function handleStopClick(item: RouteStop) {
-  const scrollTop = itineraryRef.value?.scrollTop ?? 0
+  const scrollTop = pendingItineraryScrollTop ?? itineraryRef.value?.scrollTop ?? 0
+  pendingItineraryScrollTop = scrollTop
   if (suppressNextStopClick.value) {
     suppressNextStopClick.value = false
     restoreItineraryScroll(scrollTop)
+    releasePendingItineraryScroll(scrollTop)
     return
   }
   if (activeTool.value === 'route-pen') {
 		await handleRoutePenClick(item)
     restoreItineraryScroll(scrollTop)
+    releasePendingItineraryScroll(scrollTop)
     return
   }
   await selectPlace(item.placeExternalId || undefined, (item.placeProvider || 'KTO') as PlaceProvider, item.id)
   restoreItineraryScroll(scrollTop)
+  releasePendingItineraryScroll(scrollTop)
 }
 
 /* ── Drag & Drop (data-driven) ── */
 const itineraryRef = ref<HTMLElement | null>(null)
 const dayTabsRef = ref<HTMLElement | null>(null)
 const suppressNextStopClick = ref(false)
+let pendingItineraryScrollTop: number | null = null
 
 const isDraggingTabs = ref(false)
 const startX = ref(0)
@@ -1218,6 +1231,8 @@ function moveItemGroupAfter(anchorItemId: string, movingItemIds: string[]) {
   return true
 }
 
+const DRAG_LAYER_Z_INDEX = '120'
+
 function onPointerDown(e: PointerEvent) {
   if ((e.target as HTMLElement).closest('button')) return
   const target = e.currentTarget as HTMLElement
@@ -1230,6 +1245,7 @@ function onPointerDown(e: PointerEvent) {
   if (!containerEl) return
   const dragContainer: HTMLElement = containerEl
   const initialScrollTop = dragContainer.scrollTop
+  pendingItineraryScrollTop = initialScrollTop
 
   // Identify drag source from data attributes
   const isDraggingSeparator = stop.classList.contains('day-separator')
@@ -1315,7 +1331,7 @@ function onPointerDown(e: PointerEvent) {
       stop.setPointerCapture(e.pointerId)
     }
     stop.classList.add('is-dragging')
-    stop.style.zIndex = '120'
+    stop.style.setProperty('z-index', DRAG_LAYER_Z_INDEX, 'important')
     stop.style.width = stopRect.width + 'px'
     stop.style.position = 'relative'
     stop.style.top = '0px'
@@ -1328,7 +1344,7 @@ function onPointerDown(e: PointerEvent) {
 
     dragElements.forEach((el) => {
       el.classList.add('is-chain-dragging')
-      el.style.zIndex = el.classList.contains('route-connector') ? '80' : '120'
+      el.style.setProperty('z-index', DRAG_LAYER_Z_INDEX, 'important')
       el.style.position = 'relative'
       el.style.top = '0px'
     })
@@ -1336,14 +1352,14 @@ function onPointerDown(e: PointerEvent) {
 
   function cleanupDragState() {
     stop.classList.remove('is-dragging')
-    stop.style.zIndex = ''
+    stop.style.removeProperty('z-index')
     stop.style.width = ''
     stop.style.position = ''
     stop.style.top = ''
 
     dragElements.forEach((el) => {
       el.classList.remove('is-chain-dragging')
-      el.style.zIndex = ''
+      el.style.removeProperty('z-index')
       el.style.position = ''
       el.style.top = ''
     })
@@ -1470,6 +1486,7 @@ function onPointerDown(e: PointerEvent) {
     } else {
       cleanupDragState()
       restoreItineraryScroll(initialScrollTop)
+      releasePendingItineraryScroll(initialScrollTop)
       return
     }
 
@@ -1497,6 +1514,7 @@ function onPointerDown(e: PointerEvent) {
         const item = dayPlans.value[source!.dayIdx]?.items[source!.itemIdx]
         if (item) removeItineraryItem(item)
       }
+      releasePendingItineraryScroll(initialScrollTop)
       return
     }
 
@@ -1514,6 +1532,7 @@ function onPointerDown(e: PointerEvent) {
     nextTick(() => {
       initDragDrop()
       restoreItineraryScroll(initialScrollTop)
+      releasePendingItineraryScroll(initialScrollTop)
     })
   }
 
@@ -4615,6 +4634,11 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .add-stop-container {
   width: 100%;
   box-sizing: border-box;
+  position: absolute !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 320;
   padding-top: 8px !important;
   padding-bottom: 8px !important;
 }
@@ -5128,7 +5152,13 @@ function textAvatarStyle(index: unknown) {
   user-select: none;
   -webkit-user-select: none;
   -webkit-user-drag: none;
-  touch-action: pan-y;
+  touch-action: none;
+}
+.route-page-section .itinerary.dragging-stop,
+.route-page-section .itinerary.dragging-separator {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none;
 }
 
 /* Tooltip CSS */
@@ -5183,6 +5213,10 @@ function textAvatarStyle(index: unknown) {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+.route-page-section .add-stop-dashed,
+.route-page-section .trash-drop-zone {
+  margin-top: 0 !important;
 }
 .trash-drop-zone.is-drag-over-trash {
   background: rgba(244, 63, 94, 0.15);

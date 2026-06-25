@@ -563,6 +563,46 @@ describe('RoutePage itinerary integration', () => {
 		expect(holder.state.reorder).not.toHaveBeenCalled()
 	})
 
+	it('여행 카드 클릭 시 itinerary 상태가 다시 반영되어도 기존 스크롤 위치를 유지한다', async () => {
+		vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+			callback(0)
+			return 1
+		})
+		vi.stubGlobal('cancelAnimationFrame', vi.fn())
+		holder.state.fetchItinerary.mockImplementationOnce(async () => {
+			holder.state.days.value = [{
+				id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+				date: '2026-07-01', title: null, sortOrder: 0,
+				items: [{
+					id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+					itemType: 'CUSTOM_PLACE', place: null, placeName: '첫 번째 장소',
+					address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null,
+					sourceStatus: 'AVAILABLE',
+				}],
+			}]
+		})
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		Object.defineProperty(itineraryEl, 'clientHeight', { configurable: true, value: 160 })
+		Object.defineProperty(itineraryEl, 'scrollHeight', { configurable: true, value: 600 })
+		itineraryEl.scrollTop = 80
+
+		const stop = wrapper.get('.stop')
+		stop.find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 122 }))
+		itineraryEl.scrollTop = 0
+		holder.state.days.value = holder.state.days.value.map((day: any) => ({
+			...day,
+			items: day.items.map((item: any) => ({ ...item })),
+		}))
+		await nextTick()
+		await flushPromises()
+
+		expect(itineraryEl.scrollTop).toBe(80)
+	})
+
 	it('순서 저장이 stale snapshot으로 실패하면 최신 전체 일정으로 보강해 한 번 재시도한다', async () => {
 		const wrapper = mount(RoutePage, {
 			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
