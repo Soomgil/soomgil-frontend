@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { toPng } from 'html-to-image'
+import { tripApi } from '@/api/trip.api'
 import type { TripSummary } from '@/types/trip'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 
@@ -9,6 +10,7 @@ const props = defineProps<{ trip: TripSummary }>()
 
 const ticketEl = ref<HTMLElement | null>(null)
 const qrDataUrl = ref('')
+const qrTargetUrl = ref('')
 const exporting = ref(false)
 const exportError = ref('')
 
@@ -17,7 +19,12 @@ const tripUrl = computed(() => new URL(
   window.location.origin,
 ).href)
 
-watch(tripUrl, async (url) => {
+watch(() => props.trip.id, async () => {
+  qrTargetUrl.value = await resolveQrTargetUrl()
+}, { immediate: true })
+
+watch(qrTargetUrl, async (url) => {
+  if (!url) return
   qrDataUrl.value = await QRCode.toDataURL(url, {
     errorCorrectionLevel: 'M',
     margin: 1,
@@ -47,6 +54,7 @@ const destinationCode = computed(() => {
 })
 const statusLabel = computed(() => props.trip.status === 'ARCHIVED' ? '보관된 여행' : '여행 준비 중')
 const roleLabel = computed(() => props.trip.myRole === 'OWNER' ? '방장' : '멤버')
+const qrLabel = computed(() => props.trip.myRole === 'OWNER' ? 'SCAN TO JOIN' : 'SCAN TO OPEN')
 const formatTripDate = (value: string | null | undefined) => value ? value.replace(/-/g, '.') : '미정'
 const periodLabel = computed(() => {
   if (!props.trip.startDate && !props.trip.endDate) return '여행 기간 미정'
@@ -55,6 +63,20 @@ const periodLabel = computed(() => {
   }
   return formatTripDate(props.trip.startDate ?? props.trip.endDate)
 })
+
+async function resolveQrTargetUrl() {
+  if (props.trip.myRole !== 'OWNER') return tripUrl.value
+  try {
+    const invites = await tripApi.getInvites(props.trip.id)
+    const activeInvite = invites.find((invite) => invite.status === 'PENDING')
+    const invite = activeInvite ?? await tripApi.createInvite(props.trip.id)
+    if (invite.inviteUrl) return invite.inviteUrl
+    return new URL(`/trip-invites/${encodeURIComponent(invite.inviteCode)}`, window.location.origin).href
+  } catch {
+    return tripUrl.value
+  }
+}
+
 async function exportTicket() {
   if (!ticketEl.value || exporting.value) return
   exporting.value = true
@@ -145,7 +167,7 @@ async function exportTicket() {
         <div class="ticket-qr" aria-label="여행 상세 QR 코드">
           <img v-if="qrDataUrl" :src="qrDataUrl" alt="여행 상세 페이지 QR 코드" data-testid="trip-qr">
         </div>
-        <span class="ticket-qr-label">SCAN TO OPEN</span>
+        <span class="ticket-qr-label">{{ qrLabel }}</span>
       </div>
 
       <div class="stub-actions" data-export-controls>

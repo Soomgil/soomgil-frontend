@@ -4,9 +4,14 @@ import BoardingPassCard from './BoardingPassCard.vue'
 
 const qr = vi.hoisted(() => ({ toDataURL: vi.fn() }))
 const image = vi.hoisted(() => ({ toPng: vi.fn() }))
+const tripApiMock = vi.hoisted(() => ({
+  getInvites: vi.fn(),
+  createInvite: vi.fn(),
+}))
 
 vi.mock('qrcode', () => ({ default: qr }))
 vi.mock('html-to-image', () => ({ toPng: image.toPng }))
+vi.mock('@/api/trip.api', () => ({ tripApi: tripApiMock }))
 const trip = {
   id: 'trip-qr-1',
   title: '제주도 여행',
@@ -24,20 +29,41 @@ describe('BoardingPassCard', () => {
     vi.clearAllMocks()
     qr.toDataURL.mockResolvedValue('data:image/png;base64,qr')
     image.toPng.mockResolvedValue('data:image/png;base64,ticket')
+    tripApiMock.getInvites.mockResolvedValue([{
+      id: 'invite-1',
+      tripId: trip.id,
+      inviteCode: 'JOIN-ME',
+      inviteUrl: null,
+      inviteeUserId: null,
+      status: 'PENDING',
+      expiresAt: null,
+      createdAt: '2026-06-20T00:00:00Z',
+    }])
+    tripApiMock.createInvite.mockResolvedValue({
+      id: 'invite-2',
+      tripId: trip.id,
+      inviteCode: 'NEW-JOIN',
+      inviteUrl: null,
+      inviteeUserId: null,
+      status: 'PENDING',
+      expiresAt: null,
+      createdAt: '2026-06-20T00:00:00Z',
+    })
   })
 
-  it('여행 상세 주소를 담은 실제 QR을 표시한다', async () => {
+  it('방장 티켓에는 초대 링크를 담은 실제 QR을 표시한다', async () => {
     const wrapper = mount(BoardingPassCard, { props: { trip } })
     await flushPromises()
 
     expect(qr.toDataURL).toHaveBeenCalledWith(
-      `${window.location.origin}/trips/trip-qr-1/route`,
+      `${window.location.origin}/trip-invites/JOIN-ME`,
       expect.objectContaining({ errorCorrectionLevel: 'M' }),
     )
+    expect(tripApiMock.createInvite).not.toHaveBeenCalled()
     expect(wrapper.get('[data-testid="trip-qr"]').attributes('src')).toBe('data:image/png;base64,qr')
     expect(wrapper.text()).toContain('2026.07.01 - 2026.07.04')
     expect(wrapper.find('.stub-qr-copy').exists()).toBe(false)
-    expect(wrapper.get('.ticket-qr-label').text()).toBe('SCAN TO OPEN')
+    expect(wrapper.get('.ticket-qr-label').text()).toBe('SCAN TO JOIN')
     expect(wrapper.get('.stub-role-badge').text()).toBe('방장')
     expect(wrapper.find('.stub-passenger-meta').exists()).toBe(false)
     expect(wrapper.find('.stub-manage-actions').exists()).toBe(false)

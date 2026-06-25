@@ -25,6 +25,7 @@ export interface TripSummary {
   myRole: TripAccessRole
   itineraryVersion: number
   createdAt: string
+  coverImageUrl?: string | null
 }
 
 export interface TripDetail extends TripSummary {

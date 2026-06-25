@@ -469,8 +469,12 @@ watch(filteredTrips, () => {
                         <span class="timeline-route-badge">SEL → {{ getDestCode(trip) }}</span>
                       </div>
                       <div class="timeline-card-body">
-                        <div class="timeline-card-avatar-wrapper timeline-card-avatar-wrapper--placeholder">
-                          <span class="material-symbols-rounded" aria-hidden="true">travel_explore</span>
+                        <div
+                          class="timeline-card-avatar-wrapper"
+                          :class="{ 'timeline-card-avatar-wrapper--placeholder': !trip.coverImageUrl }"
+                        >
+                          <img v-if="trip.coverImageUrl" :src="trip.coverImageUrl" :alt="trip.title" />
+                          <span v-else class="material-symbols-rounded" aria-hidden="true">travel_explore</span>
                         </div>
                         <div class="timeline-card-info">
                           <h3 class="timeline-card-title">{{ trip.title }}</h3>
@@ -706,6 +710,21 @@ watch(filteredTrips, () => {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+.timeline-card-avatar-wrapper {
+  border-radius: 18px;
+  flex: 0 0 58px;
+  height: 58px;
+  overflow: hidden;
+  width: 58px;
+}
+
+.timeline-card-avatar-wrapper img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
 }
 
 .timeline-card-avatar-wrapper--placeholder {

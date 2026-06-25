@@ -439,8 +439,9 @@ watch(
                 class="search-card search-card--trip"
                 @click="gotoTrip(trip)"
               >
-                <div class="search-card-thumb search-card-thumb--icon">
-                  <span class="material-symbols-rounded">luggage</span>
+                <div class="search-card-thumb" :class="{ 'search-card-thumb--icon': !trip.coverImageUrl }">
+                  <img v-if="trip.coverImageUrl" :src="trip.coverImageUrl" :alt="trip.title" />
+                  <span v-else class="material-symbols-rounded">luggage</span>
                 </div>
                 <div class="search-card-body">
                   <span class="search-card-eyebrow">{{ trip.status === 'ARCHIVED' ? '완료된 여행' : '진행 중인 여행' }}</span>
