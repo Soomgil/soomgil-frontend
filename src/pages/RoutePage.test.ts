@@ -331,6 +331,44 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.text()).toContain('AI 모델 연결 설정이 필요합니다.')
   })
 
+  it('AI 메시지를 보내면 사용자 메시지와 대기 표시를 즉시 보여주고 답변으로 교체한다', async () => {
+    let resolveResponse!: (value: any) => void
+    connectedApis.ai.sendMessage.mockReturnValue(new Promise((resolve) => {
+      resolveResponse = resolve
+    }))
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
+
+    await wrapper.get('#ai-chat-input').setValue('일정을 요약해줘')
+    await wrapper.get('#ai-chat-send-btn').trigger('click')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('일정을 요약해줘')
+    expect(wrapper.findAll('.ai-message-bubble').some((bubble) => bubble.text() === '...')).toBe(true)
+
+    resolveResponse({
+      message: {
+        id: 'assistant-1',
+        role: 'ASSISTANT',
+        requester: null,
+        content: '요약 답변입니다.',
+        toolCallId: null,
+        createdAt: '2026-06-22T00:00:01Z',
+      },
+      toolCalls: [],
+      itineraryVersion: 3,
+      undoAvailable: false,
+      redoAvailable: false,
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('요약 답변입니다.')
+    expect(wrapper.findAll('.ai-message-bubble').some((bubble) => bubble.text() === '...')).toBe(false)
+  })
+
   it('여행방 채팅을 우측 사이드바의 독립 탭에서 전송한다', async () => {
     connectedApis.chat.sendMessage.mockResolvedValue({
       id: 'chat-1',
@@ -2142,6 +2180,50 @@ describe('RoutePage itinerary integration', () => {
     await nextTick()
 
     expect(wrapper.text()).toContain('저녁 식당 예약했어요')
+    wrapper.unmount()
+  })
+
+  it('planning topic의 체크리스트 이벤트를 즉시 화면에 병합한다', async () => {
+    localStorage.setItem('accessToken', 'test-token')
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const todoTab = wrapper.findAll('.route-utility-tab').find((button) => button.text().includes('할 일'))!
+    await todoTab.trigger('click')
+    await flushPromises()
+    const collaborationTransport = realtime.instances[1]
+
+    collaborationTransport.subscriptions.get('/topic/trips/trip-1/planning')?.({
+      tripId: 'trip-1',
+      actorUserId: 'user-2',
+      eventType: 'planning.checklist.upserted',
+      checklist: {
+        id: 'checklist-1',
+        tripId: 'trip-1',
+        scopeType: 'TRIP',
+        itineraryDayId: null,
+        title: '전체 체크리스트',
+        items: [{
+          id: 'todo-1',
+          checklistId: 'checklist-1',
+          sortOrder: 0,
+          content: '예약 확인',
+          memberStatuses: [],
+          deletedAt: null,
+        }],
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('예약 확인')
     wrapper.unmount()
   })
 

@@ -28,7 +28,7 @@ import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
-import type { Checklist, Note, PlanningScope } from '@/types/planning'
+import type { Checklist, ChecklistItem, ChecklistMemberStatus, Note, PlanningScope } from '@/types/planning'
 import type { DrawingPreviewEvent, TripRealtimeEvent } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
 import type { AccessibilityFlag, ParkingType, Place, PlaceAccessibility, PlaceProvider, PlaceRecommendation } from '@/types/place'
@@ -97,6 +97,7 @@ interface DrawingHistoryState {
 
 type RouteHistoryState = ItineraryHistoryState | RouteLinksHistoryState | DrawingHistoryState
 type RouteHistoryDomain = RouteHistoryState['domain']
+type RouteAiChatMessage = AiChatMessage & { pending?: boolean; pendingForMessageId?: string | null }
 
 /* ── Data ── */
 const route = useRoute()
@@ -1913,7 +1914,7 @@ function toggleRouteUtilityCollapsed() {
 
 /* ── AI / trip chat ── */
 const aiMessage = ref('')
-const aiMessages = ref<AiChatMessage[]>([])
+const aiMessages = ref<RouteAiChatMessage[]>([])
 const chatMessages = ref<TripChatMessage[]>([])
 const aiSessionStatus = ref('')
 const conversationLoading = ref(false)
@@ -1923,6 +1924,68 @@ function oldestFirst<T extends { createdAt: string }>(messages: T[]) {
   return [...messages].sort((left, right) => (
     new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
   ))
+}
+
+function currentUserSummary() {
+  const userId = currentUserId.value
+  if (!userId) return null
+  const member = trip.value.members.find((candidate) => candidate.userId === userId)
+  return member ? {
+    id: member.userId,
+    displayName: member.displayName,
+    profileImageUrl: member.profileImageUrl,
+  } : {
+    id: userId,
+    displayName: '나',
+    profileImageUrl: null,
+  }
+}
+
+function upsertAiMessage(message: RouteAiChatMessage) {
+  let next = aiMessages.value.filter((current) => current.id !== message.id)
+  if (message.role === 'USER') {
+    const requesterId = message.requester?.id ?? null
+    const optimisticIndex = next.findIndex((current) => (
+      current.pending
+      && current.role === 'USER'
+      && current.content === message.content
+      && (current.requester?.id ?? null) === requesterId
+    ))
+    if (optimisticIndex >= 0) {
+      next[optimisticIndex] = message
+    } else {
+      next.push(message)
+    }
+  } else {
+    next = next.filter((current) => !current.pending || current.role !== 'ASSISTANT')
+    next.push(message)
+  }
+  aiMessages.value = oldestFirst(next)
+}
+
+function addPendingAiAnswer(pendingForMessageId: string, createdAt: string) {
+  if (aiMessages.value.some((message) => message.pendingForMessageId === pendingForMessageId)) return
+  aiMessages.value = oldestFirst([
+    ...aiMessages.value,
+    {
+      id: `local-ai-pending-${pendingForMessageId}`,
+      role: 'ASSISTANT',
+      requester: null,
+      content: '...',
+      toolCallId: null,
+      createdAt,
+      pending: true,
+      pendingForMessageId,
+    },
+  ])
+}
+
+function removePendingAiAnswer(pendingForMessageId: string) {
+  aiMessages.value = aiMessages.value.filter((message) => message.pendingForMessageId !== pendingForMessageId)
+}
+
+function removeOptimisticAiUserMessage(messageId: string) {
+  aiMessages.value = aiMessages.value.filter((message) => message.id !== messageId)
 }
 
 async function loadConversations() {
@@ -1952,22 +2015,35 @@ async function sendAiMessage() {
   aiMessage.value = ''
   conversationLoading.value = true
   conversationError.value = ''
+  const now = new Date()
+  const optimisticUserMessageId = `local-ai-user-${now.getTime()}`
+  const pendingAnswerCreatedAt = new Date(now.getTime() + 1).toISOString()
   try {
     if (activeConversation.value === 'ai') {
+      upsertAiMessage({
+        id: optimisticUserMessageId,
+        role: 'USER',
+        requester: currentUserSummary(),
+        content,
+        toolCallId: null,
+        createdAt: now.toISOString(),
+        pending: true,
+      })
+      addPendingAiAnswer(optimisticUserMessageId, pendingAnswerCreatedAt)
       const response = await aiApi.sendMessage(tripId, {
         content,
         baseVersion: itinerary.itineraryVersion.value,
         viewport: mapViewport.viewport.value,
       })
       await syncAfterAiResponse(response)
-      await loadConversations()
-      if (!aiMessages.value.some((message) => message.id === response.message.id)) {
-        aiMessages.value.push(response.message)
-      }
+      removePendingAiAnswer(optimisticUserMessageId)
+      upsertAiMessage(response.message)
     } else {
       chatMessages.value.push(await chatApi.sendMessage(tripId, content))
     }
   } catch (error: any) {
+    removePendingAiAnswer(optimisticUserMessageId)
+    removeOptimisticAiUserMessage(optimisticUserMessageId)
     aiMessage.value = content
     const code = error?.response?.data?.code ?? error?.response?.data?.errorCode
     conversationError.value = code === 'AI_PROVIDER_UNAVAILABLE'
@@ -2350,6 +2426,141 @@ function extractChatMessage(message: unknown): TripChatMessage | null {
   return null
 }
 
+function isAiChatMessage(message: unknown): message is AiChatMessage {
+  if (!message || typeof message !== 'object') return false
+  const candidate = message as Partial<AiChatMessage>
+  return typeof candidate.id === 'string'
+    && (candidate.role === 'USER' || candidate.role === 'ASSISTANT' || candidate.role === 'TOOL' || candidate.role === 'SYSTEM')
+    && typeof candidate.content === 'string'
+    && typeof candidate.createdAt === 'string'
+}
+
+function extractAiMessage(message: unknown): AiChatMessage | null {
+  if (isAiChatMessage(message)) return message
+  if (message && typeof message === 'object' && 'message' in message) {
+    const nested = (message as { message?: unknown }).message
+    if (isAiChatMessage(nested)) return nested
+  }
+  return null
+}
+
+function isDrawingPreviewRealtimeMessage(message: unknown) {
+  if (!message || typeof message !== 'object') return false
+  const candidate = message as Partial<DrawingPreviewEvent> & { clientId?: unknown }
+  return typeof candidate.clientId === 'string'
+    && typeof candidate.previewId === 'string'
+    && typeof candidate.sequence === 'number'
+    && (candidate.phase === 'UPDATE' || candidate.phase === 'END' || candidate.phase === 'CANCEL')
+}
+
+function tagForScope(scopeType: Note['scopeType'] | Checklist['scopeType'], itineraryDayId: string | null) {
+  if (scopeType === 'TRIP') return '전체'
+  const day = dayPlans.value.find((candidate) => candidate.id === itineraryDayId)
+  return day?.groupType === 'DAY' ? `${day.day}일차` : null
+}
+
+function upsertChecklist(checklist: Checklist) {
+  const index = checklists.value.findIndex((current) => current.id === checklist.id)
+  if (index < 0) {
+    checklists.value = [...checklists.value, checklist]
+  } else {
+    const next = [...checklists.value]
+    next[index] = checklist
+    checklists.value = next
+  }
+}
+
+function upsertChecklistItem(checklistId: string, item: ChecklistItem) {
+  const checklist = checklists.value.find((current) => current.id === checklistId)
+  if (!checklist) {
+    void loadChecklists()
+    return
+  }
+  const items = [...checklist.items.filter((current) => current.id !== item.id), item]
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+  upsertChecklist({ ...checklist, items })
+}
+
+function upsertChecklistMemberStatus(checklistId: string, itemId: string, memberStatus: ChecklistMemberStatus) {
+  const checklist = checklists.value.find((current) => current.id === checklistId)
+  const item = checklist?.items.find((current) => current.id === itemId)
+  if (!checklist || !item) {
+    void loadChecklists()
+    return
+  }
+  const memberStatuses = [
+    ...item.memberStatuses.filter((current) => current.user.id !== memberStatus.user.id),
+    memberStatus,
+  ]
+  upsertChecklistItem(checklistId, { ...item, memberStatuses })
+}
+
+function applyPlanningRealtimeEvent(message: unknown) {
+  if (!message || typeof message !== 'object') return false
+  const event = message as {
+    eventType?: string
+    note?: Note
+    noteId?: string
+    checklist?: Checklist
+    checklistId?: string
+    item?: ChecklistItem
+    itemId?: string
+    memberStatus?: ChecklistMemberStatus
+  }
+  switch (event.eventType) {
+    case 'planning.note.upserted': {
+      if (!event.note) return false
+      const tag = tagForScope(event.note.scopeType, event.note.itineraryDayId)
+      if (!tag) return false
+      notes.value = { ...notes.value, [tag]: event.note }
+      if (activeMemoDay.value === tag) memoTextDisplay.value = event.note.content
+      return true
+    }
+    case 'planning.note.deleted': {
+      const entries = Object.entries(notes.value)
+      const tag = entries.find(([, note]) => note?.id === event.noteId)?.[0]
+      if (!tag) return false
+      notes.value = { ...notes.value, [tag]: null }
+      if (activeMemoDay.value === tag) memoTextDisplay.value = ''
+      return true
+    }
+    case 'planning.checklist.upserted':
+    case 'planning.checklist.items.reordered': {
+      if (!event.checklist) return false
+      upsertChecklist(event.checklist)
+      return true
+    }
+    case 'planning.checklist.deleted': {
+      if (!event.checklistId) return false
+      checklists.value = checklists.value.filter((checklist) => checklist.id !== event.checklistId)
+      return true
+    }
+    case 'planning.checklist.item.created':
+    case 'planning.checklist.item.updated': {
+      if (!event.checklistId || !event.item) return false
+      upsertChecklistItem(event.checklistId, event.item)
+      return true
+    }
+    case 'planning.checklist.item.deleted': {
+      if (!event.checklistId || !event.itemId) return false
+      const checklist = checklists.value.find((current) => current.id === event.checklistId)
+      if (!checklist) return false
+      upsertChecklist({
+        ...checklist,
+        items: checklist.items.filter((item) => item.id !== event.itemId),
+      })
+      return true
+    }
+    case 'planning.checklist.member_status.updated': {
+      if (!event.checklistId || !event.itemId || !event.memberStatus) return false
+      upsertChecklistMemberStatus(event.checklistId, event.itemId, event.memberStatus)
+      return true
+    }
+    default:
+      return false
+  }
+}
+
 function scheduleItineraryRefresh(event?: unknown) {
   if (event && !isTripRealtimeEvent(event)) return
   const eventVersion: number | null = event && typeof (event as TripRealtimeEvent).itineraryVersion === 'number'
@@ -2387,6 +2598,7 @@ function schedulePlanningRefresh() {
 }
 
 function receiveItineraryEvent(message: unknown) {
+  if (isDrawingPreviewRealtimeMessage(message)) return
   scheduleItineraryRefresh(message)
 }
 
@@ -2402,13 +2614,22 @@ function receiveChatEvent(message: unknown) {
 
 function receivePlanningEvent(message: unknown) {
   if (!isTripRealtimeEvent(message)) return
-  schedulePlanningRefresh()
+  if (!applyPlanningRealtimeEvent(message)) schedulePlanningRefresh()
   scheduleItineraryRefresh(message)
 }
 
 function receiveAiEvent(message: unknown) {
   if (!isTripRealtimeEvent(message)) return
-  scheduleConversationRefresh()
+  const aiChatMessage = extractAiMessage(message)
+  if (aiChatMessage) {
+    upsertAiMessage(aiChatMessage)
+    if (aiChatMessage.role === 'USER') {
+      addPendingAiAnswer(aiChatMessage.id, new Date(Date.parse(aiChatMessage.createdAt) + 1).toISOString())
+      return
+    }
+  } else {
+    scheduleConversationRefresh()
+  }
   scheduleItineraryRefresh(message)
 }
 
