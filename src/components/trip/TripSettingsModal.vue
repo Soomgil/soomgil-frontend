@@ -15,7 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   deleted: [tripId: string]
-  saved: [tripId: string]
+  saved: [tripId: string, settings: { startDate: string | null; endDate: string | null }]
 }>()
 
 const tripStore = useTripStore()
@@ -198,10 +198,13 @@ async function save() {
         : {}),
       startDate: effectiveStartDate,
       endDate: effectiveEndDate,
-      status: status.value,
+      ...(isOwner.value ? { status: status.value } : {}),
     })
 
-    emit('saved', props.trip.id)
+    emit('saved', props.trip.id, {
+      startDate: effectiveStartDate,
+      endDate: effectiveEndDate,
+    })
     emit('close')
   } catch {
     error.value = '여행 설정을 저장하지 못했습니다.'

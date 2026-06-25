@@ -319,7 +319,7 @@ describe('RoutePage itinerary integration', () => {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
-    await vi.waitFor(() => expect(wrapper.get('.ai-status').text()).not.toContain('불러오는 중'))
+    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
 
     const input = wrapper.get('#ai-chat-input')
     await input.setValue('일정을 요약해줘')
@@ -490,6 +490,79 @@ describe('RoutePage itinerary integration', () => {
 		})
 	})
 
+	it('드래그 임계값 전의 클릭 움직임은 일차·여행 카드·연결 그룹의 스크롤과 재정렬을 발생시키지 않는다', async () => {
+		vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+			callback(0)
+			return 1
+		})
+		vi.stubGlobal('cancelAnimationFrame', vi.fn())
+		holder.state.fetchItinerary.mockImplementationOnce(async () => {
+			holder.state.days.value = [{
+				id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
+				date: '2026-07-01', title: null, sortOrder: 0,
+				items: [
+					{
+						id: 'item-1', itineraryDayId: 'day-1', sortOrder: 0,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '첫 번째 장소',
+						address: null, lat: 36.35, lng: 127.38, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+					},
+					{
+						id: 'item-2', itineraryDayId: 'day-1', sortOrder: 1,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '두 번째 장소',
+						address: null, lat: 36.36, lng: 127.39, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+					},
+					{
+						id: 'item-3', itineraryDayId: 'day-1', sortOrder: 2,
+						itemType: 'CUSTOM_PLACE', place: null, placeName: '세 번째 장소',
+						address: null, lat: 36.37, lng: 127.4, thumbnailUrl: null, sourceStatus: 'AVAILABLE',
+					},
+				],
+			}]
+			holder.state.routes.value = [{
+				id: 'route-1',
+				originItineraryItemId: 'item-1',
+				destinationItineraryItemId: 'item-2',
+			}]
+		})
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		Object.defineProperty(itineraryEl, 'clientHeight', { configurable: true, value: 160 })
+		Object.defineProperty(itineraryEl, 'scrollHeight', { configurable: true, value: 600 })
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 160, width: 320, height: 160,
+			toJSON: () => ({}),
+		} as DOMRect)
+
+		const separator = wrapper.get('.day-separator')
+		const stops = wrapper.findAll('.stop')
+		;[separator.element, ...stops.map((stop) => stop.element)].forEach((element) => {
+			vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
+				x: 12, y: 136, top: 136, left: 12, right: 300, bottom: 176, width: 288, height: 40,
+				toJSON: () => ({}),
+			} as DOMRect)
+		})
+
+		const targets = [
+			{ handle: separator.find('.grip-icon').element, element: separator.element },
+			{ handle: stops[2].find('.stop-num').element, element: stops[2].element },
+			{ handle: stops[0].find('.stop-num').element, element: stops[0].element },
+		]
+
+		for (const target of targets) {
+			itineraryEl.scrollTop = 80
+			target.handle.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 156 }))
+			target.element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 158 }))
+			target.element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 158 }))
+			await nextTick()
+			expect(itineraryEl.scrollTop).toBe(80)
+		}
+
+		expect(holder.state.reorder).not.toHaveBeenCalled()
+	})
+
 	it('순서 저장이 stale snapshot으로 실패하면 최신 전체 일정으로 보강해 한 번 재시도한다', async () => {
 		const wrapper = mount(RoutePage, {
 			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
@@ -560,7 +633,7 @@ describe('RoutePage itinerary integration', () => {
 		expect(wrapper.text()).not.toContain('일정 순서를 저장하지 못해 최신 상태로 되돌렸습니다.')
 	})
 
-	it('전체 보기에서 일차 구분선을 드래그하면 해당 일차 블록을 함께 이동한다', async () => {
+	it('전체 보기에서 일차 구분선을 드래그해도 해당 일차 일정 카드는 함께 이동하지 않는다', async () => {
 		holder.state.fetchItinerary.mockImplementationOnce(async () => {
 			holder.state.days.value = [
 				{
@@ -629,8 +702,15 @@ describe('RoutePage itinerary integration', () => {
 		expect(holder.state.reorder).toHaveBeenCalledWith({
 			days: [
 				{ dayId: 'unscheduled', sortOrder: 0, itemOrders: [] },
-				{ dayId: 'day-2', sortOrder: 1, itemOrders: [{ itemId: 'item-2', sortOrder: 0 }] },
-				{ dayId: 'day-1', sortOrder: 2, itemOrders: [{ itemId: 'item-1', sortOrder: 0 }] },
+				{ dayId: 'day-2', sortOrder: 1, itemOrders: [] },
+				{
+					dayId: 'day-1',
+					sortOrder: 2,
+					itemOrders: [
+						{ itemId: 'item-1', sortOrder: 0 },
+						{ itemId: 'item-2', sortOrder: 1 },
+					],
+				},
 			],
 		})
 	})
@@ -842,6 +922,8 @@ describe('RoutePage itinerary integration', () => {
 
 		stops[2].find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 146 }))
 		stops[2].element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 80 }))
+		expect(stops[0].classes()).toContain('is-drag-over-top')
+		expect(stops[1].classes()).not.toContain('is-drag-over-top')
 		stops[2].element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 80 }))
 		await flushPromises()
 
@@ -1069,7 +1151,8 @@ describe('RoutePage itinerary integration', () => {
       destinationItineraryItemId: 'item-2',
       mode: 'WALKING',
       coordinates: [{ lng: 127.38, lat: 36.35 }, { lng: 127.39, lat: 36.36 }],
-      tidy: true,
+      radiuses: [50, 50],
+      tidy: false,
     })
     expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
       tab: 'BASIC',
@@ -1078,19 +1161,8 @@ describe('RoutePage itinerary integration', () => {
     }))
   })
 
-  it('Mapbox 상세 경로 좌표가 많아도 경로 매칭 요청은 100개 이하로 보낸다', async () => {
-    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'mapbox-token')
-    const directionsCoordinates = Array.from({ length: 150 }, (_, index) => [
-      127.38 + index / 10000,
-      36.35 + index / 10000,
-    ])
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        code: 'Ok',
-        routes: [{ geometry: { coordinates: directionsCoordinates } }],
-      }),
-    }))
+  it('경로 중간점을 많이 찍어도 백엔드 Map Matching 요청은 100개 이하 원본 trace로 보낸다', async () => {
+    vi.stubGlobal('fetch', vi.fn())
     holder.state.fetchItinerary.mockImplementationOnce(async () => {
       holder.state.days.value = [{
         id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
@@ -1139,17 +1211,21 @@ describe('RoutePage itinerary integration', () => {
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
     map.vm.$emit('selectPlace', undefined, undefined, 'item-1')
     await nextTick()
-    map.vm.$emit('routePoint', { lng: 127.385, lat: 36.355 })
+    for (let index = 0; index < 120; index += 1) {
+      map.vm.$emit('routePoint', { lng: 127.381 + index / 100000, lat: 36.351 + index / 100000 })
+    }
     await nextTick()
     map.vm.$emit('selectPlace', undefined, undefined, 'item-2')
     await flushPromises()
 
-    expect(String((fetch as any).mock.calls[0][0])).toContain('/127.38,36.35;127.385,36.355;127.39,36.36')
+    expect(fetch).not.toHaveBeenCalled()
     const request = holder.state.mapMatchRoute.mock.calls[0][0]
     expect(request.coordinates).toHaveLength(100)
     expect(request.coordinates[0]).toEqual({ lng: 127.38, lat: 36.35 })
-    expect(request.coordinates.at(-1).lng).toBeCloseTo(127.3949)
-    expect(request.coordinates.at(-1).lat).toBeCloseTo(36.3649)
+    expect(request.coordinates.at(-1)).toEqual({ lng: 127.39, lat: 36.36 })
+    expect(request.radiuses).toHaveLength(100)
+    expect(new Set(request.radiuses)).toEqual(new Set([50]))
+    expect(request.tidy).toBe(false)
   })
 
   it('경로 펜에서 지도 위에 찍은 중간점을 포함해 두 일정 장소를 연결한다', async () => {
@@ -1221,7 +1297,8 @@ describe('RoutePage itinerary integration', () => {
         waypoint,
         { lng: 127.39, lat: 36.36 },
       ],
-      tidy: true,
+      radiuses: [50, 50, 50],
+      tidy: false,
     })
     expect(wrapper.getComponent(MapboxItineraryMap).props('routeWaypoints')).toEqual([])
     expect(holder.state.createDrawing).not.toHaveBeenCalled()
@@ -1324,7 +1401,7 @@ describe('RoutePage itinerary integration', () => {
     expect(map.props('drawings')).toEqual([])
   })
 
-  it('2일차에 연결된 여행 카드 실선은 2일차 색상 클래스를 사용한다', async () => {
+  it('2일차에 연결된 여행 카드 실선은 2일차 색상 클래스를 사용하고 단일 선 요소로 표시한다', async () => {
     holder.state.fetchItinerary.mockImplementationOnce(async () => {
       holder.state.days.value = [
         {
@@ -1373,6 +1450,7 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
 
     expect(wrapper.get('.route-connector').classes()).toContain('day-color-2')
+    expect(wrapper.findAll('.route-connector-line')).toHaveLength(1)
   })
 
   it('새로고침 후 기존 연결 경로로 주변 관광지를 다시 불러온다', async () => {
@@ -1614,13 +1692,6 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     await wrapper.get('[data-testid="trip-start-date"]').setValue('2026-07-01')
     await wrapper.get('[data-testid="trip-end-date"]').setValue('2026-07-02')
-    holder.tripStore.fetchTrip.mockImplementationOnce(async () => {
-      holder.tripStore.currentTrip = {
-        ...holder.tripStore.currentTrip,
-        startDate: '2026-07-01',
-        endDate: '2026-07-02',
-      }
-    })
     await wrapper.get('.trip-create-form').trigger('submit')
     await flushPromises()
 

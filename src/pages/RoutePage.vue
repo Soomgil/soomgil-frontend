@@ -52,12 +52,6 @@ interface ItineraryMapNearbyPlace {
   lng: number
   image?: string | null
 }
-interface MapboxDirectionsResponse {
-  code?: string
-  message?: string
-  routes?: Array<{ geometry?: { coordinates?: unknown } }>
-}
-
 interface CustomMapboxDirectionsResponse {
   routes: {
     geometry: {
@@ -295,9 +289,15 @@ function routeStopImage(item: RouteStop) {
   return detailed ? placeDisplayImage(detailed) : ''
 }
 
+const activeDay = ref(0)
+const activePlan = computed(() => dayPlans.value.find((day) => day.day === activeDay.value) ?? null)
+const visibleMapDayPlans = computed(() => {
+  if (activeDay.value === 0) return dayPlans.value
+  return activePlan.value ? [activePlan.value] : []
+})
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
-  return dayPlans.value.flatMap((day) => day.items.flatMap((item) => {
+  return visibleMapDayPlans.value.flatMap((day) => day.items.flatMap((item) => {
     const currentIndex = index++
     if (item.lat == null || item.lng == null) return []
     return [{
@@ -315,6 +315,15 @@ const mapStops = computed<ItineraryMapStop[]>(() => {
         : undefined,
     }]
   }))
+})
+const visibleMapStopIds = computed(() => new Set(visibleMapDayPlans.value.flatMap((day) => day.items.map((item) => item.id))))
+const visibleMapRoutes = computed(() => {
+  if (activeDay.value === 0) return itinerary.routes.value
+  const stopIds = visibleMapStopIds.value
+  return itinerary.routes.value.filter((route) => (
+    stopIds.has(route.originItineraryItemId)
+    && stopIds.has(route.destinationItineraryItemId)
+  ))
 })
 const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
   if (!nearbyOn.value) return []
@@ -351,8 +360,6 @@ const viewportBbox = computed(() => {
   return `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
 })
 
-const activeDay = ref(0)
-const activePlan = computed(() => dayPlans.value.find((day) => day.day === activeDay.value) ?? null)
 const itineraryLoadError = ref(false)
 const itineraryActionsDisabled = computed(() => itinerary.loading.value || itinerary.mutating.value || itineraryLoadError.value)
 const dayColors = ['day-color-1', 'day-color-2', 'day-color-3', 'day-color-4', 'day-color-5']
@@ -389,7 +396,8 @@ async function loadInitialRouteData() {
 
   try {
     await nextTick()
-    await syncScheduledDaysWithDateRange()
+    const didSyncDays = await syncScheduledDaysWithDateRange()
+    if (didSyncDays) await refreshTripRoomAfterDateSync()
   } catch {
     itineraryActionError.value = '여행 기간에 맞춰 일차를 동기화하지 못했습니다.'
   }
@@ -540,7 +548,9 @@ function handleKeydown(e: KeyboardEvent) {
 const routeLinks = ref<RouteLink[]>([])
 const pendingRouteFrom = ref<string | null>(null)
 const routeWaypoints = ref<LngLat[]>([])
-const ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS = 23
+const ROUTE_MATCHING_MAX_COORDINATES = 100
+const ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS = ROUTE_MATCHING_MAX_COORDINATES - 2
+const ROUTE_MATCHING_RADIUS_METERS = 50
 
 function clearPendingRouteSelection() {
   pendingRouteFrom.value = null
@@ -587,9 +597,9 @@ async function removeRouteLinkBetween(id1: string, id2: string) {
 	if (!link || itinerary.mutating.value) return
 	pushUndoState('route-links')
 	try {
-		await itinerary.deleteRoute(link.id)
+    await itinerary.deleteRoute(link.id)
     itinerary.routes.value = itinerary.routes.value.filter((route) => route.id !== link.id)
-    if (!routeBbox(itinerary.routes.value as Array<{ geometry?: Record<string, unknown> }>)) {
+    if (!routeBbox(visibleMapRoutes.value as Array<{ geometry?: Record<string, unknown> }>)) {
       nearbyOn.value = false
       clearRouteNearbyPlaces()
     }
@@ -651,7 +661,7 @@ function upsertLocalRoute(route: { id: string }) {
 }
 
 async function loadRouteNearbyPlaces() {
-  const routes = itinerary.routes.value as Array<{ geometry?: Record<string, unknown> }>
+  const routes = visibleMapRoutes.value as Array<{ geometry?: Record<string, unknown> }>
   const bbox = routeBbox(routes)
   if (!bbox) {
     clearRouteNearbyPlaces('경로를 먼저 생성해 주세요.')
@@ -714,47 +724,22 @@ async function handleRoutePenClick(item: RouteStop) {
     const originCoordinate = { lng: origin.lng, lat: origin.lat }
     const destinationCoordinate = { lng: item.lng, lat: item.lat }
     const waypointCoordinates = limitRouteWaypoints(routeWaypoints.value)
-    const routeStops = [originCoordinate, ...waypointCoordinates, destinationCoordinate]
+    const routeStops = dedupeRouteCoordinates([originCoordinate, ...waypointCoordinates, destinationCoordinate])
     const destinationChainIds = linkedChainIdsInCurrentOrder(item.id)
-    let routeCoordinates = routeStops
-    const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim()
-    if (accessToken) {
-      const waypointText = routeStops.map(coordinate => `${coordinate.lng},${coordinate.lat}`).join(';')
-      const url = new URL(`https://api.mapbox.com/directions/v5/mapbox/walking/${waypointText}`)
-      url.searchParams.set('geometries', 'geojson')
-      url.searchParams.set('overview', 'full')
-      url.searchParams.set('access_token', accessToken)
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('Mapbox Directions request failed.')
-      const data = await response.json() as MapboxDirectionsResponse
-      const directionsCoordinates = data.routes?.[0]?.geometry?.coordinates
-      if (data.code && data.code !== 'Ok') throw new Error(data.message || 'Mapbox Directions failed.')
-      if (Array.isArray(directionsCoordinates) && directionsCoordinates.length >= 2) {
-        const parsedCoordinates = directionsCoordinates.flatMap((coordinate) => (
-          Array.isArray(coordinate) && typeof coordinate[0] === 'number' && typeof coordinate[1] === 'number'
-            ? [{ lng: coordinate[0], lat: coordinate[1] }]
-            : []
-        ))
-        routeCoordinates = dedupeRouteCoordinates([originCoordinate, ...parsedCoordinates, destinationCoordinate])
-        if (routeCoordinates.length > 100) {
-          const sampled: typeof routeCoordinates = []
-          const total = routeCoordinates.length
-          sampled.push(routeCoordinates[0])
-          for (let i = 1; i < 99; i++) {
-            const idx = Math.floor((i * (total - 1)) / 99)
-            sampled.push(routeCoordinates[idx])
-          }
-          sampled.push(routeCoordinates[total - 1])
-          routeCoordinates = sampled
-        }
-      }
+    const routeCoordinates = routeStops.length > ROUTE_MATCHING_MAX_COORDINATES
+      ? sampleRouteCoordinateCount(routeStops, ROUTE_MATCHING_MAX_COORDINATES)
+      : routeStops
+    if (routeCoordinates.length < 2) {
+      showToast('서로 다른 좌표를 가진 두 장소만 경로로 연결할 수 있습니다')
+      return
     }
     const newRoute = await itinerary.mapMatchRoute({
       originItineraryItemId: origin.id,
       destinationItineraryItemId: item.id,
       mode: 'WALKING',
       coordinates: routeCoordinates,
-      tidy: true,
+      radiuses: routeCoordinates.map(() => ROUTE_MATCHING_RADIUS_METERS),
+      tidy: false,
     })
     if (newRoute) {
       upsertLocalRoute(newRoute)
@@ -773,10 +758,19 @@ async function handleRoutePenClick(item: RouteStop) {
 }
 
 function limitRouteWaypoints(coordinates: LngLat[]) {
-  if (coordinates.length <= ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS) return coordinates
+  if (coordinates.length <= ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS) return coordinates
   const lastIndex = coordinates.length - 1
-  return Array.from({ length: ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS }, (_, index) => {
-    const coordinateIndex = Math.round((index * lastIndex) / (ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS - 1))
+  return Array.from({ length: ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS }, (_, index) => {
+    const coordinateIndex = Math.round((index * lastIndex) / (ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS - 1))
+    return coordinates[coordinateIndex]
+  })
+}
+
+function sampleRouteCoordinateCount(coordinates: LngLat[], maxPoints: number) {
+  if (coordinates.length <= maxPoints) return coordinates
+  const lastIndex = coordinates.length - 1
+  return Array.from({ length: maxPoints }, (_, index) => {
+    const coordinateIndex = Math.round((index * lastIndex) / (maxPoints - 1))
     return coordinates[coordinateIndex]
   })
 }
@@ -787,8 +781,8 @@ function addRouteWaypoint(coordinate: LngLat) {
     showToast('출발 관광지를 먼저 선택한 뒤 중간 지점을 찍어주세요')
     return
   }
-  if (routeWaypoints.value.length >= ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS) {
-    showToast(`중간 지점은 최대 ${ROUTE_WAYPOINT_MAX_INTERMEDIATE_POINTS}개까지 찍을 수 있습니다.`)
+  if (routeWaypoints.value.length >= ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS) {
+    showToast(`중간 지점은 최대 ${ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS}개까지 찍을 수 있습니다.`)
     return
   }
   routeWaypoints.value = [...routeWaypoints.value, coordinate]
@@ -997,16 +991,32 @@ async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
   }
 }
 
-function handleStopClick(item: RouteStop) {
+function restoreItineraryScroll(scrollTop: number) {
+  const restore = () => {
+    if (itineraryRef.value) itineraryRef.value.scrollTop = scrollTop
+  }
+  restore()
+  nextTick(restore)
+  requestAnimationFrame(() => {
+    restore()
+    requestAnimationFrame(restore)
+  })
+}
+
+async function handleStopClick(item: RouteStop) {
+  const scrollTop = itineraryRef.value?.scrollTop ?? 0
   if (suppressNextStopClick.value) {
     suppressNextStopClick.value = false
+    restoreItineraryScroll(scrollTop)
     return
   }
   if (activeTool.value === 'route-pen') {
-		void handleRoutePenClick(item)
+		await handleRoutePenClick(item)
+    restoreItineraryScroll(scrollTop)
     return
   }
-  void selectPlace(item.placeExternalId || undefined, (item.placeProvider || 'KTO') as PlaceProvider, item.id)
+  await selectPlace(item.placeExternalId || undefined, (item.placeProvider || 'KTO') as PlaceProvider, item.id)
+  restoreItineraryScroll(scrollTop)
 }
 
 /* ── Drag & Drop (data-driven) ── */
@@ -1099,13 +1109,7 @@ function movingFlatNodes(source: DragSource, flatNodes: FlatItineraryNode[], pla
   if (sourceNodeIndex < 0) return []
 
   if (source.type === 'separator') {
-    const nextSeparatorIndex = flatNodes.findIndex((node, index) => (
-      index > sourceNodeIndex && node.type === 'separator'
-    ))
-    return flatNodes.slice(
-      sourceNodeIndex,
-      nextSeparatorIndex === -1 ? flatNodes.length : nextSeparatorIndex,
-    )
+    return [flatNodes[sourceNodeIndex]]
   }
 
   if (!sourceItem) return []
@@ -1137,6 +1141,45 @@ function normalizeItemInsertIndex(items: RouteStop[], targetItemId: string | und
 
   const firstLinkedIndex = items.findIndex((item) => linkedIds.has(item.id))
   return firstLinkedIndex >= 0 ? firstLinkedIndex : items.findIndex((item) => item.id === targetItemId)
+}
+
+function normalizeAllDayTargetIndex(source: DragSource, targetIdx: number, plans: DayPlan[] = dayPlans.value) {
+  const flatNodes = flattenDayPlans(plans)
+  const movingNodes = movingFlatNodes(source, flatNodes, plans)
+  if (movingNodes.length === 0) return targetIdx
+  const remainingNodes = flatNodes.filter((node) => (
+    !movingNodes.some((movingNode) => isSameFlatNode(movingNode, node))
+  ))
+  const clampedTargetIdx = Math.max(0, Math.min(targetIdx, remainingNodes.length))
+  return normalizeFlatInsertIndex(remainingNodes, clampedTargetIdx, plans)
+}
+
+function normalizeSingleDayTargetIndex(source: DragSource, targetIdx: number, plans: DayPlan[] = dayPlans.value) {
+  if (source.type !== 'stop') return targetIdx
+  const plan = plans[source.dayIdx]
+  const moved = plan?.items[source.itemIdx]
+  if (!plan || !moved) return targetIdx
+
+  const movingIds = new Set(linkedChainIdsInCurrentOrder(moved.id, [plan]))
+  const remainingItems = plan.items.filter((item) => !movingIds.has(item.id))
+  const visibleNodes: FlatItineraryNode[] = [
+    { type: 'separator', dayId: plan.id },
+    ...remainingItems.map((item) => ({ type: 'stop' as const, dayId: plan.id, itemId: item.id })),
+  ]
+  const clampedTargetIdx = Math.max(0, Math.min(targetIdx, visibleNodes.length))
+  const targetNode = visibleNodes[clampedTargetIdx] ?? null
+  if (targetNode?.type === 'separator') return 0
+  if (targetNode?.type === 'stop' && targetNode.itemId) {
+    const targetItemIndex = normalizeItemInsertIndex(remainingItems, targetNode.itemId)
+    return targetItemIndex >= 0 ? targetItemIndex + 1 : clampedTargetIdx
+  }
+  return visibleNodes.length
+}
+
+function normalizeDragTargetIndex(source: DragSource, targetIdx: number) {
+  return activeDay.value === 0
+    ? normalizeAllDayTargetIndex(source, targetIdx)
+    : normalizeSingleDayTargetIndex(source, targetIdx)
 }
 
 function moveItemGroupAfter(anchorItemId: string, movingItemIds: string[]) {
@@ -1186,19 +1229,17 @@ function onPointerDown(e: PointerEvent) {
   const containerEl = itineraryRef.value
   if (!containerEl) return
   const dragContainer: HTMLElement = containerEl
-
-  if (typeof stop.setPointerCapture === 'function') {
-    stop.setPointerCapture(e.pointerId)
-  }
+  const initialScrollTop = dragContainer.scrollTop
 
   // Identify drag source from data attributes
   const isDraggingSeparator = stop.classList.contains('day-separator')
   let source: DragSource | null = null
 
   if (isDraggingSeparator) {
-    const dayNum = parseInt(stop.getAttribute('data-day') || '1')
-    const dayIdx = dayPlans.value.findIndex(d => d.day === dayNum)
-    source = { type: 'separator', dayIdx: dayIdx === -1 ? 0 : dayIdx, itemIdx: -1, dayNum }
+    const dayId = stop.getAttribute('data-day-id')
+    const dayIdx = dayPlans.value.findIndex(d => d.id === dayId)
+    if (dayIdx < 0) return
+    source = { type: 'separator', dayIdx, itemIdx: -1, dayNum: dayPlans.value[dayIdx].day }
   } else {
     const stepId = stop.getAttribute('data-step-id')
     for (let di = 0; di < dayPlans.value.length; di++) {
@@ -1218,26 +1259,15 @@ function onPointerDown(e: PointerEvent) {
   const containerRect = dragContainer.getBoundingClientRect()
   const stopRect = stop.getBoundingClientRect()
   const offsetY = e.clientY - stopRect.top
-  const originalY = stopRect.top - containerRect.top
+  void containerRect
+  let latestClientY = e.clientY
+  let autoScrollFrame: number | null = null
   let movedDuringDrag = false
-
-  stop.classList.add('is-dragging')
-  stop.style.zIndex = '100'
-  stop.style.width = stopRect.width + 'px'
-  stop.style.position = 'relative'
-  stop.style.top = '0px'
-
-  if (isDraggingSeparator) {
-    dragContainer.classList.add('dragging-separator')
-  } else {
-    dragContainer.classList.add('dragging-stop')
-  }
+  let dragStarted = false
 
   const chainIds = source.type === 'stop' && sourceItem
     ? linkedChainIdsInCurrentOrder(sourceItem.id)
-    : source.type === 'separator'
-      ? sourceDay?.items.map((item) => item.id) ?? []
-      : []
+    : []
   const chainSet = new Set(chainIds)
 
   const dragElements: HTMLElement[] = []
@@ -1247,10 +1277,6 @@ function onPointerDown(e: PointerEvent) {
       const stepId = el.getAttribute('data-step-id')
       if (stepId && chainSet.has(stepId) && stepId !== sourceItem?.id) {
         const htmlEl = el as HTMLElement
-        htmlEl.classList.add('is-chain-dragging')
-        htmlEl.style.zIndex = '100'
-        htmlEl.style.position = 'relative'
-        htmlEl.style.top = '0px'
         dragElements.push(htmlEl)
       }
     })
@@ -1261,10 +1287,6 @@ function onPointerDown(e: PointerEvent) {
       const toId = el.getAttribute('data-to-id')
       if (fromId && toId && chainSet.has(fromId) && chainSet.has(toId)) {
         const htmlEl = el as HTMLElement
-        htmlEl.classList.add('is-chain-dragging')
-        htmlEl.style.zIndex = '100'
-        htmlEl.style.position = 'relative'
-        htmlEl.style.top = '0px'
         dragElements.push(htmlEl)
       }
     })
@@ -1272,6 +1294,7 @@ function onPointerDown(e: PointerEvent) {
 
   const allItems = Array.from(dragContainer.querySelectorAll('.stop, .day-separator'))
     .filter((itemEl) => {
+      if (itemEl === stop) return false
       if (itemEl.classList.contains('is-dragging')) return false
       if (source!.type === 'stop' || source!.type === 'separator') {
         const stepId = itemEl.getAttribute('data-step-id')
@@ -1284,37 +1307,128 @@ function onPointerDown(e: PointerEvent) {
       return true
     })
 
-  function onPointerMove(ev: PointerEvent) {
-    let absoluteY = ev.clientY - containerRect.top - offsetY
+  function startDragVisualState() {
+    if (dragStarted) return
+    dragStarted = true
+    e.preventDefault()
+    if (typeof stop.setPointerCapture === 'function') {
+      stop.setPointerCapture(e.pointerId)
+    }
+    stop.classList.add('is-dragging')
+    stop.style.zIndex = '120'
+    stop.style.width = stopRect.width + 'px'
+    stop.style.position = 'relative'
+    stop.style.top = '0px'
+
+    if (isDraggingSeparator) {
+      dragContainer.classList.add('dragging-separator')
+    } else {
+      dragContainer.classList.add('dragging-stop')
+    }
+
+    dragElements.forEach((el) => {
+      el.classList.add('is-chain-dragging')
+      el.style.zIndex = el.classList.contains('route-connector') ? '80' : '120'
+      el.style.position = 'relative'
+      el.style.top = '0px'
+    })
+  }
+
+  function cleanupDragState() {
+    stop.classList.remove('is-dragging')
+    stop.style.zIndex = ''
+    stop.style.width = ''
+    stop.style.position = ''
+    stop.style.top = ''
+
+    dragElements.forEach((el) => {
+      el.classList.remove('is-chain-dragging')
+      el.style.zIndex = ''
+      el.style.position = ''
+      el.style.top = ''
+    })
+
+    dragContainer.classList.remove('dragging-separator', 'dragging-stop')
+    dragContainer.querySelectorAll('.stop, .day-separator').forEach((item) => {
+      item.classList.remove('is-drag-over', 'is-drag-over-separator', 'is-drag-over-top', 'is-drag-over-bottom', 'is-chain-dragging')
+    })
+  }
+
+  function applyDragPosition(clientY: number) {
+    let deltaY = clientY - e.clientY + (dragContainer.scrollTop - initialScrollTop)
     const trashZone = document.getElementById('trash-drop-zone')
     const trashHeight = trashZone ? trashZone.offsetHeight : 80
-    const maxTop = containerRect.height - stopRect.height + trashHeight + 20
-    absoluteY = Math.max(0, Math.min(absoluteY, maxTop))
-    const deltaY = absoluteY - originalY
+    const minTop = -stopRect.top + dragContainer.getBoundingClientRect().top
+    const maxTop = dragContainer.scrollHeight - stopRect.height + trashHeight + 20 - initialScrollTop
+    deltaY = Math.max(minTop, Math.min(deltaY, maxTop))
     stop.style.top = deltaY + 'px'
 
     // Sync all chain elements top position
     dragElements.forEach((el) => {
       el.style.top = deltaY + 'px'
     })
+  }
 
-    const dx = ev.clientX - e.clientX
-    const dy = ev.clientY - e.clientY
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) movedDuringDrag = true
-    if (Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 20) {
+  function updateAutoScroll(clientY: number) {
+    const currentContainerRect = dragContainer.getBoundingClientRect()
+    const edgeSize = Math.min(96, Math.max(48, currentContainerRect.height * 0.18))
+    const distanceToBottom = currentContainerRect.bottom - clientY
+    const distanceToTop = clientY - currentContainerRect.top
+    const maxScrollTop = dragContainer.scrollHeight - dragContainer.clientHeight
+    let scrollDelta = 0
+
+    if (distanceToBottom < edgeSize && dragContainer.scrollTop < maxScrollTop) {
+      scrollDelta = Math.ceil(((edgeSize - distanceToBottom) / edgeSize) * 18)
+    } else if (distanceToTop < edgeSize && dragContainer.scrollTop > 0) {
+      scrollDelta = -Math.ceil(((edgeSize - distanceToTop) / edgeSize) * 18)
+    }
+
+    if (scrollDelta === 0) {
+      if (autoScrollFrame !== null) {
+        cancelAnimationFrame(autoScrollFrame)
+        autoScrollFrame = null
+      }
       return
     }
 
+    if (autoScrollFrame !== null) return
+    const step = () => {
+      const before = dragContainer.scrollTop
+      dragContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, dragContainer.scrollTop + scrollDelta))
+      if (dragContainer.scrollTop !== before) applyDragPosition(latestClientY)
+      autoScrollFrame = null
+      updateAutoScroll(latestClientY)
+    }
+    autoScrollFrame = requestAnimationFrame(step)
+  }
+
+  function onPointerMove(ev: PointerEvent) {
+    latestClientY = ev.clientY
+
+    const dx = ev.clientX - e.clientX
+    const dy = ev.clientY - e.clientY
+    if (Math.abs(dx) <= 4 && Math.abs(dy) <= 4) return
+    if (Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 20) {
+      return
+    }
+    startDragVisualState()
+    ev.preventDefault()
+    movedDuringDrag = true
+    applyDragPosition(ev.clientY)
+    updateAutoScroll(ev.clientY)
+
+    const trashZone = document.getElementById('trash-drop-zone')
     const dragCenter = ev.clientY - offsetY + stopRect.height / 2
-    let targetIdx = allItems.length
+    let rawTargetIdx = allItems.length
     for (let i = 0; i < allItems.length; i++) {
       const itemRect = (allItems[i] as HTMLElement).getBoundingClientRect()
       const itemCenter = itemRect.top + itemRect.height / 2
       if (dragCenter < itemCenter) {
-        targetIdx = i
+        rawTargetIdx = i
         break
       }
     }
+    const targetIdx = normalizeDragTargetIndex(source!, rawTargetIdx)
 
     if (trashZone) {
       const trashRect = trashZone.getBoundingClientRect()
@@ -1338,40 +1452,43 @@ function onPointerDown(e: PointerEvent) {
   }
 
   async function onPointerUp(ev: PointerEvent) {
+    if (dragStarted) ev.preventDefault()
+    if (autoScrollFrame !== null) {
+      cancelAnimationFrame(autoScrollFrame)
+      autoScrollFrame = null
+    }
     stop.removeEventListener('pointermove', onPointerMove)
     stop.removeEventListener('pointerup', onPointerUp)
+    if (dragStarted && typeof stop.releasePointerCapture === 'function' && stop.hasPointerCapture?.(e.pointerId)) {
+      stop.releasePointerCapture(e.pointerId)
+    }
     if (movedDuringDrag) {
       suppressNextStopClick.value = true
       window.setTimeout(() => {
         suppressNextStopClick.value = false
       }, 0)
+    } else {
+      cleanupDragState()
+      restoreItineraryScroll(initialScrollTop)
+      return
     }
 
     const dragCenter = ev.clientY - offsetY + stopRect.height / 2
-    let targetIdx = allItems.length
+    let rawTargetIdx = allItems.length
     for (let i = 0; i < allItems.length; i++) {
       const itemRect = (allItems[i] as HTMLElement).getBoundingClientRect()
       const itemCenter = itemRect.top + itemRect.height / 2
       if (dragCenter < itemCenter) {
-        targetIdx = i
+        rawTargetIdx = i
         break
       }
     }
+    const targetIdx = normalizeDragTargetIndex(source!, rawTargetIdx)
 
     const trashZone = document.getElementById('trash-drop-zone')
     if (trashZone && trashZone.classList.contains('is-drag-over-trash')) {
       trashZone.classList.remove('is-drag-over-trash')
-      stop.classList.remove('is-dragging')
-      stop.style.cssText = ''
-      dragContainer.classList.remove('dragging-separator', 'dragging-stop')
-      allItems.forEach((item) => item.classList.remove('is-drag-over-top', 'is-drag-over-bottom'))
-
-      dragElements.forEach((el) => {
-        el.classList.remove('is-chain-dragging')
-        el.style.zIndex = ''
-        el.style.position = ''
-        el.style.top = ''
-      })
+      cleanupDragState()
 
       if (source!.type === 'separator') {
         const day = dayPlans.value[source!.dayIdx]
@@ -1384,23 +1501,7 @@ function onPointerDown(e: PointerEvent) {
     }
 
     // Reset visual state (no DOM reorder — let Vue handle it)
-    stop.classList.remove('is-dragging')
-    stop.style.zIndex = ''
-    stop.style.width = ''
-    stop.style.position = ''
-    stop.style.top = ''
-
-    dragElements.forEach((el) => {
-      el.classList.remove('is-chain-dragging')
-      el.style.zIndex = ''
-      el.style.position = ''
-      el.style.top = ''
-    })
-
-    dragContainer.classList.remove('dragging-separator', 'dragging-stop')
-    dragContainer.querySelectorAll('.stop, .day-separator').forEach((item) => {
-      item.classList.remove('is-drag-over', 'is-drag-over-separator', 'is-drag-over-top', 'is-drag-over-bottom', 'is-chain-dragging')
-    })
+    cleanupDragState()
 
     // Update data model directly
     const didReorder = activeDay.value === 0
@@ -1408,8 +1509,11 @@ function onPointerDown(e: PointerEvent) {
       : reorderSingleDay(source!, targetIdx)
     if (didReorder) await persistItineraryOrder()
 
+    await nextTick()
+    restoreItineraryScroll(initialScrollTop)
     nextTick(() => {
       initDragDrop()
+      restoreItineraryScroll(initialScrollTop)
     })
   }
 
@@ -1682,6 +1786,12 @@ function dropNativeStop(targetDayId: string, targetItemId?: string) {
 
 /* activeDay 변경 시 드래그 재초기화 + 지도 다시 그리기 */
 watch(activeDay, () => {
+  selectedRecommendationMapPlace.value = null
+  if (visibleMapRoutes.value.length > 0) {
+    nearbyOn.value = true
+  } else if (nearbyOn.value) {
+    clearRouteNearbyPlaces('경로를 먼저 생성해 주세요.')
+  }
   nextTick(() => {
     initDragDrop()
   })
@@ -1920,6 +2030,34 @@ const currentTodos = computed(() => (activeChecklist.value?.items ?? []).map((it
 const completedCount = computed(() => currentTodos.value.filter(t => t.done).length)
 const totalCount = computed(() => currentTodos.value.length)
 const progressPercent = computed(() => totalCount.value === 0 ? 0 : Math.round((completedCount.value / totalCount.value) * 100))
+const routeUtilityPanelMeta = computed(() => {
+  if (activeRoutePanel.value === 'chat') {
+    return {
+      icon: 'forum',
+      title: '여행방 채팅',
+      status: conversationLoading.value ? '불러오는 중...' : `${trip.value.members.length}명 참여 중`,
+    }
+  }
+  if (activeRoutePanel.value === 'memo') {
+    return {
+      icon: 'sticky_note_2',
+      title: '여행 메모',
+      status: memoStatus.value || (memoLoading.value ? '불러오는 중...' : '백엔드 연결됨'),
+    }
+  }
+  if (activeRoutePanel.value === 'todo') {
+    return {
+      icon: 'playlist_add_check',
+      title: '체크리스트',
+      status: `${completedCount.value}/${totalCount.value} 완료 (${progressPercent.value}%)`,
+    }
+  }
+  return {
+    icon: 'auto_awesome',
+    title: '숨길 AI 가이드',
+    status: conversationLoading.value ? '불러오는 중...' : (aiSessionStatus.value || '백엔드 연결됨'),
+  }
+})
 
 async function loadChecklists() {
   if (!tripId) return
@@ -1988,10 +2126,10 @@ async function deleteTodo(id: string) {
 }
 
 /* ── Map tools ── */
-const routeState = ref<'route' | 'dashed' | 'hidden'>('route')
+const routeState = ref<'route' | 'hidden'>('route')
 const cardState = ref<'full' | 'min' | 'hidden'>('full')
 const nearbyOn = ref(false)
-watch([nearbyOn, () => itinerary.routes.value], async ([isOn]) => {
+watch([nearbyOn, visibleMapRoutes], async ([isOn]) => {
   if (isOn) {
     await loadRouteNearbyPlaces()
   } else if (!isOn) {
@@ -2185,7 +2323,7 @@ function retryDrawingSimplification() {
 }
 
 function toggleRouteState() {
-  const states: Array<'route' | 'dashed' | 'hidden'> = ['route', 'dashed', 'hidden']
+  const states: Array<'route' | 'hidden'> = ['route', 'hidden']
   routeState.value = states[(states.indexOf(routeState.value) + 1) % states.length]
 }
 function toggleCardState() {
@@ -2286,15 +2424,28 @@ async function removeItineraryItem(item: RouteStop) {
 /* ── Modals ── */
 const isSettingsModalOpen = ref(false)
 const settingsDefaultTab = ref<'tab-settings' | 'tab-members'>('tab-settings')
+const daySyncNoticeVisible = ref(false)
 
 function openTripManagement(tab: 'tab-settings' | 'tab-members' = 'tab-settings') {
   settingsDefaultTab.value = tab
   isSettingsModalOpen.value = true
 }
 
-async function handleSettingsSaved() {
-  await loadTrip()
-  await syncScheduledDaysWithDateRange()
+interface TripDateSettings {
+  startDate: string | null
+  endDate: string | null
+}
+
+async function handleSettingsSaved(_tripId: string, settings?: TripDateSettings) {
+  itineraryActionError.value = ''
+  try {
+    const didSyncDays = await syncScheduledDaysWithDateRange(true, settings)
+    await refreshTripRoomAfterDateSync(true)
+    if (didSyncDays) daySyncNoticeVisible.value = true
+  } catch {
+    itineraryActionError.value = '여행 기간과 여행방 설정을 동기화하지 못했습니다.'
+    showToast('여행 기간과 여행방 설정을 동기화하지 못했습니다.', 'error')
+  }
 }
 
 const sidebarTheme = ref('theme-violet')
@@ -2319,18 +2470,23 @@ function addDays(date: Date, days: number) {
   return next
 }
 
-async function syncScheduledDaysWithDateRange() {
+async function syncScheduledDaysWithDateRange(forceExistingDayUpdate = false, settings?: TripDateSettings) {
   const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
-  const startStr = detail?.startDate?.slice(0, 10)
-  const endStr = detail?.endDate?.slice(0, 10) || startStr
-  if (!startStr || !endStr) return
+  const startStr = settings
+    ? settings.startDate?.slice(0, 10)
+    : detail?.startDate?.slice(0, 10)
+  const endStr = settings
+    ? (settings.endDate?.slice(0, 10) || startStr)
+    : (detail?.endDate?.slice(0, 10) || startStr)
+  if (!startStr || !endStr) return false
   const start = parseDateInput(startStr)
   const end = parseDateInput(endStr)
-  if (!start && !end) return
+  if (!start && !end) return false
   if (!start || !end || end < start) {
     throw new Error('INVALID_DATE_RANGE')
   }
 
+  let didMutateDays = false
   const targetCount = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
   const scheduledDays = dayPlans.value
     .filter((day) => day.groupType === 'DAY')
@@ -2338,9 +2494,11 @@ async function syncScheduledDaysWithDateRange() {
 
   let unscheduledDay = itinerary.unscheduledDay.value
   const extraDays = scheduledDays.slice(targetCount)
+  const shouldUpdateExistingDays = forceExistingDayUpdate || scheduledDays.length !== targetCount || extraDays.length > 0
   const extraItems = extraDays.flatMap((day) => day.items)
   if (extraItems.length > 0 && !unscheduledDay) {
     unscheduledDay = await itinerary.ensureUnscheduledDay()
+    didMutateDays = true
   }
 
   if (unscheduledDay && extraItems.length > 0) {
@@ -2351,16 +2509,23 @@ async function syncScheduledDaysWithDateRange() {
         sortOrder,
       })
       sortOrder += 1
+      didMutateDays = true
     }
   }
 
   for (let index = 0; index < Math.min(targetCount, scheduledDays.length); index += 1) {
     const day = scheduledDays[index]
-    await itinerary.updateDay(day.id, {
-      dayNumber: index + 1,
-      date: formatDateForInput(addDays(start, index)),
-      sortOrder: index + 1,
-    })
+    const nextDate = formatDateForInput(addDays(start, index))
+    const nextDayNumber = index + 1
+    const nextSortOrder = index + 1
+    if (shouldUpdateExistingDays || day.day !== nextDayNumber || day.date !== nextDate) {
+      await itinerary.updateDay(day.id, {
+        dayNumber: nextDayNumber,
+        date: nextDate,
+        sortOrder: nextSortOrder,
+      })
+      didMutateDays = true
+    }
   }
 
   for (let index = scheduledDays.length; index < targetCount; index += 1) {
@@ -2370,16 +2535,39 @@ async function syncScheduledDaysWithDateRange() {
       date: formatDateForInput(addDays(start, index)),
       sortOrder: index + 1,
     })
+    didMutateDays = true
   }
 
   for (const day of extraDays.reverse()) {
     await itinerary.deleteDay(day.id)
+    didMutateDays = true
   }
 
   if (!itinerary.unscheduledDay.value) {
     await itinerary.ensureUnscheduledDay()
+    didMutateDays = true
   }
-  await loadItinerary()
+  if (didMutateDays) {
+    await loadItinerary()
+    await nextTick()
+  }
+  return didMutateDays
+}
+
+function resetInvalidTripRoomDayFilters() {
+  const labels = dayTagLabels.value
+  if (!labels.includes(activeMemoDay.value)) activeMemoDay.value = '전체'
+  if (!labels.includes(activeTodoDay.value)) activeTodoDay.value = '전체'
+}
+
+async function refreshTripRoomAfterDateSync(reloadTripDetail = false) {
+  resetInvalidTripRoomDayFilters()
+  const refreshes: Promise<unknown>[] = [
+    loadNote(activeMemoDay.value),
+    loadChecklists(),
+  ]
+  if (reloadTripDetail) refreshes.unshift(loadTrip())
+  await Promise.allSettled(refreshes)
 }
 /* ── Detailbar ── */
 const isDetailbarOpen = ref(false)
@@ -2838,6 +3026,18 @@ function textAvatarStyle(index: unknown) {
                 <button class="day-scroll-btn next" type="button" aria-label="다음 일차" @click="scrollDayTabs('next')">
                   <span class="material-symbols-rounded">chevron_right</span>
                 </button>
+                <button
+                  v-if="daySyncNoticeVisible"
+                  class="day-sync-notice"
+                  type="button"
+                  aria-label="일정 변경 안내 닫기"
+                  title="클릭해서 닫기"
+                  @click="daySyncNoticeVisible = false"
+                >
+                  <span class="material-symbols-rounded" aria-hidden="true">event_available</span>
+                  여행 기간에 맞춰 일차가 업데이트됐어요
+                  <span class="material-symbols-rounded" aria-hidden="true">close</span>
+                </button>
               </div>
 
 
@@ -2857,7 +3057,7 @@ function textAvatarStyle(index: unknown) {
                 <!-- 전체 보기 -->
                 <template v-else-if="activeDay === 0">
                   <template v-for="day in dayPlans" :key="day.day">
-					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day"
+					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day" :data-day-id="day.id"
 						@pointerdown="onPointerDown">
                       <span class="day-pill">{{ dayPlanLabel(day) }}</span>
                       <span class="line"></span>
@@ -2889,7 +3089,6 @@ function textAvatarStyle(index: unknown) {
                         :data-to-id="day.items[idx + 1].id"
                         @click.stop="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
                         :title="'경로 연결 해제: ' + item.title + ' → ' + day.items[idx + 1].title">
-                        <div class="route-connector-line"></div>
                         <span class="material-symbols-rounded route-unlink-icon">link_off</span>
                         <div class="route-connector-line"></div>
                       </div>
@@ -2898,7 +3097,7 @@ function textAvatarStyle(index: unknown) {
                 </template>
                 <!-- 특정 일차 -->
                 <template v-else-if="activePlan">
-				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay"
+				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay" :data-day-id="activePlan.id"
 					@pointerdown="onPointerDown">
                     <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
                     <span class="line"></span>
@@ -2929,7 +3128,6 @@ function textAvatarStyle(index: unknown) {
                       :data-to-id="activePlan.items[idx + 1].id"
                       @click.stop="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       :title="'경로 연결 해제'">
-                      <div class="route-connector-line"></div>
                       <span class="material-symbols-rounded route-unlink-icon">link_off</span>
                       <div class="route-connector-line"></div>
                     </div>
@@ -3014,7 +3212,7 @@ function textAvatarStyle(index: unknown) {
           <div :class="['map-canvas', { 'navigation-guide-mode': navigationGuideMode }]" :aria-label="`${trip.title} 지도`">
 			<MapboxItineraryMap
 				:stops="mapStops"
-				:routes="itinerary.routes.value"
+				:routes="visibleMapRoutes"
 				:route-display="routeState"
               :card-display="cardState"
               :nearby-places="routeNearbyMapPlaces"
@@ -3121,10 +3319,9 @@ function textAvatarStyle(index: unknown) {
                 :data-route-state="routeState"
                 :aria-pressed="routeState !== 'hidden'"
                 @click="toggleRouteState">
-                <span class="material-symbols-rounded icon-dashed">linear_scale</span>
                 <span class="material-symbols-rounded icon-route">polyline</span>
                 <span class="material-symbols-rounded icon-hidden">visibility_off</span>
-                <span class="tool-tip">{{ routeState === 'route' ? '경로 표시: 실선' : routeState === 'dashed' ? '경로 표시: 점선' : '경로 표시: 숨김' }}</span>
+                <span class="tool-tip">{{ routeState === 'route' ? '경로 표시: 실선' : '경로 표시: 숨김' }}</span>
               </button>
               <button class="tool-btn" :class="cardState !== 'hidden' ? 'is-on' : 'is-off'" type="button"
                 id="card-state-toggle" :disabled="itinerary.mutating.value"
@@ -3312,13 +3509,13 @@ function textAvatarStyle(index: unknown) {
           </aside>
 
           <!-- ═══ ROUTE UTILITY SIDEBAR ═══ -->
-          <aside :class="['route-utility-sidebar', { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구">
+          <aside :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구">
             <div class="route-utility-header">
               <div class="route-utility-heading">
-                <span class="material-symbols-rounded" aria-hidden="true">dashboard_customize</span>
+                <span class="material-symbols-rounded" aria-hidden="true">{{ routeUtilityPanelMeta.icon }}</span>
                 <div>
-                  <h3>여행 도구</h3>
-                  <p>AI, 채팅, 메모, 할 일</p>
+                  <h3>{{ routeUtilityPanelMeta.title }}</h3>
+                  <p class="route-utility-status">{{ routeUtilityPanelMeta.status }}</p>
                 </div>
               </div>
               <button
@@ -3333,7 +3530,7 @@ function textAvatarStyle(index: unknown) {
             </div>
             <div class="route-utility-tabs" role="tablist" aria-label="여행 도구">
               <button
-                class="route-utility-tab"
+                class="route-utility-tab route-utility-tab--ai"
                 :class="{ active: activeRoutePanel === 'ai' }"
                 type="button"
                 role="tab"
@@ -3345,7 +3542,7 @@ function textAvatarStyle(index: unknown) {
                 <span>AI</span>
               </button>
               <button
-                class="route-utility-tab"
+                class="route-utility-tab route-utility-tab--chat"
                 :class="{ active: activeRoutePanel === 'chat' }"
                 type="button"
                 role="tab"
@@ -3357,7 +3554,7 @@ function textAvatarStyle(index: unknown) {
                 <span>채팅</span>
               </button>
               <button
-                class="route-utility-tab"
+                class="route-utility-tab route-utility-tab--memo"
                 :class="{ active: activeRoutePanel === 'memo' }"
                 id="memo-fab"
                 type="button"
@@ -3370,7 +3567,7 @@ function textAvatarStyle(index: unknown) {
                 <span>메모</span>
               </button>
               <button
-                class="route-utility-tab"
+                class="route-utility-tab route-utility-tab--todo"
                 :class="{ active: activeRoutePanel === 'todo' }"
                 id="todo-fab"
                 type="button"
@@ -3386,16 +3583,6 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ AI CHAT PANEL ═══ -->
           <div id="ai-chat-panel" :class="['ai-chat-panel', { show: isAiChatOpen }]">
-            <div class="ai-chat-header">
-              <div class="ai-chat-title-group">
-                <span class="material-symbols-rounded ai-spark-icon">auto_awesome</span>
-                <div>
-                  <h4>숨길 AI 가이드</h4>
-                  <span class="ai-status">{{ conversationLoading ? '불러오는 중…' : (aiSessionStatus || '백엔드 연결됨') }}</span>
-                </div>
-              </div>
-            </div>
-
             <div class="ai-chat-messages-container" id="ai-chat-messages">
               <div v-if="conversationError" class="text-sm" style="color:var(--rose);display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span>{{ conversationError }}</span>
@@ -3425,32 +3612,27 @@ function textAvatarStyle(index: unknown) {
                 <div class="voice-wave-bar"></div>
                 <span class="voice-wave-text">듣고 있습니다...</span>
               </div>
-              <input type="text" id="ai-chat-input" aria-label="AI 가이드에게 질문하기" placeholder="AI에게 일정에 관해 물어보세요..." v-model="aiMessage" @keydown.enter="sendAiMessage" />
-              <button id="ai-chat-send-btn" class="btn primary compact-send-btn" type="button" @click="sendAiMessage">
-                <span class="material-symbols-rounded">send</span>
-              </button>
+              <div class="route-send-box">
+                <input type="text" id="ai-chat-input" aria-label="AI 가이드에게 질문하기" placeholder="AI에게 일정에 관해 물어보세요." v-model="aiMessage" @keydown.enter="sendAiMessage" />
+                <button id="ai-chat-send-btn" class="btn primary compact-send-btn" type="button" @click="sendAiMessage">
+                  <span class="material-symbols-rounded">send</span>
+                </button>
+              </div>
             </div>
           </div>
 
           <!-- ═══ TRIP CHAT PANEL ═══ -->
           <div id="trip-chat-panel" :class="['ai-chat-panel', 'trip-chat-panel', { show: isTripChatOpen }]">
-            <div class="ai-chat-header trip-chat-header">
-              <div class="ai-chat-title-group">
-                <span class="material-symbols-rounded ai-spark-icon">forum</span>
-                <div>
-                  <h4>여행방 채팅</h4>
-                  <span class="ai-status">{{ conversationLoading ? '불러오는 중…' : `${trip.members.length}명 참여 중` }}</span>
-                </div>
-              </div>
-            </div>
-
             <div class="ai-chat-messages-container" id="trip-chat-messages">
               <div v-if="conversationError" class="text-sm" style="color:var(--rose);display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span>{{ conversationError }}</span>
                 <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
               </div>
               <div v-for="msg in chatMessages" :key="msg.id" :class="['ai-message', msg.sender.id === currentUserId ? 'user' : 'assistant']">
-                <div v-if="msg.sender.id !== currentUserId" class="ai-message-avatar">{{ msg.sender.displayName.charAt(0) }}</div>
+                <div class="ai-message-avatar trip-chat-avatar">
+                  <img v-if="msg.sender.profileImageUrl" :src="msg.sender.profileImageUrl" :alt="msg.sender.displayName" />
+                  <template v-else>{{ msg.sender.displayName.charAt(0) }}</template>
+                </div>
                 <div class="ai-message-bubble">
                   <strong v-if="msg.sender.id !== currentUserId" style="display:block;font-size:11px;margin-bottom:3px">{{ msg.sender.displayName }}</strong>
                   <span style="white-space:pre-wrap">{{ msg.deletedAt ? '삭제된 메시지입니다.' : msg.content }}</span>
@@ -3460,24 +3642,17 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <div class="ai-chat-input-row">
-              <input type="text" id="trip-chat-input" aria-label="여행방 메시지 입력" placeholder="여행 멤버에게 메시지를 보내세요..." v-model="aiMessage" @keydown.enter="sendAiMessage" />
-              <button id="trip-chat-send-btn" class="btn primary compact-send-btn" type="button" @click="sendAiMessage">
-                <span class="material-symbols-rounded">send</span>
-              </button>
+              <div class="route-send-box">
+                <input type="text" id="trip-chat-input" aria-label="여행방 메시지 입력" placeholder="여행 멤버에게 메시지를 보내세요." v-model="aiMessage" @keydown.enter="sendAiMessage" />
+                <button id="trip-chat-send-btn" class="btn primary compact-send-btn" type="button" @click="sendAiMessage">
+                  <span class="material-symbols-rounded">send</span>
+                </button>
+              </div>
             </div>
           </div>
 
           <!-- ═══ MEMO PANEL ═══ -->
           <div id="memo-panel" :class="['floating-panel', 'memo-panel', { show: isMemoOpen }]">
-            <div class="panel-header memo-header">
-              <div class="panel-title-group">
-                <span class="material-symbols-rounded panel-icon">sticky_note_2</span>
-                <div>
-                  <h4>여행 메모</h4>
-                  <span class="panel-status" id="memo-status">{{ memoStatus || (memoLoading ? '불러오는 중…' : '백엔드 연결됨') }}</span>
-                </div>
-              </div>
-            </div>
             <!-- 일차별 태그(탭) 필터 -->
             <div class="panel-tabs" id="memo-day-tags">
               <button v-for="tag in dayTagLabels" :key="tag" type="button"
@@ -3495,34 +3670,27 @@ function textAvatarStyle(index: unknown) {
               <button type="button" class="toolbar-btn" title="번호 매기기" aria-label="번호 매기기" @click="formatMemo('number')"><span class="material-symbols-rounded">format_list_numbered</span></button>
             </div>
             <div class="panel-body memo-body">
-              <textarea id="memo-textarea" ref="memoTextarea" placeholder="여행 계획, 팁, 예약 정보 등을 자유롭게 메모해보세요..." v-model="memoTextDisplay"></textarea>
+              <textarea id="memo-textarea" ref="memoTextarea" placeholder="여행 계획, 팁, 예약 정보 등을 자유롭게 메모해보세요." v-model="memoTextDisplay"></textarea>
             </div>
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">
-                <button id="memo-clear-btn" class="btn text-danger-btn" type="button" @click="clearNote">
+                <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
+              </div>
+              <div class="memo-footer-actions">
+                <button id="memo-clear-btn" class="btn text-danger-btn memo-action-btn" type="button" @click="clearNote">
                   <span class="material-symbols-rounded">delete</span>
                   초기화
                 </button>
-                <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
+                <button id="memo-copy-btn" class="btn primary small memo-action-btn" type="button" :disabled="memoLoading || !memoTextDisplay.trim()" @click="saveNote">
+                  <span class="material-symbols-rounded">save</span>
+                  저장하기
+                </button>
               </div>
-              <button id="memo-copy-btn" class="btn primary small" type="button" :disabled="memoLoading || !memoTextDisplay.trim()" @click="saveNote">
-                <span class="material-symbols-rounded">save</span>
-                저장하기
-              </button>
             </div>
           </div>
 
           <!-- ═══ TODO PANEL ═══ -->
           <div id="todo-panel" :class="['floating-panel', 'todo-panel', { show: isTodoOpen }]">
-            <div class="panel-header todo-header">
-              <div class="panel-title-group">
-                <span class="material-symbols-rounded panel-icon">playlist_add_check</span>
-                <div>
-                  <h4>체크리스트</h4>
-                  <span class="panel-status" id="todo-progress-text">{{ completedCount }}/{{ totalCount }} 완료 ({{ progressPercent }}%)</span>
-                </div>
-              </div>
-            </div>
             <!-- 일차별 태그(탭) 필터 -->
             <div class="panel-tabs" id="todo-day-tags">
               <button v-for="tag in dayTagLabels" :key="tag" type="button"
@@ -3555,8 +3723,8 @@ function textAvatarStyle(index: unknown) {
               </ul>
             </div>
             <div class="panel-footer todo-footer">
-              <div class="todo-input-row">
-                <input type="text" id="todo-input" aria-label="할 일 추가" placeholder="할 일을 입력하세요..." v-model="newTodo" @keydown.enter="addTodo" />
+              <div class="todo-input-row route-send-box">
+                <input type="text" id="todo-input" aria-label="할 일 추가" placeholder="할 일을 입력하세요." v-model="newTodo" @keydown.enter="addTodo" />
                 <button id="todo-add-btn" class="btn primary compact-send-btn" type="button" @click="addTodo">
                   <span class="material-symbols-rounded">add</span>
                 </button>
@@ -3661,6 +3829,34 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .day-scroll-btn .material-symbols-rounded {
   font-size: 15px;
 }
+.route-page-section .day-sync-notice {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 156px;
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid rgba(5, 150, 105, 0.22);
+  border-radius: 999px;
+  background: rgba(5, 150, 105, 0.08);
+  color: #047857;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: left;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.route-page-section .day-sync-notice:hover {
+  border-color: rgba(5, 150, 105, 0.34);
+  background: rgba(5, 150, 105, 0.12);
+  color: #065f46;
+}
+.route-page-section .day-sync-notice .material-symbols-rounded {
+  flex: 0 0 auto;
+  font-size: 15px;
+}
 .route-page-section .day-tabs {
   flex: 1;
   min-width: 0;
@@ -3739,9 +3935,11 @@ function textAvatarStyle(index: unknown) {
   transition: grid-template-columns 0.22s ease;
 }
 .route-page-section .map-shell.is-route-utility-collapsed {
-  --route-panel-width: 64px;
+  --route-panel-width: 52px;
 }
 .route-utility-sidebar {
+  --route-accent: #7c3aed;
+  --route-accent-rgb: 124, 58, 237;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -3753,6 +3951,18 @@ function textAvatarStyle(index: unknown) {
     #fff;
   box-shadow: -14px 0 32px rgba(15, 23, 42, 0.06);
   overflow: hidden;
+}
+.route-utility-sidebar--chat {
+  --route-accent: #0891b2;
+  --route-accent-rgb: 8, 145, 178;
+}
+.route-utility-sidebar--memo {
+  --route-accent: #d97706;
+  --route-accent-rgb: 217, 119, 6;
+}
+.route-utility-sidebar--todo {
+  --route-accent: #059669;
+  --route-accent-rgb: 5, 150, 105;
 }
 .route-utility-header {
   display: flex;
@@ -3776,8 +3986,8 @@ function textAvatarStyle(index: unknown) {
   height: 34px;
   place-items: center;
   border-radius: 8px;
-  background: rgba(124, 58, 237, 0.10);
-  color: var(--violet);
+  background: rgba(var(--route-accent-rgb), 0.12);
+  color: var(--route-accent);
   font-size: 20px;
 }
 .route-utility-heading h3 {
@@ -3797,19 +4007,20 @@ function textAvatarStyle(index: unknown) {
 .route-utility-collapse {
   display: grid;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 8px;
+  border-radius: 999px;
   background: #fff;
   color: #64748b;
   cursor: pointer;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
 }
 .route-utility-collapse:hover {
-  border-color: rgba(124, 58, 237, 0.24);
-  color: var(--violet);
-  background: rgba(124, 58, 237, 0.06);
+  border-color: rgba(var(--route-accent-rgb), 0.26);
+  color: var(--route-accent);
+  background: rgba(var(--route-accent-rgb), 0.07);
 }
 .route-utility-collapse .material-symbols-rounded {
   font-size: 20px;
@@ -3825,54 +4036,77 @@ function textAvatarStyle(index: unknown) {
 .route-utility-tab {
   display: flex;
   min-width: 0;
-  height: 58px;
-  flex-direction: column;
+  height: 36px;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
   gap: 5px;
+  padding: 0 9px;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
+  border-radius: 999px;
   background: #fff;
   color: var(--muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
 .route-utility-tab:hover {
-  border-color: rgba(124, 58, 237, 0.18);
-  background: rgba(124, 58, 237, 0.05);
-  color: var(--violet);
+  border-color: rgba(var(--tab-accent-rgb, var(--route-accent-rgb)), 0.18);
+  background: rgba(var(--tab-accent-rgb, var(--route-accent-rgb)), 0.06);
+  color: var(--tab-accent, var(--route-accent));
 }
 .route-utility-tab.active {
-  border-color: rgba(124, 58, 237, 0.24);
-  background: #f3f0ff;
-  color: var(--violet);
-  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.08);
+  border-color: rgba(var(--tab-accent-rgb, var(--route-accent-rgb)), 0.28);
+  background: rgba(var(--tab-accent-rgb, var(--route-accent-rgb)), 0.12);
+  color: var(--tab-accent, var(--route-accent));
+  box-shadow: inset 0 0 0 1px rgba(var(--tab-accent-rgb, var(--route-accent-rgb)), 0.09);
+}
+.route-utility-tab--ai {
+  --tab-accent: #7c3aed;
+  --tab-accent-rgb: 124, 58, 237;
+}
+.route-utility-tab--chat {
+  --tab-accent: #0891b2;
+  --tab-accent-rgb: 8, 145, 178;
+}
+.route-utility-tab--memo {
+  --tab-accent: #d97706;
+  --tab-accent-rgb: 217, 119, 6;
+}
+.route-utility-tab--todo {
+  --tab-accent: #059669;
+  --tab-accent-rgb: 5, 150, 105;
 }
 .route-utility-tab .material-symbols-rounded {
   flex: 0 0 auto;
-  font-size: 21px;
+  font-size: 17px;
+}
+.route-utility-tab span:not(.material-symbols-rounded) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .route-utility-sidebar.is-collapsed {
   align-items: stretch;
 }
 .route-utility-sidebar.is-collapsed .route-utility-header {
   justify-content: center;
-  padding: 12px 8px;
+  padding: 10px 6px;
 }
 .route-utility-sidebar.is-collapsed .route-utility-heading {
   display: none;
 }
 .route-utility-sidebar.is-collapsed .route-utility-tabs {
   grid-template-columns: 1fr;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
 }
 .route-utility-sidebar.is-collapsed .route-utility-tab {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   padding: 0;
 }
 .route-utility-sidebar.is-collapsed .route-utility-tab span:not(.material-symbols-rounded) {
@@ -3946,6 +4180,307 @@ function textAvatarStyle(index: unknown) {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+.route-utility-sidebar .ai-chat-header,
+.route-utility-sidebar .panel-header {
+  display: none;
+}
+.route-utility-sidebar .ai-chat-messages-container,
+.route-utility-sidebar .panel-body {
+  padding: 16px;
+  background: rgba(248, 250, 252, 0.72);
+}
+.route-utility-sidebar .panel-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 16px 8px;
+  overflow-x: auto;
+  background: rgba(248, 250, 252, 0.72);
+}
+.route-utility-sidebar .panel-tab-tag {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+.route-utility-sidebar .panel-tab-tag.active-memo,
+.route-utility-sidebar .panel-tab-tag.active-todo {
+  border-color: rgba(var(--route-accent-rgb), 0.26);
+  background: rgba(var(--route-accent-rgb), 0.10);
+  color: var(--route-accent);
+}
+.route-utility-sidebar .ai-chat-suggestions,
+.route-utility-sidebar .memo-toolbar,
+.route-utility-sidebar .panel-progress-container {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.62);
+}
+.route-utility-sidebar .ai-chat-suggestions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.route-utility-sidebar .suggestion-chip,
+.route-utility-sidebar .toolbar-btn {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #475569;
+  box-shadow: none;
+}
+.route-utility-sidebar .suggestion-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 36px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.route-utility-sidebar .toolbar-btn {
+  width: 34px;
+  height: 34px;
+}
+.route-utility-sidebar .suggestion-chip:hover,
+.route-utility-sidebar .toolbar-btn:hover {
+  border-color: rgba(var(--route-accent-rgb), 0.26);
+  background: rgba(var(--route-accent-rgb), 0.08);
+  color: var(--route-accent);
+  transform: none;
+}
+.route-utility-sidebar .ai-chat-input-row,
+.route-utility-sidebar .panel-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 68px;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.route-utility-sidebar .memo-footer,
+.route-utility-sidebar .todo-footer {
+  min-height: 68px;
+}
+.route-utility-sidebar .todo-input-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+}
+.route-utility-sidebar .route-send-box {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 44px;
+  min-width: 0;
+  align-items: center;
+  box-sizing: border-box;
+  gap: 0;
+  padding: 4px 0 4px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+.route-utility-sidebar .route-send-box:focus-within {
+  border-color: rgba(var(--route-accent-rgb), 0.42);
+  box-shadow: 0 0 0 3px rgba(var(--route-accent-rgb), 0.11);
+}
+.route-utility-sidebar .todo-input-row.route-send-box {
+  background: #fff;
+}
+.route-utility-sidebar input[type="text"] {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 34px !important;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 34px !important;
+  padding: 0 !important;
+  box-shadow: none;
+  vertical-align: middle;
+}
+.route-utility-sidebar input[type="text"]::placeholder {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 650;
+  opacity: 1;
+}
+.route-utility-sidebar input[type="text"]:focus {
+  outline: none;
+}
+.route-utility-sidebar #ai-chat-input,
+.route-utility-sidebar #trip-chat-input,
+.route-utility-sidebar #todo-input,
+.route-utility-sidebar #ai-chat-input:focus {
+  border: 0 !important;
+  background: transparent !important;
+  outline: 0;
+  box-shadow: none !important;
+}
+.route-utility-sidebar #trip-chat-input:focus,
+.route-utility-sidebar #todo-input:focus {
+  border: 0 !important;
+  background: transparent !important;
+  outline: 0;
+  box-shadow: none !important;
+}
+.route-utility-sidebar .compact-send-btn,
+.route-utility-sidebar .btn.primary.small {
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 40px !important;
+  min-width: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, var(--route-accent), color-mix(in srgb, var(--route-accent) 72%, #ffffff)) !important;
+  color: #fff !important;
+  cursor: pointer;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+  padding: 0 14px !important;
+  box-shadow: 0 8px 18px rgba(var(--route-accent-rgb), 0.22);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+.route-utility-sidebar .compact-send-btn {
+  flex: 0 0 41px;
+  width: 41px !important;
+  height: 41px !important;
+  min-width: 41px;
+  border-radius: 999px !important;
+  padding: 0 !important;
+  box-shadow: none;
+}
+.route-utility-sidebar #ai-chat-send-btn,
+.route-utility-sidebar #trip-chat-send-btn,
+.route-utility-sidebar #todo-add-btn {
+  flex: 0 0 41px !important;
+  width: 41px !important;
+  height: 41px !important;
+  min-width: 41px !important;
+  min-height: 41px !important;
+  border-radius: 999px !important;
+  padding: 0 !important;
+}
+.route-utility-sidebar .compact-send-btn .material-symbols-rounded,
+.route-utility-sidebar .btn.primary.small .material-symbols-rounded,
+.route-utility-sidebar .text-danger-btn .material-symbols-rounded {
+  font-size: 18px;
+  line-height: 1;
+}
+.route-utility-sidebar .compact-send-btn:hover:not(:disabled),
+.route-utility-sidebar .btn.primary.small:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(var(--route-accent-rgb), 0.28);
+}
+.route-utility-sidebar .route-send-box .compact-send-btn:hover:not(:disabled) {
+  transform: none;
+  box-shadow: 0 4px 10px rgba(var(--route-accent-rgb), 0.22);
+}
+.route-utility-sidebar .compact-send-btn:disabled,
+.route-utility-sidebar .btn.primary.small:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+  box-shadow: none;
+}
+.route-utility-sidebar .text-danger-btn {
+  height: 44px;
+  min-width: 44px;
+  padding: 0 14px !important;
+  border: 1px solid rgba(244, 63, 94, 0.18) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: #e11d48 !important;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+}
+.route-utility-sidebar .text-danger-btn:hover {
+  border-color: rgba(244, 63, 94, 0.28) !important;
+  background: rgba(244, 63, 94, 0.08) !important;
+}
+.route-utility-sidebar .memo-footer-left {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.route-utility-sidebar .memo-footer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.route-utility-sidebar .memo-action-btn {
+  width: 96px !important;
+  min-width: 96px !important;
+}
+.route-utility-sidebar .memo-char-count {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.route-utility-sidebar .todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+.route-utility-sidebar .todo-item {
+  min-height: 48px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 8px 10px;
+}
+.route-utility-sidebar .trip-chat-avatar {
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--route-accent), color-mix(in srgb, var(--route-accent) 68%, #ffffff));
+}
+.route-utility-sidebar .trip-chat-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .route-page-section .sidebar {
   height: 100%;
@@ -4034,6 +4569,9 @@ function textAvatarStyle(index: unknown) {
   width: calc(100% - 12px);
   grid-template-columns: 24px minmax(0, 1fr) 24px;
   padding: 8px 12px !important;
+  position: relative;
+  z-index: 20;
+  isolation: isolate;
 }
 .route-page-section .stop.has-thumb {
   grid-template-columns: 24px 40px minmax(0, 1fr) 24px;
@@ -4071,21 +4609,26 @@ function textAvatarStyle(index: unknown) {
 }
 .route-page-section .day-separator {
   width: 100%;
+  position: relative;
+  z-index: 140 !important;
 }
 .route-page-section .add-stop-container {
   width: 100%;
+  box-sizing: border-box;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
 }
 .route-page-section .trip-header-card {
   width: 100%;
   box-sizing: border-box;
-  padding: 20px;
-  border-radius: 20px;
+  padding: 16px;
+  border-radius: 18px;
   border: 1px solid rgba(0,0,0,0.06);
   background: #fff;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.03);
 }
 .trip-info-badge-row {
@@ -4109,11 +4652,11 @@ function textAvatarStyle(index: unknown) {
   border-radius: 8px;
 }
 .trip-card-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
   color: var(--ink);
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 .trip-card-period-row {
   display: flex;
@@ -4129,7 +4672,7 @@ function textAvatarStyle(index: unknown) {
 .trip-card-divider {
   height: 1px;
   background: var(--line);
-  margin: 4px 0;
+  margin: 2px 0;
 }
 .trip-stats-grid {
   display: flex;
@@ -4154,7 +4697,7 @@ function textAvatarStyle(index: unknown) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 .route-page-section .map-canvas {
   height: 100%;
@@ -4519,16 +5062,19 @@ function textAvatarStyle(index: unknown) {
 
 .stop.route-grouped.is-chain-dragging {
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12), inset 4px 0 0 var(--day-color, var(--violet));
+  z-index: 120 !important;
 }
 
 /* ── Route connector between linked stops (vertical) ── */
 .route-connector {
   display: flex;
+  flex: 0 0 28px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0;
   height: 28px;
+  min-height: 28px;
   margin: -4px 12px;
   padding: 0;
   cursor: pointer;
@@ -4536,6 +5082,8 @@ function textAvatarStyle(index: unknown) {
   transition: background 0.2s;
   user-select: none;
   position: relative;
+  z-index: 0;
+  isolation: isolate;
 }
 .route-connector:hover {
   background: rgba(239, 68, 68, 0.06);
@@ -4554,9 +5102,6 @@ function textAvatarStyle(index: unknown) {
 .route-connector:hover .route-connector-line {
   background: var(--rose);
 }
-.route-connector .route-connector-line + .route-unlink-icon + .route-connector-line {
-  display: none;
-}
 .route-unlink-icon {
   position: absolute;
   left: 50%;
@@ -4564,13 +5109,14 @@ function textAvatarStyle(index: unknown) {
   transform: translate(-50%, -50%);
   font-size: 13px;
   color: var(--muted);
-  background: #fff;
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 0;
   border-radius: 50%;
   opacity: 0;
   transition: opacity 0.2s, color 0.2s;
   padding: 2px;
   margin: 0;
+  z-index: 1;
 }
 .route-connector:hover .route-unlink-icon {
   opacity: 1;
@@ -4582,7 +5128,7 @@ function textAvatarStyle(index: unknown) {
   user-select: none;
   -webkit-user-select: none;
   -webkit-user-drag: none;
-  touch-action: none;
+  touch-action: pan-y;
 }
 
 /* Tooltip CSS */
@@ -4658,25 +5204,33 @@ function textAvatarStyle(index: unknown) {
 }
 
 .route-connector {
+  flex: 0 0 20px !important;
   height: 20px !important;
+  min-height: 20px !important;
   margin: -1px 12px !important;
+  z-index: 0 !important;
 }
 
 .route-connector-line {
-  width: 0 !important;
-  border-left: 3px solid var(--day-color, var(--violet)) !important;
-  background: none !important;
+  display: block !important;
+  flex: 0 0 auto !important;
+  width: 3px !important;
+  min-width: 3px !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  border-left: 0 !important;
+  background: var(--day-color, var(--violet)) !important;
   border-radius: 999px !important;
 }
 .route-connector:hover .route-connector-line {
-  border-left-color: var(--rose) !important;
+  background: var(--rose) !important;
 }
 
 .trip-stats-grid {
   display: flex !important;
   justify-content: center !important;
   align-items: center !important;
-  padding: 8px 0 !important;
+  padding: 4px 0 !important;
 }
 .trip-stat-item {
   display: flex !important;

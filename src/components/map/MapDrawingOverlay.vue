@@ -41,6 +41,7 @@ const emit = defineEmits<{
   preview: [event: DrawingPreviewEvent]
   routePoint: [coordinate: LngLat]
   pan: [delta: ScreenPoint]
+  wheelZoom: [payload: { point: ScreenPoint; deltaY: number }]
 }>()
 
 const surface = ref<SVGSVGElement | null>(null)
@@ -278,6 +279,14 @@ function preventContextMenu(event: MouseEvent) {
     event.preventDefault()
   }
 }
+
+function zoomThroughOverlay(event: WheelEvent) {
+  if (!editable.value) return
+  const point = localPoint(event)
+  if (!point) return
+  event.preventDefault()
+  emit('wheelZoom', { point, deltaY: event.deltaY })
+}
 </script>
 
 <template>
@@ -294,6 +303,7 @@ function preventContextMenu(event: MouseEvent) {
     @pointercancel="cancelStroke"
     @lostpointercapture="handleLostPointerCapture"
     @contextmenu="preventContextMenu"
+    @wheel="zoomThroughOverlay"
   >
     <template v-for="drawing in projectedDrawings" :key="drawing.id">
       <polyline

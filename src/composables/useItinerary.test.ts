@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { itineraryApi } from '@/api/itinerary.api'
 import { useItinerary } from './useItinerary'
-import type { Itinerary, ItineraryDay, ItineraryItem } from '@/types/itinerary'
+import type { Itinerary, ItineraryDay, ItineraryItem, TripRoute } from '@/types/itinerary'
 
 vi.mock('@/api/itinerary.api', () => ({
   itineraryApi: {
@@ -52,6 +52,20 @@ const item: ItineraryItem = {
   lng: null,
   thumbnailUrl: null,
   sourceStatus: 'AVAILABLE',
+}
+
+const route: TripRoute = {
+  id: 'route-1',
+  originItineraryItemId: 'item-1',
+  destinationItineraryItemId: 'item-2',
+  mode: 'WALKING',
+  provider: 'MAPBOX',
+  providerProfile: 'mapbox/walking',
+  geometryFormat: 'GEOJSON',
+  geometry: { type: 'LineString', coordinates: [[127, 37], [127.1, 37.1]] },
+  distanceMeters: 120,
+  durationSeconds: 60,
+  confidence: 0.9,
 }
 
 const itinerary: Itinerary = {
@@ -275,5 +289,58 @@ describe('useItinerary', () => {
       sortOrder: 0,
     }])
     expect(state.itineraryVersion.value).toBe(4)
+  })
+
+  it('경로 매칭 중 version 충돌이 나면 최신 일정을 조회한 뒤 한 번 재시도한다', async () => {
+    vi.mocked(itineraryApi.getItinerary)
+      .mockResolvedValueOnce({
+        ...itinerary,
+        days: [scheduledDay],
+        itineraryVersion: 3,
+      })
+      .mockResolvedValueOnce({
+        ...itinerary,
+        days: [scheduledDay, unscheduledDay],
+        itineraryVersion: 7,
+      })
+    vi.mocked(itineraryApi.mapMatchRoute)
+      .mockRejectedValueOnce({ response: { status: 409 } })
+      .mockResolvedValueOnce({
+        tripId: 'trip-1',
+        itineraryVersion: 8,
+        day: null,
+        item: null,
+        route,
+        drawing: null,
+        affectedRouteIds: [],
+      })
+    const state = useItinerary('trip-1')
+    await state.fetchItinerary()
+
+    const result = await state.mapMatchRoute({
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      coordinates: [{ lng: 127, lat: 37 }, { lng: 127.1, lat: 37.1 }],
+    })
+
+    expect(result).toEqual(route)
+    expect(itineraryApi.getItinerary).toHaveBeenCalledTimes(2)
+    expect(itineraryApi.mapMatchRoute).toHaveBeenNthCalledWith(1, 'trip-1', {
+      baseVersion: 3,
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      coordinates: [{ lng: 127, lat: 37 }, { lng: 127.1, lat: 37.1 }],
+    })
+    expect(itineraryApi.mapMatchRoute).toHaveBeenNthCalledWith(2, 'trip-1', {
+      baseVersion: 7,
+      originItineraryItemId: 'item-1',
+      destinationItineraryItemId: 'item-2',
+      mode: 'WALKING',
+      coordinates: [{ lng: 127, lat: 37 }, { lng: 127.1, lat: 37.1 }],
+    })
+    expect(state.routes.value).toEqual([route])
+    expect(state.itineraryVersion.value).toBe(8)
   })
 })

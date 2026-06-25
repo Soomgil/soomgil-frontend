@@ -370,7 +370,6 @@ function renderRoutes() {
         'line-color': '#6d4aff',
         'line-width': 5,
         'line-opacity': 0.95,
-        ...(props.routeDisplay === 'dashed' ? { 'line-dasharray': [2, 2] } : {}),
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
     })
@@ -422,13 +421,20 @@ function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
   if (stopsKey === lastFittedStopsKey) return
   lastFittedStopsKey = stopsKey
   if (props.stops.length === 0) {
-    map.easeTo({ center: DEFAULT_CENTER, zoom: 10 })
+    return
   } else if (props.stops.length === 1) {
-    map.easeTo({ center: [props.stops[0].lng, props.stops[0].lat], zoom: 13 })
+    map.easeTo({ center: [props.stops[0].lng, props.stops[0].lat], zoom: 11 })
   } else {
     const bounds = new mapbox.LngLatBounds()
     props.stops.forEach((stop) => bounds.extend([stop.lng, stop.lat]))
-    map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 500 })
+    const camera = map.cameraForBounds(bounds, { padding: 80, maxZoom: 14 })
+    if (camera) {
+      map.easeTo({
+        ...camera,
+        zoom: Math.max((camera.zoom ?? map.getZoom()) - 2, 0),
+        duration: 500,
+      })
+    }
   }
 }
 
@@ -471,6 +477,13 @@ function unprojectDrawingPoint(point: { x: number; y: number }) {
 
 function panMapByOverlayDelta(delta: { x: number; y: number }) {
   map?.panBy([-delta.x, -delta.y], { duration: 0 })
+}
+
+function zoomMapByOverlayWheel(payload: { point: { x: number; y: number }; deltaY: number }) {
+  if (!map) return
+  void payload.point
+  const zoomDelta = Math.max(-1, Math.min(1, -payload.deltaY / 300))
+  map.zoomTo(map.getZoom() + zoomDelta, { duration: 0 })
 }
 
 function cleanupMapResources() {
@@ -580,6 +593,7 @@ onBeforeUnmount(() => {
       @preview="emit('drawingPreview', $event)"
       @route-point="emit('routePoint', $event)"
       @pan="panMapByOverlayDelta"
+      @wheel-zoom="zoomMapByOverlayWheel"
     />
     <div v-if="mapError" class="itinerary-map__error" role="alert">
       <span>{{ mapError }}</span>
