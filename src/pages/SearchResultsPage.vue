@@ -598,41 +598,41 @@ watch(
                 <span class="material-symbols-rounded">location_on</span>
                 {{ selectedPlace.address }}
               </p>
-            </div>
-            <div class="place-detail-media-reactions" aria-label="장소 취향 반응">
-              <button
-                type="button"
-                class="place-detail-reaction-btn place-detail-reaction-btn--nope"
-                :class="{ active: selectedPlaceReaction === 'NOPE' }"
-                :disabled="placeReactionSubmitting || placeDetailLoading"
-                aria-label="싫어요"
-                title="싫어요"
-                @click="reactToSelectedPlace('NOPE')"
-              >
-                <span class="material-symbols-rounded">close</span>
-              </button>
-              <button
-                type="button"
-                class="place-detail-reaction-btn place-detail-reaction-btn--like"
-                :class="{ active: selectedPlaceReaction === 'LIKE' }"
-                :disabled="placeReactionSubmitting || placeDetailLoading"
-                aria-label="좋아요"
-                title="좋아요"
-                @click="reactToSelectedPlace('LIKE')"
-              >
-                <span class="material-symbols-rounded">favorite</span>
-              </button>
-              <button
-                type="button"
-                class="place-detail-reaction-btn place-detail-reaction-btn--super"
-                :class="{ active: selectedPlaceReaction === 'SUPER_LIKE' }"
-                :disabled="placeReactionSubmitting || placeDetailLoading"
-                aria-label="슈퍼라이크"
-                title="슈퍼라이크"
-                @click="reactToSelectedPlace('SUPER_LIKE')"
-              >
-                <span class="material-symbols-rounded">auto_awesome</span>
-              </button>
+              <div class="place-detail-media-reactions" aria-label="장소 취향 반응">
+                <button
+                  type="button"
+                  class="place-detail-reaction-btn place-detail-reaction-btn--nope"
+                  :class="{ active: selectedPlaceReaction === 'NOPE' }"
+                  :disabled="placeReactionSubmitting || placeDetailLoading"
+                  aria-label="싫어요"
+                  title="싫어요"
+                  @click="reactToSelectedPlace('NOPE')"
+                >
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+                <button
+                  type="button"
+                  class="place-detail-reaction-btn place-detail-reaction-btn--like"
+                  :class="{ active: selectedPlaceReaction === 'LIKE' }"
+                  :disabled="placeReactionSubmitting || placeDetailLoading"
+                  aria-label="좋아요"
+                  title="좋아요"
+                  @click="reactToSelectedPlace('LIKE')"
+                >
+                  <span class="material-symbols-rounded">favorite</span>
+                </button>
+                <button
+                  type="button"
+                  class="place-detail-reaction-btn place-detail-reaction-btn--super"
+                  :class="{ active: selectedPlaceReaction === 'SUPER_LIKE' }"
+                  :disabled="placeReactionSubmitting || placeDetailLoading"
+                  aria-label="슈퍼라이크"
+                  title="슈퍼라이크"
+                  @click="reactToSelectedPlace('SUPER_LIKE')"
+                >
+                  <span class="material-symbols-rounded">star</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1355,13 +1355,11 @@ watch(
 }
 
 .place-detail-media-reactions {
-  position: absolute;
-  right: 28px;
-  bottom: 28px;
-  z-index: 2;
-  display: inline-flex;
+  display: flex;
+  width: fit-content;
   align-items: center;
   gap: 8px;
+  margin-top: 18px;
 }
 
 .place-detail-media-reactions .place-detail-reaction-btn {
@@ -1507,8 +1505,8 @@ watch(
 
 .place-detail-reaction-btn--nope:hover:not(:disabled),
 .place-detail-reaction-btn--nope.active {
-  border-color: rgba(15, 23, 42, 0.18);
-  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.24);
+  background: rgba(51, 65, 85, 0.12);
   color: #0f172a;
 }
 
@@ -1764,12 +1762,6 @@ watch(
 
   .place-detail-content {
     padding: 24px 20px 22px;
-  }
-
-  .place-detail-media-reactions {
-    right: 20px;
-    bottom: 20px;
-    gap: 7px;
   }
 
   .place-detail-media-reactions .place-detail-reaction-btn {

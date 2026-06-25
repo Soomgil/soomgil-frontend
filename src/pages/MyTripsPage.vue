@@ -354,7 +354,7 @@ watch(filteredTrips, () => {
                       <span class="material-symbols-rounded" aria-hidden="true">group</span>
                       멤버 및 초대
                     </button>
-                    <button v-if="currentTrip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click.stop="openTripSettings(currentTrip)">
+                    <button class="stub-action-btn" type="button" @click.stop="openTripSettings(currentTrip)">
                       <span class="material-symbols-rounded" aria-hidden="true">settings</span>
                       설정
                     </button>
@@ -486,7 +486,7 @@ watch(filteredTrips, () => {
                           <span>계획 보기</span>
                           <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
                         </button>
-                        <TripSettingsButton v-if="trip.myRole === 'OWNER'" label="설정" variant="icon" @click="openTripSettings(trip)" />
+                        <TripSettingsButton label="설정" variant="icon" @click="openTripSettings(trip)" />
                       </div>
                     </article>
                   </div>

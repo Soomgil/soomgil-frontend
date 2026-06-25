@@ -12,6 +12,7 @@ const mapbox = vi.hoisted(() => {
     addControl: vi.fn(),
     addLayer: vi.fn(),
     addSource: vi.fn(),
+    cameraForBounds: vi.fn(() => ({ center: [127.385, 36.355], zoom: 14 })),
     easeTo: vi.fn(),
     fitBounds: vi.fn(),
     getLayer: vi.fn(),
@@ -25,6 +26,7 @@ const mapbox = vi.hoisted(() => {
       getEast: () => 127.2,
       getNorth: () => 37.7,
     })),
+    getZoom: vi.fn(() => 12),
     on: vi.fn((event: string, callback: () => void) => handlers.set(event, callback)),
     once: vi.fn((event: string, callback: () => void) => handlers.set(event, callback)),
     remove: vi.fn(),
@@ -123,8 +125,12 @@ describe('MapboxItineraryMap', () => {
       offset: [0, -10],
     }))
 	expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
-	expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'itinerary-route-route-1', type: 'line' }))
-    expect(mapbox.map.fitBounds).toHaveBeenCalledOnce()
+	expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'itinerary-route-route-1',
+      type: 'line',
+      paint: expect.not.objectContaining({ 'line-dasharray': expect.anything() }),
+    }))
+    expect(mapbox.map.cameraForBounds).toHaveBeenCalledOnce()
     expect(wrapper.emitted('viewportChange')).toEqual([[
       { minLng: 126.9, minLat: 37.4, maxLng: 127.2, maxLat: 37.7 },
     ]])
@@ -135,7 +141,7 @@ describe('MapboxItineraryMap', () => {
     await wrapper.setProps({ stops: [stops[0]] })
     expect(mapbox.marker.remove).toHaveBeenCalledTimes(2)
     expect(mapbox.Marker).toHaveBeenCalledTimes(3)
-    expect(mapbox.map.easeTo).toHaveBeenCalledWith({ center: [127.38, 36.35], zoom: 13 })
+    expect(mapbox.map.easeTo).toHaveBeenCalledWith({ center: [127.38, 36.35], zoom: 11 })
 
     const markerCall = mapbox.Marker.mock.calls[0]
     const markerElement = (markerCall![0] as { element: HTMLButtonElement }).element
@@ -154,12 +160,14 @@ describe('MapboxItineraryMap', () => {
     await flushPromises()
     mapbox.handlers.get('style.load')?.()
     await nextTick()
-    expect(mapbox.map.fitBounds).toHaveBeenCalledTimes(1)
+    expect(mapbox.map.cameraForBounds).toHaveBeenCalledTimes(1)
+    const cameraFitCallCount = mapbox.map.cameraForBounds.mock.calls.length
+    const easeToCallCount = mapbox.map.easeTo.mock.calls.length
 
     await wrapper.setProps({ routes })
 
-    expect(mapbox.map.fitBounds).toHaveBeenCalledTimes(1)
-    expect(mapbox.map.easeTo).not.toHaveBeenCalled()
+    expect(mapbox.map.cameraForBounds).toHaveBeenCalledTimes(cameraFitCallCount)
+    expect(mapbox.map.easeTo).toHaveBeenCalledTimes(easeToCallCount)
     expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
   })
 

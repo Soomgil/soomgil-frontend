@@ -122,6 +122,34 @@ describe('TripSettingsModal', () => {
       endDate: '2026-07-12',
       status: 'ACTIVE',
     })
+    expect(wrapper.emitted('saved')).toEqual([[trip.id, {
+      startDate: '2026-07-10',
+      endDate: '2026-07-12',
+    }]])
+  })
+
+  it('일반 멤버도 여행 정보는 저장하되 소유자 전용 상태 값은 보내지 않는다', async () => {
+    const memberTrip: TripSummary = { ...trip, myRole: 'MEMBER' }
+    store.updateTrip.mockResolvedValue({
+      ...memberTrip,
+      title: '수정한 부산 여행',
+      startDate: '2026-07-10',
+      endDate: '2026-07-12',
+    })
+    const wrapper = mount(TripSettingsModal, { props: { open: true, trip: memberTrip } })
+
+    await wrapper.get('input[name="title"]').setValue('수정한 부산 여행')
+    await wrapper.get('[data-testid="trip-start-date"]').setValue('2026-07-10')
+    await wrapper.get('[data-testid="trip-end-date"]').setValue('2026-07-12')
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.find('[data-status="ARCHIVED"]').exists()).toBe(false)
+    expect(store.updateTrip).toHaveBeenCalledWith(trip.id, {
+      title: '수정한 부산 여행',
+      displayDestination: '부산광역시',
+      startDate: '2026-07-10',
+      endDate: '2026-07-12',
+    })
   })
 
   it('검색 결과를 선택하면 법정동 연결을 교체한다', async () => {

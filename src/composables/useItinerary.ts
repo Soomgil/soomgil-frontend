@@ -76,6 +76,13 @@ export function useItinerary(tripId: string) {
     }
   }
 
+  function isVersionConflict(cause: unknown) {
+    return typeof cause === 'object'
+      && cause !== null
+      && 'response' in cause
+      && (cause as { response?: { status?: number } }).response?.status === 409
+  }
+
   async function fetchItinerary() {
     loading.value = true
     error.value = null
@@ -216,16 +223,26 @@ export function useItinerary(tripId: string) {
     })
   }
 
+  async function submitMapMatchRoute(input: MapMatchRouteInput) {
+    const response = await itineraryApi.mapMatchRoute(tripId, {
+      ...input,
+      baseVersion: itineraryVersion.value,
+    })
+    if (!response.route) throw new Error('Matched route is missing.')
+    routes.value = [...routes.value.filter((route) => route.id !== response.route!.id), response.route]
+    applyMutation(response)
+    return response.route
+  }
+
   async function mapMatchRoute(input: MapMatchRouteInput) {
     return runMutation(async () => {
-      const response = await itineraryApi.mapMatchRoute(tripId, {
-        ...input,
-        baseVersion: itineraryVersion.value,
-      })
-      if (!response.route) throw new Error('Matched route is missing.')
-      routes.value = [...routes.value.filter((route) => route.id !== response.route!.id), response.route]
-      applyMutation(response)
-      return response.route
+      try {
+        return await submitMapMatchRoute(input)
+      } catch (cause) {
+        if (!isVersionConflict(cause)) throw cause
+        await fetchItinerary()
+        return submitMapMatchRoute(input)
+      }
     })
   }
 
