@@ -209,8 +209,8 @@ describe('MapboxItineraryMap', () => {
   it('겹치는 주변 장소 마커를 분산하고 클릭한 장소 ID를 그대로 전달한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     const nearbyPlaces = [
-      { id: 'KTO:near-1', provider: 'KTO' as const, externalPlaceId: 'near-1', title: '창덕궁', category: null, lat: 37.58, lng: 126.99 },
-      { id: 'KTO:near-2', provider: 'KTO' as const, externalPlaceId: 'near-2', title: '창경궁', category: null, lat: 37.58, lng: 126.99 },
+      { id: 'KTO:near-1', provider: 'KTO' as const, externalPlaceId: 'near-1', title: '창덕궁', category: null, lat: 37.58, lng: 126.99, dayIndex: 2 },
+      { id: 'KTO:near-2', provider: 'KTO' as const, externalPlaceId: 'near-2', title: '창경궁', category: null, lat: 37.58, lng: 126.99, dayIndex: 2 },
     ]
     const wrapper = mount(MapboxItineraryMap, { props: { stops: [], nearbyPlaces } })
     await flushPromises()
@@ -220,6 +220,7 @@ describe('MapboxItineraryMap', () => {
     const firstOptions = mapbox.Marker.mock.calls[0]![0] as { element: HTMLButtonElement; offset: [number, number] }
     const secondOptions = mapbox.Marker.mock.calls[1]![0] as { element: HTMLButtonElement; offset: [number, number] }
     expect(firstOptions.element.tagName).toBe('BUTTON')
+    expect(firstOptions.element.classList.contains('day-color-2')).toBe(true)
     expect(firstOptions.offset).not.toEqual(secondOptions.offset)
 
     secondOptions.element.click()
@@ -236,6 +237,7 @@ describe('MapboxItineraryMap', () => {
       category: '관광지',
       lat: 35.1587,
       lng: 129.1604,
+      dayIndex: 3,
       image: 'https://cdn.example.com/pick.jpg',
     }
     const wrapper = mount(MapboxItineraryMap, { props: { stops: [], previewPlace } })
@@ -245,6 +247,7 @@ describe('MapboxItineraryMap', () => {
 
     const markerOptions = mapbox.Marker.mock.calls[0]![0] as { element: HTMLButtonElement; offset: [number, number] }
     expect(markerOptions.element.classList.contains('map-preview-place-card')).toBe(true)
+    expect(markerOptions.element.classList.contains('day-color-3')).toBe(true)
     expect(markerOptions.element.textContent).toContain('추천 명소')
     expect((markerOptions.element.querySelector('img') as HTMLImageElement).src).toBe('https://cdn.example.com/pick.jpg')
     expect(mapbox.map.easeTo).toHaveBeenLastCalledWith({ center: [129.1604, 35.1587], zoom: 14 })

@@ -16,6 +16,7 @@ export interface ItineraryMapNearbyPlace {
   category: string | null
   lat: number
   lng: number
+  dayIndex?: number
   image?: string | null
   accessibility?: PlaceAccessibility
 }
@@ -245,7 +246,7 @@ function createMarkerElement(stop: ItineraryMapStop) {
 function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
   const el = document.createElement('button')
   el.type = 'button'
-  el.className = 'map-nearby-place-marker'
+  el.className = `map-nearby-place-marker ${dayClass(place.dayIndex ?? 1)}`
   el.setAttribute('aria-label', `${place.title} 주변 관광지`)
 
   const icon = document.createElement('span')
@@ -273,7 +274,7 @@ function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement 
 function createPreviewPlaceMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
   const el = document.createElement('button')
   el.type = 'button'
-  el.className = 'map-preview-place-card'
+  el.className = `map-preview-place-card ${dayClass(place.dayIndex ?? 1)}`
   el.setAttribute('aria-label', `${place.title} 추천 관광지`)
 
   const media = document.createElement('span')
@@ -679,9 +680,9 @@ onBeforeUnmount(() => {
   width: 190px;
   min-height: 64px;
   padding: 8px 10px 10px 8px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border: 1px solid var(--day-color-border, rgba(15, 23, 42, 0.12));
   border-radius: 8px;
-  background: #ffffff;
+  background: linear-gradient(135deg, #ffffff, var(--day-color-bg, #ffffff));
   color: #0f172a;
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.2);
   cursor: pointer;
@@ -695,8 +696,8 @@ onBeforeUnmount(() => {
   height: 48px;
   overflow: hidden;
   border-radius: 6px;
-  background: #eef2ff;
-  color: #4f46e5;
+  background: var(--day-color-bg, #eef2ff);
+  color: var(--day-color, #4f46e5);
 }
 
 .itinerary-map :deep(.map-preview-place-media img) {
@@ -736,8 +737,8 @@ onBeforeUnmount(() => {
   bottom: -7px;
   width: 14px;
   height: 14px;
-  border-right: 1px solid rgba(15, 23, 42, 0.12);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+  border-right: 1px solid var(--day-color-border, rgba(15, 23, 42, 0.12));
+  border-bottom: 1px solid var(--day-color-border, rgba(15, 23, 42, 0.12));
   background: #ffffff;
   transform: translateX(-50%) rotate(45deg);
 }

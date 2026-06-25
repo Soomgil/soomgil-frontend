@@ -229,6 +229,9 @@ describe('RoutePage itinerary integration', () => {
           members: [{
             id: 'member-1', tripId: 'trip-1', role: 'OWNER', accessRole: 'OWNER', status: 'ACTIVE',
             joinedAt: '2026-06-20', user: { id: 'user-1', displayName: '김지훈', profileImageUrl: null },
+          }, {
+            id: 'member-2', tripId: 'trip-1', role: 'MEMBER', accessRole: 'MEMBER', status: 'ACTIVE',
+            joinedAt: '2026-06-21', user: { id: 'user-2', displayName: '동행자', profileImageUrl: null },
           }],
         }
       }),
@@ -2040,6 +2043,7 @@ describe('RoutePage itinerary integration', () => {
       category: '관광지',
       lat: 35.1587,
       lng: 129.1604,
+      dayIndex: 1,
       image: 'https://cdn.example.com/haeundae.jpg',
     })
 
@@ -2198,6 +2202,37 @@ describe('RoutePage itinerary integration', () => {
     await nextTick()
 
     expect(wrapper.text()).toContain('저녁 식당 예약했어요')
+    wrapper.unmount()
+  })
+
+  it('collaboration topic의 접속자 snapshot을 avatars-group 온라인 뱃지에 반영한다', async () => {
+    localStorage.setItem('accessToken', 'test-token')
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const collaborationTransport = realtime.instances[0]
+
+    expect(collaborationTransport.subscriptions.has('/topic/trips/trip-1/collaboration')).toBe(true)
+    expect(wrapper.findAll('.avatar-presence-badge')).toHaveLength(0)
+
+    collaborationTransport.subscriptions.get('/topic/trips/trip-1/collaboration')?.({
+      tripId: 'trip-1',
+      eventType: 'presence.snapshot',
+      activeUserIds: ['user-1', 'user-2'],
+    })
+    await nextTick()
+
+    expect(wrapper.findAll('.avatar.is-online')).toHaveLength(2)
+    expect(wrapper.findAll('.avatar-presence-badge')).toHaveLength(2)
+    expect(wrapper.text()).toContain('접속 중')
     wrapper.unmount()
   })
 

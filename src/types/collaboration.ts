@@ -22,3 +22,8 @@ export interface TripRealtimeEvent {
   itineraryVersion?: number | null
   [key: string]: unknown
 }
+
+export interface TripPresenceEvent extends TripRealtimeEvent {
+  eventType: 'presence.snapshot'
+  activeUserIds: string[]
+}

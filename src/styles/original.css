@@ -8677,17 +8677,17 @@
       padding: 5px 9px 5px 7px;
       border: 2px solid #ffffff;
       border-radius: 999px;
-      background: #059669;
+      background: var(--day-color, var(--violet));
       color: #ffffff;
-      box-shadow: 0 8px 20px rgba(5, 150, 105, 0.28), 0 2px 8px rgba(15, 23, 42, 0.12);
+      box-shadow: 0 8px 20px var(--day-color-border, rgba(0, 102, 255, 0.24)), 0 2px 8px rgba(15, 23, 42, 0.12);
       cursor: pointer;
       pointer-events: auto;
       transition: box-shadow 0.16s ease, background-color 0.16s ease;
     }
 
     .map-nearby-place-marker:hover {
-      background: #047857;
-      box-shadow: 0 12px 28px rgba(5, 150, 105, 0.34), 0 3px 10px rgba(15, 23, 42, 0.16);
+      background: color-mix(in srgb, var(--day-color, var(--violet)) 86%, #000000);
+      box-shadow: 0 12px 28px var(--day-color-border, rgba(0, 102, 255, 0.28)), 0 3px 10px rgba(15, 23, 42, 0.16);
     }
 
     .map-nearby-place-marker .material-symbols-rounded {

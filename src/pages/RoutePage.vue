@@ -30,7 +30,7 @@ import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, ChecklistItem, ChecklistMemberStatus, Note, PlanningScope } from '@/types/planning'
-import type { DrawingPreviewEvent, TripRealtimeEvent } from '@/types/collaboration'
+import type { DrawingPreviewEvent, TripPresenceEvent, TripRealtimeEvent } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
 import type { AccessibilityFlag, ParkingType, Place, PlaceAccessibility, PlaceProvider, PlaceRecommendation } from '@/types/place'
 import type { ItineraryDay, ReorderItineraryInput } from '@/types/itinerary'
@@ -51,6 +51,7 @@ interface ItineraryMapNearbyPlace {
   category: string | null
   lat: number
   lng: number
+  dayIndex?: number
   image?: string | null
   accessibility?: PlaceAccessibility
 }
@@ -107,6 +108,7 @@ const tripId = Array.isArray(tripIdParam) ? tripIdParam[0] ?? '' : tripIdParam ?
 const itinerary = useItinerary(tripId)
 const mapViewport = useMapViewport()
 const tripStore = useTripStore()
+const onlineUserIds = ref<Set<string>>(new Set())
 const currentUserId = computed(() => {
   const token = localStorage.getItem('accessToken')
   if (!token) return null
@@ -135,6 +137,7 @@ const trip = computed(() => {
       role: m.role,
       displayName: m.user.displayName,
       profileImageUrl: m.user.profileImageUrl,
+      online: onlineUserIds.value.has(m.user.id),
     })
   }
 
@@ -328,6 +331,19 @@ const visibleMapRoutes = computed(() => {
     && stopIds.has(route.destinationItineraryItemId)
   ))
 })
+function dayIndexForItineraryItem(itemId?: string | null) {
+  if (!itemId) return null
+  return dayPlans.value.find((day) => day.items.some((item) => item.id === itemId))?.day ?? null
+}
+const mapAccentDayIndex = computed(() => {
+  if (activeDay.value > 0) return activeDay.value
+  for (const route of visibleMapRoutes.value) {
+    const routeDay = dayIndexForItineraryItem(route.originItineraryItemId)
+      ?? dayIndexForItineraryItem(route.destinationItineraryItemId)
+    if (routeDay != null && routeDay > 0) return routeDay
+  }
+  return mapStops.value.find((stop) => stop.dayIndex > 0)?.dayIndex ?? 1
+})
 const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
   if (!nearbyOn.value) return []
   return routeNearbyPlaces.value.flatMap((place) => {
@@ -340,6 +356,7 @@ const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
       category: place.category ?? null,
       lat: place.lat,
       lng: place.lng,
+      dayIndex: mapAccentDayIndex.value,
       accessibility: place.accessibility,
     }]
   })
@@ -2392,7 +2409,7 @@ let itineraryRefreshInFlight: Promise<unknown> | null = null
 let conversationRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let planningRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
-function tripRealtimeTopic(topic: 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai') {
+function tripRealtimeTopic(topic: 'collaboration' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai') {
   return `/topic/trips/${encodeURIComponent(tripId)}/${topic}`
 }
 
@@ -2401,6 +2418,14 @@ function isTripRealtimeEvent(message: unknown): message is TripRealtimeEvent {
     && message !== null
     && (typeof (message as TripRealtimeEvent).tripId === 'undefined'
       || (message as TripRealtimeEvent).tripId === tripId)
+}
+
+function isTripPresenceEvent(message: unknown): message is TripPresenceEvent {
+  if (!isTripRealtimeEvent(message)) return false
+  const candidate = message as Partial<TripPresenceEvent>
+  return candidate.eventType === 'presence.snapshot'
+    && Array.isArray(candidate.activeUserIds)
+    && candidate.activeUserIds.every((userId) => typeof userId === 'string')
 }
 
 function isTripChatMessage(message: unknown): message is TripChatMessage {
@@ -2600,6 +2625,15 @@ function receiveItineraryEvent(message: unknown) {
   scheduleItineraryRefresh(message)
 }
 
+function receiveCollaborationEvent(message: unknown) {
+  if (!isTripPresenceEvent(message)) return
+  onlineUserIds.value = new Set(message.activeUserIds)
+  const knownUserIds = new Set(trip.value.members.map((member) => member.userId))
+  if (message.activeUserIds.some((userId) => !knownUserIds.has(userId))) {
+    void loadTrip()
+  }
+}
+
 function receiveChatEvent(message: unknown) {
   const chatMessage = extractChatMessage(message)
   if (!chatMessage) {
@@ -2634,6 +2668,7 @@ function receiveAiEvent(message: unknown) {
 function connectTripRealtime() {
   if (!tripId || !getStoredAccessToken() || tripRealtimeUnsubscribers.length > 0) return
   tripRealtimeUnsubscribers = [
+    collaborationTransport.subscribe(tripRealtimeTopic('collaboration'), receiveCollaborationEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('itinerary'), receiveItineraryEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('map-drawings'), receiveItineraryEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('route-matching'), receiveItineraryEvent),
@@ -2652,6 +2687,7 @@ function connectRealtimeChannels() {
 function disconnectTripRealtime() {
   tripRealtimeUnsubscribers.forEach((unsubscribe) => unsubscribe())
   tripRealtimeUnsubscribers = []
+  onlineUserIds.value = new Set()
   if (itineraryRefreshTimer) clearTimeout(itineraryRefreshTimer)
   if (conversationRefreshTimer) clearTimeout(conversationRefreshTimer)
   if (planningRefreshTimer) clearTimeout(planningRefreshTimer)
@@ -2899,7 +2935,7 @@ async function handleSettingsSaved(_tripId: string, settings?: TripDateSettings)
   }
 }
 
-const sidebarTheme = ref('theme-violet')
+const sidebarTheme = computed(() => getDayColorClass(activeDay.value > 0 ? activeDay.value : 1))
 
 function parseDateInput(value: string) {
   if (!value) return null
@@ -3275,6 +3311,7 @@ async function selectDiscoveredPlace(place: Place, recommendation?: PlaceRecomme
         category: detailed.category ?? null,
         lat: previewLat,
         lng: previewLng,
+        dayIndex: mapAccentDayIndex.value,
         image,
       }
     : null
@@ -3472,11 +3509,18 @@ function textAvatarStyle(index: unknown) {
                 <div class="trip-card-footer">
                   <div class="avatars-group">
                     <div class="avatars">
-                      <span v-for="m in trip.members.slice(0, 5)" :key="m.userId" class="avatar avatar-with-tooltip" :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}">
+                      <span
+                        v-for="m in trip.members.slice(0, 5)"
+                        :key="m.userId"
+                        :class="['avatar', 'avatar-with-tooltip', { 'is-online': m.online }]"
+                        :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}"
+                      >
                         <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" />
                         <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
+                        <span v-if="m.online" class="avatar-presence-badge" aria-label="접속 중"></span>
                         <div class="avatar-tooltip">
                           <span>{{ m.displayName }} ({{ m.role === 'OWNER' ? '방장' : '멤버' }})</span>
+                          <span class="avatar-tooltip-status">{{ m.online ? '접속 중' : '오프라인' }}</span>
                         </div>
                       </span>
                     </div>
@@ -4995,6 +5039,21 @@ function textAvatarStyle(index: unknown) {
 }
 .avatar-with-tooltip {
   position: relative;
+  overflow: visible;
+}
+.avatar-with-tooltip.is-online {
+  box-shadow: 0 4px 10px rgba(67, 74, 122, .12), 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+.avatar-presence-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
 }
 .avatar-tooltip {
   position: absolute;
@@ -5026,6 +5085,11 @@ function textAvatarStyle(index: unknown) {
   border-width: 4px;
   border-style: solid;
   border-color: var(--ink) transparent transparent transparent;
+}
+.avatar-tooltip-status {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 700;
 }
 .avatar-with-tooltip:hover .avatar-tooltip {
   opacity: 1;
@@ -5125,8 +5189,8 @@ function textAvatarStyle(index: unknown) {
   box-sizing: border-box;
   padding: 16px;
   border-radius: 18px;
-  border: 1px solid rgba(0,0,0,0.06);
-  background: #fff;
+  border: 1px solid var(--day-color-border, rgba(0, 102, 255, 0.16));
+  background: linear-gradient(135deg, #ffffff, var(--day-color-bg, rgba(0, 102, 255, 0.06)));
   margin-bottom: 12px;
   display: flex;
   flex-direction: column;
@@ -5140,7 +5204,7 @@ function textAvatarStyle(index: unknown) {
 }
 .trip-card-dates {
   font-size: 13px;
-  color: var(--violet);
+  color: var(--day-color, var(--violet));
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -5149,8 +5213,8 @@ function textAvatarStyle(index: unknown) {
   font-size: 11px;
   font-weight: 800;
   padding: 4px 8px;
-  background: rgba(124, 58, 237, 0.1);
-  color: var(--violet);
+  background: var(--day-color-bg, rgba(0, 102, 255, 0.1));
+  color: var(--day-color, var(--violet));
   border-radius: 8px;
 }
 .trip-card-title {
@@ -5170,6 +5234,7 @@ function textAvatarStyle(index: unknown) {
 }
 .trip-card-period-row .icon-calendar {
   font-size: 15px;
+  color: var(--day-color, var(--violet));
 }
 .trip-card-divider {
   height: 1px;
@@ -5549,12 +5614,6 @@ function textAvatarStyle(index: unknown) {
 /* ── Route linked stop indicator ── */
 .stop.route-linked {
   border-left-width: 4px;
-}
-
-.route-page-section .day-color-2 {
-  --day-color: #06b6d4;
-  --day-color-bg: rgba(6, 182, 212, 0.08);
-  --day-color-border: rgba(6, 182, 212, 0.22);
 }
 
 .stop.route-grouped {
