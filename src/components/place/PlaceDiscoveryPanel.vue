@@ -25,9 +25,12 @@ const items = ref<DiscoveryItem[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const detailLoadingKey = ref<string | null>(null)
+const loadedRecommendationBbox = ref('')
+const hasPendingMapArea = ref(false)
 let requestRevision = 0
 
 const emptyMessage = computed(() => mode.value === 'search' ? '검색 결과가 없습니다.' : '추천 장소가 아직 없습니다.')
+const showReloadPrompt = computed(() => mode.value !== 'search' && hasPendingMapArea.value && !!props.bbox.trim())
 function placeKey(place: Place) {
   return `${place.provider}:${place.externalPlaceId}`
 }
@@ -108,6 +111,8 @@ async function loadRecommendations(tab: RecommendationTab) {
       place: recommendation.place,
       recommendation,
     }))
+    loadedRecommendationBbox.value = bbox
+    hasPendingMapArea.value = false
   } catch {
     if (revision !== requestRevision) return
     items.value = []
@@ -148,6 +153,14 @@ async function changeMode(nextMode: DiscoveryMode) {
   if (nextMode === 'super-like') await loadRecommendations('SUPER_LIKE')
 }
 
+async function reloadCurrentArea() {
+  if (mode.value === 'search') {
+    await submitSearch()
+    return
+  }
+  await loadRecommendations(mode.value === 'basic' ? 'BASIC' : 'SUPER_LIKE')
+}
+
 async function retry() {
   if (mode.value === 'search') await submitSearch()
   else await loadRecommendations(mode.value === 'basic' ? 'BASIC' : 'SUPER_LIKE')
@@ -173,8 +186,9 @@ onMounted(() => {
 })
 
 watch(() => props.bbox, (bbox, previous) => {
-  if (!bbox || bbox === previous || mode.value === 'search') return
-  void loadRecommendations(mode.value === 'basic' ? 'BASIC' : 'SUPER_LIKE')
+  const nextBbox = bbox.trim()
+  if (!nextBbox || nextBbox === previous?.trim() || mode.value === 'search') return
+  hasPendingMapArea.value = nextBbox !== loadedRecommendationBbox.value
 })
 </script>
 
@@ -197,6 +211,18 @@ watch(() => props.bbox, (bbox, previous) => {
       <input v-model="query" type="search" placeholder="장소명 또는 지역 검색" aria-label="장소 검색어" />
       <button type="submit" :disabled="loading">검색</button>
     </form>
+
+    <button
+      v-if="showReloadPrompt"
+      type="button"
+      class="discovery-reload"
+      data-action="reload-area"
+      :disabled="loading"
+      @click="reloadCurrentArea"
+    >
+      <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+      현재 지도 영역 추천 다시 불러오기
+    </button>
 
     <div v-if="loading" class="discovery-state" aria-live="polite">
       <span class="discovery-spinner" aria-hidden="true"></span>
@@ -268,6 +294,9 @@ watch(() => props.bbox, (bbox, previous) => {
 .discovery-search { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; flex-shrink: 0; }
 .discovery-search input { min-width: 0; border: 0; outline: 0; font-size: 13px; }
 .discovery-search button, .discovery-state button { border: 0; border-radius: 6px; padding: 7px 10px; background: var(--violet); color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; }
+.discovery-reload { flex-shrink: 0; min-height: 38px; border: 1px solid rgba(124, 58, 237, .24); border-radius: 8px; background: rgba(124, 58, 237, .08); color: var(--violet); font-size: 12px; font-weight: 850; display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
+.discovery-reload:disabled { cursor: wait; opacity: .65; }
+.discovery-reload .material-symbols-rounded { font-size: 16px; }
 .discovery-state { flex: 1; min-height: 150px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; text-align: center; }
 .discovery-state--error { flex-direction: column; color: var(--rose); }
 .discovery-spinner { width: 20px; height: 20px; border: 2px solid var(--line); border-top-color: var(--violet); border-radius: 50%; animation: discovery-spin .8s linear infinite; }

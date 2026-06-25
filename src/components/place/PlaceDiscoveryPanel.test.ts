@@ -83,7 +83,7 @@ describe('PlaceDiscoveryPanel', () => {
     expect(savePlace).not.toHaveBeenCalled()
   })
 
-  it('reloads recommendations when the map bbox changes', async () => {
+  it('shows a reload action when the map bbox changes and reloads on click', async () => {
     const wrapper = mount(PlaceDiscoveryPanel, {
       props: { tripId: 'trip-1', bbox: '129,35,130,36' },
     })
@@ -92,11 +92,18 @@ describe('PlaceDiscoveryPanel', () => {
     await wrapper.setProps({ bbox: '126,37,127,38' })
     await flushPromises()
 
+    expect(getRecommendations).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('button[data-action="reload-area"]').text()).toContain('현재 지도 영역 추천 다시 불러오기')
+
+    await wrapper.get('button[data-action="reload-area"]').trigger('click')
+    await flushPromises()
+
     expect(getRecommendations).toHaveBeenLastCalledWith('trip-1', expect.objectContaining({
       bbox: '126,37,127,38',
       centerLat: 37.5,
       centerLng: 126.5,
     }))
+    expect(wrapper.find('button[data-action="reload-area"]').exists()).toBe(false)
   })
 
   it('loads the separate SUPER_LIKE tab and exposes retry on failure', async () => {
