@@ -991,16 +991,32 @@ async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
   }
 }
 
-function handleStopClick(item: RouteStop) {
+function restoreItineraryScroll(scrollTop: number) {
+  const restore = () => {
+    if (itineraryRef.value) itineraryRef.value.scrollTop = scrollTop
+  }
+  restore()
+  nextTick(restore)
+  requestAnimationFrame(() => {
+    restore()
+    requestAnimationFrame(restore)
+  })
+}
+
+async function handleStopClick(item: RouteStop) {
+  const scrollTop = itineraryRef.value?.scrollTop ?? 0
   if (suppressNextStopClick.value) {
     suppressNextStopClick.value = false
+    restoreItineraryScroll(scrollTop)
     return
   }
   if (activeTool.value === 'route-pen') {
-		void handleRoutePenClick(item)
+		await handleRoutePenClick(item)
+    restoreItineraryScroll(scrollTop)
     return
   }
-  void selectPlace(item.placeExternalId || undefined, (item.placeProvider || 'KTO') as PlaceProvider, item.id)
+  await selectPlace(item.placeExternalId || undefined, (item.placeProvider || 'KTO') as PlaceProvider, item.id)
+  restoreItineraryScroll(scrollTop)
 }
 
 /* ── Drag & Drop (data-driven) ── */
@@ -1220,9 +1236,10 @@ function onPointerDown(e: PointerEvent) {
   let source: DragSource | null = null
 
   if (isDraggingSeparator) {
-    const dayNum = parseInt(stop.getAttribute('data-day') || '1')
-    const dayIdx = dayPlans.value.findIndex(d => d.day === dayNum)
-    source = { type: 'separator', dayIdx: dayIdx === -1 ? 0 : dayIdx, itemIdx: -1, dayNum }
+    const dayId = stop.getAttribute('data-day-id')
+    const dayIdx = dayPlans.value.findIndex(d => d.id === dayId)
+    if (dayIdx < 0) return
+    source = { type: 'separator', dayIdx, itemIdx: -1, dayNum: dayPlans.value[dayIdx].day }
   } else {
     const stepId = stop.getAttribute('data-step-id')
     for (let di = 0; di < dayPlans.value.length; di++) {
@@ -1452,6 +1469,7 @@ function onPointerDown(e: PointerEvent) {
       }, 0)
     } else {
       cleanupDragState()
+      restoreItineraryScroll(initialScrollTop)
       return
     }
 
@@ -1492,8 +1510,10 @@ function onPointerDown(e: PointerEvent) {
     if (didReorder) await persistItineraryOrder()
 
     await nextTick()
+    restoreItineraryScroll(initialScrollTop)
     nextTick(() => {
       initDragDrop()
+      restoreItineraryScroll(initialScrollTop)
     })
   }
 
@@ -3037,7 +3057,7 @@ function textAvatarStyle(index: unknown) {
                 <!-- 전체 보기 -->
                 <template v-else-if="activeDay === 0">
                   <template v-for="day in dayPlans" :key="day.day">
-					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day"
+					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day" :data-day-id="day.id"
 						@pointerdown="onPointerDown">
                       <span class="day-pill">{{ dayPlanLabel(day) }}</span>
                       <span class="line"></span>
@@ -3077,7 +3097,7 @@ function textAvatarStyle(index: unknown) {
                 </template>
                 <!-- 특정 일차 -->
                 <template v-else-if="activePlan">
-				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay"
+				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay" :data-day-id="activePlan.id"
 					@pointerdown="onPointerDown">
                     <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
                     <span class="line"></span>
@@ -3654,16 +3674,18 @@ function textAvatarStyle(index: unknown) {
             </div>
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">
-                <button id="memo-clear-btn" class="btn text-danger-btn" type="button" @click="clearNote">
+                <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
+              </div>
+              <div class="memo-footer-actions">
+                <button id="memo-clear-btn" class="btn text-danger-btn memo-action-btn" type="button" @click="clearNote">
                   <span class="material-symbols-rounded">delete</span>
                   초기화
                 </button>
-                <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
+                <button id="memo-copy-btn" class="btn primary small memo-action-btn" type="button" :disabled="memoLoading || !memoTextDisplay.trim()" @click="saveNote">
+                  <span class="material-symbols-rounded">save</span>
+                  저장하기
+                </button>
               </div>
-              <button id="memo-copy-btn" class="btn primary small" type="button" :disabled="memoLoading || !memoTextDisplay.trim()" @click="saveNote">
-                <span class="material-symbols-rounded">save</span>
-                저장하기
-              </button>
             </div>
           </div>
 
@@ -4243,15 +4265,19 @@ function textAvatarStyle(index: unknown) {
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  min-height: 60px;
+  min-height: 68px;
   box-sizing: border-box;
-  padding: 10px 16px;
-  border-top: 1px solid rgba(15, 23, 42, 0.07);
-  background: rgba(255, 255, 255, 0.78);
+  padding: 12px 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+}
+.route-utility-sidebar .memo-footer,
+.route-utility-sidebar .todo-footer {
+  min-height: 68px;
 }
 .route-utility-sidebar .todo-input-row {
   display: flex;
@@ -4280,7 +4306,7 @@ function textAvatarStyle(index: unknown) {
   box-shadow: 0 0 0 3px rgba(var(--route-accent-rgb), 0.11);
 }
 .route-utility-sidebar .todo-input-row.route-send-box {
-  background: transparent;
+  background: #fff;
 }
 .route-utility-sidebar input[type="text"] {
   flex: 1 1 auto;
@@ -4334,7 +4360,7 @@ function textAvatarStyle(index: unknown) {
   justify-content: center;
   gap: 6px;
   border: 0 !important;
-  border-radius: 12px !important;
+  border-radius: 999px !important;
   background: linear-gradient(135deg, var(--route-accent), color-mix(in srgb, var(--route-accent) 72%, #ffffff)) !important;
   color: #fff !important;
   cursor: pointer;
@@ -4387,11 +4413,11 @@ function textAvatarStyle(index: unknown) {
   box-shadow: none;
 }
 .route-utility-sidebar .text-danger-btn {
-  height: 40px;
-  min-width: 40px;
-  padding: 0 12px !important;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 14px !important;
   border: 1px solid rgba(244, 63, 94, 0.18) !important;
-  border-radius: 12px !important;
+  border-radius: 999px !important;
   background: rgba(255, 255, 255, 0.82) !important;
   color: #e11d48 !important;
   font-size: 13px !important;
@@ -4406,9 +4432,27 @@ function textAvatarStyle(index: unknown) {
   flex: 1 1 auto;
   min-width: 0;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+.route-utility-sidebar .memo-footer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.route-utility-sidebar .memo-action-btn {
+  width: 96px !important;
+  min-width: 96px !important;
 }
 .route-utility-sidebar .memo-char-count {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.9);
   color: #64748b;
   font-size: 12px;
   font-weight: 750;
@@ -5084,7 +5128,7 @@ function textAvatarStyle(index: unknown) {
   user-select: none;
   -webkit-user-select: none;
   -webkit-user-drag: none;
-  touch-action: none;
+  touch-action: pan-y;
 }
 
 /* Tooltip CSS */
