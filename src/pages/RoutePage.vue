@@ -1231,6 +1231,8 @@ function moveItemGroupAfter(anchorItemId: string, movingItemIds: string[]) {
   return true
 }
 
+const DRAG_LAYER_Z_INDEX = '120'
+
 function onPointerDown(e: PointerEvent) {
   if ((e.target as HTMLElement).closest('button')) return
   const target = e.currentTarget as HTMLElement
@@ -1329,7 +1331,7 @@ function onPointerDown(e: PointerEvent) {
       stop.setPointerCapture(e.pointerId)
     }
     stop.classList.add('is-dragging')
-    stop.style.zIndex = '120'
+    stop.style.setProperty('z-index', DRAG_LAYER_Z_INDEX, 'important')
     stop.style.width = stopRect.width + 'px'
     stop.style.position = 'relative'
     stop.style.top = '0px'
@@ -1342,7 +1344,7 @@ function onPointerDown(e: PointerEvent) {
 
     dragElements.forEach((el) => {
       el.classList.add('is-chain-dragging')
-      el.style.zIndex = el.classList.contains('route-connector') ? '80' : '120'
+      el.style.setProperty('z-index', DRAG_LAYER_Z_INDEX, 'important')
       el.style.position = 'relative'
       el.style.top = '0px'
     })
@@ -1350,14 +1352,14 @@ function onPointerDown(e: PointerEvent) {
 
   function cleanupDragState() {
     stop.classList.remove('is-dragging')
-    stop.style.zIndex = ''
+    stop.style.removeProperty('z-index')
     stop.style.width = ''
     stop.style.position = ''
     stop.style.top = ''
 
     dragElements.forEach((el) => {
       el.classList.remove('is-chain-dragging')
-      el.style.zIndex = ''
+      el.style.removeProperty('z-index')
       el.style.position = ''
       el.style.top = ''
     })
