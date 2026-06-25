@@ -1960,6 +1960,13 @@ function currentUserSummary() {
   }
 }
 
+function pendingAnswerCreatedAtFor(messageCreatedAt: string) {
+  const timestamp = Date.parse(messageCreatedAt)
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp + 1).toISOString()
+    : messageCreatedAt
+}
+
 function upsertAiMessage(message: RouteAiChatMessage) {
   let next = aiMessages.value.filter((current) => current.id !== message.id)
   if (message.role === 'USER') {
@@ -1971,7 +1978,22 @@ function upsertAiMessage(message: RouteAiChatMessage) {
       && (current.requester?.id ?? null) === requesterId
     ))
     if (optimisticIndex >= 0) {
+      const optimisticMessageId = next[optimisticIndex].id
       next[optimisticIndex] = message
+      if (optimisticMessageId !== message.id) {
+        const targetPendingExists = next.some((current) => current.pendingForMessageId === message.id)
+        const pendingCreatedAt = pendingAnswerCreatedAtFor(message.createdAt)
+        next = next.flatMap((current) => {
+          if (current.pendingForMessageId !== optimisticMessageId) return [current]
+          if (targetPendingExists) return []
+          return [{
+            ...current,
+            id: `local-ai-pending-${message.id}`,
+            pendingForMessageId: message.id,
+            createdAt: pendingCreatedAt,
+          }]
+        })
+      }
     } else {
       next.push(message)
     }
@@ -2656,7 +2678,7 @@ function receiveAiEvent(message: unknown) {
   if (aiChatMessage) {
     upsertAiMessage(aiChatMessage)
     if (aiChatMessage.role === 'USER') {
-      addPendingAiAnswer(aiChatMessage.id, new Date(Date.parse(aiChatMessage.createdAt) + 1).toISOString())
+      addPendingAiAnswer(aiChatMessage.id, pendingAnswerCreatedAtFor(aiChatMessage.createdAt))
       return
     }
   } else {
