@@ -17,17 +17,18 @@ const router = useRouter()
 const authStore = useAuthStore()
 const toast = useToast()
 const creatingInvite = ref(false)
+const inviteTargetTrip = ref<TripSummary | null>(null)
 
 async function createAndCopyInviteLink() {
   if (creatingInvite.value) return
-  if (!nearestTrip.value) {
-    toast.info('초대할 여행이 없어요. 먼저 새 여행을 만들어주세요.')
-    router.push({ name: 'Route' })
+  if (!inviteTargetTrip.value) {
+    toast.info('초대하려면 내가 방장인 여행이 필요해요.')
+    router.push({ path: '/my-trips', query: { intent: 'invite' } })
     return
   }
   creatingInvite.value = true
   try {
-    const invite = await tripApi.createInvite(nearestTrip.value.id)
+    const invite = await tripApi.createInvite(inviteTargetTrip.value.id)
     const url = new URL(`/trip-invites/${encodeURIComponent(invite.inviteCode)}`, window.location.origin)
     try {
       await navigator.clipboard.writeText(url.toString())
@@ -183,12 +184,22 @@ async function fetchHomeData() {
         try { await authStore.fetchUser() } catch { /* user 조회 실패해도 홈은 노출 */ }
       }
       try {
-        nearestTrip.value = await tripApi.getNearestTrip()
+        const [nearest, ownerTrips] = await Promise.allSettled([
+          tripApi.getNearestTrip(),
+          tripApi.getTrips({ page: 0, size: 10, status: 'ACTIVE', role: 'OWNER' }),
+        ])
+        if (nearest.status === 'fulfilled') {
+          nearestTrip.value = nearest.value
+        }
+        if (ownerTrips.status === 'fulfilled') {
+          inviteTargetTrip.value = ownerTrips.value.items[0] ?? null
+        }
       } catch (e) {
         console.error('Failed to load nearest trip', e)
       }
     } else {
       nearestTrip.value = null
+      inviteTargetTrip.value = null
     }
 
     if (storiesRes.status === 'fulfilled') {
