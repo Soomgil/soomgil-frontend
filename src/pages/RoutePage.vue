@@ -550,9 +550,8 @@ function handleKeydown(e: KeyboardEvent) {
 const routeLinks = ref<RouteLink[]>([])
 const pendingRouteFrom = ref<string | null>(null)
 const routeWaypoints = ref<LngLat[]>([])
-const ROUTE_MATCHING_MAX_COORDINATES = 100
+const ROUTE_MATCHING_MAX_COORDINATES = 25
 const ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS = ROUTE_MATCHING_MAX_COORDINATES - 2
-const ROUTE_MATCHING_RADIUS_METERS = 50
 
 function clearPendingRouteSelection() {
   pendingRouteFrom.value = null
@@ -740,8 +739,6 @@ async function handleRoutePenClick(item: RouteStop) {
       destinationItineraryItemId: item.id,
       mode: 'WALKING',
       coordinates: routeCoordinates,
-      radiuses: routeCoordinates.map(() => ROUTE_MATCHING_RADIUS_METERS),
-      tidy: false,
     })
     if (newRoute) {
       upsertLocalRoute(newRoute)
@@ -793,8 +790,7 @@ function addRouteWaypoint(coordinate: LngLat) {
 const ROUTE_DRAWING_ENDPOINT_MAX_METERS = 700
 const ROUTE_DRAWING_SAMPLE_INTERVAL_METERS = 25
 const ROUTE_DRAWING_SAMPLE_MIN_POINTS = 8
-const ROUTE_DRAWING_SAMPLE_MAX_POINTS = 80
-const ROUTE_DRAWING_MATCH_RADIUS_METERS = 50
+const ROUTE_DRAWING_SAMPLE_MAX_POINTS = ROUTE_MATCHING_MAX_COORDINATES
 
 function distanceMeters(left: { lng: number; lat: number }, right: { lng: number; lat: number }) {
   const radius = 6371000
@@ -976,8 +972,6 @@ async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
       destinationItineraryItemId: destination.id,
       mode: 'WALKING',
       coordinates: requestCoordinates,
-      radiuses: requestCoordinates.map(() => ROUTE_DRAWING_MATCH_RADIUS_METERS),
-      tidy: false,
     })
     if (newRoute) {
       upsertLocalRoute(newRoute)

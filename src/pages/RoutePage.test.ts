@@ -1191,8 +1191,6 @@ describe('RoutePage itinerary integration', () => {
       destinationItineraryItemId: 'item-2',
       mode: 'WALKING',
       coordinates: [{ lng: 127.38, lat: 36.35 }, { lng: 127.39, lat: 36.36 }],
-      radiuses: [50, 50],
-      tidy: false,
     })
     expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
       tab: 'BASIC',
@@ -1201,7 +1199,7 @@ describe('RoutePage itinerary integration', () => {
     }))
   })
 
-  it('경로 중간점을 많이 찍어도 백엔드 Map Matching 요청은 100개 이하 원본 trace로 보낸다', async () => {
+  it('sends at most 25 Directions waypoints when many route points are selected', async () => {
     vi.stubGlobal('fetch', vi.fn())
     holder.state.fetchItinerary.mockImplementationOnce(async () => {
       holder.state.days.value = [{
@@ -1260,12 +1258,11 @@ describe('RoutePage itinerary integration', () => {
 
     expect(fetch).not.toHaveBeenCalled()
     const request = holder.state.mapMatchRoute.mock.calls[0][0]
-    expect(request.coordinates).toHaveLength(100)
+    expect(request.coordinates).toHaveLength(25)
     expect(request.coordinates[0]).toEqual({ lng: 127.38, lat: 36.35 })
     expect(request.coordinates.at(-1)).toEqual({ lng: 127.39, lat: 36.36 })
-    expect(request.radiuses).toHaveLength(100)
-    expect(new Set(request.radiuses)).toEqual(new Set([50]))
-    expect(request.tidy).toBe(false)
+    expect(request.radiuses).toBeUndefined()
+    expect(request.tidy).toBeUndefined()
   })
 
   it('경로 펜에서 지도 위에 찍은 중간점을 포함해 두 일정 장소를 연결한다', async () => {
@@ -1337,8 +1334,6 @@ describe('RoutePage itinerary integration', () => {
         waypoint,
         { lng: 127.39, lat: 36.36 },
       ],
-      radiuses: [50, 50, 50],
-      tidy: false,
     })
     expect(wrapper.getComponent(MapboxItineraryMap).props('routeWaypoints')).toEqual([])
     expect(holder.state.createDrawing).not.toHaveBeenCalled()
