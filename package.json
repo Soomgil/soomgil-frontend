@@ -1,6 +1,6 @@
 {
   "name": "soomgil-frontend",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "숨길의 활성 Vue 프론트엔드 앱입니다.",
   "license": "ISC",
