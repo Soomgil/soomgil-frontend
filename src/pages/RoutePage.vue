@@ -3927,7 +3927,7 @@ function textAvatarStyle(index: unknown) {
 }
 .map-tools .tool-btn:disabled:hover {
   background: transparent;
-  color: #b3bac8;
+  color: var(--tool-inactive-color);
 }
 .map-tools .tool-btn.active:not(:disabled) {
   background: var(--violet);
@@ -4748,7 +4748,7 @@ function textAvatarStyle(index: unknown) {
 }
 
 .route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn {
-  color: #475569;
+  color: var(--tool-inactive-color);
 }
 
 .route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn.active:not(:disabled) {
@@ -4760,6 +4760,10 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn:is(.active, .is-on):not(:disabled),
 .route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn:is(.active, .is-on):not(:disabled) .material-symbols-rounded {
   color: #fff;
+}
+
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn:not(.active):not(.is-on):not(:disabled) {
+  color: var(--tool-inactive-color);
 }
 
 .route-page-section .map-canvas.navigation-guide-mode .route-connector-line {
@@ -5156,8 +5160,37 @@ function textAvatarStyle(index: unknown) {
 }
 
 /* Tooltip CSS */
+.route-page-section .map-tools {
+  --tool-inactive-color: #64748b;
+  --tool-divider-color: rgba(100, 116, 139, 0.42);
+}
 .map-tools .tool-btn {
   position: relative;
+}
+.route-page-section .map-tools .tool-btn:not(.active):not(.is-on):not(:disabled),
+.route-page-section .map-tools .tool-btn.is-off:not(:disabled),
+.route-page-section .map-tools .tool-btn[data-route-state="hidden"]:not(:disabled),
+.route-page-section .map-tools .tool-btn[data-card-state="hidden"]:not(:disabled) {
+  color: var(--tool-inactive-color);
+}
+.route-page-section .map-tools .tool-btn.is-off:hover:not(:disabled),
+.route-page-section .map-tools .tool-btn[data-route-state="hidden"]:hover:not(:disabled),
+.route-page-section .map-tools .tool-btn[data-card-state="hidden"]:hover:not(:disabled) {
+  color: var(--violet);
+}
+.route-page-section .map-tools .tool-divider {
+  width: 2px;
+  height: 24px;
+  margin: 0 6px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--tool-divider-color) 18%,
+    var(--tool-divider-color) 82%,
+    transparent
+  );
+  border-radius: 999px;
+  opacity: 1;
 }
 .map-tools .tool-tip {
   position: absolute;

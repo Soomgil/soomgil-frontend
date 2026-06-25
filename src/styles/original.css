@@ -8500,8 +8500,8 @@
     .map-pin-card {
       position: absolute;
       cursor: pointer;
-      width: 100px;
-      height: 132px;
+      width: 112px;
+      min-height: 132px;
       box-sizing: border-box;
       background: #ffffff;
       border-radius: 14px;
@@ -8569,7 +8569,7 @@
 
     .map-pin-img {
       width: 100%;
-      aspect-ratio: 4/3;
+      aspect-ratio: 6/5;
       object-fit: cover;
       border-radius: 10px 10px 0 0;
       display: block;
@@ -8577,7 +8577,7 @@
 
     .map-pin-icon-placeholder {
       width: 100%;
-      aspect-ratio: 4/3;
+      aspect-ratio: 6/5;
       background: var(--day-color-bg);
       border-radius: 10px 10px 0 0;
       display: flex;

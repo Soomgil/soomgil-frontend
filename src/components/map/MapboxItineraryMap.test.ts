@@ -83,6 +83,8 @@ const stops: ItineraryMapStop[] = [
 ]
 const routes = [{
 	id: 'route-1',
+  originItineraryItemId: 'item-1',
+  destinationItineraryItemId: 'item-2',
 	geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
 }]
 
@@ -125,10 +127,10 @@ describe('MapboxItineraryMap', () => {
       offset: [0, -10],
     }))
 	expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
-	expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({
       id: 'itinerary-route-route-1',
       type: 'line',
-      paint: expect.not.objectContaining({ 'line-dasharray': expect.anything() }),
+      paint: expect.objectContaining({ 'line-color': '#6d4aff' }),
     }))
     expect(mapbox.map.cameraForBounds).toHaveBeenCalledOnce()
     expect(wrapper.emitted('viewportChange')).toEqual([[
@@ -268,7 +270,7 @@ describe('MapboxItineraryMap', () => {
     expect(markerElement.classList.contains('map-pin-card--min')).toBe(true)
   })
 
-  it('navigation mode를 켜도 incidents tileset이 없는 기본 light 스타일을 유지한다', async () => {
+  it('navigation mode를 켜면 Mapbox navigation day 스타일로 전환한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     const wrapper = mount(MapboxItineraryMap, { props: { stops, navigationMode: false } })
     await flushPromises()
@@ -279,7 +281,7 @@ describe('MapboxItineraryMap', () => {
     await wrapper.setProps({ navigationMode: true })
     await nextTick()
 
-    expect(mapbox.map.setStyle).not.toHaveBeenCalled()
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-day-v1')
   })
 
   it('헤더 다크모드 토글이 지도 스타일을 Mapbox dark 스타일로 전환한다', async () => {
@@ -294,7 +296,7 @@ describe('MapboxItineraryMap', () => {
     toggleTheme()
     await nextTick()
 
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/dark-v11')
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
   })
 
   it('지도 스타일 로딩 중 다크모드로 바뀌어도 load 후 Mapbox dark 스타일로 보정한다', async () => {
@@ -307,7 +309,33 @@ describe('MapboxItineraryMap', () => {
     await nextTick()
     mapbox.handlers.get('style.load')?.()
 
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/dark-v11')
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
+  })
+
+  it('경로선 색상을 출발 일정의 일차 색상으로 그린다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    mount(MapboxItineraryMap, {
+      props: {
+        stops: [
+          { ...stops[0], id: 'day-2-origin', dayIndex: 2 },
+          { ...stops[1], id: 'day-2-destination', dayIndex: 2 },
+        ],
+        routes: [{
+          id: 'day-2-route',
+          originItineraryItemId: 'day-2-origin',
+          destinationItineraryItemId: 'day-2-destination',
+          geometry: { type: 'LineString', coordinates: [[127.38, 36.35], [127.39, 36.36]] },
+        }],
+      },
+    })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+
+    expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'itinerary-route-day-2-route',
+      paint: expect.objectContaining({ 'line-color': '#06b6d4' }),
+    }))
   })
 
   it('경로 geometry 좌표 객체 배열도 GeoJSON 선으로 정규화해 그린다', async () => {

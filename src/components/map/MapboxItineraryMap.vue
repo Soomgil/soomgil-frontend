@@ -96,11 +96,16 @@ let lastFittedStopsKey = ''
 const { isDarkMode } = useTheme()
 
 const MAPBOX_STYLE_LIGHT = 'mapbox://styles/mapbox/light-v11'
-const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/dark-v11'
+const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/navigation-night-v1'
+const MAPBOX_STYLE_NAVIGATION_DAY = 'mapbox://styles/mapbox/navigation-day-v1'
+const DAY_ROUTE_COLORS = ['#6d4aff', '#06b6d4', '#10b981', '#f97316', '#ec4899']
 
 const mapStyle = computed(() => {
   if (isDarkMode.value) {
     return MAPBOX_STYLE_DARK
+  }
+  if (props.navigationMode) {
+    return MAPBOX_STYLE_NAVIGATION_DAY
   }
   return MAPBOX_STYLE_LIGHT
 })
@@ -116,6 +121,17 @@ watch(mapStyle, applyMapStyle)
 
 function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? 'day-color-5' : `day-color-${((dayIndex - 1) % 5) + 1}`
+}
+
+function dayRouteColor(dayIndex: number) {
+  if (dayIndex <= 0) return DAY_ROUTE_COLORS[4]
+  return DAY_ROUTE_COLORS[(dayIndex - 1) % DAY_ROUTE_COLORS.length]
+}
+
+function routeLineColor(route: ItineraryMapRoute) {
+  const origin = props.stops.find((stop) => stop.id === route.originItineraryItemId)
+  const destination = props.stops.find((stop) => stop.id === route.destinationItineraryItemId)
+  return dayRouteColor(origin?.dayIndex ?? destination?.dayIndex ?? 1)
 }
 
 const ACCESSIBILITY_MARKERS: Partial<Record<AccessibilityFlag, { icon: string; label: string }>> = {
@@ -158,10 +174,7 @@ function createMarkerElement(stop: ItineraryMapStop) {
   const title = document.createElement('span')
   title.className = 'map-pin-title'
   title.textContent = stop.title
-  const day = document.createElement('span')
-  day.className = 'map-pin-day-badge'
-  day.textContent = stop.dayIndex <= 0 ? '일차 미정' : `${stop.dayIndex}일차`
-  info.append(title, day)
+  info.appendChild(title)
 
   const supportedFlags = stop.accessibility?.flags.filter((flag) => ACCESSIBILITY_MARKERS[flag]) ?? []
   if (supportedFlags.length > 0) {
@@ -363,7 +376,7 @@ function renderRoutes() {
       type: 'line',
       source: id,
       paint: {
-        'line-color': '#6d4aff',
+        'line-color': routeLineColor(route),
         'line-width': 5,
         'line-opacity': 0.95,
       },
