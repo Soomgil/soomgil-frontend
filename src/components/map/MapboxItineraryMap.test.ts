@@ -268,7 +268,7 @@ describe('MapboxItineraryMap', () => {
     expect(markerElement.classList.contains('map-pin-card--min')).toBe(true)
   })
 
-  it('navigation mode를 켜면 Mapbox navigation day 스타일로 전환한다', async () => {
+  it('navigation mode를 켜도 incidents tileset이 없는 기본 light 스타일을 유지한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     const wrapper = mount(MapboxItineraryMap, { props: { stops, navigationMode: false } })
     await flushPromises()
@@ -279,7 +279,7 @@ describe('MapboxItineraryMap', () => {
     await wrapper.setProps({ navigationMode: true })
     await nextTick()
 
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-day-v1')
+    expect(mapbox.map.setStyle).not.toHaveBeenCalled()
   })
 
   it('헤더 다크모드 토글이 지도 스타일을 Mapbox dark 스타일로 전환한다', async () => {
@@ -294,7 +294,7 @@ describe('MapboxItineraryMap', () => {
     toggleTheme()
     await nextTick()
 
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/dark-v11')
   })
 
   it('지도 스타일 로딩 중 다크모드로 바뀌어도 load 후 Mapbox dark 스타일로 보정한다', async () => {
@@ -307,7 +307,7 @@ describe('MapboxItineraryMap', () => {
     await nextTick()
     mapbox.handlers.get('style.load')?.()
 
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/dark-v11')
   })
 
   it('경로 geometry 좌표 객체 배열도 GeoJSON 선으로 정규화해 그린다', async () => {
