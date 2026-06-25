@@ -1,6 +1,11 @@
 import axios from 'axios'
 import type { AxiosRequestConfig } from 'axios'
 import type { ApiResponse, ProblemDetail } from '@/types/api'
+import {
+  clearCollaborationSessionIds,
+  COLLABORATION_SESSION_HEADER,
+  getCollaborationSessionId,
+} from '@/realtime/collaborationSession'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -38,11 +43,16 @@ http.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken')
   if (token && isUsableAccessToken(token)) {
     config.headers.Authorization = `Bearer ${token}`
+    const collaborationSessionId = getCollaborationSessionId()
+    if (collaborationSessionId) {
+      config.headers[COLLABORATION_SESSION_HEADER] = collaborationSessionId
+    }
   } else if (token) {
     // 손상되거나 만료된 access token은 공개 API까지 401로 만드는 원인이 된다.
     // refresh token은 유지해 보호 API의 401 응답에서 정상 갱신하도록 한다.
     localStorage.removeItem('accessToken')
     localStorage.removeItem('tokenExpiresAt')
+    clearCollaborationSessionIds()
   }
   return config
 })
@@ -66,6 +76,7 @@ function clearAuthAndRedirect() {
   localStorage.removeItem('accessToken')
   localStorage.removeItem('refreshToken')
   localStorage.removeItem('tokenExpiresAt')
+  clearCollaborationSessionIds()
   window.location.href = buildLoginRedirectUrl(window.location)
 }
 

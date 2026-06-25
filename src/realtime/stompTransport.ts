@@ -1,4 +1,9 @@
-import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
+import { Client, type IFrame, type IMessage, type StompSubscription } from '@stomp/stompjs'
+import {
+  COLLABORATION_SESSION_HEADER,
+  registerCollaborationSessionId,
+  unregisterCollaborationSessionId,
+} from './collaborationSession'
 
 export interface RealtimeTransport {
   readonly connected: boolean
@@ -23,6 +28,7 @@ interface PendingSubscription {
 export class StompTransport implements RealtimeTransport {
   private readonly client: Client
   private readonly subscriptions = new Set<PendingSubscription>()
+  private collaborationSessionId: string | null = null
 
   constructor(options: StompTransportOptions) {
     this.client = new Client({
@@ -35,10 +41,18 @@ export class StompTransport implements RealtimeTransport {
         const token = options.accessToken()
         this.client.connectHeaders = token ? { Authorization: `Bearer ${token}` } : {}
       },
-      onConnect: () => {
+      onStompError: (frame: IFrame) => {
+        console.error('STOMP broker error', frame.headers.message ?? frame.body)
+      },
+      onWebSocketError: (event) => {
+        console.error('WebSocket connection error', event)
+      },
+      onConnect: (frame: IFrame) => {
+        this.updateCollaborationSession(frame.headers[COLLABORATION_SESSION_HEADER])
         this.subscriptions.forEach((subscription) => this.activateSubscription(subscription))
       },
       onWebSocketClose: () => {
+        this.clearCollaborationSession()
         this.subscriptions.forEach((subscription) => {
           subscription.active = null
         })
@@ -60,6 +74,7 @@ export class StompTransport implements RealtimeTransport {
       subscription.active = null
     })
     await this.client.deactivate()
+    this.clearCollaborationSession()
   }
 
   publish(destination: string, payload: unknown) {
@@ -87,12 +102,30 @@ export class StompTransport implements RealtimeTransport {
   private activateSubscription(subscription: PendingSubscription) {
     subscription.active?.unsubscribe()
     subscription.active = this.client.subscribe(subscription.destination, (message: IMessage) => {
+      let payload: unknown
       try {
-        subscription.handler(JSON.parse(message.body) as unknown)
-      } catch {
+        payload = JSON.parse(message.body) as unknown
+      } catch (cause) {
         // Ignore malformed broker messages and keep the subscription alive.
+        console.warn('Malformed STOMP message ignored', cause)
+        return
+      }
+      try {
+        subscription.handler(payload)
+      } catch (cause) {
+        console.error('STOMP message handler failed', cause)
       }
     })
+  }
+
+  private updateCollaborationSession(sessionId: string | undefined) {
+    this.clearCollaborationSession()
+    this.collaborationSessionId = registerCollaborationSessionId(sessionId)
+  }
+
+  private clearCollaborationSession() {
+    unregisterCollaborationSessionId(this.collaborationSessionId)
+    this.collaborationSessionId = null
   }
 }
 

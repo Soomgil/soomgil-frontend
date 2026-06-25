@@ -30,10 +30,12 @@ vi.mock('@stomp/stompjs', () => ({
 }))
 
 import { StompTransport, resolveWebSocketUrl } from './stompTransport'
+import { clearCollaborationSessionIds, getCollaborationSessionId } from './collaborationSession'
 
 describe('StompTransport', () => {
   beforeEach(() => {
     stomp.clients.length = 0
+    clearCollaborationSessionIds()
     vi.clearAllMocks()
   })
 
@@ -52,11 +54,42 @@ describe('StompTransport', () => {
     expect(client.connectHeaders).toEqual({ Authorization: 'Bearer token-1' })
 
     client.connected = true
-    client.config.onConnect()
+    client.config.onConnect({ headers: { 'X-Soomgil-WebSocket-Session-Id': 'session-1' } })
     expect(client.subscribe).toHaveBeenCalledWith('/topic/trips/trip-1/map-drawings', expect.any(Function))
+    expect(getCollaborationSessionId()).toBe('session-1')
     const callback = client.subscribe.mock.results[0].value.callback
     callback({ body: JSON.stringify({ previewId: 'stroke-1' }) })
     expect(handler).toHaveBeenCalledWith({ previewId: 'stroke-1' })
+
+    await transport.disconnect()
+    expect(getCollaborationSessionId()).toBeNull()
+  })
+
+  it('잘못된 broker 메시지와 handler 예외를 기록하고 구독을 유지한다', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const handler = vi.fn(() => {
+      throw new Error('handler failed')
+    })
+    const transport = new StompTransport({
+      brokerUrl: 'ws://localhost/ws',
+      accessToken: () => 'token-1',
+    })
+    transport.subscribe('/topic/trips/trip-1/itinerary', handler)
+    const client = stomp.clients[0]
+    client.connected = true
+    client.config.onConnect({ headers: {} })
+    const callback = client.subscribe.mock.results[0].value.callback
+
+    callback({ body: '{' })
+    callback({ body: JSON.stringify({ tripId: 'trip-1' }) })
+
+    expect(warn).toHaveBeenCalledWith('Malformed STOMP message ignored', expect.any(SyntaxError))
+    expect(handler).toHaveBeenCalledWith({ tripId: 'trip-1' })
+    expect(error).toHaveBeenCalledWith('STOMP message handler failed', expect.any(Error))
+
+    warn.mockRestore()
+    error.mockRestore()
   })
 
   it('연결된 경우에만 JSON payload를 publish한다', () => {

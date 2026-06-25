@@ -16,3 +16,9 @@ export interface DrawingPreviewMessage extends DrawingPreviewEvent {
   clientId: string
   sentAt: string
 }
+
+export interface TripRealtimeEvent {
+  tripId: string
+  itineraryVersion?: number | null
+  [key: string]: unknown
+}

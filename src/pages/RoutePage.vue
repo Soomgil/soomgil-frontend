@@ -29,7 +29,7 @@ import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, Note, PlanningScope } from '@/types/planning'
-import type { DrawingPreviewEvent } from '@/types/collaboration'
+import type { DrawingPreviewEvent, TripRealtimeEvent } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
 import type { AccessibilityFlag, ParkingType, Place, PlaceAccessibility, PlaceProvider, PlaceRecommendation } from '@/types/place'
 import type { ItineraryDay, ReorderItineraryInput } from '@/types/itinerary'
@@ -2298,6 +2298,10 @@ const drawingPreviewTransport = new StompTransport({
   brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
   accessToken: () => localStorage.getItem('accessToken'),
 })
+const collaborationTransport = new StompTransport({
+  brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
+  accessToken: () => localStorage.getItem('accessToken'),
+})
 const drawingPreviewChannel = useDrawingPreviewChannel({
   tripId,
   clientId: globalThis.crypto?.randomUUID?.() ?? `drawing-client-${Date.now()}`,
@@ -2308,6 +2312,130 @@ const mapDrawings = computed(() => [
   ...drawingPreviewChannel.remoteDrawings.value,
 ])
 let localDrawingSequence = 0
+let tripRealtimeUnsubscribers: Array<() => void> = []
+let itineraryRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let itineraryRefreshInFlight: Promise<unknown> | null = null
+let conversationRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let planningRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+function tripRealtimeTopic(topic: 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai') {
+  return `/topic/trips/${encodeURIComponent(tripId)}/${topic}`
+}
+
+function isTripRealtimeEvent(message: unknown): message is TripRealtimeEvent {
+  return typeof message === 'object'
+    && message !== null
+    && (typeof (message as TripRealtimeEvent).tripId === 'undefined'
+      || (message as TripRealtimeEvent).tripId === tripId)
+}
+
+function isTripChatMessage(message: unknown): message is TripChatMessage {
+  if (!message || typeof message !== 'object') return false
+  const candidate = message as Partial<TripChatMessage>
+  return typeof candidate.id === 'string'
+    && typeof candidate.tripId === 'string'
+    && candidate.tripId === tripId
+    && (typeof candidate.content === 'string' || candidate.content === null)
+    && typeof candidate.createdAt === 'string'
+    && typeof candidate.sender === 'object'
+    && candidate.sender !== null
+}
+
+function extractChatMessage(message: unknown): TripChatMessage | null {
+  if (isTripChatMessage(message)) return message
+  if (message && typeof message === 'object' && 'message' in message) {
+    const nested = (message as { message?: unknown }).message
+    if (isTripChatMessage(nested)) return nested
+  }
+  return null
+}
+
+function scheduleItineraryRefresh(event?: unknown) {
+  if (event && !isTripRealtimeEvent(event)) return
+  const eventVersion: number | null = event && typeof (event as TripRealtimeEvent).itineraryVersion === 'number'
+    ? (event as TripRealtimeEvent).itineraryVersion as number
+    : null
+  if (eventVersion !== null && eventVersion <= itinerary.itineraryVersion.value) return
+  if (itineraryRefreshTimer) return
+  itineraryRefreshTimer = setTimeout(() => {
+    itineraryRefreshTimer = null
+    itineraryRefreshInFlight = (itineraryRefreshInFlight ?? itinerary.fetchItinerary())
+      .catch((cause) => {
+        console.error('Realtime itinerary refresh failed', cause)
+      })
+      .finally(() => {
+        itineraryRefreshInFlight = null
+      })
+  }, 50)
+}
+
+function scheduleConversationRefresh() {
+  if (conversationRefreshTimer) return
+  conversationRefreshTimer = setTimeout(() => {
+    conversationRefreshTimer = null
+    void loadConversations()
+  }, 50)
+}
+
+function schedulePlanningRefresh() {
+  if (planningRefreshTimer) return
+  planningRefreshTimer = setTimeout(() => {
+    planningRefreshTimer = null
+    if (activeRoutePanel.value === 'memo') void loadNote()
+    if (activeRoutePanel.value === 'todo') void loadChecklists()
+  }, 50)
+}
+
+function receiveItineraryEvent(message: unknown) {
+  scheduleItineraryRefresh(message)
+}
+
+function receiveChatEvent(message: unknown) {
+  const chatMessage = extractChatMessage(message)
+  if (!chatMessage) {
+    scheduleConversationRefresh()
+    return
+  }
+  if (chatMessages.value.some((current) => current.id === chatMessage.id)) return
+  chatMessages.value = oldestFirst([...chatMessages.value, chatMessage])
+}
+
+function receivePlanningEvent(message: unknown) {
+  if (!isTripRealtimeEvent(message)) return
+  schedulePlanningRefresh()
+  scheduleItineraryRefresh(message)
+}
+
+function receiveAiEvent(message: unknown) {
+  if (!isTripRealtimeEvent(message)) return
+  scheduleConversationRefresh()
+  scheduleItineraryRefresh(message)
+}
+
+function connectTripRealtime() {
+  if (!tripId || !localStorage.getItem('accessToken') || tripRealtimeUnsubscribers.length > 0) return
+  tripRealtimeUnsubscribers = [
+    collaborationTransport.subscribe(tripRealtimeTopic('itinerary'), receiveItineraryEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('map-drawings'), receiveItineraryEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('route-matching'), receiveItineraryEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('chat'), receiveChatEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('planning'), receivePlanningEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('ai'), receiveAiEvent),
+  ]
+  collaborationTransport.connect()
+}
+
+function disconnectTripRealtime() {
+  tripRealtimeUnsubscribers.forEach((unsubscribe) => unsubscribe())
+  tripRealtimeUnsubscribers = []
+  if (itineraryRefreshTimer) clearTimeout(itineraryRefreshTimer)
+  if (conversationRefreshTimer) clearTimeout(conversationRefreshTimer)
+  if (planningRefreshTimer) clearTimeout(planningRefreshTimer)
+  itineraryRefreshTimer = null
+  conversationRefreshTimer = null
+  planningRefreshTimer = null
+  void collaborationTransport.disconnect()
+}
 
 watch(itinerary.mapDrawings, (drawings) => {
 	localDrawings.value = drawings.flatMap((drawing) => {
@@ -2330,11 +2458,13 @@ watch(itinerary.mapDrawings, (drawings) => {
 
 onMounted(() => {
   if (tripId && localStorage.getItem('accessToken')) drawingPreviewChannel.connect()
+  connectTripRealtime()
   window.addEventListener('resize', updatePenPopoverPosition)
 })
 
 onUnmounted(() => {
   void drawingPreviewChannel.disconnect()
+  disconnectTripRealtime()
   window.removeEventListener('resize', updatePenPopoverPosition)
 })
 

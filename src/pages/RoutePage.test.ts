@@ -2090,6 +2090,61 @@ describe('RoutePage itinerary integration', () => {
     })])
   })
 
+  it('여행방 itinerary topic의 최신 버전 이벤트를 받으면 일정을 다시 불러온다', async () => {
+    localStorage.setItem('accessToken', 'test-token')
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const collaborationTransport = realtime.instances[1]
+
+    collaborationTransport.subscriptions.get('/topic/trips/trip-1/itinerary')?.({
+      tripId: 'trip-1',
+      itineraryVersion: 4,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    await flushPromises()
+
+    expect(holder.state.fetchItinerary).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('여행방 chat topic의 새 메시지를 화면에 병합한다', async () => {
+    localStorage.setItem('accessToken', 'test-token')
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const collaborationTransport = realtime.instances[1]
+
+    collaborationTransport.subscriptions.get('/topic/trips/trip-1/chat')?.({
+      id: 'chat-remote',
+      tripId: 'trip-1',
+      sender: { id: 'user-2', displayName: '동행자', profileImageUrl: null },
+      content: '저녁 식당 예약했어요',
+      deletedAt: null,
+      createdAt: '2026-06-22T01:00:00Z',
+    })
+    await nextTick()
+
+    expect(wrapper.text()).toContain('저녁 식당 예약했어요')
+    wrapper.unmount()
+  })
+
   it('저장 전 지도 그림 생성과 삭제를 로컬에서 실행 취소하고 다시 실행한다', async () => {
     const wrapper = mount(RoutePage, {
       global: {
