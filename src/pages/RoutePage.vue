@@ -51,6 +51,7 @@ interface ItineraryMapNearbyPlace {
   lat: number
   lng: number
   image?: string | null
+  accessibility?: PlaceAccessibility
 }
 interface CustomMapboxDirectionsResponse {
   routes: {
@@ -337,6 +338,7 @@ const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
       category: place.category ?? null,
       lat: place.lat,
       lng: place.lng,
+      accessibility: place.accessibility,
     }]
   })
 })
@@ -552,6 +554,8 @@ const pendingRouteFrom = ref<string | null>(null)
 const routeWaypoints = ref<LngLat[]>([])
 const ROUTE_MATCHING_MAX_COORDINATES = 25
 const ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS = ROUTE_MATCHING_MAX_COORDINATES - 2
+const ROUTE_MATCHING_RADIUS_METERS = 50
+const ROUTE_NEARBY_CORRIDOR_METERS = 700
 
 function clearPendingRouteSelection() {
   pendingRouteFrom.value = null
@@ -647,11 +651,72 @@ function routeBbox(routes: Array<{ geometry?: Record<string, unknown> }>) {
   ].join(',')
 }
 
+function distanceToSegmentMeters(
+  point: { lng: number; lat: number },
+  start: { lng: number; lat: number },
+  end: { lng: number; lat: number },
+) {
+  const segmentLength = distanceMeters(start, end)
+  if (segmentLength === 0) return distanceMeters(point, start)
+  const toRadians = Math.PI / 180
+  const earthRadiusMeters = 6371000
+  const meanLat = ((point.lat + start.lat + end.lat) / 3) * toRadians
+  const sx = start.lng * toRadians * Math.cos(meanLat) * earthRadiusMeters
+  const sy = start.lat * toRadians * earthRadiusMeters
+  const ex = end.lng * toRadians * Math.cos(meanLat) * earthRadiusMeters
+  const ey = end.lat * toRadians * earthRadiusMeters
+  const px = point.lng * toRadians * Math.cos(meanLat) * earthRadiusMeters
+  const py = point.lat * toRadians * earthRadiusMeters
+  const vx = ex - sx
+  const vy = ey - sy
+  const wx = px - sx
+  const wy = py - sy
+  const t = Math.max(0, Math.min(1, (wx * vx + wy * vy) / (vx * vx + vy * vy)))
+  return Math.hypot(px - (sx + t * vx), py - (sy + t * vy))
+}
+
+function distanceToRouteMeters(place: Pick<Place, 'lat' | 'lng'>, routeCoordinates: Array<{ lng: number; lat: number }>) {
+  if (place.lat == null || place.lng == null || routeCoordinates.length === 0) return Number.POSITIVE_INFINITY
+  const point = { lat: place.lat, lng: place.lng }
+  if (routeCoordinates.length === 1) return distanceMeters(point, routeCoordinates[0])
+  let closest = Number.POSITIVE_INFINITY
+  for (let index = 1; index < routeCoordinates.length; index += 1) {
+    closest = Math.min(closest, distanceToSegmentMeters(point, routeCoordinates[index - 1], routeCoordinates[index]))
+  }
+  return closest
+}
+
+function isPlaceNearRoute(place: Place, routeCoordinates: Array<{ lng: number; lat: number }>) {
+  return distanceToRouteMeters(place, routeCoordinates) <= ROUTE_NEARBY_CORRIDOR_METERS
+}
+
 function clearRouteNearbyPlaces(message = '') {
   routeNearbyRequestRevision += 1
   routeNearbyPlaces.value = []
   routeNearbyError.value = message
   routeNearbyLoading.value = false
+}
+
+async function withAccessibilityForPlaces(places: Place[]) {
+  const unique = new Map<string, { provider: 'KTO'; externalPlaceId: string }>()
+  places.forEach((place) => {
+    if (place.provider !== 'KTO') return
+    unique.set(placeAccessibilityKey(place.provider, place.externalPlaceId), {
+      provider: 'KTO',
+      externalPlaceId: place.externalPlaceId,
+    })
+  })
+  if (unique.size === 0) return places
+
+  try {
+    const result = await placeApi.getAccessibilityBatch([...unique.values()])
+    return places.map((place) => ({
+      ...place,
+      accessibility: place.accessibility ?? result[placeAccessibilityKey(place.provider, place.externalPlaceId)],
+    }))
+  } catch {
+    return places
+  }
 }
 
 function upsertLocalRoute(route: { id: string }) {
@@ -663,6 +728,7 @@ function upsertLocalRoute(route: { id: string }) {
 
 async function loadRouteNearbyPlaces() {
   const routes = visibleMapRoutes.value as Array<{ geometry?: Record<string, unknown> }>
+  const routeCoordinates = routes.flatMap(routeCoordinatesOf)
   const bbox = routeBbox(routes)
   if (!bbox) {
     clearRouteNearbyPlaces('경로를 먼저 생성해 주세요.')
@@ -683,11 +749,15 @@ async function loadRouteNearbyPlaces() {
     })
     if (revision !== routeNearbyRequestRevision) return
     const scheduled = new Set(scheduledPlaceKeys.value)
-    routeNearbyPlaces.value = response.items
+    const places = response.items
       .map((recommendation: any) => recommendation.place)
       .filter((place: any) => place.lat != null && place.lng != null)
+      .filter((place: Place) => isPlaceNearRoute(place, routeCoordinates))
       .filter((place: any) => !scheduled.has(`${place.provider}:${place.externalPlaceId}`))
       .slice(0, 12)
+    const placesWithAccessibility = await withAccessibilityForPlaces(places)
+    if (revision !== routeNearbyRequestRevision) return
+    routeNearbyPlaces.value = placesWithAccessibility
   } catch {
     if (revision === routeNearbyRequestRevision) {
       routeNearbyPlaces.value = []

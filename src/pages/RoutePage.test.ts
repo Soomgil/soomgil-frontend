@@ -1514,6 +1514,15 @@ describe('RoutePage itinerary integration', () => {
       }],
       page: { page: 0, size: 30, totalElements: 1, totalPages: 1, sort: [] },
     })
+    connectedApis.place.getAccessibilityBatch.mockResolvedValueOnce({
+      'KTO:nearby-1': {
+        openingHours: null,
+        closedDays: null,
+        parkingType: 'UNKNOWN',
+        flags: ['WHEELCHAIR'],
+        unavailableFlags: [],
+      },
+    })
 
     const wrapper = mount(RoutePage, {
       global: {
@@ -1536,8 +1545,12 @@ describe('RoutePage itinerary integration', () => {
       page: 0,
       size: 30,
     }))
+    expect(connectedApis.place.getAccessibilityBatch).toHaveBeenCalledWith([
+      { provider: 'KTO', externalPlaceId: 'nearby-1' },
+    ])
     expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toEqual([expect.objectContaining({
       externalPlaceId: 'nearby-1',
+      accessibility: expect.objectContaining({ flags: ['WHEELCHAIR'] }),
       title: '주변 명소',
     })])
   })
@@ -1656,7 +1669,7 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('.detailbar-main-title').text()).toBe('주변 명소')
     expect(wrapper.get('.detailbar-desc-text').text()).toContain('도심에서 산책하기 좋은')
     const saveButton = wrapper.get('.detailbar-save-place-btn')
-    expect(saveButton.text()).toContain('장소 저장')
+    expect(saveButton.text()).toContain('슈퍼라이크에 추가')
     await saveButton.trigger('click')
     await flushPromises()
     expect(connectedApis.swipe.react).toHaveBeenCalledWith('KTO', 'nearby-1', 'SUPER_LIKE')

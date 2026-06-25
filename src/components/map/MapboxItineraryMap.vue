@@ -17,6 +17,7 @@ export interface ItineraryMapNearbyPlace {
   lat: number
   lng: number
   image?: string | null
+  accessibility?: PlaceAccessibility
 }
 
 export interface ItineraryMapStop {
@@ -140,6 +141,26 @@ const ACCESSIBILITY_MARKERS: Partial<Record<AccessibilityFlag, { icon: string; l
   STROLLER: { icon: 'stroller', label: '유모차' },
 }
 
+function createAccessibilityElement(accessibilityInfo: PlaceAccessibility | undefined) {
+  const supportedFlags = accessibilityInfo?.flags.filter((flag) => ACCESSIBILITY_MARKERS[flag]) ?? []
+  if (supportedFlags.length === 0) return null
+  const accessibility = document.createElement('span')
+  accessibility.className = 'map-pin-accessibility'
+  accessibility.setAttribute(
+    'aria-label',
+    `접근성: ${supportedFlags.map((flag) => ACCESSIBILITY_MARKERS[flag]!.label).join(', ')}`,
+  )
+  supportedFlags.forEach((flag) => {
+    const markerInfo = ACCESSIBILITY_MARKERS[flag]!
+    const icon = document.createElement('span')
+    icon.className = 'material-symbols-rounded'
+    icon.textContent = markerInfo.icon
+    icon.title = markerInfo.label
+    accessibility.appendChild(icon)
+  })
+  return accessibility
+}
+
 function createMarkerElement(stop: ItineraryMapStop) {
   const marker = document.createElement('button')
   marker.type = 'button'
@@ -220,6 +241,10 @@ function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement 
   label.className = 'map-nearby-place-label'
   label.textContent = place.title
   el.appendChild(label)
+  const accessibility = createAccessibilityElement(place.accessibility)
+  if (accessibility) {
+    el.appendChild(accessibility)
+  }
 
   el.addEventListener('click', (event) => {
     event.stopPropagation()
