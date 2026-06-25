@@ -404,6 +404,7 @@ async function loadInitialRouteData() {
 }
 
 watch(itinerary.days, (days) => {
+  const preservedScrollTop = pendingItineraryScrollTop
   dayPlans.value = toDayPlans(days)
   void loadRouteAccessibility(dayPlans.value)
   void loadRoutePlaceDetails(dayPlans.value)
@@ -415,6 +416,7 @@ watch(itinerary.days, (days) => {
   }
   nextTick(() => {
     initDragDrop()
+    if (preservedScrollTop !== null) restoreItineraryScroll(preservedScrollTop)
   })
 }, { deep: true })
 
@@ -1003,26 +1005,37 @@ function restoreItineraryScroll(scrollTop: number) {
   })
 }
 
+function releasePendingItineraryScroll(scrollTop: number) {
+  window.setTimeout(() => {
+    if (pendingItineraryScrollTop === scrollTop) pendingItineraryScrollTop = null
+  }, 0)
+}
+
 async function handleStopClick(item: RouteStop) {
-  const scrollTop = itineraryRef.value?.scrollTop ?? 0
+  const scrollTop = pendingItineraryScrollTop ?? itineraryRef.value?.scrollTop ?? 0
+  pendingItineraryScrollTop = scrollTop
   if (suppressNextStopClick.value) {
     suppressNextStopClick.value = false
     restoreItineraryScroll(scrollTop)
+    releasePendingItineraryScroll(scrollTop)
     return
   }
   if (activeTool.value === 'route-pen') {
 		await handleRoutePenClick(item)
     restoreItineraryScroll(scrollTop)
+    releasePendingItineraryScroll(scrollTop)
     return
   }
   await selectPlace(item.placeExternalId || undefined, (item.placeProvider || 'KTO') as PlaceProvider, item.id)
   restoreItineraryScroll(scrollTop)
+  releasePendingItineraryScroll(scrollTop)
 }
 
 /* ── Drag & Drop (data-driven) ── */
 const itineraryRef = ref<HTMLElement | null>(null)
 const dayTabsRef = ref<HTMLElement | null>(null)
 const suppressNextStopClick = ref(false)
+let pendingItineraryScrollTop: number | null = null
 
 const isDraggingTabs = ref(false)
 const startX = ref(0)
@@ -1230,6 +1243,7 @@ function onPointerDown(e: PointerEvent) {
   if (!containerEl) return
   const dragContainer: HTMLElement = containerEl
   const initialScrollTop = dragContainer.scrollTop
+  pendingItineraryScrollTop = initialScrollTop
 
   // Identify drag source from data attributes
   const isDraggingSeparator = stop.classList.contains('day-separator')
@@ -1470,6 +1484,7 @@ function onPointerDown(e: PointerEvent) {
     } else {
       cleanupDragState()
       restoreItineraryScroll(initialScrollTop)
+      releasePendingItineraryScroll(initialScrollTop)
       return
     }
 
@@ -1497,6 +1512,7 @@ function onPointerDown(e: PointerEvent) {
         const item = dayPlans.value[source!.dayIdx]?.items[source!.itemIdx]
         if (item) removeItineraryItem(item)
       }
+      releasePendingItineraryScroll(initialScrollTop)
       return
     }
 
@@ -1514,6 +1530,7 @@ function onPointerDown(e: PointerEvent) {
     nextTick(() => {
       initDragDrop()
       restoreItineraryScroll(initialScrollTop)
+      releasePendingItineraryScroll(initialScrollTop)
     })
   }
 
