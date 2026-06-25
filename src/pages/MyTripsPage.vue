@@ -351,12 +351,12 @@ watch(filteredTrips, () => {
 
                   <div class="stub-actions">
                     <button v-if="currentTrip.myRole === 'OWNER'" class="stub-action-btn" type="button" @click.stop="openTripAccess(currentTrip)">
+                      <span>멤버 및 초대</span>
                       <span class="material-symbols-rounded" aria-hidden="true">group</span>
-                      멤버 및 초대
                     </button>
                     <button class="stub-action-btn" type="button" @click.stop="openTripSettings(currentTrip)">
+                      <span>설정</span>
                       <span class="material-symbols-rounded" aria-hidden="true">settings</span>
-                      설정
                     </button>
                   </div>
 
@@ -628,20 +628,29 @@ watch(filteredTrips, () => {
   gap: 6px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+  width: 100%;
+}
+
+.stub-action-btn,
+.ticket-stub .stub-detail-btn {
+  align-items: center;
+  box-sizing: border-box;
+  display: inline-flex;
+  gap: 6px;
+  height: 40px;
+  justify-content: center;
 }
 
 .stub-action-btn {
-  align-items: center;
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--ink);
   cursor: pointer;
-  display: inline-flex;
   font-size: 11px;
   font-weight: 800;
-  gap: 4px;
   padding: 6px 10px;
+  flex: 1 1 0;
   transition: background 160ms ease, border-color 160ms ease;
 }
 

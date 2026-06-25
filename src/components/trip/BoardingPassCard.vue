@@ -150,7 +150,7 @@ async function exportTicket() {
 
       <div class="stub-actions" data-export-controls>
         <button class="stub-export-btn" type="button" :disabled="exporting" data-testid="export-ticket" @click="exportTicket">
-          <span class="material-symbols-rounded" aria-hidden="true">download</span>{{ exporting ? '저장 중' : '티켓 이미지 저장' }}
+          <span>{{ exporting ? '저장 중' : '티켓 이미지 저장' }}</span><span class="material-symbols-rounded" aria-hidden="true">download</span>
         </button>
       </div>
       <p v-if="exportError" class="ticket-export-error" role="alert">{{ exportError }}</p>
@@ -358,13 +358,15 @@ async function exportTicket() {
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid rgba(196, 213, 238, 0.9);
   border-radius: 8px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 5px;
   justify-content: center;
-  margin-right: 22px;
+  margin-right: 0;
   padding: 10px 12px 8px;
   box-shadow: 0 8px 20px rgba(31, 75, 140, 0.06);
+  width: 100%;
 }
 
 .ticket-qr {
@@ -403,28 +405,34 @@ async function exportTicket() {
   flex-direction: column;
   gap: 7px;
   margin: 0;
+  width: 100%;
+}
+
+.stub-export-btn,
+.stub-detail-btn {
+  align-items: center;
+  box-sizing: border-box;
+  display: inline-flex;
+  gap: 5px;
+  height: 38px;
+  justify-content: center;
+  padding: 0 12px;
+  width: 100%;
 }
 
 .stub-export-btn {
-  align-items: center;
   border: 1px solid rgba(196, 213, 238, 0.95);
   border-radius: 7px;
   color: var(--ink);
   cursor: pointer;
-  display: inline-flex;
   font-size: 11px;
   font-weight: 800;
-  gap: 5px;
-  height: 32px;
-  justify-content: center;
-  padding: 0 9px;
   transition: background 160ms ease, border-color 160ms ease;
 }
 
 .stub-export-btn {
   background: #fff;
   color: var(--violet);
-  width: 100%;
 }
 
 .stub-export-btn:hover {
