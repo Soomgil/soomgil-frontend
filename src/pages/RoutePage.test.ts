@@ -390,6 +390,39 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.findAll('.ai-message-bubble').some((bubble) => bubble.text() === '...')).toBe(false)
   })
 
+  it('AI USER 실시간 echo가 도착해도 대기 표시를 하나만 유지한다', async () => {
+    localStorage.setItem('accessToken', 'test-token')
+    connectedApis.ai.sendMessage.mockReturnValue(new Promise(() => {}))
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
+
+    await wrapper.get('#ai-chat-input').setValue('일정을 요약해줘')
+    await wrapper.get('#ai-chat-send-btn').trigger('click')
+    await nextTick()
+
+    const collaborationTransport = realtime.instances[0]
+    collaborationTransport.subscriptions.get('/topic/trips/trip-1/ai')?.({
+      tripId: 'trip-1',
+      message: {
+        id: 'user-server-1',
+        role: 'USER',
+        requester: null,
+        content: '일정을 요약해줘',
+        toolCallId: null,
+        createdAt: '2026-06-22T00:00:05Z',
+      },
+    })
+    await nextTick()
+
+    const bubbles = wrapper.findAll('.ai-message-bubble').map((bubble) => bubble.text())
+    expect(bubbles.filter((text) => text === '...')).toHaveLength(1)
+    expect(bubbles.indexOf('일정을 요약해줘')).toBeLessThan(bubbles.indexOf('...'))
+    wrapper.unmount()
+  })
+
   it('여행방 채팅을 우측 사이드바의 독립 탭에서 전송한다', async () => {
     connectedApis.chat.sendMessage.mockResolvedValue({
       id: 'chat-1',
