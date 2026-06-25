@@ -9,6 +9,7 @@ import { geoApi } from '@/api/geo.api'
 import { aiApi } from '@/api/ai.api'
 import { chatApi } from '@/api/chat.api'
 import { planningApi } from '@/api/planning.api'
+import { getStoredAccessToken } from '@/auth/accessToken'
 import { tripApi } from '@/api/trip.api'
 import { swipeApi } from '@/api/swipe.api'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
@@ -406,6 +407,7 @@ async function loadInitialRouteData() {
   } catch {
     itineraryActionError.value = '여행 기간에 맞춰 일차를 동기화하지 못했습니다.'
   }
+  connectRealtimeChannels()
 }
 
 watch(itinerary.days, (days) => {
@@ -2370,18 +2372,14 @@ function toggleStandardMapView() {
 const pendingDrawingIds = ref<string[]>([])
 const drawingRetryIds = ref<string[]>([])
 const simplifiedDrawingCoordinates = new Map<string, MapDrawingStroke['coordinates']>()
-const drawingPreviewTransport = new StompTransport({
-  brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
-  accessToken: () => localStorage.getItem('accessToken'),
-})
 const collaborationTransport = new StompTransport({
   brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
-  accessToken: () => localStorage.getItem('accessToken'),
+  accessToken: getStoredAccessToken,
 })
 const drawingPreviewChannel = useDrawingPreviewChannel({
   tripId,
   clientId: globalThis.crypto?.randomUUID?.() ?? `drawing-client-${Date.now()}`,
-  transport: drawingPreviewTransport,
+  transport: collaborationTransport,
 })
 const mapDrawings = computed(() => [
   ...localDrawings.value,
@@ -2634,7 +2632,7 @@ function receiveAiEvent(message: unknown) {
 }
 
 function connectTripRealtime() {
-  if (!tripId || !localStorage.getItem('accessToken') || tripRealtimeUnsubscribers.length > 0) return
+  if (!tripId || !getStoredAccessToken() || tripRealtimeUnsubscribers.length > 0) return
   tripRealtimeUnsubscribers = [
     collaborationTransport.subscribe(tripRealtimeTopic('itinerary'), receiveItineraryEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('map-drawings'), receiveItineraryEvent),
@@ -2644,6 +2642,11 @@ function connectTripRealtime() {
     collaborationTransport.subscribe(tripRealtimeTopic('ai'), receiveAiEvent),
   ]
   collaborationTransport.connect()
+}
+
+function connectRealtimeChannels() {
+  if (tripId && getStoredAccessToken()) drawingPreviewChannel.connect()
+  connectTripRealtime()
 }
 
 function disconnectTripRealtime() {
@@ -2678,8 +2681,7 @@ watch(itinerary.mapDrawings, (drawings) => {
 }, { deep: true, immediate: true })
 
 onMounted(() => {
-  if (tripId && localStorage.getItem('accessToken')) drawingPreviewChannel.connect()
-  connectTripRealtime()
+  connectRealtimeChannels()
   window.addEventListener('resize', updatePenPopoverPosition)
 })
 

@@ -52,6 +52,10 @@ vi.mock('@/api/planning.api', () => ({ planningApi: connectedApis.planning }))
 vi.mock('@/api/trip.api', () => ({ tripApi: connectedApis.trip }))
 vi.mock('@/api/place.api', () => ({ placeApi: connectedApis.place }))
 vi.mock('@/api/swipe.api', () => ({ swipeApi: connectedApis.swipe }))
+vi.mock('@/auth/accessToken', () => ({
+  getStoredAccessToken: () => localStorage.getItem('accessToken'),
+  isUsableAccessToken: (token: string | null | undefined) => Boolean(token),
+}))
 
 vi.mock('@/components/place/PlaceDiscoveryPanel.vue', () => ({
   default: {
@@ -68,6 +72,7 @@ vi.mock('@/realtime/stompTransport', () => ({
     connected = false
     published: Array<{ destination: string; payload: unknown }> = []
     subscriptions = new Map<string, (payload: unknown) => void>()
+    subscriptionLists = new Map<string, Array<(payload: unknown) => void>>()
 
     constructor() {
       realtime.instances.push(this)
@@ -81,8 +86,21 @@ vi.mock('@/realtime/stompTransport', () => ({
       return true
     }
     subscribe(destination: string, handler: (payload: unknown) => void) {
-      this.subscriptions.set(destination, handler)
-      return () => this.subscriptions.delete(destination)
+      const handlers = this.subscriptionLists.get(destination) ?? []
+      handlers.push(handler)
+      this.subscriptionLists.set(destination, handlers)
+      this.subscriptions.set(destination, (payload: unknown) => {
+        this.subscriptionLists.get(destination)?.forEach((current) => current(payload))
+      })
+      return () => {
+        const next = (this.subscriptionLists.get(destination) ?? []).filter((current) => current !== handler)
+        if (next.length > 0) {
+          this.subscriptionLists.set(destination, next)
+        } else {
+          this.subscriptionLists.delete(destination)
+          this.subscriptions.delete(destination)
+        }
+      }
     }
   },
 }))
@@ -2141,7 +2159,7 @@ describe('RoutePage itinerary integration', () => {
       },
     })
     await flushPromises()
-    const collaborationTransport = realtime.instances[1]
+    const collaborationTransport = realtime.instances[0]
 
     collaborationTransport.subscriptions.get('/topic/trips/trip-1/itinerary')?.({
       tripId: 'trip-1',
@@ -2167,7 +2185,7 @@ describe('RoutePage itinerary integration', () => {
       },
     })
     await flushPromises()
-    const collaborationTransport = realtime.instances[1]
+    const collaborationTransport = realtime.instances[0]
 
     collaborationTransport.subscriptions.get('/topic/trips/trip-1/chat')?.({
       id: 'chat-remote',
@@ -2199,7 +2217,7 @@ describe('RoutePage itinerary integration', () => {
     const todoTab = wrapper.findAll('.route-utility-tab').find((button) => button.text().includes('할 일'))!
     await todoTab.trigger('click')
     await flushPromises()
-    const collaborationTransport = realtime.instances[1]
+    const collaborationTransport = realtime.instances[0]
 
     collaborationTransport.subscriptions.get('/topic/trips/trip-1/planning')?.({
       tripId: 'trip-1',

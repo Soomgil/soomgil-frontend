@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { AxiosRequestConfig } from 'axios'
 import type { ApiResponse, ProblemDetail } from '@/types/api'
+import { isUsableAccessToken } from '@/auth/accessToken'
 import {
   clearCollaborationSessionIds,
   COLLABORATION_SESSION_HEADER,
@@ -24,19 +25,6 @@ const http = axios.create({
 })
 
 type RetryableConfig = AxiosRequestConfig & { _retried?: boolean }
-
-function isUsableAccessToken(token: string): boolean {
-  try {
-    const parts = token.split('.')
-    if (parts.length !== 3) return false
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const padded = payload.padEnd(Math.ceil(payload.length / 4) * 4, '=')
-    const claims = JSON.parse(atob(padded)) as { exp?: number }
-    return typeof claims.exp === 'number' && claims.exp * 1000 > Date.now() + 5000
-  } catch {
-    return false
-  }
-}
 
 /* ── Request: JWT 주입 ── */
 http.interceptors.request.use((config) => {

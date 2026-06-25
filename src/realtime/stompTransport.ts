@@ -42,7 +42,11 @@ export class StompTransport implements RealtimeTransport {
         this.client.connectHeaders = token ? { Authorization: `Bearer ${token}` } : {}
       },
       onStompError: (frame: IFrame) => {
-        console.error('STOMP broker error', frame.headers.message ?? frame.body)
+        console.error('STOMP broker error', {
+          message: frame.headers.message,
+          body: frame.body,
+          headers: frame.headers,
+        })
       },
       onWebSocketError: (event) => {
         console.error('WebSocket connection error', event)
