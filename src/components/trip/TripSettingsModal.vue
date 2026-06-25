@@ -4,7 +4,7 @@ import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import { useTripStore } from '@/stores/trip.store'
 import { tripApi } from '@/api/trip.api'
 import type { LegalRegion } from '@/types/geo'
-import type { TripStatus, TripSummary, TripDetail } from '@/types/trip'
+import type { TripStatus, TripSummary, TripDetail, TripDetailMember, TripMember } from '@/types/trip'
 
 const props = defineProps<{
   open: boolean
@@ -39,6 +39,7 @@ const inviteLoading = ref(false)
 const inviteError = ref('')
 const inviteCopied = ref(false)
 let inviteCopiedTimer: number | null = null
+let inviteTripId: string | null = null
 
 const editDayCount = computed(() => {
   if (editStartDate.value && editEndDate.value) {
@@ -56,12 +57,20 @@ watch(
     if (!open) {
       inviteLink.value = ''
       inviteCopied.value = false
+      inviteTripId = null
       return
     }
     
     activeTab.value = defaultTab || 'tab-settings'
     
     if (!trip) return
+
+    if (inviteTripId !== trip.id) {
+      inviteTripId = trip.id
+      inviteLink.value = ''
+      inviteCopied.value = false
+      inviteError.value = ''
+    }
     
     title.value = trip.title
     displayDestination.value = trip.displayDestination ?? ''
@@ -106,14 +115,20 @@ async function fetchInviteLink(tripId: string) {
   inviteError.value = ''
   try {
     const invites = await tripApi.getInvites(tripId)
-    const activeInvite = invites.find(invite => invite.status === 'PENDING' && invite.inviteUrl)
+    const activeInvite = invites.find(invite => invite.status === 'PENDING')
     const invite = activeInvite ?? await tripApi.createInvite(tripId)
-    inviteLink.value = invite.inviteUrl ?? `${window.location.origin}/trip-invites/${invite.inviteCode}`
+    inviteLink.value = resolveInviteUrl(invite)
   } catch {
     inviteError.value = '초대 링크를 준비하지 못했습니다.'
   } finally {
     inviteLoading.value = false
   }
+}
+
+function resolveInviteUrl(invite: { inviteUrl: string | null; inviteCode: string }) {
+  if (invite.inviteUrl) return invite.inviteUrl
+  const code = encodeURIComponent(invite.inviteCode)
+  return new URL(`/trip-invites/${code}`, window.location.origin).toString()
 }
 
 async function copyInviteLink() {
@@ -223,9 +238,42 @@ async function deleteTrip() {
   }
 }
 
-const membersList = computed(() => {
+interface DisplayMember {
+  id: string
+  userId: string
+  displayName: string
+  profileImageUrl: string | null
+  role: 'OWNER' | 'MEMBER'
+}
+
+function toDisplayMember(member: TripDetailMember | TripMember): DisplayMember | null {
+  if ('user' in member) {
+    if (!member.user?.id) return null
+    return {
+      id: member.id,
+      userId: member.user.id,
+      displayName: member.user.displayName || '알 수 없음',
+      profileImageUrl: member.user.profileImageUrl ?? null,
+      role: member.role,
+    }
+  }
+
+  if (!member.userId) return null
+  return {
+    id: member.id,
+    userId: member.userId,
+    displayName: member.displayName || '알 수 없음',
+    profileImageUrl: member.profileImageUrl ?? null,
+    role: member.role,
+  }
+}
+
+const membersList = computed<DisplayMember[]>(() => {
   if (!props.trip) return []
-  return (props.trip as any).members ?? []
+  return (((props.trip as TripDetail | (TripSummary & { members?: TripMember[] })).members ?? []) as Array<TripDetailMember | TripMember>)
+    .filter((member) => member.status === 'ACTIVE')
+    .map(toDisplayMember)
+    .filter((member): member is DisplayMember => Boolean(member))
 })
 
 const isOwner = computed(() => props.trip?.myRole === 'OWNER')
@@ -417,11 +465,12 @@ onUnmounted(() => {
             <ul class="member-list">
               <li v-for="member in membersList" :key="member.id" class="member-item">
                 <div class="member-avatar">
-                  <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="member.displayName" />
-                  <template v-else>{{ (member.displayName ?? '?').charAt(0) }}</template>
+                  <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="`${member.displayName} 프로필 사진`" />
+                  <template v-else>{{ member.displayName.charAt(0) }}</template>
                 </div>
                 <div class="member-info">
-                  <span class="member-name">{{ member.displayName ?? '알 수 없음' }}</span>
+                  <span class="member-name">{{ member.displayName }}</span>
+                  <span class="member-role">{{ member.role === 'OWNER' ? '방장' : '멤버' }}</span>
                 </div>
               </li>
             </ul>
@@ -821,6 +870,19 @@ onUnmounted(() => {
   color: #1f2937;
   font-size: 13px;
   font-weight: 800;
+}
+
+.member-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.member-role {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
 }
 
 @media (max-width: 640px) {

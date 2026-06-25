@@ -397,7 +397,7 @@ function handleUserClick(userId: string) {
         <!-- 프로필 히어로 영역 -->
         <div class="mypage-hero" data-mypage-hero>
           <div class="mypage-hero__content">
-            <div class="mypage-profile-card profile-header-card">
+            <div class="mypage-profile-card profile-header-card" style="margin-bottom: 30px;">
               <!-- 좌측: 큰 원형 프로필 이미지 -->
               <div class="profile-avatar-col">
                 <div class="profile-avatar-wrap" style="cursor: pointer;" @click="openProfileEdit">

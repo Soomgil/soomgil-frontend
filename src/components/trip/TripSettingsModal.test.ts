@@ -1,9 +1,13 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TripSettingsModal from './TripSettingsModal.vue'
-import type { TripSummary } from '@/types/trip'
+import type { TripDetail, TripSummary } from '@/types/trip'
 
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
+const tripApiMock = vi.hoisted(() => ({
+  getInvites: vi.fn(),
+  createInvite: vi.fn(),
+}))
 
 const store = vi.hoisted(() => ({
   mutating: false,
@@ -13,6 +17,7 @@ const store = vi.hoisted(() => ({
 
 vi.mock('@/stores/trip.store', () => ({ useTripStore: () => store }))
 vi.mock('@/api/geo.api', () => ({ geoApi: geo }))
+vi.mock('@/api/trip.api', () => ({ tripApi: tripApiMock }))
 
 const trip: TripSummary = {
   id: 'trip-1',
@@ -32,9 +37,24 @@ const expectedBaseUpdate = {
 describe('TripSettingsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    })
     geo.searchLegalRegions.mockResolvedValue({
       items: [],
       page: { page: 0, size: 10, totalElements: 0, totalPages: 0, sort: [] },
+    })
+    tripApiMock.getInvites.mockResolvedValue([])
+    tripApiMock.createInvite.mockResolvedValue({
+      id: 'invite-1',
+      tripId: trip.id,
+      inviteCode: 'abc123',
+      inviteUrl: 'https://soomgil.test/invite/abc123',
+      inviteeUserId: null,
+      status: 'PENDING',
+      expiresAt: null,
+      createdAt: '2026-06-20T00:00:00Z',
     })
   })
 
@@ -150,6 +170,99 @@ describe('TripSettingsModal', () => {
       startDate: '2026-07-10',
       endDate: '2026-07-12',
     })
+  })
+
+  it('멤버 관리 탭에서 실제 멤버 프로필 이름과 이미지를 표시한다', () => {
+    const detailTrip: TripDetail = {
+      ...trip,
+      ownerUserId: 'user-1',
+      regions: [],
+      retrippedFromPostId: null,
+      members: [
+        {
+          id: 'member-1',
+          tripId: trip.id,
+          role: 'OWNER',
+          accessRole: 'OWNER',
+          status: 'ACTIVE',
+          joinedAt: '2026-06-20T00:00:00Z',
+          user: {
+            id: 'user-1',
+            displayName: '김지훈',
+            profileImageUrl: 'https://cdn.example.com/user-1.jpg',
+          },
+        },
+        {
+          id: 'member-2',
+          tripId: trip.id,
+          role: 'MEMBER',
+          accessRole: 'MEMBER',
+          status: 'ACTIVE',
+          joinedAt: '2026-06-21T00:00:00Z',
+          user: {
+            id: 'user-2',
+            displayName: '박민지',
+            profileImageUrl: null,
+          },
+        },
+      ],
+    }
+
+    const wrapper = mount(TripSettingsModal, {
+      props: { open: true, trip: detailTrip, defaultTab: 'tab-members' },
+    })
+
+    const items = wrapper.findAll('.member-item')
+    expect(items).toHaveLength(2)
+    expect(items[0].text()).toContain('김지훈')
+    expect(items[0].text()).toContain('방장')
+    expect(items[0].get('img').attributes('src')).toBe('https://cdn.example.com/user-1.jpg')
+    expect(items[0].get('img').attributes('alt')).toBe('김지훈 프로필 사진')
+    expect(items[1].text()).toContain('박민지')
+    expect(items[1].text()).toContain('멤버')
+    expect(items[1].text()).toContain('박')
+  })
+
+  it('기존 대기 초대의 inviteUrl이 없어도 공유 링크를 만들어 표시한다', async () => {
+    tripApiMock.getInvites.mockResolvedValue([
+      {
+        id: 'invite-existing',
+        tripId: trip.id,
+        inviteCode: 'JOIN ME',
+        inviteUrl: null,
+        inviteeUserId: null,
+        status: 'PENDING',
+        expiresAt: null,
+        createdAt: '2026-06-20T00:00:00Z',
+      },
+    ])
+    const wrapper = mount(TripSettingsModal, {
+      props: { open: true, trip, defaultTab: 'tab-members' },
+    })
+
+    await vi.waitFor(() => {
+      expect(wrapper.get('input[aria-label="초대 링크"]').element).toHaveProperty(
+        'value',
+        `${window.location.origin}/trip-invites/JOIN%20ME`,
+      )
+    })
+    expect(tripApiMock.createInvite).not.toHaveBeenCalled()
+  })
+
+  it('초대 링크 복사 버튼으로 표시된 공유 링크를 복사한다', async () => {
+    const wrapper = mount(TripSettingsModal, {
+      props: { open: true, trip, defaultTab: 'tab-members' },
+    })
+
+    await vi.waitFor(() => {
+      expect(wrapper.get('input[aria-label="초대 링크"]').element).toHaveProperty(
+        'value',
+        'https://soomgil.test/invite/abc123',
+      )
+    })
+    await wrapper.get('.invite-action-btn--primary').trigger('click')
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://soomgil.test/invite/abc123')
   })
 
   it('검색 결과를 선택하면 법정동 연결을 교체한다', async () => {
