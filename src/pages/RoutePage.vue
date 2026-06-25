@@ -4632,6 +4632,11 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .add-stop-container {
   width: 100%;
   box-sizing: border-box;
+  position: absolute !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 320;
   padding-top: 8px !important;
   padding-bottom: 8px !important;
 }
@@ -5145,7 +5150,13 @@ function textAvatarStyle(index: unknown) {
   user-select: none;
   -webkit-user-select: none;
   -webkit-user-drag: none;
-  touch-action: pan-y;
+  touch-action: none;
+}
+.route-page-section .itinerary.dragging-stop,
+.route-page-section .itinerary.dragging-separator {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none;
 }
 
 /* Tooltip CSS */
@@ -5200,6 +5211,10 @@ function textAvatarStyle(index: unknown) {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+.route-page-section .add-stop-dashed,
+.route-page-section .trash-drop-zone {
+  margin-top: 0 !important;
 }
 .trash-drop-zone.is-drag-over-trash {
   background: rgba(244, 63, 94, 0.15);
