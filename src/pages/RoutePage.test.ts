@@ -1910,6 +1910,33 @@ describe('RoutePage itinerary integration', () => {
       lng: 129.1604,
       thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
     })
+	  })
+
+  it('제주 여행은 지도 viewport가 아직 없어도 장소 추천용 제주 bbox를 전달한다', async () => {
+    holder.tripStore.fetchTrip.mockImplementationOnce(async () => {
+      holder.tripStore.currentTrip = {
+        id: 'trip-1', title: '제주 여행', displayDestination: '제주특별자치도',
+        status: 'ACTIVE', myRole: 'OWNER', itineraryVersion: 3, createdAt: '2026-06-20',
+        ownerUserId: 'user-1', regions: [], retrippedFromPostId: null,
+        members: [{
+          id: 'member-1', tripId: 'trip-1', role: 'OWNER', accessRole: 'OWNER', status: 'ACTIVE',
+          joinedAt: '2026-06-20', user: { id: 'user-1', displayName: '김지훈', profileImageUrl: null },
+        }],
+      }
+    })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.getComponent(PlaceDiscoveryPanel).props('bbox')).toBe('126.1,33.0,127.1,33.7')
   })
 
   it('추천 관광지를 선택하면 지도에 임시 카드 위치를 전달한다', async () => {

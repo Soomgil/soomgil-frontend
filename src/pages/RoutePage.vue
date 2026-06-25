@@ -361,6 +361,8 @@ const viewportBbox = computed(() => {
   if (!viewport) return ''
   return `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
 })
+const isJejuTrip = computed(() => trip.value.destinationName.includes('제주'))
+const placeDiscoveryBbox = computed(() => viewportBbox.value || (isJejuTrip.value ? JEJU_DISCOVERY_BBOX : ''))
 
 const itineraryLoadError = ref(false)
 const itineraryActionsDisabled = computed(() => itinerary.loading.value || itinerary.mutating.value || itineraryLoadError.value)
@@ -556,6 +558,7 @@ const ROUTE_MATCHING_MAX_COORDINATES = 25
 const ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS = ROUTE_MATCHING_MAX_COORDINATES - 2
 const ROUTE_MATCHING_RADIUS_METERS = 50
 const ROUTE_NEARBY_CORRIDOR_METERS = 700
+const JEJU_DISCOVERY_BBOX = '126.1,33.0,127.1,33.7'
 
 function clearPendingRouteSelection() {
   pendingRouteFrom.value = null
@@ -3324,7 +3327,7 @@ function textAvatarStyle(index: unknown) {
 
                 <PlaceDiscoveryPanel
                   :trip-id="tripId"
-                  :bbox="viewportBbox"
+                  :bbox="placeDiscoveryBbox"
                   :scheduled-place-keys="scheduledPlaceKeys"
                   @select="selectDiscoveredPlace"
                 />
@@ -5457,6 +5460,3 @@ function textAvatarStyle(index: unknown) {
   border-color: var(--line);
 }
 </style>
-
-
-
