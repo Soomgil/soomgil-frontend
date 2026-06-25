@@ -96,15 +96,11 @@ let lastFittedStopsKey = ''
 const { isDarkMode } = useTheme()
 
 const MAPBOX_STYLE_LIGHT = 'mapbox://styles/mapbox/light-v11'
-const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/navigation-night-v1'
-const MAPBOX_STYLE_NAVIGATION_DAY = 'mapbox://styles/mapbox/navigation-day-v1'
+const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/dark-v11'
 
 const mapStyle = computed(() => {
   if (isDarkMode.value) {
     return MAPBOX_STYLE_DARK
-  }
-  if (props.navigationMode) {
-    return MAPBOX_STYLE_NAVIGATION_DAY
   }
   return MAPBOX_STYLE_LIGHT
 })
