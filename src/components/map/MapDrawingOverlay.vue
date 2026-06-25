@@ -23,17 +23,21 @@ interface ScreenPoint {
   y: number
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   drawings: MapDrawingStroke[]
   tool: MapDrawingTool
   color: string
   width: number
   enabled: boolean
+  drawingsVisible?: boolean
   projectionRevision: number
   routeWaypoints?: LngLat[]
   project: (coordinate: LngLat) => ScreenPoint | null
   unproject: (point: ScreenPoint) => LngLat | null
-}>()
+}>(), {
+  drawingsVisible: true,
+  routeWaypoints: () => [],
+})
 
 const emit = defineEmits<{
   create: [drawing: MapDrawingDraft]
@@ -66,6 +70,7 @@ const projectedRouteWaypoints = computed(() => {
 const routeWaypointPointString = computed(() => projectedRouteWaypoints.value.map((point) => `${point.x},${point.y}`).join(' '))
 const projectedDrawings = computed(() => {
   void props.projectionRevision
+  if (props.drawingsVisible === false) return []
   return props.drawings.map((drawing) => ({
     ...drawing,
     points: drawing.coordinates

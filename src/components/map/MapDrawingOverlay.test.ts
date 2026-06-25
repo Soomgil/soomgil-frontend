@@ -141,6 +141,32 @@ describe('MapDrawingOverlay', () => {
     expect(wrapper.emitted('create')).toBeUndefined()
   })
 
+  it('그림 표시가 꺼진 경로 연결 펜에서는 저장된 그림을 숨기고 중간점 표시는 유지한다', () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [{
+          id: 'drawing-1',
+          coordinates: [{ lng: 10, lat: 20 }, { lng: 30, lat: 40 }],
+          color: '#1f2937',
+          width: 4,
+        }],
+        tool: 'route-pen',
+        color: '#6d4aff',
+        width: 5,
+        enabled: true,
+        drawingsVisible: false,
+        projectionRevision: 0,
+        routeWaypoints: [{ lng: 12, lat: 22 }, { lng: 32, lat: 42 }],
+        project,
+        unproject,
+      },
+    })
+
+    expect(wrapper.find('.map-drawing-stroke').exists()).toBe(false)
+    expect(wrapper.find('.map-route-waypoint-line').exists()).toBe(true)
+    expect(wrapper.findAll('.map-route-waypoint')).toHaveLength(2)
+  })
+
   it('그리기 도구에서 우클릭 드래그는 stroke 대신 지도 이동 delta로 전달한다', async () => {
     const wrapper = mount(MapDrawingOverlay, {
       props: {

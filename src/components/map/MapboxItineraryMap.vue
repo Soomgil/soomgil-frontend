@@ -53,6 +53,7 @@ const props = withDefaults(defineProps<{
   drawingWidth?: number
   drawingsVisible?: boolean
   navigationMode?: boolean
+  standardView?: boolean
   routeWaypoints?: LngLat[]
 }>(), {
   drawings: () => [],
@@ -66,6 +67,7 @@ const props = withDefaults(defineProps<{
   drawingWidth: 6,
   drawingsVisible: true,
   navigationMode: false,
+  standardView: false,
   routeWaypoints: () => [],
 })
 const emit = defineEmits<{
@@ -97,18 +99,21 @@ let lastFittedStopsKey = ''
 const { isDarkMode } = useTheme()
 
 const MAPBOX_STYLE_LIGHT = 'mapbox://styles/mapbox/light-v11'
-const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/navigation-night-v1'
+const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/dark-v11'
 const MAPBOX_STYLE_NAVIGATION_DAY = 'mapbox://styles/mapbox/navigation-day-v1'
+const MAPBOX_STYLE_NAVIGATION_NIGHT = 'mapbox://styles/mapbox/navigation-night-v1'
+const MAPBOX_STYLE_STANDARD = 'mapbox://styles/mapbox/standard'
+const STANDARD_VIEW_CAMERA = { pitch: 60, bearing: -20 }
 const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
 
 const mapStyle = computed(() => {
-  if (isDarkMode.value) {
-    return MAPBOX_STYLE_DARK
+  if (props.standardView) {
+    return MAPBOX_STYLE_STANDARD
   }
   if (props.navigationMode) {
-    return MAPBOX_STYLE_NAVIGATION_DAY
+    return isDarkMode.value ? MAPBOX_STYLE_NAVIGATION_NIGHT : MAPBOX_STYLE_NAVIGATION_DAY
   }
-  return MAPBOX_STYLE_LIGHT
+  return isDarkMode.value ? MAPBOX_STYLE_DARK : MAPBOX_STYLE_LIGHT
 })
 
 function applyMapStyle(style: string) {
@@ -119,6 +124,17 @@ function applyMapStyle(style: string) {
 }
 
 watch(mapStyle, applyMapStyle)
+
+function syncStandardViewCamera(isStandardView: boolean) {
+  if (!map) return
+  map.easeTo({
+    pitch: isStandardView ? STANDARD_VIEW_CAMERA.pitch : 0,
+    bearing: isStandardView ? STANDARD_VIEW_CAMERA.bearing : 0,
+    duration: 500,
+  })
+}
+
+watch(() => props.standardView, syncStandardViewCamera)
 
 function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? 'day-color-5' : `day-color-${((dayIndex - 1) % 5) + 1}`
@@ -556,6 +572,8 @@ async function initializeMap() {
       style: mapStyle.value,
       center: DEFAULT_CENTER,
       zoom: 10,
+      pitch: props.standardView ? STANDARD_VIEW_CAMERA.pitch : 0,
+      bearing: props.standardView ? STANDARD_VIEW_CAMERA.bearing : 0,
     })
     map = createdMap
     appliedMapStyle = mapStyle.value
@@ -618,6 +636,7 @@ onBeforeUnmount(() => {
       :color="drawingColor"
       :width="drawingWidth"
       :enabled="(drawingsVisible || drawingTool === 'route-pen') && !mapError"
+      :drawings-visible="drawingsVisible"
       :projection-revision="projectionRevision"
       :route-waypoints="routeWaypoints"
       :project="projectDrawingCoordinate"

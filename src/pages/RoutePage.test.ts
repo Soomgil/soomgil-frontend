@@ -1051,6 +1051,38 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('.stop').classes()).not.toContain('route-pen-pending')
   })
 
+  it('툴박스 3D 보기 버튼으로 Mapbox Standard 뷰를 켜고 경로 연결 펜 진입 시 해제한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const standardViewButton = wrapper.get('[data-toggle="standard-view"]')
+    expect(standardViewButton.attributes('aria-pressed')).toBe('false')
+    expect(wrapper.getComponent(MapboxItineraryMap).props('standardView')).toBe(false)
+
+    await standardViewButton.trigger('click')
+    await nextTick()
+
+    expect(standardViewButton.attributes('aria-pressed')).toBe('true')
+    expect(standardViewButton.classes()).toContain('is-on')
+    expect(wrapper.getComponent(MapboxItineraryMap).props('standardView')).toBe(true)
+
+    await wrapper.get('[data-tool="route-pen"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.getComponent(MapboxItineraryMap).props('navigationMode')).toBe(true)
+    expect(wrapper.getComponent(MapboxItineraryMap).props('standardView')).toBe(false)
+    expect(wrapper.get('[data-toggle="standard-view"]').attributes('aria-pressed')).toBe('false')
+  })
+
   it('기본 선택과 경로 연결 펜을 왕복 전환하면 활성 상태가 한 버튼에만 남는다', async () => {
     const wrapper = mount(RoutePage, {
       global: {

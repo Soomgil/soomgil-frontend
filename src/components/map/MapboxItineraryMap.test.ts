@@ -284,7 +284,25 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-day-v1')
   })
 
-  it('헤더 다크모드 토글이 지도 스타일을 Mapbox dark 스타일로 전환한다', async () => {
+  it('일반 모드에서 헤더 다크모드 토글이 지도 스타일을 Mapbox dark 스타일로 전환한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    mount(MapboxItineraryMap, { props: { stops, navigationMode: false } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+    expect(mapbox.Map).toHaveBeenCalledWith(expect.objectContaining({
+      style: 'mapbox://styles/mapbox/light-v11',
+    }))
+    mapbox.map.setStyle = vi.fn()
+
+    const { toggleTheme } = useTheme()
+    toggleTheme()
+    await nextTick()
+
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/dark-v11')
+  })
+
+  it('경로 그리기 모드에서 헤더 다크모드 토글이 지도 스타일을 Mapbox navigation night 스타일로 전환한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     mount(MapboxItineraryMap, { props: { stops, navigationMode: true } })
     await flushPromises()
@@ -299,7 +317,7 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
   })
 
-  it('지도 스타일 로딩 중 다크모드로 바뀌어도 load 후 Mapbox dark 스타일로 보정한다', async () => {
+  it('지도 스타일 로딩 중 다크모드로 바뀌어도 load 후 경로 그리기용 night 스타일로 보정한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     mount(MapboxItineraryMap, { props: { stops, navigationMode: true } })
     await flushPromises()
@@ -310,6 +328,26 @@ describe('MapboxItineraryMap', () => {
     mapbox.handlers.get('style.load')?.()
 
     expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
+  })
+
+  it('standard view를 켜면 Mapbox Standard 스타일과 3D 카메라로 전환한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops, standardView: false } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await nextTick()
+    mapbox.map.setStyle = vi.fn()
+    mapbox.map.easeTo = vi.fn()
+
+    await wrapper.setProps({ standardView: true })
+    await nextTick()
+
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/standard')
+    expect(mapbox.map.easeTo).toHaveBeenCalledWith({
+      pitch: 60,
+      bearing: -20,
+      duration: 500,
+    })
   })
 
   it('경로선 색상을 출발 일정의 일차 색상으로 그린다', async () => {
@@ -445,5 +483,6 @@ describe('MapboxItineraryMap', () => {
     await flushPromises()
 
     expect(wrapper.getComponent(MapDrawingOverlay).props('enabled')).toBe(true)
+    expect(wrapper.getComponent(MapDrawingOverlay).props('drawingsVisible')).toBe(false)
   })
 })

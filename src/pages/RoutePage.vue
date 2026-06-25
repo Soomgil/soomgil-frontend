@@ -2212,6 +2212,7 @@ async function deleteTodo(id: string) {
 const routeState = ref<'route' | 'hidden'>('route')
 const cardState = ref<'full' | 'min' | 'hidden'>('full')
 const nearbyOn = ref(false)
+const standardMapView = ref(false)
 watch([nearbyOn, visibleMapRoutes], async ([isOn]) => {
   if (isOn) {
     await loadRouteNearbyPlaces()
@@ -2268,12 +2269,23 @@ function selectMapTool(tool: MapDrawingTool) {
   }
 
   activeTool.value = tool
+  if (tool === 'route-pen') {
+    standardMapView.value = false
+  }
   if (tool === 'pen' || tool === 'eraser') {
     drawingOn.value = true
   }
   if (tool === 'pen') {
     isPenPopoverOpen.value = true
     nextTick(updatePenPopoverPosition)
+  }
+}
+
+function toggleStandardMapView() {
+  standardMapView.value = !standardMapView.value
+  if (standardMapView.value && activeTool.value === 'route-pen') {
+    activeTool.value = 'cursor'
+    clearPendingRouteSelection()
   }
 }
 const pendingDrawingIds = ref<string[]>([])
@@ -3337,6 +3349,7 @@ function textAvatarStyle(index: unknown) {
               :route-waypoints="routeWaypoints"
               :drawings-visible="drawingOn"
               :navigation-mode="navigationGuideMode"
+              :standard-view="standardMapView"
               @select-place="handleSelectPlace"
               @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
               @viewport-change="mapViewport.updateViewport"
@@ -3459,6 +3472,13 @@ function textAvatarStyle(index: unknown) {
                 @click="drawingOn = !drawingOn">
                 <span class="material-symbols-rounded">brush</span>
                 <span class="tool-tip">지도 그림 표시</span>
+              </button>
+              <button :class="['tool-btn', standardMapView ? 'is-on' : 'is-off']" type="button"
+                data-toggle="standard-view" :disabled="itinerary.mutating.value"
+                :aria-pressed="standardMapView"
+                @click="toggleStandardMapView">
+                <span class="material-symbols-rounded">3d_rotation</span>
+                <span class="tool-tip">3D 보기</span>
               </button>
 
               <span class="tool-divider" aria-hidden="true"></span>
