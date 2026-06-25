@@ -39,7 +39,7 @@ const followButtonLabel = computed(() => {
   return isPrivateProfile.value ? '팔로우 요청' : '팔로우'
 })
 
-// 이 사용자가 좋아요한 장소 (API 연동 전까지 빈 배열)
+// 이 사용자가 공개한 슈퍼라이크 장소 (전용 API 연동 전까지 빈 배열)
 const likedPlaces = ref<Place[]>([])
 
 // Search
@@ -113,7 +113,7 @@ async function shareProfile() {
 // Stats
 const profileStats = computed(() => [
   { icon: 'luggage', value: '0', label: '여행' },
-  { icon: 'favorite', value: String(likedPlaces.value.length), label: '좋아요' },
+  { icon: 'star', value: String(likedPlaces.value.length), label: '슈퍼라이크' },
   { icon: 'auto_stories', value: String(userStories.value.length), label: '스토리' },
   { icon: 'group', value: String(user.value?.followerCount ?? 0), label: '팔로워' },
   { icon: 'person_add', value: String(user.value?.followingCount ?? 0), label: '팔로잉' },
@@ -181,7 +181,7 @@ function onStatClick(label: string) {
   if (!canViewProfileDetails.value) return
   if (label === '팔로워') followersModal.open()
   else if (label === '팔로잉') followingModal.open()
-  else if (label === '좋아요') {
+  else if (label === '슈퍼라이크') {
     document.getElementById('section-liked-places-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   } else if (label === '스토리') {
     document.getElementById('section-my-stories-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -307,11 +307,11 @@ function openCommunityStory(storyId: string) {
         <div v-else class="mypage-glass-container">
           <div class="mypage-body-container">
 
-              <!-- 1. 좋아요한 장소 섹션 -->
+              <!-- 1. 슈퍼라이크한 장소 섹션 -->
               <section class="mypage-section" aria-labelledby="section-liked-places-title">
                 <div class="mypage-section-header">
                   <h2 id="section-liked-places-title" class="mypage-section-title">
-                    <span class="material-symbols-rounded section-icon section-icon--rose" aria-hidden="true">favorite</span>좋아요한 장소
+                    <span class="material-symbols-rounded section-icon section-icon--rose" aria-hidden="true">star</span>슈퍼라이크한 장소
                   </h2>
                   <div v-if="likedPlaces.length > 0" class="mypage-header-search-row">
                     <div class="mypage-search-inline">
@@ -326,9 +326,9 @@ function openCommunityStory(storyId: string) {
                 <div class="mypage-section-content liked-places-layout">
                   <!-- 빈 상태 -->
                   <div v-if="likedPlaces.length === 0" class="mypage-empty-state" style="width: 100%;">
-                    <span class="material-symbols-rounded mypage-empty-icon">favorite_border</span>
-                    <p class="mypage-empty-title">아직 좋아요한 장소가 없어요</p>
-                    <p class="mypage-empty-desc">마음에 드는 장소에 좋아요를 눌러 모아보세요.</p>
+                    <span class="material-symbols-rounded mypage-empty-icon">star</span>
+                    <p class="mypage-empty-title">공개된 슈퍼라이크 장소가 없어요</p>
+                    <p class="mypage-empty-desc">이 사용자가 공개한 관심 장소가 준비되면 여기에 표시됩니다.</p>
                   </div>
 
                   <!-- 데이터 있을 때 슬라이더 -->
@@ -340,8 +340,8 @@ function openCommunityStory(storyId: string) {
                       <div v-for="place in filteredPlaces" :key="place.externalPlaceId" class="mypage-place-card mypage-place-card--slider">
                         <div class="place-img-wrap">
                           <img :src="(place.thumbnailUrl ?? '')" :alt="place.placeName" />
-                          <span class="place-heart-btn" aria-label="좋아요한 장소">
-                            <span class="material-symbols-rounded">favorite</span>
+                          <span class="place-heart-btn" aria-label="슈퍼라이크한 장소">
+                            <span class="material-symbols-rounded">star</span>
                           </span>
                         </div>
                         <div class="place-info-wrap">
