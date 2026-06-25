@@ -2605,6 +2605,16 @@ const selectedPlaceIsScheduled = computed(() => {
   const place = selectedPlace.value?.place
   return place ? scheduledPlaceKeys.value.includes(placeReferenceKey(place)) : false
 })
+const selectedScheduledItem = computed(() => {
+  const place = selectedPlace.value?.place
+  if (!place) return null
+  const key = placeReferenceKey(place)
+  return dayPlans.value.flatMap((day) => day.items).find((item) => (
+    item.placeProvider && item.placeExternalId
+      ? `${item.placeProvider}:${item.placeExternalId}` === key
+      : false
+  )) ?? null
+})
 const selectedPlaceIsSaved = computed(() => {
   const place = selectedPlace.value?.place
   return place ? savedPlaceKeys.value.has(placeReferenceKey(place)) : false
@@ -2847,6 +2857,27 @@ async function addSelectedPlaceToItinerary() {
   selectedRecommendationMapPlace.value = null
 }
 
+async function removeSelectedPlaceFromItinerary() {
+  const item = selectedScheduledItem.value
+  if (!item || itinerary.mutating.value) return
+  itineraryActionError.value = ''
+  try {
+    await itinerary.deleteItem(item.id)
+    selectedRecommendationMapPlace.value = null
+    showToast(`"${item.title}" 일정이 삭제되었습니다.`, 'success')
+  } catch {
+    itineraryActionError.value = '일정을 삭제하지 못했습니다. 다시 시도해 주세요.'
+  }
+}
+
+async function toggleSelectedPlaceItinerary() {
+  if (selectedPlaceIsScheduled.value) {
+    await removeSelectedPlaceFromItinerary()
+    return
+  }
+  await addSelectedPlaceToItinerary()
+}
+
 async function toggleSelectedPlaceSaved() {
   const place = selectedPlace.value?.place
   if (!place) return
@@ -3047,9 +3078,7 @@ function textAvatarStyle(index: unknown) {
                   title="클릭해서 닫기"
                   @click="daySyncNoticeVisible = false"
                 >
-                  <span class="material-symbols-rounded" aria-hidden="true">event_available</span>
                   여행 기간에 맞춰 일차가 업데이트됐어요
-                  <span class="material-symbols-rounded" aria-hidden="true">close</span>
                 </button>
               </div>
 
@@ -3214,6 +3243,7 @@ function textAvatarStyle(index: unknown) {
                 <PlaceDiscoveryPanel
                   :trip-id="tripId"
                   :bbox="viewportBbox"
+                  :scheduled-place-keys="scheduledPlaceKeys"
                   @select="selectDiscoveredPlace"
                 />
               </div>
@@ -3438,20 +3468,22 @@ function textAvatarStyle(index: unknown) {
                   class="detailbar-save-place-btn"
                   :class="{ 'is-saved': selectedPlaceIsSaved }"
                   :disabled="selectedPlaceIsSaving"
-                  :aria-label="selectedPlaceIsSaved ? '장소 저장 취소' : '장소 저장'"
+                  :aria-label="selectedPlaceIsSaved ? '슈퍼라이크에서 제거' : '슈퍼라이크에 추가'"
                   @click="toggleSelectedPlaceSaved"
                 >
-                  <span class="material-symbols-rounded">{{ selectedPlaceIsSaved ? 'bookmark' : 'bookmark_border' }}</span>
-                  {{ selectedPlaceIsSaved ? '저장됨' : '장소 저장' }}
+                  <span class="material-symbols-rounded">{{ selectedPlaceIsSaved ? 'stars' : 'star_border' }}</span>
+                  {{ selectedPlaceIsSaved ? '슈퍼라이크됨' : '슈퍼라이크에 추가' }}
                 </button>
                 <button
                   type="button"
                   class="detailbar-add-plan-btn"
-                  :disabled="selectedPlaceIsScheduled || itinerary.mutating.value"
-                  @click="addSelectedPlaceToItinerary"
+                  :class="{ 'is-scheduled': selectedPlaceIsScheduled }"
+                  :disabled="itinerary.mutating.value"
+                  :aria-label="selectedPlaceIsScheduled ? '일정에서 삭제' : '일정에 추가'"
+                  @click="toggleSelectedPlaceItinerary"
                 >
-                  <span class="material-symbols-rounded">{{ selectedPlaceIsScheduled ? 'check_circle' : 'add_circle' }}</span>
-                  {{ selectedPlaceIsScheduled ? '일정에 추가됨' : '일정에 추가' }}
+                  <span class="material-symbols-rounded">{{ selectedPlaceIsScheduled ? 'task_alt' : 'add_circle' }}</span>
+                  {{ selectedPlaceIsScheduled ? '일정에 있음' : '일정에 추가' }}
                 </button>
               </div>
 
@@ -3843,32 +3875,38 @@ function textAvatarStyle(index: unknown) {
   font-size: 15px;
 }
 .route-page-section .day-sync-notice {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 156px;
-  min-height: 28px;
-  padding: 5px 8px;
-  border: 1px solid rgba(5, 150, 105, 0.22);
-  border-radius: 999px;
-  background: rgba(5, 150, 105, 0.08);
-  color: #047857;
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  z-index: 80;
+  display: inline-block;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--ink);
+  color: #fff;
   cursor: pointer;
   font-size: 11px;
-  font-weight: 800;
-  line-height: 1.2;
-  text-align: left;
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  transform: translateY(-50%);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.route-page-section .day-sync-notice::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  transform: translateY(-50%);
+  border-width: 4px;
+  border-style: solid;
+  border-color: transparent var(--ink) transparent transparent;
 }
 .route-page-section .day-sync-notice:hover {
-  border-color: rgba(5, 150, 105, 0.34);
-  background: rgba(5, 150, 105, 0.12);
-  color: #065f46;
-}
-.route-page-section .day-sync-notice .material-symbols-rounded {
-  flex: 0 0 auto;
-  font-size: 15px;
+  opacity: 0.9;
+  transform: translateY(-50%) translateX(1px);
 }
 .route-page-section .day-tabs {
   flex: 1;
@@ -4762,6 +4800,13 @@ function textAvatarStyle(index: unknown) {
   color: #fff;
 }
 
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn[data-action="undo"].is-on:not(:disabled),
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn[data-action="redo"].is-on:not(:disabled),
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn[data-action="undo"].is-on:not(:disabled) .material-symbols-rounded,
+.route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn[data-action="redo"].is-on:not(:disabled) .material-symbols-rounded {
+  color: #000000;
+}
+
 .route-page-section .map-canvas.navigation-guide-mode .map-tools .tool-btn:not(.active):not(.is-on):not(:disabled) {
   color: var(--tool-inactive-color);
 }
@@ -5192,6 +5237,16 @@ function textAvatarStyle(index: unknown) {
   border-radius: 999px;
   opacity: 1;
 }
+.route-page-section .map-tools .tool-btn[data-action="undo"].is-on:not(:disabled),
+.route-page-section .map-tools .tool-btn[data-action="redo"].is-on:not(:disabled) {
+  background: transparent;
+  color: #000000;
+}
+.route-page-section .map-tools .tool-btn[data-action="undo"].is-on:hover:not(:disabled),
+.route-page-section .map-tools .tool-btn[data-action="redo"].is-on:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: #000000;
+}
 .map-tools .tool-tip {
   position: absolute;
   left: 50%;
@@ -5256,12 +5311,6 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .itinerary.dragging-stop ~ .add-stop-container > .trash-drop-zone,
 .route-page-section .itinerary.dragging-separator ~ .add-stop-container > .trash-drop-zone {
   display: flex;
-}
-
-.map-tools .tool-btn[data-action="undo"].is-on,
-.map-tools .tool-btn[data-action="redo"].is-on {
-  background: transparent !important;
-  color: #000000 !important;
 }
 
 .route-connector {

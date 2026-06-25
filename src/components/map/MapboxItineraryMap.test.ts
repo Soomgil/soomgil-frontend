@@ -130,7 +130,7 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({
       id: 'itinerary-route-route-1',
       type: 'line',
-      paint: expect.objectContaining({ 'line-color': '#6d4aff' }),
+      paint: expect.objectContaining({ 'line-color': '#0066ff' }),
     }))
     expect(mapbox.map.cameraForBounds).toHaveBeenCalledOnce()
     expect(wrapper.emitted('viewportChange')).toEqual([[
@@ -334,7 +334,7 @@ describe('MapboxItineraryMap', () => {
 
     expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({
       id: 'itinerary-route-day-2-route',
-      paint: expect.objectContaining({ 'line-color': '#06b6d4' }),
+      paint: expect.objectContaining({ 'line-color': '#3b82f6' }),
     }))
   })
 

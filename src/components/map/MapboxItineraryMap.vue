@@ -98,7 +98,7 @@ const { isDarkMode } = useTheme()
 const MAPBOX_STYLE_LIGHT = 'mapbox://styles/mapbox/light-v11'
 const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/navigation-night-v1'
 const MAPBOX_STYLE_NAVIGATION_DAY = 'mapbox://styles/mapbox/navigation-day-v1'
-const DAY_ROUTE_COLORS = ['#6d4aff', '#06b6d4', '#10b981', '#f97316', '#ec4899']
+const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
 
 const mapStyle = computed(() => {
   if (isDarkMode.value) {

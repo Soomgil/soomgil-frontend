@@ -8525,9 +8525,14 @@
     .map-pin-card--min {
       width: 42px;
       height: 42px;
+      min-height: 42px;
+      max-height: 42px;
+      padding: 0;
       border-radius: 999px;
       background: var(--day-color, var(--violet));
       box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.12);
+      display: grid;
+      place-items: center;
     }
 
     .map-pin-card--min .map-pin-img-wrapper,
@@ -9189,7 +9194,7 @@
     .detailbar-save-place-btn {
       width: 100%;
       min-height: 46px;
-      border: 0;
+      border: 1px solid transparent;
       border-radius: 14px;
       display: inline-flex;
       align-items: center;
@@ -9210,15 +9215,16 @@
 
     .detailbar-save-place-btn {
       background: #ffffff;
-      color: #2563eb;
-      border: 1px solid rgba(0, 102, 255, 0.16);
+      color: #7c3aed;
+      border-color: rgba(124, 58, 237, 0.18);
       box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
     }
 
     .detailbar-save-place-btn.is-saved {
-      background: rgba(0, 102, 255, 0.09);
-      color: #1d4ed8;
-      border-color: rgba(0, 102, 255, 0.28);
+      background: linear-gradient(135deg, #f59e0b 0%, #ec4899 48%, #7c3aed 100%);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.28);
+      box-shadow: 0 10px 24px rgba(236, 72, 153, 0.26);
     }
 
     .detailbar-add-plan-btn:hover:not(:disabled) {
@@ -9227,10 +9233,33 @@
       transform: translateY(-1px);
     }
 
+    .detailbar-add-plan-btn.is-scheduled {
+      background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.28);
+      box-shadow: 0 10px 24px rgba(5, 150, 105, 0.24);
+    }
+
     .detailbar-save-place-btn:hover:not(:disabled) {
-      background: var(--surface-2);
-      border-color: rgba(0, 102, 255, 0.26);
+      background: #f5f3ff;
+      border-color: rgba(124, 58, 237, 0.28);
       transform: translateY(-1px);
+    }
+
+    .detailbar-save-place-btn.is-saved:hover:not(:disabled) {
+      background: linear-gradient(135deg, #d97706 0%, #db2777 48%, #6d28d9 100%);
+      border-color: rgba(255, 255, 255, 0.34);
+      box-shadow: 0 12px 28px rgba(236, 72, 153, 0.32);
+    }
+
+    .detailbar-add-plan-btn.is-scheduled .material-symbols-rounded,
+    .detailbar-save-place-btn.is-saved .material-symbols-rounded {
+      font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 24;
+    }
+
+    .detailbar-add-plan-btn.is-scheduled:hover:not(:disabled) {
+      background: linear-gradient(135deg, #047857 0%, #059669 100%);
+      box-shadow: 0 12px 28px rgba(5, 150, 105, 0.3);
     }
 
     .detailbar-add-plan-btn:disabled,

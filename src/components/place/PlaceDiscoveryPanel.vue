@@ -8,7 +8,13 @@ import type { RecommendationTab } from '@/types/swipe'
 type DiscoveryMode = 'search' | 'basic' | 'super-like'
 type DiscoveryItem = { place: Place; recommendation?: PlaceRecommendation }
 
-const props = defineProps<{ tripId: string; bbox: string }>()
+const props = withDefaults(defineProps<{
+  tripId: string
+  bbox: string
+  scheduledPlaceKeys?: string[]
+}>(), {
+  scheduledPlaceKeys: () => [],
+})
 const emit = defineEmits<{
   select: [place: Place, recommendation?: PlaceRecommendation]
 }>()
@@ -26,6 +32,10 @@ function placeKey(place: Place) {
   return `${place.provider}:${place.externalPlaceId}`
 }
 
+function isScheduled(place: Place) {
+  return props.scheduledPlaceKeys.includes(placeKey(place))
+}
+
 function matchText(item: DiscoveryItem) {
   const count = item.recommendation?.matchedMemberCount ?? item.recommendation?.matchedMembers.length ?? 0
   const total = item.recommendation?.totalMemberCount ?? 0
@@ -41,6 +51,17 @@ function matchTierClass(pct: number | null | undefined) {
   if (pct >= 60) return 'tier-mid'
   if (pct >= 40) return 'tier-low'
   return 'tier-base'
+}
+
+function matchEmphasisStyle(pct: number | null | undefined) {
+  if (pct == null) return {}
+  const normalized = Math.max(0, Math.min(100, pct)) / 100
+  return {
+    '--match-emphasis': normalized.toFixed(2),
+    '--match-glow': (0.10 + normalized * 0.22).toFixed(2),
+    '--match-saturate': (1 + normalized * 0.28).toFixed(2),
+    '--match-brightness': (0.95 + normalized * 0.12).toFixed(2),
+  }
 }
 
 function displayImageUrl(url?: string | null) {
@@ -206,12 +227,17 @@ watch(() => props.bbox, (bbox, previous) => {
             <div
               v-if="item.recommendation?.matchPercentage != null"
               :class="['discovery-match-pill', matchTierClass(item.recommendation.matchPercentage)]"
+              :style="matchEmphasisStyle(item.recommendation.matchPercentage)"
               :title="`${item.recommendation.matchPercentage}% 일치`"
             >
               <span class="material-symbols-rounded discovery-match-icon full-heart">favorite</span>
               <strong class="discovery-match-value">{{ item.recommendation.matchPercentage }}%</strong>
               <span class="discovery-match-label">일치</span>
             </div>
+            <span v-if="isScheduled(item.place)" class="discovery-scheduled" title="이미 일정에 추가됨" aria-label="이미 일정에 추가됨">
+              <span class="material-symbols-rounded" aria-hidden="true">check_circle</span>
+              추가됨
+            </span>
           </div>
           <strong>{{ item.place.placeName }}</strong>
           <p>{{ item.place.address || '주소 정보 없음' }}</p>
@@ -245,8 +271,6 @@ watch(() => props.bbox, (bbox, previous) => {
 .discovery-state { flex: 1; min-height: 150px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; text-align: center; }
 .discovery-state--error { flex-direction: column; color: var(--rose); }
 .discovery-spinner { width: 20px; height: 20px; border: 2px solid var(--line); border-top-color: var(--violet); border-radius: 50%; animation: discovery-spin .8s linear infinite; }
-.discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; color: #059669; font-size: 10px; font-weight: 850; }
-.discovery-scheduled .material-symbols-rounded { font-size: 14px; }
 .discovery-results { width: calc(100% + 80px); margin: 0 -80px 0 0; padding: 0 80px 20px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; flex: 1; overflow-y: auto; overflow-x: hidden; list-style: none; scrollbar-width: none; -ms-overflow-style: none; min-height: 0; }
 .discovery-results::-webkit-scrollbar { display: none; }
 .discovery-result { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; min-height: 148px; padding: 14px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease; }
@@ -259,17 +283,17 @@ watch(() => props.bbox, (bbox, previous) => {
 .discovery-match-row { align-items: center; display: flex; gap: 8px; justify-content: space-between; margin-top: 10px; min-width: 0; }
 .discovery-copy .discovery-reason { color: var(--violet); flex: 1; font-weight: 800; font-size: 11px; margin: 0; min-width: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 .discovery-meta { display: flex; justify-content: flex-start; align-items: center; gap: 8px; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
-.discovery-match-pill { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 3px 8px 3px 6px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; flex-shrink: 0; line-height: 1; color: #fff; box-shadow: 0 3px 10px rgba(15, 23, 42, 0.14); }
-.discovery-match-pill .discovery-match-icon { font-size: 13px; color: #ef4444; font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20; }
-.discovery-match-pill .discovery-match-value { font-size: inherit; font-weight: inherit; letter-spacing: 0; color: inherit; }
-.discovery-match-pill .discovery-match-label { font-size: inherit; font-weight: inherit; opacity: 0.92; color: inherit; }
+.discovery-match-pill { --match-emphasis: 0.4; --match-glow: 0.16; --match-saturate: 1.12; --match-brightness: 1; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 21px; padding: 0 8px 0 6px; border: 1px solid rgba(255, 255, 255, calc(0.14 + var(--match-emphasis) * 0.2)); border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; flex-shrink: 0; line-height: 1; color: #fff; filter: saturate(var(--match-saturate)) brightness(var(--match-brightness)); box-shadow: 0 3px 10px rgba(15, 23, 42, 0.14), 0 0 calc(4px + var(--match-emphasis) * 12px) rgba(139, 92, 246, var(--match-glow)); }
+.discovery-match-pill .discovery-match-icon { display: inline-flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; color: #ef4444; font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20; }
+.discovery-match-pill .discovery-match-value { display: inline-flex; align-items: center; font-size: inherit; font-weight: inherit; line-height: 1; letter-spacing: 0; color: inherit; }
+.discovery-match-pill .discovery-match-label { display: inline-flex; align-items: center; font-size: inherit; font-weight: inherit; line-height: 1; opacity: 0.92; color: inherit; }
 .discovery-match-pill.tier-high { background: linear-gradient(135deg, #ff3d7f 0%, #8b5cf6 52%, #00b8d9 100%); }
 .discovery-match-pill.tier-mid { background: linear-gradient(135deg, #2563eb 0%, #14b8a6 100%); }
 .discovery-match-pill.tier-low { background: linear-gradient(135deg, #3b82f6 0%, #64748b 100%); }
 .discovery-match-pill.tier-base { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); }
 .discovery-meta-left { display: flex; align-items: center; gap: 8px; }
-.discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; color: #059669; font-size: 10px; font-weight: 850; margin-left: auto; flex-shrink: 0; }
-.discovery-scheduled .material-symbols-rounded { font-size: 14px; }
+.discovery-scheduled { display: inline-flex; align-items: center; gap: 3px; min-height: 19px; padding: 3px 7px 3px 5px; border: 1px solid rgba(5, 150, 105, 0.18); border-radius: 999px; background: rgba(5, 150, 105, 0.08); color: #059669; font-size: 10px; font-weight: 850; line-height: 1; white-space: nowrap; flex-shrink: 0; }
+.discovery-scheduled .material-symbols-rounded { font-size: 13px; font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20; }
 .discovery-members { display: flex; flex: 0 0 auto; }
 .discovery-members > span { width: 26px; height: 26px; margin-left: -6px; border: 2px solid #fff; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--violet); color: #fff; font-size: 11px; font-weight: 800; }
 .discovery-members > span img { width: 100%; height: 100%; object-fit: cover; }
