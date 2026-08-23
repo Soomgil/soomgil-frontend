@@ -44,7 +44,7 @@ defineEmits<{
         <span class="material-symbols-rounded">chevron_left</span>
       </button>
       <img
-        v-if="photos.length > 0"
+        v-if="photos.length"
         :alt="title"
         :src="photos[photoIndex]"
         class="story-post-photo-img"

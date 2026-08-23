@@ -1,6 +1,6 @@
 /* ── Enums ── */
 export type MediaStatus = 'ACTIVE' | 'DELETED' | 'PURGED'
-export type MediaPurpose = 'PROFILE_IMAGE' | 'TRIP_RECORD' | 'COMMUNITY_POST'
+export type MediaPurpose = 'PROFILE_IMAGE' | 'TRIP_RECORD' | 'COMMUNITY_POST' | 'MAP_OVERLAY'
 
 export interface MediaUploadUrl {
   uploadUrl: string

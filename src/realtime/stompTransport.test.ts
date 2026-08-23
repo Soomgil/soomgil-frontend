@@ -105,6 +105,26 @@ describe('StompTransport', () => {
     expect(client.publish).toHaveBeenCalledWith({ destination: '/app/test', body: '{"value":1}' })
   })
 
+  it('최초 연결과 재연결을 구분하고 연결 해제를 알린다', () => {
+    const onConnected = vi.fn()
+    const onDisconnected = vi.fn()
+    new StompTransport({
+      brokerUrl: 'ws://localhost/ws',
+      accessToken: () => null,
+      onConnected,
+      onDisconnected,
+    })
+    const client = stomp.clients[0]
+
+    client.config.onConnect({ headers: {} })
+    client.config.onWebSocketClose()
+    client.config.onConnect({ headers: {} })
+
+    expect(onConnected).toHaveBeenNthCalledWith(1, false)
+    expect(onConnected).toHaveBeenNthCalledWith(2, true)
+    expect(onDisconnected).toHaveBeenCalledOnce()
+  })
+
   it('현재 origin을 기준으로 기본 websocket URL을 만든다', () => {
     expect(resolveWebSocketUrl()).toBe('ws://localhost:3000/ws')
     expect(resolveWebSocketUrl('wss://api.example.com/ws')).toBe('wss://api.example.com/ws')

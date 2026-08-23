@@ -17,6 +17,8 @@ export interface StompTransportOptions {
   brokerUrl: string
   accessToken: () => string | null
   reconnectDelayMs?: number
+  onConnected?: (reconnected: boolean) => void
+  onDisconnected?: () => void
 }
 
 interface PendingSubscription {
@@ -29,6 +31,7 @@ export class StompTransport implements RealtimeTransport {
   private readonly client: Client
   private readonly subscriptions = new Set<PendingSubscription>()
   private collaborationSessionId: string | null = null
+  private hasConnected = false
 
   constructor(options: StompTransportOptions) {
     this.client = new Client({
@@ -52,14 +55,18 @@ export class StompTransport implements RealtimeTransport {
         console.error('WebSocket connection error', event)
       },
       onConnect: (frame: IFrame) => {
+		const reconnected = this.hasConnected
+		this.hasConnected = true
         this.updateCollaborationSession(frame.headers[COLLABORATION_SESSION_HEADER])
         this.subscriptions.forEach((subscription) => this.activateSubscription(subscription))
+		options.onConnected?.(reconnected)
       },
       onWebSocketClose: () => {
         this.clearCollaborationSession()
         this.subscriptions.forEach((subscription) => {
           subscription.active = null
         })
+		options.onDisconnected?.()
       },
     })
   }

@@ -2,9 +2,12 @@
 import { onBeforeUnmount, onMounted, ref, watch, computed } from 'vue'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import MapDrawingOverlay from './MapDrawingOverlay.vue'
+import MapObjectOverlay from './MapObjectOverlay.vue'
+import type { MapCursorView, MapObjectLockView } from './MapObjectOverlay.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from './MapDrawingOverlay.vue'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { LngLat, Viewport } from '@/types/geo'
+import type { MapDrawing, MapObjectTransform } from '@/types/itinerary'
 import type { AccessibilityFlag, PlaceAccessibility } from '@/types/place'
 import { useTheme } from '@/composables/useTheme'
 
@@ -56,6 +59,14 @@ const props = withDefaults(defineProps<{
   navigationMode?: boolean
   standardView?: boolean
   routeWaypoints?: LngLat[]
+  mapObjects?: MapDrawing[]
+  mapObjectImageUrls?: Record<string, string>
+  mapObjectLocks?: Record<string, MapObjectLockView>
+  mapCursors?: MapCursorView[]
+  currentClientId?: string | null
+  selectedMapObjectId?: string | null
+  mapObjectPlacement?: boolean
+  mapObjectEpoch?: number
 }>(), {
   drawings: () => [],
   routes: () => [],
@@ -70,6 +81,14 @@ const props = withDefaults(defineProps<{
   navigationMode: false,
   standardView: false,
   routeWaypoints: () => [],
+  mapObjects: () => [],
+  mapObjectImageUrls: () => ({}),
+  mapObjectLocks: () => ({}),
+  mapCursors: () => [],
+  currentClientId: null,
+  selectedMapObjectId: null,
+  mapObjectPlacement: false,
+  mapObjectEpoch: 0,
 })
 const emit = defineEmits<{
   selectPlace: [placeProvider: string | undefined, placeId: string | undefined, stopId: string]
@@ -79,6 +98,12 @@ const emit = defineEmits<{
   drawingErase: [drawingId: string]
   drawingPreview: [event: DrawingPreviewEvent]
   routePoint: [coordinate: LngLat]
+  mapObjectPlace: [transform: MapObjectTransform]
+  mapObjectSelect: [drawingId: string | null]
+  mapObjectEditStart: [drawingId: string]
+  mapObjectEditEnd: [drawingId: string]
+  mapObjectChange: [drawingId: string, transform: MapObjectTransform]
+  cursorMove: [coordinate: LngLat]
 }>()
 
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
@@ -601,6 +626,10 @@ async function initializeMap() {
     createdMap.on('moveend', emitViewport)
     createdMap.on('move', updateDrawingProjection)
     createdMap.on('resize', updateDrawingProjection)
+    createdMap.on('mousemove', (event) => emit('cursorMove', { lng: event.lngLat.lng, lat: event.lngLat.lat }))
+    createdMap.on('click', () => {
+      if (!props.mapObjectPlacement) emit('mapObjectSelect', null)
+    })
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => map?.resize())
       resizeObserver.observe(container.value)
@@ -648,6 +677,24 @@ onBeforeUnmount(() => {
       @route-point="emit('routePoint', $event)"
       @pan="panMapByOverlayDelta"
       @wheel-zoom="zoomMapByOverlayWheel"
+    />
+    <MapObjectOverlay
+      :key="mapObjectEpoch"
+      :objects="mapObjects"
+      :image-urls="mapObjectImageUrls"
+      :locks="mapObjectLocks"
+      :cursors="mapCursors"
+      :current-client-id="currentClientId"
+      :selected-id="selectedMapObjectId"
+      :placement-mode="mapObjectPlacement"
+      :projection-revision="projectionRevision"
+      :project="projectDrawingCoordinate"
+      :unproject="unprojectDrawingPoint"
+      @place="emit('mapObjectPlace', $event)"
+      @select="emit('mapObjectSelect', $event)"
+      @edit-start="emit('mapObjectEditStart', $event)"
+      @edit-end="emit('mapObjectEditEnd', $event)"
+      @change="(drawingId, transform) => emit('mapObjectChange', drawingId, transform)"
     />
     <div v-if="mapError" class="itinerary-map__error" role="alert">
       <span>{{ mapError }}</span>

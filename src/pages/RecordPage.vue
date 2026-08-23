@@ -563,7 +563,11 @@ onBeforeUnmount(() => {
                 <p class="overlay-schedule">{{ photoLabel(photo) }}</p>
                 <p class="overlay-uploader">
                   <span class="avatar record-uploader-avatar" :style="{ background: avatarColors[i % avatarColors.length] }">
-                    <img v-if="uploaderProfileImage(photo)" :src="uploaderProfileImage(photo)!" alt="" />
+                    <img
+                      v-if="uploaderProfileImage(photo)"
+                      :src="uploaderProfileImage(photo)!"
+                      :alt="`${uploaderName(photo)} 프로필`"
+                    />
                     <span v-else>{{ uploaderName(photo).charAt(0) }}</span>
                   </span>
                   <span>{{ uploaderName(photo) }}</span>

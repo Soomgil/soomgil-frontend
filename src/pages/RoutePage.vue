@@ -9,6 +9,7 @@ import { geoApi } from '@/api/geo.api'
 import { aiApi } from '@/api/ai.api'
 import { chatApi } from '@/api/chat.api'
 import { planningApi } from '@/api/planning.api'
+import { mediaApi } from '@/api/media.api'
 import { getStoredAccessToken } from '@/auth/accessToken'
 import { tripApi } from '@/api/trip.api'
 import { swipeApi } from '@/api/swipe.api'
@@ -17,12 +18,15 @@ import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerar
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/components/map/MapDrawingOverlay.vue'
+import type { MapCursorView, MapObjectLockView } from '@/components/map/MapObjectOverlay.vue'
+import { MAP_STICKERS, stickerHref } from '@/components/map/mapStickerCatalog'
 import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
 import { getAiRefreshTargets } from './routeBackendSync'
 import { useItinerary } from '@/composables/useItinerary'
 import { useMapViewport } from '@/composables/useMapViewport'
 import { placeApi } from '@/api/place.api'
 import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
+import { getCollaborationSessionId } from '@/realtime/collaborationSession'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
@@ -33,7 +37,7 @@ import type { Checklist, ChecklistItem, ChecklistMemberStatus, Note, PlanningSco
 import type { DrawingPreviewEvent, TripPresenceEvent, TripRealtimeEvent } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
 import type { AccessibilityFlag, ParkingType, Place, PlaceAccessibility, PlaceProvider, PlaceRecommendation } from '@/types/place'
-import type { ItineraryDay, ReorderItineraryInput } from '@/types/itinerary'
+import type { ItineraryDay, MapDrawing, MapObjectTransform, MapStickerCode, ReorderItineraryInput } from '@/types/itinerary'
 
 /* ── RoutePage 내부 전용 타입 ── */
 type RouteStop = RouteStopViewModel
@@ -2347,6 +2351,22 @@ const penColor = ref('#1f2937')
 const activeTool = ref<MapDrawingTool>('cursor')
 const navigationGuideMode = computed(() => activeTool.value === 'route-pen')
 const localDrawings = ref<MapDrawingStroke[]>([])
+const selectedStickerCode = ref<MapStickerCode>('HEART')
+const selectedMapObjectId = ref<string | null>(null)
+const pendingImageMediaId = ref<string | null>(null)
+const mapObjectImageUrls = ref<Record<string, string>>({})
+const mapObjectLocks = ref<Record<string, MapObjectLockView>>({})
+const remoteMapCursors = ref<Record<string, MapCursorView & { receivedAt: number }>>({})
+const mapObjectEpoch = ref(0)
+const mapImageInput = ref<HTMLInputElement | null>(null)
+const mapImageUploading = ref(false)
+const mapObjects = computed(() => itinerary.mapDrawings.value.filter(
+  (drawing) => drawing.drawingType === 'STICKER' || drawing.drawingType === 'IMAGE',
+))
+const visibleMapCursors = computed<MapCursorView[]>(() => Object.values(remoteMapCursors.value))
+const mapObjectPlacement = computed(() => (
+  activeTool.value === 'sticker' || (activeTool.value === 'image' && pendingImageMediaId.value !== null)
+))
 
 const penPopoverStyle = ref<{ left?: string }>({})
 
@@ -2377,6 +2397,7 @@ watch(activeTool, (newTool) => {
   if (newTool !== 'route-pen') {
     clearPendingRouteSelection()
   }
+  if (newTool !== 'image') pendingImageMediaId.value = null
 })
 
 function selectMapTool(tool: MapDrawingTool) {
@@ -2395,6 +2416,10 @@ function selectMapTool(tool: MapDrawingTool) {
   if (tool === 'pen' || tool === 'eraser') {
     drawingOn.value = true
   }
+  if (tool === 'sticker' || tool === 'image') {
+    standardMapView.value = false
+    selectedMapObjectId.value = null
+  }
   if (tool === 'pen') {
     isPenPopoverOpen.value = true
     nextTick(updatePenPopoverPosition)
@@ -2411,9 +2436,46 @@ function toggleStandardMapView() {
 const pendingDrawingIds = ref<string[]>([])
 const drawingRetryIds = ref<string[]>([])
 const simplifiedDrawingCoordinates = new Map<string, MapDrawingStroke['coordinates']>()
+interface MapObjectLockEvent {
+  eventType: 'map.object.lock'
+  tripId: string
+  drawingId: string
+  locked: boolean
+  userId: string | null
+  clientId: string | null
+  expiresAt: string | null
+}
+interface MapCursorEvent {
+  eventType: 'cursor.moved'
+  tripId: string
+  userId: string
+  clientId: string
+  longitude: number
+  latitude: number
+  sequence: number
+  sentAt: string
+}
+const pendingMapObjectLeases = new Map<string, Promise<boolean>>()
+const mapObjectLeaseResolvers = new Map<string, (acquired: boolean) => void>()
+const mapObjectLeaseTimers = new Map<string, number>()
+let cursorSequence = 0
+let lastCursorSentAt = 0
 const collaborationTransport = new StompTransport({
   brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
   accessToken: getStoredAccessToken,
+  onConnected: (reconnected) => {
+    if (reconnected) void itinerary.fetchItinerary()
+  },
+  onDisconnected: () => {
+    mapObjectEpoch.value += 1
+    selectedMapObjectId.value = null
+    mapObjectLocks.value = {}
+    mapObjectLeaseResolvers.forEach((resolve) => resolve(false))
+    mapObjectLeaseResolvers.clear()
+    pendingMapObjectLeases.clear()
+    mapObjectLeaseTimers.forEach(clearInterval)
+    mapObjectLeaseTimers.clear()
+  },
 })
 const drawingPreviewChannel = useDrawingPreviewChannel({
   tripId,
@@ -2430,8 +2492,9 @@ let itineraryRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let itineraryRefreshInFlight: Promise<unknown> | null = null
 let conversationRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let planningRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let cursorPruneTimer: number | null = null
 
-function tripRealtimeTopic(topic: 'collaboration' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai') {
+function tripRealtimeTopic(topic: 'collaboration' | 'presence' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai') {
   return `/topic/trips/${encodeURIComponent(tripId)}/${topic}`
 }
 
@@ -2448,6 +2511,95 @@ function isTripPresenceEvent(message: unknown): message is TripPresenceEvent {
   return candidate.eventType === 'presence.snapshot'
     && Array.isArray(candidate.activeUserIds)
     && candidate.activeUserIds.every((userId) => typeof userId === 'string')
+}
+
+function isMapObjectLockEvent(message: unknown): message is MapObjectLockEvent {
+  if (!isTripRealtimeEvent(message)) return false
+  const candidate = message as Partial<MapObjectLockEvent>
+  return candidate.eventType === 'map.object.lock'
+    && typeof candidate.drawingId === 'string'
+    && typeof candidate.locked === 'boolean'
+}
+
+function isMapCursorEvent(message: unknown): message is MapCursorEvent {
+  if (!isTripRealtimeEvent(message)) return false
+  const candidate = message as Partial<MapCursorEvent>
+  return candidate.eventType === 'cursor.moved'
+    && typeof candidate.userId === 'string'
+    && typeof candidate.clientId === 'string'
+    && typeof candidate.longitude === 'number'
+    && typeof candidate.latitude === 'number'
+    && Number.isFinite(candidate.longitude)
+    && Number.isFinite(candidate.latitude)
+}
+
+function cursorColor(userId: string) {
+  const colors = ['#2563eb', '#dc2626', '#059669', '#7c3aed', '#ea580c', '#0891b2']
+  const hash = [...userId].reduce((value, character) => ((value * 31) + character.charCodeAt(0)) >>> 0, 0)
+  return colors[hash % colors.length]
+}
+
+function memberDisplayName(userId: string) {
+  return trip.value.members.find((member) => member.userId === userId)?.displayName ?? '여행 친구'
+}
+
+function receiveMapObjectLock(event: MapObjectLockEvent) {
+  const next = { ...mapObjectLocks.value }
+  if (!event.locked || !event.userId || !event.clientId || !event.expiresAt) {
+    delete next[event.drawingId]
+  } else {
+    next[event.drawingId] = {
+      drawingId: event.drawingId,
+      userId: event.userId,
+      clientId: event.clientId,
+      expiresAt: event.expiresAt,
+    }
+  }
+  mapObjectLocks.value = next
+  if (event.locked && event.clientId === getCollaborationSessionId()) {
+    mapObjectLeaseResolvers.get(event.drawingId)?.(true)
+    mapObjectLeaseResolvers.delete(event.drawingId)
+  }
+}
+
+function publishMapObjectLock(drawingId: string, action: 'ACQUIRE' | 'RENEW' | 'RELEASE') {
+  return collaborationTransport.publish(`/app/trips/${encodeURIComponent(tripId)}/map-object-lock`, { drawingId, action })
+}
+
+function acquireMapObjectLease(drawingId: string) {
+  if (mapObjectLocks.value[drawingId]?.clientId === getCollaborationSessionId()) return Promise.resolve(true)
+  const existing = pendingMapObjectLeases.get(drawingId)
+  if (existing) return existing
+  const promise = new Promise<boolean>((resolve) => {
+    const timeout = window.setTimeout(() => {
+      mapObjectLeaseResolvers.delete(drawingId)
+      resolve(false)
+    }, 1500)
+    mapObjectLeaseResolvers.set(drawingId, (acquired) => {
+      window.clearTimeout(timeout)
+      if (acquired && !mapObjectLeaseTimers.has(drawingId)) {
+        mapObjectLeaseTimers.set(drawingId, window.setInterval(
+          () => publishMapObjectLock(drawingId, 'RENEW'),
+          5000,
+        ))
+      }
+      resolve(acquired)
+    })
+    if (!publishMapObjectLock(drawingId, 'ACQUIRE')) {
+      window.clearTimeout(timeout)
+      mapObjectLeaseResolvers.delete(drawingId)
+      resolve(false)
+    }
+  }).finally(() => pendingMapObjectLeases.delete(drawingId))
+  pendingMapObjectLeases.set(drawingId, promise)
+  return promise
+}
+
+function releaseMapObjectLease(drawingId: string) {
+  const timer = mapObjectLeaseTimers.get(drawingId)
+  if (timer) clearInterval(timer)
+  mapObjectLeaseTimers.delete(drawingId)
+  publishMapObjectLock(drawingId, 'RELEASE')
 }
 
 function isTripChatMessage(message: unknown): message is TripChatMessage {
@@ -2644,10 +2796,29 @@ function schedulePlanningRefresh() {
 
 function receiveItineraryEvent(message: unknown) {
   if (isDrawingPreviewRealtimeMessage(message)) return
+  if (isMapObjectLockEvent(message)) {
+    receiveMapObjectLock(message)
+    return
+  }
   scheduleItineraryRefresh(message)
 }
 
 function receiveCollaborationEvent(message: unknown) {
+  if (isMapCursorEvent(message)) {
+    if (message.userId === currentUserId.value) return
+    remoteMapCursors.value = {
+      ...remoteMapCursors.value,
+      [message.clientId]: {
+        clientId: message.clientId,
+        userId: message.userId,
+        displayName: memberDisplayName(message.userId),
+        color: cursorColor(message.userId),
+        coordinate: { lng: message.longitude, lat: message.latitude },
+        receivedAt: Date.now(),
+      },
+    }
+    return
+  }
   if (!isTripPresenceEvent(message)) return
   onlineUserIds.value = new Set(message.activeUserIds)
   const knownUserIds = new Set(trip.value.members.map((member) => member.userId))
@@ -2690,7 +2861,7 @@ function receiveAiEvent(message: unknown) {
 function connectTripRealtime() {
   if (!tripId || !getStoredAccessToken() || tripRealtimeUnsubscribers.length > 0) return
   tripRealtimeUnsubscribers = [
-    collaborationTransport.subscribe(tripRealtimeTopic('collaboration'), receiveCollaborationEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('presence'), receiveCollaborationEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('itinerary'), receiveItineraryEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('map-drawings'), receiveItineraryEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('route-matching'), receiveItineraryEvent),
@@ -2710,6 +2881,7 @@ function disconnectTripRealtime() {
   tripRealtimeUnsubscribers.forEach((unsubscribe) => unsubscribe())
   tripRealtimeUnsubscribers = []
   onlineUserIds.value = new Set()
+  remoteMapCursors.value = {}
   if (itineraryRefreshTimer) clearTimeout(itineraryRefreshTimer)
   if (conversationRefreshTimer) clearTimeout(conversationRefreshTimer)
   if (planningRefreshTimer) clearTimeout(planningRefreshTimer)
@@ -2738,15 +2910,172 @@ watch(itinerary.mapDrawings, (drawings) => {
 	})
 }, { deep: true, immediate: true })
 
+async function syncMapObjectImages(drawings: MapDrawing[]) {
+  const desiredMediaIds = new Set(drawings.flatMap((drawing) => (
+    drawing.drawingType === 'IMAGE' && drawing.mediaFileId ? [drawing.mediaFileId] : []
+  )))
+  const next = { ...mapObjectImageUrls.value }
+  for (const [mediaId, url] of Object.entries(next)) {
+    if (!desiredMediaIds.has(mediaId) && mediaId !== pendingImageMediaId.value) {
+      URL.revokeObjectURL(url)
+      delete next[mediaId]
+    }
+  }
+  mapObjectImageUrls.value = next
+  await Promise.all([...desiredMediaIds].map(async (mediaId) => {
+    if (mapObjectImageUrls.value[mediaId]) return
+    try {
+      const url = await mediaApi.getContentObjectUrl(mediaId)
+      if (!desiredMediaIds.has(mediaId)) {
+        URL.revokeObjectURL(url)
+        return
+      }
+      mapObjectImageUrls.value = { ...mapObjectImageUrls.value, [mediaId]: url }
+    } catch (cause) {
+      console.error('Map overlay image could not be loaded.', cause)
+    }
+  }))
+}
+
+watch(itinerary.mapDrawings, (drawings) => {
+  void syncMapObjectImages(drawings)
+}, { deep: true, immediate: true })
+
+async function handleMapObjectPlace(transform: MapObjectTransform) {
+  if (itinerary.mutating.value) return
+  try {
+    const mediaFileId = activeTool.value === 'image' ? pendingImageMediaId.value : null
+    const stickerCode = activeTool.value === 'sticker' ? selectedStickerCode.value : null
+    if (!mediaFileId && !stickerCode) return
+    const created = await itinerary.createDrawing({
+      itineraryDayId: activePlan.value?.id ?? null,
+      drawingType: stickerCode ? 'STICKER' : 'IMAGE',
+      geometry: { type: 'Point', coordinates: [transform.centerLng, transform.centerLat] },
+      style: null,
+      label: stickerCode ? MAP_STICKERS.find((sticker) => sticker.code === stickerCode)?.label ?? null : null,
+      mediaFileId,
+      stickerCode,
+      transform,
+      sortOrder: itinerary.mapDrawings.value.length,
+    })
+    selectedMapObjectId.value = created.id
+    if (mediaFileId) {
+      pendingImageMediaId.value = null
+      activeTool.value = 'cursor'
+    }
+  } catch (cause) {
+    console.error('Map object could not be created.', cause)
+  }
+}
+
+function openMapImagePicker() {
+  if (!mapImageUploading.value) mapImageInput.value?.click()
+}
+
+async function handleMapImageSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+    window.alert('JPG, PNG, WebP 이미지를 10MB 이하로 선택해 주세요.')
+    return
+  }
+  mapImageUploading.value = true
+  try {
+    const media = await mediaApi.uploadFile(file, 'MAP_OVERLAY', {
+      linkedResourceType: 'TRIP',
+      linkedResourceId: tripId,
+    })
+    const url = await mediaApi.getContentObjectUrl(media.id)
+    const previous = mapObjectImageUrls.value[media.id]
+    if (previous) URL.revokeObjectURL(previous)
+    mapObjectImageUrls.value = { ...mapObjectImageUrls.value, [media.id]: url }
+    pendingImageMediaId.value = media.id
+    activeTool.value = 'image'
+    selectedMapObjectId.value = null
+  } catch (cause) {
+    console.error('Map overlay image upload failed.', cause)
+    window.alert('지도 이미지를 업로드하지 못했습니다.')
+  } finally {
+    mapImageUploading.value = false
+  }
+}
+
+function beginMapObjectEdit(drawingId: string) {
+  void acquireMapObjectLease(drawingId)
+}
+
+function cancelMapObjectEdit(drawingId: string) {
+  releaseMapObjectLease(drawingId)
+}
+
+async function changeMapObject(drawingId: string, transform: MapObjectTransform) {
+  const lease = pendingMapObjectLeases.get(drawingId) ?? acquireMapObjectLease(drawingId)
+  if (!await lease) {
+    mapObjectEpoch.value += 1
+    await itinerary.fetchItinerary()
+    return
+  }
+  try {
+    await itinerary.updateDrawing(drawingId, {
+      geometry: { type: 'Point', coordinates: [transform.centerLng, transform.centerLat] },
+      transform,
+    })
+  } catch (cause) {
+    mapObjectEpoch.value += 1
+    await itinerary.fetchItinerary()
+    console.error('Map object could not be updated.', cause)
+  } finally {
+    releaseMapObjectLease(drawingId)
+  }
+}
+
+async function deleteSelectedMapObject() {
+  const drawingId = selectedMapObjectId.value
+  if (!drawingId) return
+  if (!await acquireMapObjectLease(drawingId)) return
+  try {
+    await itinerary.deleteDrawing(drawingId)
+    selectedMapObjectId.value = null
+  } finally {
+    releaseMapObjectLease(drawingId)
+  }
+}
+
+function publishMapCursor(coordinate: LngLat) {
+  const now = Date.now()
+  if (now - lastCursorSentAt < 50) return
+  lastCursorSentAt = now
+  collaborationTransport.publish(`/app/trips/${encodeURIComponent(tripId)}/cursor`, {
+    longitude: coordinate.lng,
+    latitude: coordinate.lat,
+    sequence: ++cursorSequence,
+  })
+}
+
 onMounted(() => {
   connectRealtimeChannels()
   window.addEventListener('resize', updatePenPopoverPosition)
+  cursorPruneTimer = window.setInterval(() => {
+    const now = Date.now()
+    const cutoff = now - 10_000
+    remoteMapCursors.value = Object.fromEntries(
+      Object.entries(remoteMapCursors.value).filter(([, cursor]) => cursor.receivedAt >= cutoff),
+    )
+    mapObjectLocks.value = Object.fromEntries(
+      Object.entries(mapObjectLocks.value).filter(([, lock]) => Date.parse(lock.expiresAt) > now),
+    )
+  }, 1000)
 })
 
 onUnmounted(() => {
   void drawingPreviewChannel.disconnect()
   disconnectTripRealtime()
   window.removeEventListener('resize', updatePenPopoverPosition)
+  if (cursorPruneTimer) clearInterval(cursorPruneTimer)
+  cursorPruneTimer = null
+  Object.values(mapObjectImageUrls.value).forEach((url) => URL.revokeObjectURL(url))
 })
 
 async function simplifyLocalDrawing(drawingId: string) {
@@ -2812,11 +3141,16 @@ async function eraseLocalDrawing(drawingId: string) {
 	localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
 	drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
 	if (!drawingId.startsWith('local-drawing-')) {
+		let leaseAcquired = false
 		try {
+			leaseAcquired = await acquireMapObjectLease(drawingId)
+			if (!leaseAcquired) throw new Error('Map drawing lease was not acquired.')
 			await itinerary.deleteDrawing(drawingId)
 		} catch {
 			itineraryActionError.value = '지도 그림을 삭제하지 못했습니다.'
 			await loadItinerary()
+		} finally {
+			if (leaseAcquired) releaseMapObjectLease(drawingId)
 		}
 	}
 }
@@ -3769,6 +4103,14 @@ function textAvatarStyle(index: unknown) {
               :drawing-color="penColor"
               :drawing-width="penSize"
               :route-waypoints="routeWaypoints"
+              :map-objects="mapObjects"
+              :map-object-image-urls="mapObjectImageUrls"
+              :map-object-locks="mapObjectLocks"
+              :map-cursors="visibleMapCursors"
+              :current-client-id="getCollaborationSessionId()"
+              :selected-map-object-id="selectedMapObjectId"
+              :map-object-placement="mapObjectPlacement"
+              :map-object-epoch="mapObjectEpoch"
               :drawings-visible="drawingOn"
               :navigation-mode="navigationGuideMode"
               :standard-view="standardMapView"
@@ -3779,7 +4121,44 @@ function textAvatarStyle(index: unknown) {
               @drawing-erase="eraseLocalDrawing"
               @drawing-preview="publishDrawingPreview"
               @route-point="addRouteWaypoint"
+              @map-object-place="handleMapObjectPlace"
+              @map-object-select="selectedMapObjectId = $event"
+              @map-object-edit-start="beginMapObjectEdit"
+              @map-object-edit-end="cancelMapObjectEdit"
+              @map-object-change="changeMapObject"
+              @cursor-move="publishMapCursor"
             />
+
+            <input
+              ref="mapImageInput"
+              class="map-object-file-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              @change="handleMapImageSelected"
+            >
+
+            <div v-if="activeTool === 'sticker'" class="map-sticker-palette" aria-label="지도 스티커 선택">
+              <button
+                v-for="sticker in MAP_STICKERS"
+                :key="sticker.code"
+                type="button"
+                :class="['map-sticker-option', { active: selectedStickerCode === sticker.code }]"
+                :aria-label="sticker.label"
+                :aria-pressed="selectedStickerCode === sticker.code"
+                @click="selectedStickerCode = sticker.code"
+              >
+                <svg viewBox="0 0 64 64" aria-hidden="true"><use :href="stickerHref(sticker.code) ?? undefined" /></svg>
+              </button>
+              <span class="map-sticker-help">지도에서 놓을 위치를 선택하세요</span>
+            </div>
+
+            <div v-if="selectedMapObjectId" class="map-object-actions">
+              <span>모서리로 크기 조절 · 위 핸들로 회전</span>
+              <button type="button" :disabled="itinerary.mutating.value" @click="deleteSelectedMapObject">
+                <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                삭제
+              </button>
+            </div>
 
             <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
               지도 범위를 동기화하는 중
@@ -3857,6 +4236,14 @@ function textAvatarStyle(index: unknown) {
               <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" data-tool="eraser" :aria-pressed="activeTool === 'eraser'" :disabled="itinerary.mutating.value" @click="selectMapTool('eraser')">
                 <span class="material-symbols-rounded">ink_eraser</span>
                 <span class="tool-tip">그림 지우개</span>
+              </button>
+              <button :class="['tool-btn', { active: activeTool === 'sticker' }]" type="button" data-tool="sticker" :aria-pressed="activeTool === 'sticker'" :disabled="itinerary.mutating.value" @click="selectMapTool('sticker')">
+                <span class="material-symbols-rounded">emoji_emotions</span>
+                <span class="tool-tip">스티커 삽입</span>
+              </button>
+              <button :class="['tool-btn', { active: activeTool === 'image' }]" type="button" data-tool="image" :aria-pressed="activeTool === 'image'" :disabled="itinerary.mutating.value || mapImageUploading" @click="openMapImagePicker">
+                <span class="material-symbols-rounded">add_photo_alternate</span>
+                <span class="tool-tip">이미지 삽입</span>
               </button>
 
               <span class="tool-divider" aria-hidden="true"></span>
@@ -5892,5 +6279,94 @@ function textAvatarStyle(index: unknown) {
   color: var(--muted);
   background: var(--surface);
   border-color: var(--line);
+}
+
+.map-object-file-input {
+  display: none;
+}
+
+.map-sticker-palette {
+  position: absolute;
+  right: 76px;
+  bottom: 86px;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: repeat(4, 42px);
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(15, 23, 42, .1);
+  border-radius: 16px;
+  background: rgba(255, 252, 246, .96);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, .18), 0 2px 8px rgba(15, 23, 42, .08);
+  backdrop-filter: blur(14px);
+}
+
+.map-sticker-option {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.map-sticker-option:hover,
+.map-sticker-option.active {
+  border-color: #7c3aed;
+  background: #f4efff;
+  transform: translateY(-1px);
+}
+
+.map-sticker-option svg {
+  width: 31px;
+  height: 31px;
+}
+
+.map-sticker-help {
+  grid-column: 1 / -1;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.map-object-actions {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid rgba(15, 23, 42, .1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .95);
+  color: #475569;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .16);
+  font-size: 11px;
+  font-weight: 700;
+  transform: translateX(-50%);
+}
+
+.map-object-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.map-object-actions .material-symbols-rounded {
+  font-size: 16px;
 }
 </style>

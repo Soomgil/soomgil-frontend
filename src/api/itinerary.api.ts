@@ -9,6 +9,7 @@ import type {
   ReorderItineraryRequest,
   UpdateItineraryDayRequest,
   UpdateItineraryItemRequest,
+  UpdateMapDrawingRequest,
 } from '@/types/itinerary'
 
 export const itineraryApi = {
@@ -69,12 +70,17 @@ export const itineraryApi = {
   },
 
   createDrawing: async (tripId: string, request: CreateMapDrawingRequest): Promise<ItineraryMutationResponse> => {
-    const response = await http.post<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/drawings`, request)
+    const response = await http.post<ItineraryMutationResponse>(`/trips/${tripId}/map-drawings`, request)
+    return response.data
+  },
+
+  updateDrawing: async (tripId: string, drawingId: string, request: UpdateMapDrawingRequest): Promise<ItineraryMutationResponse> => {
+    const response = await http.patch<ItineraryMutationResponse>(`/trips/${tripId}/map-drawings/${drawingId}`, request)
     return response.data
   },
 
   deleteDrawing: async (tripId: string, drawingId: string, baseVersion: number): Promise<ItineraryMutationResponse> => {
-    const response = await http.delete<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/drawings/${drawingId}`, {
+    const response = await http.delete<ItineraryMutationResponse>(`/trips/${tripId}/map-drawings/${drawingId}`, {
       data: { baseVersion },
     })
     return response.data

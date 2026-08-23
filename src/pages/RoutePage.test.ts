@@ -3,6 +3,7 @@ import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
+import { clearCollaborationSessionIds, registerCollaborationSessionId } from '@/realtime/collaborationSession'
 import RoutePage from './RoutePage.vue'
 
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any }))
@@ -132,6 +133,7 @@ vi.mock('@/composables/useItinerary', async () => {
 		mapMatchRoute: vi.fn(),
 		deleteRoute: vi.fn(),
 		createDrawing: vi.fn(),
+		updateDrawing: vi.fn(),
 		deleteDrawing: vi.fn(),
     unscheduledDay: computed(() => days.value.find((day) => day.groupType === 'UNSCHEDULED') ?? null),
   }
@@ -162,6 +164,8 @@ describe('RoutePage itinerary integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    clearCollaborationSessionIds()
+    registerCollaborationSessionId('session-1')
     realtime.instances.length = 0
     connectedApis.ai.getSession.mockResolvedValue({
       id: 'ai-session-1', tripId: 'trip-1', status: 'ACTIVE', summaryUpdatedAt: null, createdAt: null,
@@ -2106,6 +2110,7 @@ describe('RoutePage itinerary integration', () => {
   })
 
   it('새 지도 그림을 좌표 단순화한 뒤 표시하고 지운다', async () => {
+    localStorage.setItem('accessToken', 'e30.eyJ1c2VySWQiOiJ1c2VyLTEifQ.')
     const wrapper = mount(RoutePage, {
       global: {
         stubs: {
@@ -2136,6 +2141,16 @@ describe('RoutePage itinerary integration', () => {
     }])
 
     map.vm.$emit('drawingErase', 'drawing-1')
+    await nextTick()
+    realtime.instances[0].subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
+      eventType: 'map.object.lock',
+      tripId: 'trip-1',
+      drawingId: 'drawing-1',
+      locked: true,
+      userId: 'user-1',
+      clientId: 'session-1',
+      expiresAt: '2026-08-24T00:00:15Z',
+    })
     await flushPromises()
     expect(map.props('drawings')).toEqual([])
 		expect(holder.state.deleteDrawing).toHaveBeenCalledWith('drawing-1')
@@ -2253,10 +2268,10 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     const collaborationTransport = realtime.instances[0]
 
-    expect(collaborationTransport.subscriptions.has('/topic/trips/trip-1/collaboration')).toBe(true)
+    expect(collaborationTransport.subscriptions.has('/topic/trips/trip-1/presence')).toBe(true)
     expect(wrapper.findAll('.avatar-presence-badge')).toHaveLength(0)
 
-    collaborationTransport.subscriptions.get('/topic/trips/trip-1/collaboration')?.({
+    collaborationTransport.subscriptions.get('/topic/trips/trip-1/presence')?.({
       tripId: 'trip-1',
       eventType: 'presence.snapshot',
       activeUserIds: ['user-1', 'user-2'],

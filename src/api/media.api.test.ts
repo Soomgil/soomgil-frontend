@@ -132,4 +132,16 @@ describe('media API', () => {
 
     expect(del).toHaveBeenCalledWith('/media/files/media-1')
   })
+
+  it('loads authenticated map overlay content as an object URL', async () => {
+    const blob = new Blob(['png'], { type: 'image/png' })
+    const createObjectURL = vi.fn(() => 'blob:map-overlay')
+    vi.stubGlobal('URL', { createObjectURL })
+    get.mockResolvedValue({ data: blob })
+
+    await expect(mediaApi.getContentObjectUrl('media-1')).resolves.toBe('blob:map-overlay')
+
+    expect(get).toHaveBeenCalledWith('/media/files/media-1/content', { responseType: 'blob' })
+    expect(createObjectURL).toHaveBeenCalledWith(blob)
+  })
 })
