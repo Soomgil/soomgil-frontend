@@ -1052,6 +1052,9 @@ watch(
                         <span class="material-symbols-rounded">more_horiz</span>
                       </button>
                     </div>
+                    <p v-if="comment.isReply && comment.parentName" class="fc-reply-context">
+                      {{ comment.parentName }}님에게 보낸 답글
+                    </p>
                     <p class="fc-text">{{ comment.text }}</p>
                     <div class="fc-actions">
                       <button
@@ -2382,6 +2385,11 @@ watch(
   height: 26px;
   min-width: 26px;
   font-size: 10px;
+}
+.fc-reply-context {
+  margin: 0 0 3px;
+  color: var(--muted);
+  font-size: 11px;
 }
 .fc-avatar img {
   width: 100%;

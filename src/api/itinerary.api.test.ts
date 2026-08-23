@@ -83,8 +83,9 @@ describe('itinerary API', () => {
     expect(http.put).toHaveBeenCalledWith('/trips/trip-1/itinerary/order', request)
   })
 
-	it('지도 경로와 그림을 version 계약으로 생성하고 삭제한다', async () => {
+	it('지도 경로와 그림을 canonical version 계약으로 생성·수정·삭제한다', async () => {
 		vi.mocked(http.post).mockResolvedValue({ data: { itineraryVersion: 4 } })
+		vi.mocked(http.patch).mockResolvedValue({ data: { itineraryVersion: 5 } })
 		vi.mocked(http.delete).mockResolvedValue({ data: { itineraryVersion: 5 } })
 		const routeRequest = {
 			baseVersion: 3, originItineraryItemId: 'item-1', destinationItineraryItemId: 'item-2',
@@ -97,12 +98,22 @@ describe('itinerary API', () => {
 
 		await itineraryApi.mapMatchRoute('trip-1', routeRequest)
 		await itineraryApi.createDrawing('trip-1', drawingRequest)
+		await itineraryApi.updateDrawing('trip-1', 'drawing-1', {
+			baseVersion: 4,
+			drawingVersion: 0,
+			transform: { centerLng: 127, centerLat: 36, widthMeters: 120, heightMeters: 120, rotationDeg: 10 },
+		})
 		await itineraryApi.deleteRoute('trip-1', 'route-1', 4)
 		await itineraryApi.deleteDrawing('trip-1', 'drawing-1', 4)
 
 		expect(http.post).toHaveBeenCalledWith('/trips/trip-1/itinerary/routes/map-match', routeRequest)
-		expect(http.post).toHaveBeenCalledWith('/trips/trip-1/itinerary/drawings', drawingRequest)
+		expect(http.post).toHaveBeenCalledWith('/trips/trip-1/map-drawings', drawingRequest)
+		expect(http.patch).toHaveBeenCalledWith('/trips/trip-1/map-drawings/drawing-1', {
+			baseVersion: 4,
+			drawingVersion: 0,
+			transform: { centerLng: 127, centerLat: 36, widthMeters: 120, heightMeters: 120, rotationDeg: 10 },
+		})
 		expect(http.delete).toHaveBeenCalledWith('/trips/trip-1/itinerary/routes/route-1', { data: { baseVersion: 4 } })
-		expect(http.delete).toHaveBeenCalledWith('/trips/trip-1/itinerary/drawings/drawing-1', { data: { baseVersion: 4 } })
+		expect(http.delete).toHaveBeenCalledWith('/trips/trip-1/map-drawings/drawing-1', { data: { baseVersion: 4 } })
 	})
 })

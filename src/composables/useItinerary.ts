@@ -13,6 +13,7 @@ import type {
   TripRoute,
   UpdateItineraryDayInput,
   UpdateItineraryItemInput,
+  UpdateMapDrawingInput,
 } from '@/types/itinerary'
 
 export function useItinerary(tripId: string) {
@@ -267,6 +268,36 @@ export function useItinerary(tripId: string) {
     })
   }
 
+  async function updateDrawing(drawingId: string, input: UpdateMapDrawingInput) {
+    return runMutation(async () => {
+      const current = mapDrawings.value.find((drawing) => drawing.id === drawingId)
+      if (!current) throw new Error('Map object not found.')
+      const submit = () => itineraryApi.updateDrawing(tripId, drawingId, {
+        ...input,
+        baseVersion: itineraryVersion.value,
+        drawingVersion: current.version,
+      })
+      let response: ItineraryMutationResponse
+      try {
+        response = await submit()
+      } catch (cause) {
+        if (!isVersionConflict(cause)) throw cause
+        await fetchItinerary()
+        const refreshed = mapDrawings.value.find((drawing) => drawing.id === drawingId)
+        if (!refreshed) throw new Error('Map object not found after resync.')
+        response = await itineraryApi.updateDrawing(tripId, drawingId, {
+          ...input,
+          baseVersion: itineraryVersion.value,
+          drawingVersion: refreshed.version,
+        })
+      }
+      if (!response.drawing) throw new Error('Updated map object is missing.')
+      mapDrawings.value = mapDrawings.value.map((drawing) => drawing.id === drawingId ? response.drawing! : drawing)
+      applyMutation(response)
+      return response.drawing
+    })
+  }
+
   async function deleteDrawing(drawingId: string) {
     return runMutation(async () => {
       const response = await itineraryApi.deleteDrawing(tripId, drawingId, itineraryVersion.value)
@@ -298,6 +329,7 @@ export function useItinerary(tripId: string) {
     mapMatchRoute,
     deleteRoute,
     createDrawing,
+    updateDrawing,
     deleteDrawing,
   }
 }

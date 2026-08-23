@@ -2,8 +2,17 @@ export type DayGroupType = 'DAY' | 'UNSCHEDULED'
 export type ItemType = 'PLACE' | 'CUSTOM_PLACE'
 export type SourceStatus = 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
 export type RouteMode = 'DRIVING' | 'WALKING'
-export type DrawingType = 'FREEHAND' | 'LINE' | 'POLYGON' | 'MARKER' | 'TEXT'
+export type DrawingType = 'FREEHAND' | 'LINE' | 'POLYGON' | 'MARKER' | 'TEXT' | 'STICKER' | 'IMAGE'
 export type GeometryFormat = 'GEOJSON'
+export type MapStickerCode = 'HEART' | 'STAR' | 'CHECK' | 'CAMERA' | 'FOOD' | 'CAFE' | 'SHOPPING' | 'HOTEL' | 'NATURE' | 'BEACH' | 'MUSEUM' | 'TRANSPORT'
+
+export interface MapObjectTransform extends Record<string, unknown> {
+  centerLng: number
+  centerLat: number
+  widthMeters: number
+  heightMeters: number
+  rotationDeg: number
+}
 
 export interface LineStringGeometry extends Record<string, unknown> {
   type: 'LineString'
@@ -62,6 +71,9 @@ export interface MapDrawing {
   geometry: Record<string, unknown>
   style: Record<string, unknown> | null
   label: string | null
+  mediaFileId: string | null
+  stickerCode: MapStickerCode | null
+  transform: MapObjectTransform | null
   sortOrder: number | null
   version: number
 }
@@ -158,7 +170,20 @@ export interface CreateMapDrawingRequest {
   geometry: Record<string, unknown>
   style?: Record<string, unknown> | null
   label?: string | null
+  mediaFileId?: string | null
+  stickerCode?: MapStickerCode | null
+  transform?: MapObjectTransform | null
   sortOrder?: number | null
+}
+
+export interface UpdateMapDrawingRequest {
+  baseVersion: number
+  geometry?: Record<string, unknown> | null
+  style?: Record<string, unknown> | null
+  label?: string | null
+  transform?: MapObjectTransform | null
+  sortOrder?: number | null
+  drawingVersion: number
 }
 
 export type CreateItineraryDayInput = Omit<CreateItineraryDayRequest, 'baseVersion'>
@@ -168,3 +193,4 @@ export type UpdateItineraryItemInput = Omit<UpdateItineraryItemRequest, 'baseVer
 export type ReorderItineraryInput = Omit<ReorderItineraryRequest, 'baseVersion'>
 export type MapMatchRouteInput = Omit<MapMatchRouteRequest, 'baseVersion'>
 export type CreateMapDrawingInput = Omit<CreateMapDrawingRequest, 'baseVersion'>
+export type UpdateMapDrawingInput = Omit<UpdateMapDrawingRequest, 'baseVersion' | 'drawingVersion'>

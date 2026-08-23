@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import type { DrawingPreviewEvent, DrawingPreviewPhase } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
 
-export type MapDrawingTool = 'cursor' | 'route-pen' | 'pen' | 'eraser'
+export type MapDrawingTool = 'cursor' | 'route-pen' | 'pen' | 'eraser' | 'sticker' | 'image'
 
 export interface MapDrawingStroke {
   id: string

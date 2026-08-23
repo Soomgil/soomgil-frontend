@@ -89,6 +89,11 @@ export const mediaApi = {
     return mediaApi.createMediaFile(upload, file, metadata)
   },
 
+  getContentObjectUrl: async (mediaId: string): Promise<string> => {
+    const response = await http.get<Blob>(`/media/files/${mediaId}/content`, { responseType: 'blob' })
+    return URL.createObjectURL(response.data)
+  },
+
   /** 미디어 파일 삭제 */
   delete: async (mediaId: string): Promise<void> => {
     await http.delete(`/media/files/${mediaId}`)
