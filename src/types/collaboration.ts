@@ -27,3 +27,17 @@ export interface TripPresenceEvent extends TripRealtimeEvent {
   eventType: 'presence.snapshot'
   activeUserIds: string[]
 }
+
+export interface CollaborationCommandEvent extends TripRealtimeEvent {
+  commandEventId: number
+  actorUserId: string
+  websocketSessionId: string | null
+  source: string
+  commandType: string
+  aggregateType: string
+  aggregateId: string
+  versionBefore: number
+  versionAfter: number
+  payload: string
+  createdAt: string
+}

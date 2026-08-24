@@ -15,7 +15,7 @@ export interface RealtimeTransport {
 
 export interface StompTransportOptions {
   brokerUrl: string
-  accessToken: () => string | null
+  accessToken: () => string | null | Promise<string | null>
   reconnectDelayMs?: number
   onConnected?: (reconnected: boolean) => void
   onDisconnected?: () => void
@@ -41,7 +41,7 @@ export class StompTransport implements RealtimeTransport {
       heartbeatOutgoing: 10000,
       debug: () => undefined,
       beforeConnect: async () => {
-        const token = options.accessToken()
+        const token = await options.accessToken()
         this.client.connectHeaders = token ? { Authorization: `Bearer ${token}` } : {}
       },
       onStompError: (frame: IFrame) => {

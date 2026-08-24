@@ -61,6 +61,7 @@ const props = withDefaults(defineProps<{
   routeWaypoints?: LngLat[]
   mapObjects?: MapDrawing[]
   mapObjectImageUrls?: Record<string, string>
+  mapObjectPreviewTransforms?: Record<string, MapObjectTransform>
   mapObjectLocks?: Record<string, MapObjectLockView>
   mapCursors?: MapCursorView[]
   currentClientId?: string | null
@@ -83,6 +84,7 @@ const props = withDefaults(defineProps<{
   routeWaypoints: () => [],
   mapObjects: () => [],
   mapObjectImageUrls: () => ({}),
+  mapObjectPreviewTransforms: () => ({}),
   mapObjectLocks: () => ({}),
   mapCursors: () => [],
   currentClientId: null,
@@ -102,6 +104,7 @@ const emit = defineEmits<{
   mapObjectSelect: [drawingId: string | null]
   mapObjectEditStart: [drawingId: string]
   mapObjectEditEnd: [drawingId: string]
+  mapObjectPreview: [drawingId: string, transform: MapObjectTransform]
   mapObjectChange: [drawingId: string, transform: MapObjectTransform]
   cursorMove: [coordinate: LngLat]
 }>()
@@ -682,6 +685,7 @@ onBeforeUnmount(() => {
       :key="mapObjectEpoch"
       :objects="mapObjects"
       :image-urls="mapObjectImageUrls"
+      :preview-transforms="mapObjectPreviewTransforms"
       :locks="mapObjectLocks"
       :cursors="mapCursors"
       :current-client-id="currentClientId"
@@ -694,6 +698,7 @@ onBeforeUnmount(() => {
       @select="emit('mapObjectSelect', $event)"
       @edit-start="emit('mapObjectEditStart', $event)"
       @edit-end="emit('mapObjectEditEnd', $event)"
+      @preview="(drawingId, transform) => emit('mapObjectPreview', drawingId, transform)"
       @change="(drawingId, transform) => emit('mapObjectChange', drawingId, transform)"
     />
     <div v-if="mapError" class="itinerary-map__error" role="alert">

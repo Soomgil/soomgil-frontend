@@ -22,6 +22,7 @@ const object: MapDrawing = {
 const baseProps = {
   objects: [object],
   imageUrls: {},
+  previewTransforms: {},
   locks: {},
   cursors: [],
   currentClientId: 'session-1',
@@ -88,6 +89,7 @@ describe('MapObjectOverlay', () => {
 
     const transform = wrapper.emitted('change')?.[0]?.[1] as { centerLng: number }
     expect(transform.centerLng).toBeCloseTo(127.001)
+    expect(wrapper.emitted('preview')?.[0]?.[0]).toBe('drawing-1')
   })
 
   it('resizes and rotates a selected object with screen-space handles', async () => {

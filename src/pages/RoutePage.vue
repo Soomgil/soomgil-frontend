@@ -10,7 +10,8 @@ import { aiApi } from '@/api/ai.api'
 import { chatApi } from '@/api/chat.api'
 import { planningApi } from '@/api/planning.api'
 import { mediaApi } from '@/api/media.api'
-import { getStoredAccessToken } from '@/auth/accessToken'
+import { collaborationApi } from '@/api/collaboration.api'
+import { ensureStoredAccessToken, getStoredAccessToken } from '@/auth/accessToken'
 import { tripApi } from '@/api/trip.api'
 import { swipeApi } from '@/api/swipe.api'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
@@ -34,7 +35,7 @@ import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, ChecklistItem, ChecklistMemberStatus, Note, PlanningScope } from '@/types/planning'
-import type { DrawingPreviewEvent, TripPresenceEvent, TripRealtimeEvent } from '@/types/collaboration'
+import type { CollaborationCommandEvent, DrawingPreviewEvent, TripPresenceEvent, TripRealtimeEvent } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
 import type { AccessibilityFlag, ParkingType, Place, PlaceAccessibility, PlaceProvider, PlaceRecommendation } from '@/types/place'
 import type { ItineraryDay, MapDrawing, MapObjectTransform, MapStickerCode, ReorderItineraryInput } from '@/types/itinerary'
@@ -468,8 +469,11 @@ onUnmounted(() => {
 const HISTORY_LIMIT = 5
 const undoStack = ref<RouteHistoryState[]>([])
 const redoStack = ref<RouteHistoryState[]>([])
-const canUndo = computed(() => undoStack.value.length > 0)
-const canRedo = computed(() => redoStack.value.length > 0)
+const serverUndoAvailable = ref(false)
+const serverRedoAvailable = ref(false)
+const historyActionPending = ref(false)
+const canUndo = computed(() => serverUndoAvailable.value || undoStack.value.length > 0)
+const canRedo = computed(() => serverRedoAvailable.value || redoStack.value.length > 0)
 
 function cloneHistoryValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -519,7 +523,11 @@ function restoreDrawingState(state: DrawingHistoryState) {
 }
 
 async function undo() {
-  if (!canUndo.value || itinerary.mutating.value) return
+	if (!canUndo.value || itinerary.mutating.value || historyActionPending.value) return
+	if (serverUndoAvailable.value) {
+		await executeServerHistoryAction('undo')
+		return
+	}
   const previous = undoStack.value.pop()!
   pushHistoryState(redoStack.value, currentHistoryState(previous.domain))
   if (previous.domain === 'drawing') {
@@ -540,7 +548,11 @@ async function undo() {
 }
 
 async function redo() {
-  if (!canRedo.value || itinerary.mutating.value) return
+	if (!canRedo.value || itinerary.mutating.value || historyActionPending.value) return
+	if (serverRedoAvailable.value) {
+		await executeServerHistoryAction('redo')
+		return
+	}
   const next = redoStack.value.pop()!
   pushHistoryState(undoStack.value, currentHistoryState(next.domain))
   if (next.domain === 'drawing') {
@@ -558,6 +570,31 @@ async function redo() {
   clearPendingRouteSelection()
   nextTick(initDragDrop)
   if (plansChanged) await persistItineraryOrder()
+}
+
+async function executeServerHistoryAction(action: 'undo' | 'redo') {
+	historyActionPending.value = true
+	itineraryActionError.value = ''
+	try {
+		const response = await collaborationApi[action](tripId, {
+			baseVersion: itinerary.itineraryVersion.value,
+			commandEventId: null,
+		})
+		serverUndoAvailable.value = response.undoAvailable
+		serverRedoAvailable.value = response.redoAvailable
+		undoStack.value = []
+		redoStack.value = []
+		mapObjectEpoch.value += 1
+		await itinerary.fetchItinerary()
+	} catch (cause) {
+		console.error(`Collaboration ${action} failed.`, cause)
+		itineraryActionError.value = action === 'undo'
+			? '작업을 되돌리지 못했습니다. 최신 상태를 다시 불러왔습니다.'
+			: '작업을 다시 실행하지 못했습니다. 최신 상태를 다시 불러왔습니다.'
+		await loadItinerary()
+	} finally {
+		historyActionPending.value = false
+	}
 }
 
 function isTextEditingTarget(target: EventTarget | null) {
@@ -2356,6 +2393,11 @@ const selectedMapObjectId = ref<string | null>(null)
 const pendingImageMediaId = ref<string | null>(null)
 const mapObjectImageUrls = ref<Record<string, string>>({})
 const mapObjectLocks = ref<Record<string, MapObjectLockView>>({})
+const remoteMapObjectPreviews = ref<Record<string, {
+  clientId: string
+  sequence: number
+  transform: MapObjectTransform
+}>>({})
 const remoteMapCursors = ref<Record<string, MapCursorView & { receivedAt: number }>>({})
 const mapObjectEpoch = ref(0)
 const mapImageInput = ref<HTMLInputElement | null>(null)
@@ -2364,6 +2406,9 @@ const mapObjects = computed(() => itinerary.mapDrawings.value.filter(
   (drawing) => drawing.drawingType === 'STICKER' || drawing.drawingType === 'IMAGE',
 ))
 const visibleMapCursors = computed<MapCursorView[]>(() => Object.values(remoteMapCursors.value))
+const mapObjectPreviewTransforms = computed<Record<string, MapObjectTransform>>(() => Object.fromEntries(
+  Object.entries(remoteMapObjectPreviews.value).map(([drawingId, preview]) => [drawingId, preview.transform]),
+))
 const mapObjectPlacement = computed(() => (
   activeTool.value === 'sticker' || (activeTool.value === 'image' && pendingImageMediaId.value !== null)
 ))
@@ -2445,6 +2490,16 @@ interface MapObjectLockEvent {
   clientId: string | null
   expiresAt: string | null
 }
+interface MapObjectTransformPreviewEvent {
+  eventType: 'map.object.transform.preview'
+  tripId: string
+  drawingId: string
+  userId: string
+  clientId: string
+  sequence: number
+  phase: 'UPDATE' | 'END' | 'CANCEL'
+  transform: MapObjectTransform
+}
 interface MapCursorEvent {
   eventType: 'cursor.moved'
   tripId: string
@@ -2458,18 +2513,32 @@ interface MapCursorEvent {
 const pendingMapObjectLeases = new Map<string, Promise<boolean>>()
 const mapObjectLeaseResolvers = new Map<string, (acquired: boolean) => void>()
 const mapObjectLeaseTimers = new Map<string, number>()
+const pendingMapObjectPreviewTransforms = new Map<string, MapObjectTransform>()
+const mapObjectPreviewSequences = new Map<string, number>()
+const mapObjectPreviewSentAt = new Map<string, number>()
+const collaborationConnected = ref(false)
 let cursorSequence = 0
 let lastCursorSentAt = 0
 const collaborationTransport = new StompTransport({
   brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
-  accessToken: getStoredAccessToken,
+  accessToken: ensureStoredAccessToken,
   onConnected: (reconnected) => {
+		collaborationConnected.value = true
+		if (reconnected) {
+			serverUndoAvailable.value = false
+			serverRedoAvailable.value = false
+		}
     if (reconnected) void itinerary.fetchItinerary()
   },
   onDisconnected: () => {
+		collaborationConnected.value = false
+		serverUndoAvailable.value = false
+		serverRedoAvailable.value = false
     mapObjectEpoch.value += 1
     selectedMapObjectId.value = null
     mapObjectLocks.value = {}
+    remoteMapObjectPreviews.value = {}
+    pendingMapObjectPreviewTransforms.clear()
     mapObjectLeaseResolvers.forEach((resolve) => resolve(false))
     mapObjectLeaseResolvers.clear()
     pendingMapObjectLeases.clear()
@@ -2521,6 +2590,21 @@ function isMapObjectLockEvent(message: unknown): message is MapObjectLockEvent {
     && typeof candidate.locked === 'boolean'
 }
 
+function isMapObjectTransformPreviewEvent(message: unknown): message is MapObjectTransformPreviewEvent {
+  if (!isTripRealtimeEvent(message)) return false
+  const candidate = message as Partial<MapObjectTransformPreviewEvent>
+  const transform = candidate.transform as Partial<MapObjectTransform> | undefined
+  return candidate.eventType === 'map.object.transform.preview'
+    && typeof candidate.drawingId === 'string'
+    && typeof candidate.userId === 'string'
+    && typeof candidate.clientId === 'string'
+    && typeof candidate.sequence === 'number'
+    && (candidate.phase === 'UPDATE' || candidate.phase === 'END' || candidate.phase === 'CANCEL')
+    && Boolean(transform)
+    && [transform?.centerLng, transform?.centerLat, transform?.widthMeters, transform?.heightMeters, transform?.rotationDeg]
+      .every((value) => typeof value === 'number' && Number.isFinite(value))
+}
+
 function isMapCursorEvent(message: unknown): message is MapCursorEvent {
   if (!isTripRealtimeEvent(message)) return false
   const candidate = message as Partial<MapCursorEvent>
@@ -2531,6 +2615,15 @@ function isMapCursorEvent(message: unknown): message is MapCursorEvent {
     && typeof candidate.latitude === 'number'
     && Number.isFinite(candidate.longitude)
     && Number.isFinite(candidate.latitude)
+}
+
+function isCollaborationCommandEvent(message: unknown): message is CollaborationCommandEvent {
+  if (!isTripRealtimeEvent(message)) return false
+  const candidate = message as Partial<CollaborationCommandEvent>
+  return typeof candidate.commandEventId === 'number'
+    && typeof candidate.actorUserId === 'string'
+    && typeof candidate.commandType === 'string'
+    && typeof candidate.versionAfter === 'number'
 }
 
 function cursorColor(userId: string) {
@@ -2547,6 +2640,9 @@ function receiveMapObjectLock(event: MapObjectLockEvent) {
   const next = { ...mapObjectLocks.value }
   if (!event.locked || !event.userId || !event.clientId || !event.expiresAt) {
     delete next[event.drawingId]
+    const previews = { ...remoteMapObjectPreviews.value }
+    delete previews[event.drawingId]
+    remoteMapObjectPreviews.value = previews
   } else {
     next[event.drawingId] = {
       drawingId: event.drawingId,
@@ -2562,17 +2658,46 @@ function receiveMapObjectLock(event: MapObjectLockEvent) {
   }
 }
 
+function receiveMapObjectTransformPreview(event: MapObjectTransformPreviewEvent) {
+  if (event.clientId === getCollaborationSessionId()) return
+  const next = { ...remoteMapObjectPreviews.value }
+  const current = next[event.drawingId]
+  if (event.phase !== 'UPDATE') {
+    delete next[event.drawingId]
+  } else if (!current || current.clientId !== event.clientId || event.sequence > current.sequence) {
+    next[event.drawingId] = {
+      clientId: event.clientId,
+      sequence: event.sequence,
+      transform: event.transform,
+    }
+  }
+  remoteMapObjectPreviews.value = next
+}
+
 function publishMapObjectLock(drawingId: string, action: 'ACQUIRE' | 'RENEW' | 'RELEASE') {
   return collaborationTransport.publish(`/app/trips/${encodeURIComponent(tripId)}/map-object-lock`, { drawingId, action })
 }
 
 function acquireMapObjectLease(drawingId: string) {
-  if (mapObjectLocks.value[drawingId]?.clientId === getCollaborationSessionId()) return Promise.resolve(true)
+  const sessionId = getCollaborationSessionId()
+  if (!collaborationConnected.value || !sessionId) {
+    itineraryActionError.value = '실시간 협업 연결 후 다시 시도해 주세요.'
+    return Promise.resolve(false)
+  }
+  const lock = mapObjectLocks.value[drawingId]
+  if (lock?.clientId === sessionId) return Promise.resolve(true)
+  if (lock && Date.parse(lock.expiresAt) > Date.now()) {
+    itineraryActionError.value = lock.userId === currentUserId.value
+      ? '이 오브젝트는 같은 계정의 다른 창에서 편집 중입니다. 잠시 후 다시 시도해 주세요.'
+      : `${memberDisplayName(lock.userId)}님이 이 오브젝트를 편집 중입니다.`
+    return Promise.resolve(false)
+  }
   const existing = pendingMapObjectLeases.get(drawingId)
   if (existing) return existing
   const promise = new Promise<boolean>((resolve) => {
     const timeout = window.setTimeout(() => {
       mapObjectLeaseResolvers.delete(drawingId)
+		itineraryActionError.value = '오브젝트 편집 잠금을 얻지 못했습니다. 잠시 후 다시 시도해 주세요.'
       resolve(false)
     }, 1500)
     mapObjectLeaseResolvers.set(drawingId, (acquired) => {
@@ -2599,7 +2724,29 @@ function releaseMapObjectLease(drawingId: string) {
   const timer = mapObjectLeaseTimers.get(drawingId)
   if (timer) clearInterval(timer)
   mapObjectLeaseTimers.delete(drawingId)
+  pendingMapObjectPreviewTransforms.delete(drawingId)
+  mapObjectPreviewSentAt.delete(drawingId)
   publishMapObjectLock(drawingId, 'RELEASE')
+}
+
+function publishMapObjectTransformPreview(
+  drawingId: string,
+  transform: MapObjectTransform,
+  phase: 'UPDATE' | 'END' | 'CANCEL' = 'UPDATE',
+  force = false,
+) {
+  pendingMapObjectPreviewTransforms.set(drawingId, transform)
+  const sessionId = getCollaborationSessionId()
+  if (!sessionId || mapObjectLocks.value[drawingId]?.clientId !== sessionId) return false
+  const now = Date.now()
+  if (!force && phase === 'UPDATE' && now - (mapObjectPreviewSentAt.get(drawingId) ?? 0) < 50) return false
+  const sequence = (mapObjectPreviewSequences.get(drawingId) ?? 0) + 1
+  mapObjectPreviewSequences.set(drawingId, sequence)
+  mapObjectPreviewSentAt.set(drawingId, now)
+  return collaborationTransport.publish(
+    `/app/trips/${encodeURIComponent(tripId)}/map-object-transform-preview`,
+    { drawingId, sequence, phase, transform },
+  )
 }
 
 function isTripChatMessage(message: unknown): message is TripChatMessage {
@@ -2796,14 +2943,30 @@ function schedulePlanningRefresh() {
 
 function receiveItineraryEvent(message: unknown) {
   if (isDrawingPreviewRealtimeMessage(message)) return
+  if (isMapObjectTransformPreviewEvent(message)) {
+    receiveMapObjectTransformPreview(message)
+    return
+  }
   if (isMapObjectLockEvent(message)) {
     receiveMapObjectLock(message)
     return
+  }
+  if (message && typeof message === 'object' && typeof (message as { drawingId?: unknown }).drawingId === 'string') {
+    const previews = { ...remoteMapObjectPreviews.value }
+    delete previews[(message as { drawingId: string }).drawingId]
+    remoteMapObjectPreviews.value = previews
   }
   scheduleItineraryRefresh(message)
 }
 
 function receiveCollaborationEvent(message: unknown) {
+  if (isCollaborationCommandEvent(message)) {
+    if (message.websocketSessionId === getCollaborationSessionId() && message.source === 'USER') {
+      serverUndoAvailable.value = true
+      serverRedoAvailable.value = false
+    }
+    return
+  }
   if (isMapCursorEvent(message)) {
     if (message.userId === currentUserId.value) return
     remoteMapCursors.value = {
@@ -2859,8 +3022,9 @@ function receiveAiEvent(message: unknown) {
 }
 
 function connectTripRealtime() {
-  if (!tripId || !getStoredAccessToken() || tripRealtimeUnsubscribers.length > 0) return
+  if (!tripId || tripRealtimeUnsubscribers.length > 0) return
   tripRealtimeUnsubscribers = [
+    collaborationTransport.subscribe(tripRealtimeTopic('collaboration'), receiveCollaborationEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('presence'), receiveCollaborationEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('itinerary'), receiveItineraryEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('map-drawings'), receiveItineraryEvent),
@@ -2872,8 +3036,14 @@ function connectTripRealtime() {
   collaborationTransport.connect()
 }
 
-function connectRealtimeChannels() {
-  if (tripId && getStoredAccessToken()) drawingPreviewChannel.connect()
+async function connectRealtimeChannels() {
+  try {
+    if (!tripId || !await ensureStoredAccessToken()) return
+  } catch (cause) {
+    console.error('Realtime authentication refresh failed.', cause)
+    return
+  }
+  drawingPreviewChannel.connect()
   connectTripRealtime()
 }
 
@@ -2943,6 +3113,10 @@ watch(itinerary.mapDrawings, (drawings) => {
 
 async function handleMapObjectPlace(transform: MapObjectTransform) {
   if (itinerary.mutating.value) return
+  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+    itineraryActionError.value = '실시간 협업 연결 후 지도 오브젝트를 추가해 주세요.'
+    return
+  }
   try {
     const mediaFileId = activeTool.value === 'image' ? pendingImageMediaId.value : null
     const stickerCode = activeTool.value === 'sticker' ? selectedStickerCode.value : null
@@ -2969,6 +3143,10 @@ async function handleMapObjectPlace(transform: MapObjectTransform) {
 }
 
 function openMapImagePicker() {
+  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+    itineraryActionError.value = '실시간 협업 연결 후 이미지를 업로드해 주세요.'
+    return
+  }
   if (!mapImageUploading.value) mapImageInput.value?.click()
 }
 
@@ -2977,24 +3155,34 @@ async function handleMapImageSelected(event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
+  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+    itineraryActionError.value = '실시간 협업 연결 후 이미지를 업로드해 주세요.'
+    return
+  }
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
     window.alert('JPG, PNG, WebP 이미지를 10MB 이하로 선택해 주세요.')
     return
   }
   mapImageUploading.value = true
+  const previewUrl = URL.createObjectURL(file)
   try {
     const media = await mediaApi.uploadFile(file, 'MAP_OVERLAY', {
       linkedResourceType: 'TRIP',
       linkedResourceId: tripId,
     })
-    const url = await mediaApi.getContentObjectUrl(media.id)
+    const previousPendingMediaId = pendingImageMediaId.value
+    if (previousPendingMediaId && previousPendingMediaId !== media.id) {
+      const previousPendingUrl = mapObjectImageUrls.value[previousPendingMediaId]
+      if (previousPendingUrl) URL.revokeObjectURL(previousPendingUrl)
+    }
     const previous = mapObjectImageUrls.value[media.id]
     if (previous) URL.revokeObjectURL(previous)
-    mapObjectImageUrls.value = { ...mapObjectImageUrls.value, [media.id]: url }
+    mapObjectImageUrls.value = { ...mapObjectImageUrls.value, [media.id]: previewUrl }
     pendingImageMediaId.value = media.id
     activeTool.value = 'image'
     selectedMapObjectId.value = null
   } catch (cause) {
+    URL.revokeObjectURL(previewUrl)
     console.error('Map overlay image upload failed.', cause)
     window.alert('지도 이미지를 업로드하지 못했습니다.')
   } finally {
@@ -3003,11 +3191,23 @@ async function handleMapImageSelected(event: Event) {
 }
 
 function beginMapObjectEdit(drawingId: string) {
-  void acquireMapObjectLease(drawingId)
+  void acquireMapObjectLease(drawingId).then((acquired) => {
+    const latestTransform = pendingMapObjectPreviewTransforms.get(drawingId)
+    if (acquired && latestTransform) {
+      publishMapObjectTransformPreview(drawingId, latestTransform, 'UPDATE', true)
+    }
+  })
 }
 
 function cancelMapObjectEdit(drawingId: string) {
+  const transform = pendingMapObjectPreviewTransforms.get(drawingId)
+    ?? mapObjects.value.find((drawing) => drawing.id === drawingId)?.transform
+  if (transform) publishMapObjectTransformPreview(drawingId, transform, 'CANCEL', true)
   releaseMapObjectLease(drawingId)
+}
+
+function previewMapObjectChange(drawingId: string, transform: MapObjectTransform) {
+  publishMapObjectTransformPreview(drawingId, transform)
 }
 
 async function changeMapObject(drawingId: string, transform: MapObjectTransform) {
@@ -3017,6 +3217,7 @@ async function changeMapObject(drawingId: string, transform: MapObjectTransform)
     await itinerary.fetchItinerary()
     return
   }
+  publishMapObjectTransformPreview(drawingId, transform, 'UPDATE', true)
   try {
     await itinerary.updateDrawing(drawingId, {
       geometry: { type: 'Point', coordinates: [transform.centerLng, transform.centerLat] },
@@ -3027,6 +3228,7 @@ async function changeMapObject(drawingId: string, transform: MapObjectTransform)
     await itinerary.fetchItinerary()
     console.error('Map object could not be updated.', cause)
   } finally {
+    publishMapObjectTransformPreview(drawingId, transform, 'END', true)
     releaseMapObjectLease(drawingId)
   }
 }
@@ -3038,6 +3240,10 @@ async function deleteSelectedMapObject() {
   try {
     await itinerary.deleteDrawing(drawingId)
     selectedMapObjectId.value = null
+  } catch (cause) {
+    console.error('Map object could not be deleted.', cause)
+    itineraryActionError.value = '지도 오브젝트를 삭제하지 못했습니다. 최신 상태를 다시 불러왔습니다.'
+    await loadItinerary()
   } finally {
     releaseMapObjectLease(drawingId)
   }
@@ -3055,7 +3261,7 @@ function publishMapCursor(coordinate: LngLat) {
 }
 
 onMounted(() => {
-  connectRealtimeChannels()
+  void connectRealtimeChannels()
   window.addEventListener('resize', updatePenPopoverPosition)
   cursorPruneTimer = window.setInterval(() => {
     const now = Date.now()
@@ -3094,6 +3300,7 @@ async function simplifyLocalDrawing(drawingId: string) {
 			localDrawings.value[index] = { ...localDrawings.value[index], coordinates: simplified.coordinates }
 		}
 		if (drawingId.startsWith('local-drawing-')) {
+			if (!localDrawings.value.some(candidate => candidate.id === drawingId)) return
 			const created = await itinerary.createDrawing({
 				itineraryDayId: activePlan.value?.id ?? null,
 				drawingType: 'FREEHAND',
@@ -3119,6 +3326,10 @@ async function simplifyLocalDrawing(drawingId: string) {
 }
 
 function createLocalDrawing(draft: MapDrawingDraft) {
+  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+    itineraryActionError.value = '실시간 협업 연결 후 지도에 그려 주세요.'
+    return
+  }
   pushUndoState('drawing')
   const drawing: MapDrawingStroke = {
     id: `local-drawing-${++localDrawingSequence}`,
@@ -3137,21 +3348,24 @@ function handleDrawingCreate(draft: MapDrawingDraft) {
 
 async function eraseLocalDrawing(drawingId: string) {
 	if (!localDrawings.value.some((drawing) => drawing.id === drawingId)) return
-	pushUndoState('drawing')
-	localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
-	drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
-	if (!drawingId.startsWith('local-drawing-')) {
-		let leaseAcquired = false
-		try {
-			leaseAcquired = await acquireMapObjectLease(drawingId)
-			if (!leaseAcquired) throw new Error('Map drawing lease was not acquired.')
-			await itinerary.deleteDrawing(drawingId)
-		} catch {
-			itineraryActionError.value = '지도 그림을 삭제하지 못했습니다.'
-			await loadItinerary()
-		} finally {
-			if (leaseAcquired) releaseMapObjectLease(drawingId)
-		}
+	if (drawingId.startsWith('local-drawing-')) {
+		pushUndoState('drawing')
+		localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
+		drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+		return
+	}
+	const leaseAcquired = await acquireMapObjectLease(drawingId)
+	if (!leaseAcquired) return
+	try {
+		await itinerary.deleteDrawing(drawingId)
+		localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
+		drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+	} catch (cause) {
+		console.error('Map drawing could not be deleted.', cause)
+		itineraryActionError.value = '지도 그림을 삭제하지 못했습니다. 최신 상태를 다시 불러왔습니다.'
+		await loadItinerary()
+	} finally {
+		releaseMapObjectLease(drawingId)
 	}
 }
 
@@ -4106,6 +4320,7 @@ function textAvatarStyle(index: unknown) {
               :map-objects="mapObjects"
               :map-object-image-urls="mapObjectImageUrls"
               :map-object-locks="mapObjectLocks"
+              :map-object-preview-transforms="mapObjectPreviewTransforms"
               :map-cursors="visibleMapCursors"
               :current-client-id="getCollaborationSessionId()"
               :selected-map-object-id="selectedMapObjectId"
@@ -4125,6 +4340,7 @@ function textAvatarStyle(index: unknown) {
               @map-object-select="selectedMapObjectId = $event"
               @map-object-edit-start="beginMapObjectEdit"
               @map-object-edit-end="cancelMapObjectEdit"
+              @map-object-preview="previewMapObjectChange"
               @map-object-change="changeMapObject"
               @cursor-move="publishMapCursor"
             />
@@ -4295,14 +4511,14 @@ function textAvatarStyle(index: unknown) {
               <!-- Undo / Redo -->
               <button :class="['tool-btn', canUndo ? 'is-on' : 'is-off']" type="button"
                 data-action="undo"
-                :disabled="!canUndo || itinerary.mutating.value"
+                :disabled="!canUndo || itinerary.mutating.value || historyActionPending"
                 @click="undo">
                 <span class="material-symbols-rounded">undo</span>
                 <span class="tool-tip">실행 취소 (Ctrl+Z)</span>
               </button>
               <button :class="['tool-btn', canRedo ? 'is-on' : 'is-off']" type="button"
                 data-action="redo"
-                :disabled="!canRedo || itinerary.mutating.value"
+                :disabled="!canRedo || itinerary.mutating.value || historyActionPending"
                 @click="redo">
                 <span class="material-symbols-rounded">redo</span>
                 <span class="tool-tip">다시 실행 (Ctrl+Y)</span>

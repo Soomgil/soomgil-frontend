@@ -25,6 +25,7 @@ type EditMode = 'drag' | 'resize' | 'rotate'
 const props = defineProps<{
   objects: MapDrawing[]
   imageUrls: Record<string, string>
+  previewTransforms: Record<string, MapObjectTransform>
   locks: Record<string, MapObjectLockView>
   cursors: MapCursorView[]
   currentClientId: string | null
@@ -40,6 +41,7 @@ const emit = defineEmits<{
   place: [transform: MapObjectTransform]
   editStart: [drawingId: string]
   editEnd: [drawingId: string]
+  preview: [drawingId: string, transform: MapObjectTransform]
   change: [drawingId: string, transform: MapObjectTransform]
 }>()
 
@@ -56,7 +58,7 @@ let active: {
 } | null = null
 
 function validTransform(drawing: MapDrawing): MapObjectTransform | null {
-  const value = draftTransforms.value[drawing.id] ?? drawing.transform
+  const value = draftTransforms.value[drawing.id] ?? props.previewTransforms[drawing.id] ?? drawing.transform
   if (!value
     || !Number.isFinite(value.centerLng) || !Number.isFinite(value.centerLat)
     || !Number.isFinite(value.widthMeters) || value.widthMeters <= 0
@@ -152,6 +154,7 @@ function moveEdit(event: PointerEvent) {
     current.rotationDeg += (angle - active.startAngle) * 180 / Math.PI
   }
   draftTransforms.value = { ...draftTransforms.value, [active.drawingId]: current }
+  emit('preview', active.drawingId, current)
 }
 
 function finishEdit(event: PointerEvent) {
