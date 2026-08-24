@@ -32,6 +32,7 @@ const serviceNavItems = [
 ]
 
 const isLandingPage = computed(() => route.path === '/')
+const isRouteWorkspace = computed(() => route.path.startsWith('/trips/') && route.path.endsWith('/route'))
 const currentNavItems = computed(() => isLandingPage.value ? landingNavItems : serviceNavItems)
 
 const activeNavKey = computed(() => {
@@ -207,7 +208,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <header class="topbar">
+  <header :class="['topbar', { 'route-workspace-header': isRouteWorkspace }]">
     <!-- Left: Brand -->
     <div style="min-width:220px">
       <a
@@ -248,7 +249,7 @@ async function handleLogout() {
     <div class="header-actions" style="min-width:220px; display:flex; justify-content:flex-end; align-items:center; gap:8px;">
 
       <!-- Theme Toggle -->
-      <button v-if="route.path.startsWith('/trips/') && route.path.endsWith('/route')" type="button" class="btn ghost icon-btn" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; cursor:pointer;" :title="isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'" @click="toggleTheme">
+      <button v-if="isRouteWorkspace" type="button" class="btn ghost icon-btn" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; cursor:pointer;" :title="isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'" @click="toggleTheme">
         <span class="material-symbols-rounded">{{ isDarkMode ? 'light_mode' : 'dark_mode' }}</span>
       </button>
 
@@ -469,6 +470,40 @@ async function handleLogout() {
 
 .notification-dismiss .material-symbols-rounded {
   font-size: 16px;
+}
+
+@media (max-width: 1023px) {
+  .topbar.route-workspace-header {
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  .route-workspace-header .nav {
+    display: none;
+  }
+
+  .route-workspace-header > div:first-child,
+  .route-workspace-header .header-actions {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .topbar.route-workspace-header {
+    height: 64px;
+    min-height: 64px;
+    flex-wrap: nowrap;
+    padding: 0 12px;
+  }
+
+  .route-workspace-header .brand img {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .route-workspace-header .brand > span {
+    display: none;
+  }
 }
 
 @media (max-width: 480px) {
