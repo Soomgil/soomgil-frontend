@@ -2613,6 +2613,7 @@ const collaborationTransport = new StompTransport({
 			serverRedoAvailable.value = false
 		}
     if (reconnected) void itinerary.fetchItinerary()
+    if (drawingRetryIds.value.length > 0) retryDrawingSimplification()
   },
   onDisconnected: () => {
 		collaborationConnected.value = false
@@ -3147,7 +3148,8 @@ function disconnectTripRealtime() {
 }
 
 watch(itinerary.mapDrawings, (drawings) => {
-	localDrawings.value = drawings.flatMap((drawing) => {
+	const optimisticDrawings = localDrawings.value.filter((drawing) => drawing.id.startsWith('local-drawing-'))
+	const serverDrawings = drawings.flatMap((drawing) => {
 		const geometry = drawing.geometry as { type?: string; coordinates?: unknown }
 		if (geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) return []
 		const coordinates = geometry.coordinates.flatMap((coordinate) => (
@@ -3163,6 +3165,7 @@ watch(itinerary.mapDrawings, (drawings) => {
 			width: typeof drawing.style?.width === 'number' ? drawing.style.width : 6,
 		}]
 	})
+	localDrawings.value = [...serverDrawings, ...optimisticDrawings]
 }, { deep: true, immediate: true })
 
 async function syncMapObjectImages(drawings: MapDrawing[]) {
@@ -3373,6 +3376,10 @@ onUnmounted(() => {
 async function simplifyLocalDrawing(drawingId: string) {
   const drawing = localDrawings.value.find((candidate) => candidate.id === drawingId)
   if (!drawing || pendingDrawingIds.value.includes(drawingId)) return
+  if (drawingId.startsWith('local-drawing-') && (!collaborationConnected.value || !getCollaborationSessionId())) {
+    queueDrawingRetry(drawingId)
+    return
+  }
   pendingDrawingIds.value = [...pendingDrawingIds.value, drawingId]
   drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
   try {
@@ -3397,31 +3404,38 @@ async function simplifyLocalDrawing(drawingId: string) {
 				style: { color: drawing.color, width: drawing.width },
 				sortOrder: itinerary.mapDrawings.value.length,
 			})
-			const currentIndex = localDrawings.value.findIndex(candidate => candidate.id === drawingId)
-			if (currentIndex >= 0) localDrawings.value[currentIndex] = { ...localDrawings.value[currentIndex], id: created.id }
+			localDrawings.value = [
+				...localDrawings.value.filter(candidate => candidate.id !== drawingId && candidate.id !== created.id),
+				{ id: created.id, coordinates: simplified.coordinates, color: drawing.color, width: drawing.width },
+			]
+			simplifiedDrawingCoordinates.delete(drawingId)
+			simplifiedDrawingCoordinates.set(created.id, simplified.coordinates)
 		}
   } catch {
     if (localDrawings.value.some((candidate) => candidate.id === drawingId)) {
-      if (!drawingRetryIds.value.includes(drawingId)) {
-        drawingRetryIds.value = [...drawingRetryIds.value, drawingId]
-      }
+      queueDrawingRetry(drawingId)
     }
   } finally {
     pendingDrawingIds.value = pendingDrawingIds.value.filter((id) => id !== drawingId)
   }
 }
 
-function createLocalDrawing(draft: MapDrawingDraft) {
-  if (!collaborationConnected.value || !getCollaborationSessionId()) {
-    itineraryActionError.value = '실시간 협업 연결 후 지도에 그려 주세요.'
-    return
+function queueDrawingRetry(drawingId: string) {
+  if (!drawingRetryIds.value.includes(drawingId)) {
+    drawingRetryIds.value = [...drawingRetryIds.value, drawingId]
   }
+}
+
+function createLocalDrawing(draft: MapDrawingDraft) {
   pushUndoState('drawing')
   const drawing: MapDrawingStroke = {
     id: `local-drawing-${++localDrawingSequence}`,
     ...draft,
   }
   localDrawings.value = [...localDrawings.value, drawing]
+  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+    itineraryActionError.value = '실시간 연결이 복구되면 그린 선을 자동으로 저장합니다.'
+  }
   void simplifyLocalDrawing(drawing.id)
 }
 
@@ -4526,10 +4540,10 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <div v-if="drawingRetryIds.length > 0" class="map-drawing-status" role="alert">
-              <span>그림 좌표를 정리하지 못했습니다.</span>
+              <span>그림 저장을 완료하지 못했습니다.</span>
               <button
                 type="button"
-                aria-label="그림 좌표 정리 다시 시도"
+                aria-label="그림 저장 다시 시도"
                 title="다시 시도"
                 @click="retryDrawingSimplification"
               >

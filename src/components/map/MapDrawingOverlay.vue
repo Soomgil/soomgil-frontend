@@ -225,31 +225,31 @@ function finishStroke(event: PointerEvent) {
   if (activePointerId !== event.pointerId) return
   extendStroke(event)
   const points = naturalStrokePoints([...currentPoints.value])
+  const coordinates = points
+    .map(props.unproject)
+    .filter((coordinate): coordinate is LngLat => coordinate !== null)
   emitPreview('END', points)
+  if (coordinates.length >= 2) {
+    emit('create', { coordinates, color: props.color, width: props.width })
+  }
   activePointerId = null
   activePreviewId = null
   currentPoints.value = []
   releasePointerCapture(event.pointerId)
-
-  const coordinates = points
-    .map(props.unproject)
-    .filter((coordinate): coordinate is LngLat => coordinate !== null)
-  if (coordinates.length < 2) return
-  emit('create', { coordinates, color: props.color, width: props.width })
 }
 
 function finishCapturedStroke(pointerId: number) {
   const points = naturalStrokePoints([...currentPoints.value])
-  emitPreview('END', points)
-  activePointerId = null
-  activePreviewId = null
-  currentPoints.value = []
-
   const coordinates = points
     .map(props.unproject)
     .filter((coordinate): coordinate is LngLat => coordinate !== null)
-  if (coordinates.length < 2) return
-  emit('create', { coordinates, color: props.color, width: props.width })
+  emitPreview('END', points)
+  if (coordinates.length >= 2) {
+    emit('create', { coordinates, color: props.color, width: props.width })
+  }
+  activePointerId = null
+  activePreviewId = null
+  currentPoints.value = []
   releasePointerCapture(pointerId)
 }
 

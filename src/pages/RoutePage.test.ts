@@ -2190,6 +2190,81 @@ describe('RoutePage itinerary integration', () => {
 		expect(holder.state.deleteDrawing).toHaveBeenCalledWith('drawing-1')
   })
 
+  it('실시간 연결이 잠시 끊겨도 그린 선을 화면에 유지하고 재연결 후 저장한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const transport = realtime.instances[0]
+    clearCollaborationSessionIds()
+    transport.connected = false
+
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await nextTick()
+
+    expect(map.props('drawings')).toEqual([expect.objectContaining({
+      id: 'local-drawing-1',
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+    })])
+    expect(wrapper.get('.map-drawing-status').text()).toContain('그림 저장을 완료하지 못했습니다.')
+    expect(geo.simplifyCoordinates).not.toHaveBeenCalled()
+
+    registerCollaborationSessionId('session-2')
+    transport.connect()
+    await flushPromises()
+
+    expect(geo.simplifyCoordinates).toHaveBeenCalledOnce()
+    expect(holder.state.createDrawing).toHaveBeenCalledOnce()
+    expect(map.props('drawings')).toEqual([expect.objectContaining({ id: 'drawing-1' })])
+  })
+
+  it('서버 일정이 갱신되어도 저장 대기 중인 로컬 선을 유지한다', async () => {
+    geo.simplifyCoordinates.mockImplementationOnce(() => new Promise(() => undefined))
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await nextTick()
+
+    holder.state.mapDrawings.value = [{
+      id: 'server-drawing',
+      drawingType: 'FREEHAND',
+      geometry: { type: 'LineString', coordinates: [[126, 35], [127, 36]] },
+      style: { color: '#ef4444', width: 2 },
+    }]
+    await nextTick()
+
+    expect(map.props('drawings')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'server-drawing' }),
+      expect.objectContaining({ id: 'local-drawing-1' }),
+    ]))
+  })
+
   it('지도 drawing preview를 전송하고 다른 사용자의 preview를 표시한다', async () => {
     localStorage.setItem('accessToken', 'test-token')
     const wrapper = mount(RoutePage, {
@@ -2718,7 +2793,7 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
-    expect(wrapper.get('.map-drawing-status[role="alert"]').text()).toContain('그림 좌표를 정리하지 못했습니다.')
+    expect(wrapper.get('.map-drawing-status[role="alert"]').text()).toContain('그림 저장을 완료하지 못했습니다.')
     wrapper.getComponent(MapboxItineraryMap).vm.$emit('drawingCreate', {
       coordinates: [{ lng: 126, lat: 35 }, { lng: 127, lat: 36 }],
       color: '#ef4444',
