@@ -2634,6 +2634,7 @@ const drawingPreviewChannel = useDrawingPreviewChannel({
   tripId,
   clientId: globalThis.crypto?.randomUUID?.() ?? `drawing-client-${Date.now()}`,
   transport: collaborationTransport,
+  currentSessionId: getCollaborationSessionId,
 })
 const mapDrawings = computed(() => [
   ...localDrawings.value,
@@ -4140,6 +4141,7 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ SIDEBAR ═══ -->
           <aside :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
+            <span class="sidebar-sheet-handle" aria-hidden="true"></span>
             <button
               class="sidebar-toggle"
               type="button"
@@ -4147,7 +4149,7 @@ function textAvatarStyle(index: unknown) {
               title="일정 패널 닫기"
               @click="toggleLeftSidebar"
             >
-              <span class="material-symbols-rounded" aria-hidden="true">left_panel_close</span>
+              <span class="material-symbols-rounded" aria-hidden="true">{{ routeLayoutMode === 'mobile' ? 'close' : 'chevron_left' }}</span>
             </button>
             <div class="sidebar-content">
               <!-- Trip header card -->
@@ -5799,6 +5801,20 @@ function textAvatarStyle(index: unknown) {
   width: 100%;
   box-sizing: border-box;
 }
+.route-page-section .sidebar-toggle {
+  top: 50%;
+  right: -16px;
+  width: 32px;
+  height: 64px;
+  border-radius: 0 16px 16px 0;
+  transform: translateY(-50%);
+}
+.route-page-section .sidebar-toggle:hover {
+  transform: translateY(-50%) translateX(2px);
+}
+.sidebar-sheet-handle {
+  display: none;
+}
 .route-panel-backdrop {
   position: absolute;
   inset: 0;
@@ -6939,8 +6955,29 @@ function textAvatarStyle(index: unknown) {
   }
 
   .route-page-section .sidebar-toggle {
-    top: 10px;
-    right: 12px;
+    top: 14px;
+    right: 14px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    transform: none;
+  }
+
+  .route-page-section .sidebar-toggle:hover {
+    transform: scale(1.04);
+  }
+
+  .sidebar-sheet-handle {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 2;
+    display: block;
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.34);
+    transform: translateX(-50%);
   }
 
   .route-page-section .route-utility-sidebar:not(.is-collapsed) {

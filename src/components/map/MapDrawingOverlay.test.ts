@@ -287,6 +287,45 @@ describe('MapDrawingOverlay', () => {
     }))
   })
 
+  it('긴 자유곡선은 굴곡을 보존하며 저장 좌표 수를 제한한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, {
+      props: {
+        drawings: [],
+        tool: 'pen',
+        color: '#6d4aff',
+        width: 5,
+        enabled: true,
+        projectionRevision: 0,
+        project,
+        unproject,
+      },
+    })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    })
+    const samples = Array.from({ length: 199 }, (_, index) => {
+      const angle = Math.PI * (index + 1) / 200
+      return { clientX: 200 + Math.cos(angle) * 100, clientY: 150 - Math.sin(angle) * 100 }
+    })
+
+    await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 0, clientX: 300, clientY: 150 })
+    await dispatchPointer(surface.element, 'pointermove', {
+      pointerId: 1,
+      clientX: 100,
+      clientY: 150,
+      coalescedEvents: samples,
+    })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 100, clientY: 150 })
+
+    const created = wrapper.emitted('create')?.[0]?.[0] as { coordinates: Array<{ lng: number; lat: number }> }
+    expect(created.coordinates.length).toBeLessThanOrEqual(100)
+    expect(Math.min(...created.coordinates.map(point => point.lat))).toBeLessThan(51)
+    expect(created.coordinates[0]).toEqual({ lng: 300, lat: 150 })
+    expect(created.coordinates.at(-1)).toEqual({ lng: 100, lat: 150 })
+  })
+
   it('포인터 캡처를 이미 잃은 경우에도 stroke를 정상 완료한다', async () => {
     const wrapper = mount(MapDrawingOverlay, {
       props: {

@@ -2218,7 +2218,7 @@ describe('RoutePage itinerary integration', () => {
       destination: '/app/trips/trip-1/map-drawing-preview',
       payload: expect.objectContaining({ previewId: 'local-preview', coordinates: expect.any(Array) }),
     })])
-    expect(transport.published[0].payload.coordinates).toHaveLength(32)
+    expect(transport.published[0].payload.coordinates.length).toBeLessThanOrEqual(32)
 
     transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
       tripId: 'trip-1', clientId: 'remote-client', previewId: 'remote-preview', sequence: 1,
@@ -2755,6 +2755,7 @@ describe('RoutePage itinerary integration', () => {
     await wrapper.get('.route-sidebar-restore').trigger('click')
     expect(shell.classes()).toContain('is-sidebar-open')
     expect(wrapper.find('.route-panel-backdrop').exists()).toBe(true)
+    expect(wrapper.get('.sidebar-toggle .material-symbols-rounded').text()).toBe('chevron_left')
 
     await wrapper.get('.route-utility-tab--chat').trigger('click')
     expect(shell.classes()).toContain('is-sidebar-hidden')
@@ -2788,6 +2789,9 @@ describe('RoutePage itinerary integration', () => {
       'is-route-utility-collapsed',
     ]))
     expect(wrapper.get('.route-sidebar-restore').attributes('aria-label')).toBe('일정 패널 열기')
+    await wrapper.get('.route-sidebar-restore').trigger('click')
+    expect(wrapper.find('.sidebar-sheet-handle').exists()).toBe(true)
+    expect(wrapper.get('.sidebar-toggle .material-symbols-rounded').text()).toBe('close')
   })
 
   it('그리기와 스티커 옵션 상자를 클릭한 도구 버튼 바로 위에 배치한다', async () => {

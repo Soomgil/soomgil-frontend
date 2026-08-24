@@ -43,13 +43,17 @@ describe('drawing preview realtime channel', () => {
     vi.setSystemTime(new Date('2026-06-21T05:00:00Z'))
   })
 
-  it('좌표의 처음과 끝을 유지하며 최대 개수로 downsample한다', () => {
-    const coordinates = Array.from({ length: 101 }, (_, index) => ({ lng: index, lat: index }))
+  it('좌표의 처음·끝과 큰 굴곡을 유지하며 최대 개수 이하로 줄인다', () => {
+    const coordinates = Array.from({ length: 101 }, (_, index) => ({
+      lng: index,
+      lat: index === 50 ? 100 : 0,
+    }))
     const sampled = downsampleCoordinates(coordinates, 32)
 
-    expect(sampled).toHaveLength(32)
+    expect(sampled.length).toBeLessThanOrEqual(32)
     expect(sampled[0]).toEqual(coordinates[0])
     expect(sampled.at(-1)).toEqual(coordinates.at(-1))
+    expect(sampled).toContainEqual(coordinates[50])
   })
 
   it('UPDATE를 throttle하고 END는 즉시 전송한다', () => {
@@ -71,7 +75,7 @@ describe('drawing preview realtime channel', () => {
     vi.advanceTimersByTime(50)
     expect(transport.published).toHaveLength(2)
     expect(transport.published[1]?.destination).toBe(drawingPreviewSendDestination('trip 1'))
-    expect((transport.published[1]?.payload as DrawingPreviewMessage).coordinates).toHaveLength(3)
+    expect((transport.published[1]?.payload as DrawingPreviewMessage).coordinates.length).toBeLessThanOrEqual(3)
 
     channel.publish({ previewId: 'stroke-1', sequence: 3, phase: 'END', coordinates, color: '#111827', width: 4 })
     expect(transport.published).toHaveLength(3)
@@ -84,6 +88,7 @@ describe('drawing preview realtime channel', () => {
       clientId: 'client-1',
       transport,
       remoteTtlMs: 1000,
+      currentSessionId: () => 'session-1',
     })
     channel.connect()
     const message: DrawingPreviewMessage = {
@@ -93,13 +98,14 @@ describe('drawing preview realtime channel', () => {
     }
 
     transport.receive(drawingPreviewTopic('trip-1'), { ...message, clientId: 'client-1' })
+    transport.receive(drawingPreviewTopic('trip-1'), { ...message, clientId: 'session-1' })
     expect(channel.remoteDrawings.value).toEqual([])
 
     transport.receive(drawingPreviewTopic('trip-1'), message)
     expect(channel.remoteDrawings.value).toEqual([expect.objectContaining({
       id: 'remote:client-2:stroke-1', color: '#ef4444', width: 6,
     })])
-    expect(channel.remoteDrawings.value[0]?.coordinates).toHaveLength(32)
+    expect(channel.remoteDrawings.value[0]!.coordinates.length).toBeLessThanOrEqual(32)
 
     transport.receive(drawingPreviewTopic('trip-1'), { ...message, sequence: 0, color: '#000000' })
     transport.receive(drawingPreviewTopic('trip-1'), { drawing: { id: 'saved-drawing' } })

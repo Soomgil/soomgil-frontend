@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { DrawingPreviewEvent, DrawingPreviewPhase } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
+import { simplifyPathToLimit } from '@/utils/pathSimplification'
 
 export type MapDrawingTool = 'cursor' | 'route-pen' | 'pen' | 'eraser' | 'sticker' | 'image'
 
@@ -22,6 +23,8 @@ interface ScreenPoint {
   x: number
   y: number
 }
+
+const STORED_STROKE_MAX_POINTS = 100
 
 const props = withDefaults(defineProps<{
   drawings: MapDrawingStroke[]
@@ -113,11 +116,15 @@ function emitPreview(phase: DrawingPreviewPhase, points = currentPoints.value) {
 
 function appendPoint(point: ScreenPoint) {
   const previous = currentPoints.value.at(-1)
-  if (!previous || pointDistance(previous, point) >= 2) {
+  if (!previous || pointDistance(previous, point) >= 1) {
     currentPoints.value.push(point)
     return true
   }
   return false
+}
+
+function naturalStrokePoints(points: ScreenPoint[]) {
+  return simplifyPathToLimit(points, STORED_STROKE_MAX_POINTS, point => point, 0.75)
 }
 
 function pointerSamples(event: PointerEvent): Array<Pick<PointerEvent, 'clientX' | 'clientY'>> {
@@ -202,7 +209,7 @@ function finishStroke(event: PointerEvent) {
   currentPoints.value = []
   releasePointerCapture(event.pointerId)
 
-  const coordinates = points
+  const coordinates = naturalStrokePoints(points)
     .map(props.unproject)
     .filter((coordinate): coordinate is LngLat => coordinate !== null)
   if (coordinates.length < 2) return
@@ -216,7 +223,7 @@ function finishCapturedStroke(pointerId: number) {
   activePreviewId = null
   currentPoints.value = []
 
-  const coordinates = points
+  const coordinates = naturalStrokePoints(points)
     .map(props.unproject)
     .filter((coordinate): coordinate is LngLat => coordinate !== null)
   if (coordinates.length < 2) return
