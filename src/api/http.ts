@@ -1,7 +1,11 @@
 import axios from 'axios'
 import type { AxiosRequestConfig } from 'axios'
 import type { ApiResponse, ProblemDetail } from '@/types/api'
-import { isUsableAccessToken } from '@/auth/accessToken'
+import {
+  clearStoredAuthTokens,
+  isUsableAccessToken,
+  refreshStoredAccessToken,
+} from '@/auth/accessToken'
 import {
   clearCollaborationSessionIds,
   COLLABORATION_SESSION_HEADER,
@@ -46,44 +50,10 @@ http.interceptors.request.use((config) => {
 })
 
 /* ── 토큰 갱신 (재귀 방지용 raw 인스턴스) ── */
-const refreshClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
-  timeout: 10000,
-})
-
-let isRefreshing = false
-let pendingQueue: Array<{ resolve: (token: string) => void; reject: (e: unknown) => void }> = []
-
-function flushQueue(error: unknown | null, token: string | null) {
-  pendingQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token!)))
-  pendingQueue = []
-}
-
 function clearAuthAndRedirect() {
-  localStorage.removeItem('accessToken')
-  localStorage.removeItem('refreshToken')
-  localStorage.removeItem('tokenExpiresAt')
+  clearStoredAuthTokens()
   clearCollaborationSessionIds()
   window.location.href = buildLoginRedirectUrl(window.location)
-}
-
-async function doRefresh(): Promise<string> {
-  const refreshToken = localStorage.getItem('refreshToken')
-  if (!refreshToken) throw new Error('no refresh token')
-  const res = await refreshClient.post<{ accessToken: string; refreshToken: string; expiresIn?: number }>(
-    '/auth/refresh',
-    { refreshToken },
-  )
-  const { accessToken, refreshToken: newRefresh, expiresIn } = res.data
-  localStorage.setItem('accessToken', accessToken)
-  localStorage.setItem('refreshToken', newRefresh)
-  if (typeof expiresIn === 'number' && Number.isFinite(expiresIn)) {
-    localStorage.setItem('tokenExpiresAt', String(Date.now() + expiresIn * 1000))
-  } else {
-    localStorage.removeItem('tokenExpiresAt')
-  }
-  return accessToken
 }
 
 /* ── Response: 에러 처리 (RFC 7807) + 401 refresh 재시도 ── */
@@ -112,23 +82,11 @@ http.interceptors.response.use(
       original._retried = true
 
       try {
-        let newToken: string
-        if (isRefreshing) {
-          newToken = await new Promise<string>((resolve, reject) => {
-            pendingQueue.push({ resolve, reject })
-          })
-        } else {
-          isRefreshing = true
-          newToken = await doRefresh()
-          isRefreshing = false
-          flushQueue(null, newToken)
-        }
+        const newToken = await refreshStoredAccessToken()
         original.headers = original.headers ?? {}
         ;(original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`
         return http.request(original)
       } catch (refreshError) {
-        isRefreshing = false
-        flushQueue(refreshError, null)
         clearAuthAndRedirect()
         return Promise.reject(refreshError)
       }

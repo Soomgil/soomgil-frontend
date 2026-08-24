@@ -65,6 +65,19 @@ describe('StompTransport', () => {
     expect(getCollaborationSessionId()).toBeNull()
   })
 
+  it('재연결 전에 비동기로 갱신한 bearer token을 기다린다', async () => {
+    const transport = new StompTransport({
+      brokerUrl: 'ws://localhost/ws',
+      accessToken: async () => 'refreshed-token',
+    })
+    transport.connect()
+    const client = stomp.clients[0]
+
+    await client.config.beforeConnect()
+
+    expect(client.connectHeaders).toEqual({ Authorization: 'Bearer refreshed-token' })
+  })
+
   it('잘못된 broker 메시지와 handler 예외를 기록하고 구독을 유지한다', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)

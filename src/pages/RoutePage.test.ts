@@ -29,6 +29,10 @@ const connectedApis = vi.hoisted(() => ({
     updateMyItemStatus: vi.fn(),
     deleteChecklistItem: vi.fn(),
   },
+	collaboration: {
+		undo: vi.fn(),
+		redo: vi.fn(),
+	},
 	trip: {
 		getInvites: vi.fn(),
 		createInvite: vi.fn(),
@@ -45,16 +49,23 @@ const connectedApis = vi.hoisted(() => ({
     savePlace: vi.fn(),
     unsavePlace: vi.fn(),
   },
+  media: {
+    uploadFile: vi.fn(),
+    getContentObjectUrl: vi.fn(),
+  },
 }))
 
 vi.mock('@/api/ai.api', () => ({ aiApi: connectedApis.ai }))
 vi.mock('@/api/chat.api', () => ({ chatApi: connectedApis.chat }))
 vi.mock('@/api/planning.api', () => ({ planningApi: connectedApis.planning }))
+vi.mock('@/api/collaboration.api', () => ({ collaborationApi: connectedApis.collaboration }))
 vi.mock('@/api/trip.api', () => ({ tripApi: connectedApis.trip }))
 vi.mock('@/api/place.api', () => ({ placeApi: connectedApis.place }))
 vi.mock('@/api/swipe.api', () => ({ swipeApi: connectedApis.swipe }))
+vi.mock('@/api/media.api', () => ({ mediaApi: connectedApis.media }))
 vi.mock('@/auth/accessToken', () => ({
   getStoredAccessToken: () => localStorage.getItem('accessToken'),
+  ensureStoredAccessToken: async () => localStorage.getItem('accessToken'),
   isUsableAccessToken: (token: string | null | undefined) => Boolean(token),
 }))
 
@@ -75,12 +86,21 @@ vi.mock('@/realtime/stompTransport', () => ({
     subscriptions = new Map<string, (payload: unknown) => void>()
     subscriptionLists = new Map<string, Array<(payload: unknown) => void>>()
 
-    constructor() {
+		private options: any
+
+    constructor(options: any) {
+		this.options = options
       realtime.instances.push(this)
     }
 
-    connect() { this.connected = true }
-    async disconnect() { this.connected = false }
+		connect() {
+			this.connected = true
+			this.options.onConnected?.(false)
+		}
+		async disconnect() {
+			this.connected = false
+			this.options.onDisconnected?.()
+		}
     publish(destination: string, payload: unknown) {
       if (!this.connected) return false
       this.published.push({ destination, payload })
@@ -164,6 +184,7 @@ describe('RoutePage itinerary integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+		localStorage.setItem('accessToken', 'e30.eyJ1c2VySWQiOiJ1c2VyLTEifQ.')
     clearCollaborationSessionIds()
     registerCollaborationSessionId('session-1')
     realtime.instances.length = 0
@@ -178,6 +199,14 @@ describe('RoutePage itinerary integration', () => {
     })
     connectedApis.planning.getNote.mockRejectedValue({ response: { status: 404 } })
     connectedApis.planning.getChecklists.mockResolvedValue([])
+		connectedApis.collaboration.undo.mockResolvedValue({
+			tripId: 'trip-1', itineraryVersion: 4, commandEventId: 2,
+			undoAvailable: false, redoAvailable: true,
+		})
+		connectedApis.collaboration.redo.mockResolvedValue({
+			tripId: 'trip-1', itineraryVersion: 5, commandEventId: 3,
+			undoAvailable: true, redoAvailable: false,
+		})
 		connectedApis.place.getAccessibilityBatch.mockResolvedValue({})
     connectedApis.swipe.getRecommendations.mockResolvedValue({
       items: [],
@@ -202,6 +231,8 @@ describe('RoutePage itinerary integration', () => {
       createdAt: '2026-06-24T00:00:00Z',
     })
     connectedApis.swipe.unsavePlace.mockResolvedValue(undefined)
+    connectedApis.media.uploadFile.mockResolvedValue({ id: 'media-1' })
+    connectedApis.media.getContentObjectUrl.mockResolvedValue('blob:stored-image')
 		connectedApis.trip.getInvites.mockResolvedValue([])
 		connectedApis.trip.createInvite.mockResolvedValue({
 			id: 'invite-1', tripId: 'trip-1', inviteCode: 'CODE', inviteUrl: 'https://soomgil.test/invite/CODE',
@@ -2140,8 +2171,10 @@ describe('RoutePage itinerary integration', () => {
       width: 6,
     }])
 
-    map.vm.$emit('drawingErase', 'drawing-1')
+    const localDrawingId = (map.props('drawings') as Array<{ id: string }>)[0].id
+    map.vm.$emit('drawingErase', localDrawingId)
     await nextTick()
+		expect(map.props('drawings')).toHaveLength(1)
     realtime.instances[0].subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
       eventType: 'map.object.lock',
       tripId: 'trip-1',
@@ -2149,7 +2182,7 @@ describe('RoutePage itinerary integration', () => {
       locked: true,
       userId: 'user-1',
       clientId: 'session-1',
-      expiresAt: '2026-08-24T00:00:15Z',
+			expiresAt: new Date(Date.now() + 15_000).toISOString(),
     })
     await flushPromises()
     expect(map.props('drawings')).toEqual([])
@@ -2196,6 +2229,78 @@ describe('RoutePage itinerary integration', () => {
     expect(map.props('drawings')).toEqual([expect.objectContaining({
       id: 'remote:remote-client:remote-preview', color: '#ef4444', width: 6,
     })])
+  })
+
+  it('다른 참여자가 편집하는 지도 오브젝트 transform을 즉시 표시하고 내 편집도 중계한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const transport = realtime.instances[0]
+    const transform = {
+      centerLng: 127.1, centerLat: 37.5, widthMeters: 1200, heightMeters: 800, rotationDeg: 15,
+    }
+
+    transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
+      eventType: 'map.object.transform.preview',
+      tripId: 'trip-1', drawingId: 'drawing-remote', userId: 'user-2', clientId: 'session-2',
+      sequence: 1, phase: 'UPDATE', transform,
+    })
+    await nextTick()
+
+    expect(map.props('mapObjectPreviewTransforms')).toEqual({ 'drawing-remote': transform })
+
+    map.vm.$emit('mapObjectEditStart', 'drawing-remote')
+    transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
+      eventType: 'map.object.lock', tripId: 'trip-1', drawingId: 'drawing-remote', locked: true,
+      userId: 'user-1', clientId: 'session-1', expiresAt: new Date(Date.now() + 15_000).toISOString(),
+    })
+    await flushPromises()
+    map.vm.$emit('mapObjectPreview', 'drawing-remote', transform)
+    await nextTick()
+
+    expect(transport.published).toContainEqual({
+      destination: '/app/trips/trip-1/map-object-transform-preview',
+      payload: expect.objectContaining({ drawingId: 'drawing-remote', phase: 'UPDATE', transform }),
+    })
+  })
+
+  it('지도 이미지 업로드 직후 원본 파일 URL을 미리보기에 재사용한다', async () => {
+    const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:local-map-preview')
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const input = wrapper.get('input.map-object-file-input')
+    const file = new File(['map-image'], 'map.png', { type: 'image/png' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(connectedApis.media.uploadFile).toHaveBeenCalledWith(file, 'MAP_OVERLAY', {
+      linkedResourceType: 'TRIP', linkedResourceId: 'trip-1',
+    })
+    expect(connectedApis.media.getContentObjectUrl).not.toHaveBeenCalled()
+    expect(wrapper.getComponent(MapboxItineraryMap).props('mapObjectImageUrls')).toEqual({
+      'media-1': 'blob:local-map-preview',
+    })
+    createObjectUrl.mockRestore()
   })
 
   it('여행방 itinerary topic의 최신 버전 이벤트를 받으면 일정을 다시 불러온다', async () => {
@@ -2329,6 +2434,7 @@ describe('RoutePage itinerary integration', () => {
   })
 
   it('저장 전 지도 그림 생성과 삭제를 로컬에서 실행 취소하고 다시 실행한다', async () => {
+		geo.simplifyCoordinates.mockImplementation(() => new Promise(() => undefined))
     const wrapper = mount(RoutePage, {
       global: {
         stubs: {
@@ -2360,13 +2466,61 @@ describe('RoutePage itinerary integration', () => {
     await redoButton.trigger('click')
     expect(map.props('drawings')).toHaveLength(1)
 
-    map.vm.$emit('drawingErase', 'drawing-1')
+    const localDrawingId = (map.props('drawings') as Array<{ id: string }>)[0].id
+    map.vm.$emit('drawingErase', localDrawingId)
     await flushPromises()
     expect(map.props('drawings')).toEqual([])
 
     await undoButton.trigger('click')
     expect(map.props('drawings')).toHaveLength(1)
   })
+
+	it('현재 WebSocket 세션의 저장 작업을 서버에서 실행 취소하고 다시 실행한다', async () => {
+		const wrapper = mount(RoutePage, {
+			global: {
+				stubs: {
+					AppShell: { template: '<div><slot /></div>' },
+					LoadingState: true,
+					ErrorState: true,
+					EmptyState: true,
+				},
+			},
+		})
+		await flushPromises()
+
+		const transport = realtime.instances[0]
+		transport.subscriptions.get('/topic/trips/trip-1/collaboration')?.({
+			commandEventId: 1,
+			tripId: 'trip-1',
+			actorUserId: 'user-1',
+			websocketSessionId: 'session-1',
+			source: 'USER',
+			commandType: 'CREATE_MAP_DRAWING',
+			aggregateType: 'MAP_DRAWING',
+			aggregateId: 'drawing-1',
+			versionBefore: 3,
+			versionAfter: 4,
+			payload: '{}',
+			createdAt: '2026-08-24T00:00:00Z',
+		})
+		await nextTick()
+
+		await wrapper.get('button[data-action="undo"]').trigger('click')
+		await flushPromises()
+		expect(connectedApis.collaboration.undo).toHaveBeenCalledWith('trip-1', {
+			baseVersion: 3,
+			commandEventId: null,
+		})
+		expect(holder.state.fetchItinerary).toHaveBeenCalled()
+		expect(wrapper.get('button[data-action="redo"]').attributes('disabled')).toBeUndefined()
+
+		await wrapper.get('button[data-action="redo"]').trigger('click')
+		await flushPromises()
+		expect(connectedApis.collaboration.redo).toHaveBeenCalledWith('trip-1', {
+			baseVersion: 3,
+			commandEventId: null,
+		})
+	})
 
   it('실행 취소 후 새 그림을 만들면 로컬 다시 실행 이력을 비운다', async () => {
     const wrapper = mount(RoutePage, {
