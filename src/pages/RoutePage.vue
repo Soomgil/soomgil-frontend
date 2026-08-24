@@ -4560,7 +4560,8 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <!-- ===== Toolbox ===== -->
-            <div class="map-tools" @scroll.passive="updateToolPopoverPositions">
+            <div class="map-tools-viewport" @scroll.passive="updateToolPopoverPositions">
+              <div class="map-tools">
               <!-- Drawing tools -->
               <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" data-tool="cursor" :aria-pressed="activeTool === 'cursor'" :disabled="itinerary.mutating.value" @click="selectMapTool('cursor')">
                 <span class="material-symbols-rounded">arrow_selector_tool</span>
@@ -4648,6 +4649,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded">redo</span>
                 <span class="tool-tip">다시 실행 (Ctrl+Y)</span>
               </button>
+              </div>
             </div>
           </div>
 
@@ -6069,8 +6071,49 @@ function textAvatarStyle(index: unknown) {
   margin-top: 2px;
 }
 .route-page-section .map-canvas {
+  --route-map-control-right-safe: 12px;
+  --route-map-tools-right-safe: 12px;
   height: 100%;
   min-height: 0;
+}
+
+.route-page-section .map-canvas :deep(.mapboxgl-ctrl-top-right) {
+  top: 12px;
+  right: var(--route-map-control-right-safe);
+  transition: right 0.22s ease;
+}
+
+.map-tools-viewport {
+  position: absolute;
+  right: var(--route-map-tools-right-safe);
+  bottom: 20px;
+  left: 12px;
+  z-index: 90;
+  height: 102px;
+  box-sizing: border-box;
+  padding-top: 48px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  pointer-events: none;
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+  transition: right 0.22s ease, opacity 0.18s ease;
+}
+
+.map-tools-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.route-page-section .map-tools-viewport .map-tools {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: max-content;
+  min-width: max-content;
+  margin: 0 auto;
+  pointer-events: auto;
+  transform: none;
 }
 
 .route-page-section .map-canvas.navigation-guide-mode {
@@ -6795,21 +6838,9 @@ function textAvatarStyle(index: unknown) {
     z-index: 75;
   }
 
-  .route-page-section .map-tools {
-    right: 12px;
-    left: 12px;
-    width: auto;
-    max-width: none;
-    justify-content: flex-start;
-    overflow-x: auto;
-    overflow-y: visible;
-    transform: none;
-    scrollbar-width: none;
-    overscroll-behavior-inline: contain;
-  }
-
-  .route-page-section .map-tools::-webkit-scrollbar {
-    display: none;
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 340px;
+    --route-map-tools-right-safe: 340px;
   }
 
   .route-page-section .map-tools .tool-btn {
@@ -6856,6 +6887,16 @@ function textAvatarStyle(index: unknown) {
 
   .route-page-section .route-utility-sidebar.is-collapsed {
     width: 52px;
+  }
+
+  .route-page-section .map-canvas {
+    --route-map-control-right-safe: 64px;
+    --route-map-tools-right-safe: 64px;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 392px;
+    --route-map-tools-right-safe: 392px;
   }
 
   .route-page-section .detailbar {
@@ -6946,6 +6987,21 @@ function textAvatarStyle(index: unknown) {
     height: 40px;
   }
 
+  .route-page-section .map-canvas {
+    --route-map-control-right-safe: min(268px, calc(100% - 52px));
+    --route-map-tools-right-safe: 12px;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 12px;
+    --route-map-tools-right-safe: 12px;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-tools-viewport {
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .route-sidebar-restore {
     top: 12px;
     min-width: 48px;
@@ -6973,8 +7029,11 @@ function textAvatarStyle(index: unknown) {
     padding: 22px 18px calc(24px + env(safe-area-inset-bottom));
   }
 
-  .route-page-section .map-tools {
+  .route-page-section .map-tools-viewport {
     bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .route-page-section .map-tools {
     border-radius: 14px;
   }
 

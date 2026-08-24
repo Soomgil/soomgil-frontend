@@ -120,7 +120,7 @@ describe('MapboxItineraryMap', () => {
     await nextTick()
 
     expect(mapbox.Map).toHaveBeenCalledOnce()
-    expect(mapbox.map.addControl).toHaveBeenCalledWith(expect.any(Object), 'top-left')
+    expect(mapbox.map.addControl).toHaveBeenCalledWith(expect.any(Object), 'top-right')
     expect(mapbox.Marker).toHaveBeenCalledTimes(2)
     expect(mapbox.Marker).toHaveBeenNthCalledWith(1, expect.objectContaining({
       anchor: 'bottom',

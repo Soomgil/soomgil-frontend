@@ -2804,6 +2804,7 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
+    expect(wrapper.get('.map-tools-viewport').find('.map-tools').exists()).toBe(true)
     const rect = (left: number, top: number, width: number, height: number) => ({
       left,
       top,
