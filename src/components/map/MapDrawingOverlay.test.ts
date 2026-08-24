@@ -45,6 +45,8 @@ describe('MapDrawingOverlay', () => {
 
     await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 0, clientX: 10, clientY: 20 })
     await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, clientX: 20, clientY: 30 })
+    expect(wrapper.get('.is-current').element.tagName.toLowerCase()).toBe('path')
+    expect(wrapper.get('.is-current').attributes('d')).toContain('C ')
     await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 30, clientY: 40 })
 
     expect(wrapper.emitted('create')).toEqual([{
@@ -324,6 +326,10 @@ describe('MapDrawingOverlay', () => {
     expect(Math.min(...created.coordinates.map(point => point.lat))).toBeLessThan(51)
     expect(created.coordinates[0]).toEqual({ lng: 300, lat: 150 })
     expect(created.coordinates.at(-1)).toEqual({ lng: 100, lat: 150 })
+    expect(wrapper.emitted('preview')?.at(-1)?.[0]).toEqual(expect.objectContaining({
+      phase: 'END',
+      coordinates: created.coordinates,
+    }))
   })
 
   it('포인터 캡처를 이미 잃은 경우에도 stroke를 정상 완료한다', async () => {

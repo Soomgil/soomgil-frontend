@@ -31,7 +31,7 @@ export function downsampleCoordinates(coordinates: LngLat[], maxCoordinates: num
 
 export function useDrawingPreviewChannel(options: DrawingPreviewChannelOptions) {
   const throttleMs = options.throttleMs ?? 50
-  const maxCoordinates = options.maxCoordinates ?? 32
+  const maxCoordinates = options.maxCoordinates ?? 100
   const remoteTtlMs = options.remoteTtlMs ?? 10000
   const remoteByKey = ref(new Map<string, MapDrawingStroke>())
   const remoteExpiryTimers = new Map<string, ReturnType<typeof setTimeout>>()

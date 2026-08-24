@@ -63,7 +63,7 @@ let activePanPointerId: number | null = null
 let lastPanPoint: ScreenPoint | null = null
 
 const editable = computed(() => props.enabled && (props.tool === 'route-pen' || props.tool === 'pen' || props.tool === 'eraser'))
-const currentPointString = computed(() => currentPoints.value.map((point) => `${point.x},${point.y}`).join(' '))
+const currentPath = computed(() => smoothStrokePath(currentPoints.value))
 const projectedRouteWaypoints = computed(() => {
   void props.projectionRevision
   return (props.routeWaypoints ?? [])
@@ -76,13 +76,35 @@ const projectedDrawings = computed(() => {
   if (props.drawingsVisible === false) return []
   return props.drawings.map((drawing) => ({
     ...drawing,
-    points: drawing.coordinates
+    path: smoothStrokePath(drawing.coordinates
       .map(props.project)
-      .filter((point): point is ScreenPoint => point !== null)
-      .map((point) => `${point.x},${point.y}`)
-      .join(' '),
+      .filter((point): point is ScreenPoint => point !== null)),
   }))
 })
+
+function smoothStrokePath(points: ScreenPoint[]) {
+  if (points.length === 0) return ''
+  if (points.length === 1) return `M ${points[0]!.x} ${points[0]!.y}`
+  const commands = [`M ${points[0]!.x} ${points[0]!.y}`]
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const previous = points[Math.max(0, index - 1)]!
+    const current = points[index]!
+    const next = points[index + 1]!
+    const following = points[Math.min(points.length - 1, index + 2)]!
+    const firstControl = {
+      x: current.x + (next.x - previous.x) / 6,
+      y: current.y + (next.y - previous.y) / 6,
+    }
+    const secondControl = {
+      x: next.x - (following.x - current.x) / 6,
+      y: next.y - (following.y - current.y) / 6,
+    }
+    commands.push(`C ${firstControl.x} ${firstControl.y} ${secondControl.x} ${secondControl.y} ${next.x} ${next.y}`)
+  }
+
+  return commands.join(' ')
+}
 
 function localPoint(event: Pick<PointerEvent, 'clientX' | 'clientY'>): ScreenPoint | null {
   if (!surface.value) return null
@@ -202,14 +224,14 @@ function finishStroke(event: PointerEvent) {
   }
   if (activePointerId !== event.pointerId) return
   extendStroke(event)
-  const points = [...currentPoints.value]
+  const points = naturalStrokePoints([...currentPoints.value])
   emitPreview('END', points)
   activePointerId = null
   activePreviewId = null
   currentPoints.value = []
   releasePointerCapture(event.pointerId)
 
-  const coordinates = naturalStrokePoints(points)
+  const coordinates = points
     .map(props.unproject)
     .filter((coordinate): coordinate is LngLat => coordinate !== null)
   if (coordinates.length < 2) return
@@ -217,13 +239,13 @@ function finishStroke(event: PointerEvent) {
 }
 
 function finishCapturedStroke(pointerId: number) {
-  const points = [...currentPoints.value]
+  const points = naturalStrokePoints([...currentPoints.value])
   emitPreview('END', points)
   activePointerId = null
   activePreviewId = null
   currentPoints.value = []
 
-  const coordinates = naturalStrokePoints(points)
+  const coordinates = points
     .map(props.unproject)
     .filter((coordinate): coordinate is LngLat => coordinate !== null)
   if (coordinates.length < 2) return
@@ -318,25 +340,25 @@ function zoomThroughOverlay(event: WheelEvent) {
     @wheel="zoomThroughOverlay"
   >
     <template v-for="drawing in projectedDrawings" :key="drawing.id">
-      <polyline
+      <path
         v-if="tool === 'eraser'"
         class="map-drawing-hit-target"
-        :points="drawing.points"
+        :d="drawing.path"
         stroke="transparent"
         :stroke-width="Math.max(drawing.width, 24)"
         @pointerdown="eraseDrawing($event, drawing.id)"
       />
-      <polyline
+      <path
         class="map-drawing-stroke"
-        :points="drawing.points"
+        :d="drawing.path"
         :stroke="drawing.color"
         :stroke-width="drawing.width"
       />
     </template>
-    <polyline
+    <path
       v-if="currentPoints.length > 1"
       class="map-drawing-stroke is-current"
-      :points="currentPointString"
+      :d="currentPath"
       :stroke="color"
       :stroke-width="width"
     />

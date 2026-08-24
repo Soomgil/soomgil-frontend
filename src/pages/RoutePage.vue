@@ -4140,16 +4140,19 @@ function textAvatarStyle(index: unknown) {
       }]">
 
           <!-- ═══ SIDEBAR ═══ -->
-          <aside :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
+          <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
             <span class="sidebar-sheet-handle" aria-hidden="true"></span>
             <button
               class="sidebar-toggle"
               type="button"
               aria-label="일정 패널 닫기"
+              aria-controls="route-itinerary-sidebar"
+              aria-expanded="true"
               title="일정 패널 닫기"
               @click="toggleLeftSidebar"
             >
-              <span class="material-symbols-rounded" aria-hidden="true">{{ routeLayoutMode === 'mobile' ? 'close' : 'chevron_left' }}</span>
+              <span class="material-symbols-rounded" aria-hidden="true">left_panel_close</span>
+              <span>일정 닫기</span>
             </button>
             <div class="sidebar-content">
               <!-- Trip header card -->
@@ -4419,10 +4422,13 @@ function textAvatarStyle(index: unknown) {
 				class="route-sidebar-restore"
 				type="button"
 				aria-label="일정 패널 열기"
+				aria-controls="route-itinerary-sidebar"
+				aria-expanded="false"
+				title="일정 패널 열기"
 				@click="toggleLeftSidebar"
 			>
 				<span class="material-symbols-rounded" aria-hidden="true">view_sidebar</span>
-				<span>일정</span>
+				<span>일정 열기</span>
 			</button>
 			<MapboxItineraryMap
 				:stops="mapStops"
@@ -5801,16 +5807,39 @@ function textAvatarStyle(index: unknown) {
   width: 100%;
   box-sizing: border-box;
 }
-.route-page-section .sidebar-toggle {
-  top: 50%;
-  right: -16px;
-  width: 32px;
-  height: 64px;
-  border-radius: 0 16px 16px 0;
-  transform: translateY(-50%);
+.route-page-section .sidebar-toggle,
+.route-page-section .route-sidebar-restore {
+  width: 108px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
-.route-page-section .sidebar-toggle:hover {
-  transform: translateY(-50%) translateX(2px);
+.route-page-section .sidebar-toggle {
+  top: 12px;
+  right: -120px;
+  transform: none;
+}
+.route-page-section .sidebar-toggle:hover,
+.route-page-section .route-sidebar-restore:hover {
+  border-color: rgba(124, 58, 237, 0.28);
+  color: var(--violet);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.17);
+  transform: translateY(-1px);
 }
 .sidebar-sheet-handle {
   display: none;
@@ -5830,26 +5859,9 @@ function textAvatarStyle(index: unknown) {
   top: 12px;
   left: 12px;
   z-index: 32;
-  display: inline-flex;
-  height: 42px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 14px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--ink);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
-  backdrop-filter: blur(12px);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 800;
 }
-.route-sidebar-restore:hover {
-  border-color: rgba(124, 58, 237, 0.28);
-  color: var(--violet);
-}
-.route-sidebar-restore .material-symbols-rounded {
+.route-page-section .sidebar-toggle .material-symbols-rounded,
+.route-page-section .route-sidebar-restore .material-symbols-rounded {
   font-size: 20px;
 }
 .route-page-section .trip-info-badge-row {
@@ -6957,9 +6969,9 @@ function textAvatarStyle(index: unknown) {
   .route-page-section .sidebar-toggle {
     top: 14px;
     right: 14px;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
+    width: 108px;
+    height: 42px;
+    border-radius: 999px;
     transform: none;
   }
 
@@ -7041,7 +7053,7 @@ function textAvatarStyle(index: unknown) {
 
   .route-sidebar-restore {
     top: 12px;
-    min-width: 48px;
+    width: 108px;
     padding: 0 12px;
   }
 

@@ -81,6 +81,24 @@ describe('drawing preview realtime channel', () => {
     expect(transport.published).toHaveLength(3)
   })
 
+  it('기본 실시간 미리보기는 자연스러운 선을 위해 최대 100개 좌표를 전달한다', () => {
+    const transport = new FakeTransport()
+    const channel = useDrawingPreviewChannel({
+      tripId: 'trip-1',
+      clientId: 'client-1',
+      transport,
+    })
+    channel.connect()
+    const coordinates = Array.from({ length: 80 }, (_, index) => ({
+      lng: 127 + index / 1000,
+      lat: 36 + Math.sin(index / 4) / 100,
+    }))
+
+    channel.publish({ previewId: 'stroke-1', sequence: 1, phase: 'UPDATE', coordinates, color: '#111827', width: 4 })
+
+    expect((transport.published[0]!.payload as DrawingPreviewMessage).coordinates).toHaveLength(80)
+  })
+
   it('자기 echo를 제외하고 원격 preview를 반영·취소·만료한다', async () => {
     const transport = new FakeTransport()
     const channel = useDrawingPreviewChannel({
@@ -105,7 +123,7 @@ describe('drawing preview realtime channel', () => {
     expect(channel.remoteDrawings.value).toEqual([expect.objectContaining({
       id: 'remote:client-2:stroke-1', color: '#ef4444', width: 6,
     })])
-    expect(channel.remoteDrawings.value[0]!.coordinates.length).toBeLessThanOrEqual(32)
+    expect(channel.remoteDrawings.value[0]!.coordinates.length).toBeLessThanOrEqual(100)
 
     transport.receive(drawingPreviewTopic('trip-1'), { ...message, sequence: 0, color: '#000000' })
     transport.receive(drawingPreviewTopic('trip-1'), { drawing: { id: 'saved-drawing' } })
