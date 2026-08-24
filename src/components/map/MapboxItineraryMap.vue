@@ -606,7 +606,7 @@ async function initializeMap() {
     })
     map = createdMap
     appliedMapStyle = mapStyle.value
-    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left')
+    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     createdMap.on('style.load', () => {
       if (sequence !== initializationSequence || map !== createdMap) return
       if (appliedMapStyle !== mapStyle.value) {

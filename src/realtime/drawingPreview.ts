@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import type { MapDrawingStroke } from '@/components/map/MapDrawingOverlay.vue'
 import type { LngLat } from '@/types/geo'
 import type { DrawingPreviewEvent, DrawingPreviewMessage } from '@/types/collaboration'
+import { simplifyPathToLimit } from '@/utils/pathSimplification'
 import type { RealtimeTransport } from './stompTransport'
 
 export type { DrawingPreviewEvent, DrawingPreviewMessage } from '@/types/collaboration'
@@ -13,6 +14,7 @@ interface DrawingPreviewChannelOptions {
   throttleMs?: number
   maxCoordinates?: number
   remoteTtlMs?: number
+  currentSessionId?: () => string | null
 }
 
 export function drawingPreviewSendDestination(tripId: string) {
@@ -24,19 +26,12 @@ export function drawingPreviewTopic(tripId: string) {
 }
 
 export function downsampleCoordinates(coordinates: LngLat[], maxCoordinates: number) {
-  if (coordinates.length <= maxCoordinates) return [...coordinates]
-  if (maxCoordinates <= 1) return [coordinates[0]!]
-  const sampled: LngLat[] = []
-  for (let index = 0; index < maxCoordinates; index += 1) {
-    const sourceIndex = Math.round(index * (coordinates.length - 1) / (maxCoordinates - 1))
-    sampled.push(coordinates[sourceIndex]!)
-  }
-  return sampled
+  return simplifyPathToLimit(coordinates, maxCoordinates, ({ lng, lat }) => ({ x: lng, y: lat }))
 }
 
 export function useDrawingPreviewChannel(options: DrawingPreviewChannelOptions) {
   const throttleMs = options.throttleMs ?? 50
-  const maxCoordinates = options.maxCoordinates ?? 32
+  const maxCoordinates = options.maxCoordinates ?? 100
   const remoteTtlMs = options.remoteTtlMs ?? 10000
   const remoteByKey = ref(new Map<string, MapDrawingStroke>())
   const remoteExpiryTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -112,7 +107,9 @@ export function useDrawingPreviewChannel(options: DrawingPreviewChannelOptions) 
 
   function receive(message: unknown) {
     if (!isDrawingPreviewMessage(message)) return
-    if (message.tripId !== options.tripId || message.clientId === options.clientId) return
+    if (message.tripId !== options.tripId
+      || message.clientId === options.clientId
+      || message.clientId === options.currentSessionId?.()) return
     const key = `${message.clientId}:${message.previewId}`
     if ((remoteSequences.get(key) ?? -1) >= message.sequence) return
     remoteSequences.set(key, message.sequence)

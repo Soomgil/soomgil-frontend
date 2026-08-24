@@ -1946,9 +1946,23 @@ watch(activeDay, () => {
 
 /* ── Panels ── */
 type RouteUtilityPanel = 'ai' | 'chat' | 'memo' | 'todo'
+type RouteLayoutMode = 'wide' | 'compact' | 'overlay' | 'mobile'
+
+function routeLayoutModeForWidth(width: number): RouteLayoutMode {
+  if (width >= 1440) return 'wide'
+  if (width >= 1024) return 'compact'
+  if (width >= 768) return 'overlay'
+  return 'mobile'
+}
+
+const initialViewportWidth = typeof window === 'undefined' ? 1440 : window.innerWidth
+const routeViewportWidth = ref(initialViewportWidth)
+const routeLayoutMode = computed(() => routeLayoutModeForWidth(routeViewportWidth.value))
+const isRouteOverlayLayout = computed(() => routeViewportWidth.value < 1024)
+const isLeftSidebarOpen = ref(initialViewportWidth >= 1024)
 
 const activeRoutePanel = ref<RouteUtilityPanel>('ai')
-const isRouteUtilityCollapsed = ref(false)
+const isRouteUtilityCollapsed = ref(initialViewportWidth < 1440)
 const isAiChatOpen = computed(() => activeRoutePanel.value === 'ai')
 const isTripChatOpen = computed(() => activeRoutePanel.value === 'chat')
 const isMemoOpen = computed(() => activeRoutePanel.value === 'memo')
@@ -1958,6 +1972,7 @@ const activeConversation = ref<'ai' | 'chat'>('ai')
 function togglePanel(panel: RouteUtilityPanel) {
   activeRoutePanel.value = panel
   isRouteUtilityCollapsed.value = false
+  if (isRouteOverlayLayout.value) isLeftSidebarOpen.value = false
   if (panel === 'ai' || panel === 'chat') {
     activeConversation.value = panel
     void loadConversations()
@@ -1969,7 +1984,21 @@ function togglePanel(panel: RouteUtilityPanel) {
 }
 
 function toggleRouteUtilityCollapsed() {
+  const willOpen = isRouteUtilityCollapsed.value
   isRouteUtilityCollapsed.value = !isRouteUtilityCollapsed.value
+  if (willOpen && isRouteOverlayLayout.value) isLeftSidebarOpen.value = false
+}
+
+function toggleLeftSidebar() {
+  const willOpen = !isLeftSidebarOpen.value
+  isLeftSidebarOpen.value = willOpen
+  if (willOpen && isRouteOverlayLayout.value) isRouteUtilityCollapsed.value = true
+}
+
+function closeResponsivePanels() {
+  if (!isRouteOverlayLayout.value) return
+  isLeftSidebarOpen.value = false
+  isRouteUtilityCollapsed.value = true
 }
 
 /* ── AI / trip chat ── */
@@ -2413,25 +2442,55 @@ const mapObjectPlacement = computed(() => (
   activeTool.value === 'sticker' || (activeTool.value === 'image' && pendingImageMediaId.value !== null)
 ))
 
-const penPopoverStyle = ref<{ left?: string }>({})
+type ToolPopoverStyle = Record<string, string>
 
-function updatePenPopoverPosition() {
-  const penBtn = document.getElementById('pen-btn')
-  const mapShell = document.querySelector('.map-shell')
-  if (!penBtn || !mapShell) return
+const mapCanvasRef = ref<HTMLElement | null>(null)
+const penToolButtonRef = ref<HTMLButtonElement | null>(null)
+const stickerToolButtonRef = ref<HTMLButtonElement | null>(null)
+const penPopoverRef = ref<HTMLElement | null>(null)
+const stickerPopoverRef = ref<HTMLElement | null>(null)
+const penPopoverStyle = ref<ToolPopoverStyle>({})
+const stickerPopoverStyle = ref<ToolPopoverStyle>({})
 
-  const penBtnRect = penBtn.getBoundingClientRect()
-  const shellRect = mapShell.getBoundingClientRect()
+function anchoredToolPopoverStyle(
+  button: HTMLElement | null,
+  popover: HTMLElement | null,
+): ToolPopoverStyle {
+  const canvas = mapCanvasRef.value
+  if (!button || !popover || !canvas) return {}
 
-  const leftOffset = penBtnRect.left - shellRect.left + (penBtnRect.width / 2)
-  penPopoverStyle.value = {
-    left: `${leftOffset}px`,
+  const buttonRect = button.getBoundingClientRect()
+  const canvasRect = canvas.getBoundingClientRect()
+  const popoverRect = popover.getBoundingClientRect()
+  const popoverWidth = popoverRect.width || 240
+  const halfWidth = popoverWidth / 2
+  const edgeGap = 12
+  const buttonCenter = buttonRect.left - canvasRect.left + (buttonRect.width / 2)
+  const clampedCenter = Math.min(
+    Math.max(buttonCenter, halfWidth + edgeGap),
+    Math.max(halfWidth + edgeGap, canvasRect.width - halfWidth - edgeGap),
+  )
+  const anchorX = buttonCenter - (clampedCenter - halfWidth)
+
+  return {
+    left: `${clampedCenter}px`,
+    bottom: `${Math.max(edgeGap, canvasRect.bottom - buttonRect.top + 10)}px`,
+    '--popover-anchor-x': `${Math.min(Math.max(anchorX, 16), popoverWidth - 16)}px`,
+  }
+}
+
+function updateToolPopoverPositions() {
+  if (isPenPopoverOpen.value) {
+    penPopoverStyle.value = anchoredToolPopoverStyle(penToolButtonRef.value, penPopoverRef.value)
+  }
+  if (activeTool.value === 'sticker') {
+    stickerPopoverStyle.value = anchoredToolPopoverStyle(stickerToolButtonRef.value, stickerPopoverRef.value)
   }
 }
 
 watch(isPenPopoverOpen, (isOpen) => {
   if (isOpen) {
-    nextTick(updatePenPopoverPosition)
+    nextTick(updateToolPopoverPositions)
   }
 })
 
@@ -2443,13 +2502,14 @@ watch(activeTool, (newTool) => {
     clearPendingRouteSelection()
   }
   if (newTool !== 'image') pendingImageMediaId.value = null
+  if (newTool === 'sticker') nextTick(updateToolPopoverPositions)
 })
 
 function selectMapTool(tool: MapDrawingTool) {
   if (activeTool.value === tool) {
     if (tool === 'pen') {
       isPenPopoverOpen.value = !isPenPopoverOpen.value
-      if (isPenPopoverOpen.value) nextTick(updatePenPopoverPosition)
+      if (isPenPopoverOpen.value) nextTick(updateToolPopoverPositions)
     }
     return
   }
@@ -2467,8 +2527,32 @@ function selectMapTool(tool: MapDrawingTool) {
   }
   if (tool === 'pen') {
     isPenPopoverOpen.value = true
-    nextTick(updatePenPopoverPosition)
+    nextTick(updateToolPopoverPositions)
   }
+}
+
+let previousRouteLayoutMode = routeLayoutMode.value
+
+function updateRouteResponsiveLayout() {
+  if (typeof window === 'undefined') return
+  routeViewportWidth.value = window.innerWidth
+  const nextMode = routeLayoutMode.value
+
+  if (nextMode !== previousRouteLayoutMode) {
+    if (nextMode === 'wide') {
+      isLeftSidebarOpen.value = true
+      isRouteUtilityCollapsed.value = false
+    } else if (nextMode === 'compact') {
+      isLeftSidebarOpen.value = true
+      isRouteUtilityCollapsed.value = true
+    } else {
+      isLeftSidebarOpen.value = false
+      isRouteUtilityCollapsed.value = true
+    }
+    previousRouteLayoutMode = nextMode
+  }
+
+  nextTick(updateToolPopoverPositions)
 }
 
 function toggleStandardMapView() {
@@ -2529,6 +2613,7 @@ const collaborationTransport = new StompTransport({
 			serverRedoAvailable.value = false
 		}
     if (reconnected) void itinerary.fetchItinerary()
+    if (drawingRetryIds.value.length > 0) retryDrawingSimplification()
   },
   onDisconnected: () => {
 		collaborationConnected.value = false
@@ -2550,6 +2635,7 @@ const drawingPreviewChannel = useDrawingPreviewChannel({
   tripId,
   clientId: globalThis.crypto?.randomUUID?.() ?? `drawing-client-${Date.now()}`,
   transport: collaborationTransport,
+  currentSessionId: getCollaborationSessionId,
 })
 const mapDrawings = computed(() => [
   ...localDrawings.value,
@@ -3062,7 +3148,8 @@ function disconnectTripRealtime() {
 }
 
 watch(itinerary.mapDrawings, (drawings) => {
-	localDrawings.value = drawings.flatMap((drawing) => {
+	const optimisticDrawings = localDrawings.value.filter((drawing) => drawing.id.startsWith('local-drawing-'))
+	const serverDrawings = drawings.flatMap((drawing) => {
 		const geometry = drawing.geometry as { type?: string; coordinates?: unknown }
 		if (geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) return []
 		const coordinates = geometry.coordinates.flatMap((coordinate) => (
@@ -3078,6 +3165,7 @@ watch(itinerary.mapDrawings, (drawings) => {
 			width: typeof drawing.style?.width === 'number' ? drawing.style.width : 6,
 		}]
 	})
+	localDrawings.value = [...serverDrawings, ...optimisticDrawings]
 }, { deep: true, immediate: true })
 
 async function syncMapObjectImages(drawings: MapDrawing[]) {
@@ -3262,7 +3350,8 @@ function publishMapCursor(coordinate: LngLat) {
 
 onMounted(() => {
   void connectRealtimeChannels()
-  window.addEventListener('resize', updatePenPopoverPosition)
+  updateRouteResponsiveLayout()
+  window.addEventListener('resize', updateRouteResponsiveLayout)
   cursorPruneTimer = window.setInterval(() => {
     const now = Date.now()
     const cutoff = now - 10_000
@@ -3278,7 +3367,7 @@ onMounted(() => {
 onUnmounted(() => {
   void drawingPreviewChannel.disconnect()
   disconnectTripRealtime()
-  window.removeEventListener('resize', updatePenPopoverPosition)
+  window.removeEventListener('resize', updateRouteResponsiveLayout)
   if (cursorPruneTimer) clearInterval(cursorPruneTimer)
   cursorPruneTimer = null
   Object.values(mapObjectImageUrls.value).forEach((url) => URL.revokeObjectURL(url))
@@ -3287,6 +3376,10 @@ onUnmounted(() => {
 async function simplifyLocalDrawing(drawingId: string) {
   const drawing = localDrawings.value.find((candidate) => candidate.id === drawingId)
   if (!drawing || pendingDrawingIds.value.includes(drawingId)) return
+  if (drawingId.startsWith('local-drawing-') && (!collaborationConnected.value || !getCollaborationSessionId())) {
+    queueDrawingRetry(drawingId)
+    return
+  }
   pendingDrawingIds.value = [...pendingDrawingIds.value, drawingId]
   drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
   try {
@@ -3311,31 +3404,38 @@ async function simplifyLocalDrawing(drawingId: string) {
 				style: { color: drawing.color, width: drawing.width },
 				sortOrder: itinerary.mapDrawings.value.length,
 			})
-			const currentIndex = localDrawings.value.findIndex(candidate => candidate.id === drawingId)
-			if (currentIndex >= 0) localDrawings.value[currentIndex] = { ...localDrawings.value[currentIndex], id: created.id }
+			localDrawings.value = [
+				...localDrawings.value.filter(candidate => candidate.id !== drawingId && candidate.id !== created.id),
+				{ id: created.id, coordinates: simplified.coordinates, color: drawing.color, width: drawing.width },
+			]
+			simplifiedDrawingCoordinates.delete(drawingId)
+			simplifiedDrawingCoordinates.set(created.id, simplified.coordinates)
 		}
   } catch {
     if (localDrawings.value.some((candidate) => candidate.id === drawingId)) {
-      if (!drawingRetryIds.value.includes(drawingId)) {
-        drawingRetryIds.value = [...drawingRetryIds.value, drawingId]
-      }
+      queueDrawingRetry(drawingId)
     }
   } finally {
     pendingDrawingIds.value = pendingDrawingIds.value.filter((id) => id !== drawingId)
   }
 }
 
-function createLocalDrawing(draft: MapDrawingDraft) {
-  if (!collaborationConnected.value || !getCollaborationSessionId()) {
-    itineraryActionError.value = '실시간 협업 연결 후 지도에 그려 주세요.'
-    return
+function queueDrawingRetry(drawingId: string) {
+  if (!drawingRetryIds.value.includes(drawingId)) {
+    drawingRetryIds.value = [...drawingRetryIds.value, drawingId]
   }
+}
+
+function createLocalDrawing(draft: MapDrawingDraft) {
   pushUndoState('drawing')
   const drawing: MapDrawingStroke = {
     id: `local-drawing-${++localDrawingSequence}`,
     ...draft,
   }
   localDrawings.value = [...localDrawings.value, drawing]
+  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+    itineraryActionError.value = '실시간 연결이 복구되면 그린 선을 자동으로 저장합니다.'
+  }
   void simplifyLocalDrawing(drawing.id)
 }
 
@@ -4046,10 +4146,28 @@ function textAvatarStyle(index: unknown) {
 <template>
   <AppShell>
     <section class="section full-screen route-page-section">
-      <div :class="['map-shell', { 'has-detailbar-open': isDetailbarOpen, 'is-route-utility-collapsed': isRouteUtilityCollapsed }]">
+      <div :class="['map-shell', `route-layout--${routeLayoutMode}`, {
+        'has-detailbar-open': isDetailbarOpen,
+        'is-route-utility-collapsed': isRouteUtilityCollapsed,
+        'is-sidebar-open': isLeftSidebarOpen,
+        'is-sidebar-hidden': !isLeftSidebarOpen,
+      }]">
 
           <!-- ═══ SIDEBAR ═══ -->
-          <aside class="sidebar">
+          <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
+            <span class="sidebar-sheet-handle" aria-hidden="true"></span>
+            <button
+              class="sidebar-toggle"
+              type="button"
+              aria-label="일정 패널 닫기"
+              aria-controls="route-itinerary-sidebar"
+              aria-expanded="true"
+              title="일정 패널 닫기"
+              @click="toggleLeftSidebar"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">left_panel_close</span>
+              <span>일정 닫기</span>
+            </button>
             <div class="sidebar-content">
               <!-- Trip header card -->
               <div :class="['trip-header-card', sidebarTheme]" id="trip-header-card-container">
@@ -4303,8 +4421,29 @@ function textAvatarStyle(index: unknown) {
 
           </aside>
 
+          <button
+            v-if="isRouteOverlayLayout && (isLeftSidebarOpen || !isRouteUtilityCollapsed)"
+            class="route-panel-backdrop"
+            type="button"
+            aria-label="열린 패널 닫기"
+            @click="closeResponsivePanels"
+          ></button>
+
           <!-- ═══ MAP CANVAS ═══ -->
-          <div :class="['map-canvas', { 'navigation-guide-mode': navigationGuideMode }]" :aria-label="`${trip.title} 지도`">
+          <div ref="mapCanvasRef" :class="['map-canvas', { 'navigation-guide-mode': navigationGuideMode }]" :aria-label="`${trip.title} 지도`">
+			<button
+				v-if="!isLeftSidebarOpen"
+				class="route-sidebar-restore"
+				type="button"
+				aria-label="일정 패널 열기"
+				aria-controls="route-itinerary-sidebar"
+				aria-expanded="false"
+				title="일정 패널 열기"
+				@click="toggleLeftSidebar"
+			>
+				<span class="material-symbols-rounded" aria-hidden="true">view_sidebar</span>
+				<span>일정 열기</span>
+			</button>
 			<MapboxItineraryMap
 				:stops="mapStops"
 				:routes="visibleMapRoutes"
@@ -4353,7 +4492,15 @@ function textAvatarStyle(index: unknown) {
               @change="handleMapImageSelected"
             >
 
-            <div v-if="activeTool === 'sticker'" class="map-sticker-palette" aria-label="지도 스티커 선택">
+            <div
+              v-if="activeTool === 'sticker'"
+              id="sticker-popover"
+              ref="stickerPopoverRef"
+              class="map-sticker-palette"
+              role="dialog"
+              aria-label="지도 스티커 선택"
+              :style="stickerPopoverStyle"
+            >
               <button
                 v-for="sticker in MAP_STICKERS"
                 :key="sticker.code"
@@ -4368,7 +4515,7 @@ function textAvatarStyle(index: unknown) {
               <span class="map-sticker-help">지도에서 놓을 위치를 선택하세요</span>
             </div>
 
-            <div v-if="selectedMapObjectId" class="map-object-actions">
+            <div v-if="selectedMapObjectId && activeTool === 'cursor'" class="map-object-actions">
               <span>모서리로 크기 조절 · 위 핸들로 회전</span>
               <button type="button" :disabled="itinerary.mutating.value" @click="deleteSelectedMapObject">
                 <span class="material-symbols-rounded" aria-hidden="true">delete</span>
@@ -4393,10 +4540,10 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <div v-if="drawingRetryIds.length > 0" class="map-drawing-status" role="alert">
-              <span>그림 좌표를 정리하지 못했습니다.</span>
+              <span>그림 저장을 완료하지 못했습니다.</span>
               <button
                 type="button"
-                aria-label="그림 좌표 정리 다시 시도"
+                aria-label="그림 저장 다시 시도"
                 title="다시 시도"
                 @click="retryDrawingSimplification"
               >
@@ -4405,7 +4552,7 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <!-- ===== Pen popover ===== -->
-            <div :class="['tool-popover', { 'is-open': isPenPopoverOpen }]" id="pen-popover" :style="penPopoverStyle" :aria-hidden="!isPenPopoverOpen">
+            <div ref="penPopoverRef" :class="['tool-popover', { 'is-open': isPenPopoverOpen }]" id="pen-popover" role="dialog" aria-label="자유 그리기 설정" :style="penPopoverStyle" :aria-hidden="!isPenPopoverOpen">
               <div class="popover-section">
                 <div class="popover-title">펜 굵기</div>
                 <div class="thickness-options">
@@ -4435,7 +4582,8 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <!-- ===== Toolbox ===== -->
-            <div class="map-tools">
+            <div class="map-tools-viewport" @scroll.passive="updateToolPopoverPositions">
+              <div class="map-tools">
               <!-- Drawing tools -->
               <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" data-tool="cursor" :aria-pressed="activeTool === 'cursor'" :disabled="itinerary.mutating.value" @click="selectMapTool('cursor')">
                 <span class="material-symbols-rounded">arrow_selector_tool</span>
@@ -4445,7 +4593,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded">polyline</span>
                 <span class="tool-tip">경로 연결 펜</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" :aria-pressed="activeTool === 'pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('pen')">
+              <button ref="penToolButtonRef" :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" aria-controls="pen-popover" :aria-expanded="isPenPopoverOpen" :aria-pressed="activeTool === 'pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('pen')">
                 <span class="material-symbols-rounded">edit</span>
                 <span class="tool-tip">자유 그리기</span>
               </button>
@@ -4453,7 +4601,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded">ink_eraser</span>
                 <span class="tool-tip">그림 지우개</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'sticker' }]" type="button" data-tool="sticker" :aria-pressed="activeTool === 'sticker'" :disabled="itinerary.mutating.value" @click="selectMapTool('sticker')">
+              <button ref="stickerToolButtonRef" :class="['tool-btn', { active: activeTool === 'sticker' }]" type="button" data-tool="sticker" aria-controls="sticker-popover" :aria-expanded="activeTool === 'sticker'" :aria-pressed="activeTool === 'sticker'" :disabled="itinerary.mutating.value" @click="selectMapTool('sticker')">
                 <span class="material-symbols-rounded">emoji_emotions</span>
                 <span class="tool-tip">스티커 삽입</span>
               </button>
@@ -4523,6 +4671,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded">redo</span>
                 <span class="tool-tip">다시 실행 (Ctrl+Y)</span>
               </button>
+              </div>
             </div>
           </div>
 
@@ -5087,6 +5236,7 @@ function textAvatarStyle(index: unknown) {
   color: #fff;
 }
 .route-page-section .map-shell {
+  position: relative;
   flex: 1;
   min-height: 0;
   border: 0;
@@ -5099,6 +5249,9 @@ function textAvatarStyle(index: unknown) {
   --detailbar-gap: 16px;
   --route-panel-width: 380px;
   transition: grid-template-columns 0.22s ease;
+}
+.route-page-section .map-shell.is-sidebar-hidden {
+  --sidebar-width: 0px;
 }
 .route-page-section .map-shell.is-route-utility-collapsed {
   --route-panel-width: 52px;
@@ -5117,6 +5270,9 @@ function textAvatarStyle(index: unknown) {
     #fff;
   box-shadow: -14px 0 32px rgba(15, 23, 42, 0.06);
   overflow: hidden;
+  position: relative;
+  z-index: 55;
+  transition: width 0.22s ease, transform 0.26s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.22s ease;
 }
 .route-utility-sidebar--chat {
   --route-accent: #0891b2;
@@ -5652,10 +5808,75 @@ function textAvatarStyle(index: unknown) {
   height: 100%;
   width: 100%;
   overflow: visible;
+  z-index: 70;
+  transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.route-page-section .sidebar.is-hidden {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 .route-page-section .sidebar-content {
   width: 100%;
   box-sizing: border-box;
+}
+.route-page-section .sidebar-toggle,
+.route-page-section .route-sidebar-restore {
+  width: 108px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.route-page-section .sidebar-toggle {
+  top: 12px;
+  right: -120px;
+  transform: none;
+}
+.route-page-section .sidebar-toggle:hover,
+.route-page-section .route-sidebar-restore:hover {
+  border-color: rgba(124, 58, 237, 0.28);
+  color: var(--violet);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.17);
+  transform: translateY(-1px);
+}
+.sidebar-sheet-handle {
+  display: none;
+}
+.route-panel-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  padding: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+}
+.route-sidebar-restore {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 32;
+}
+.route-page-section .sidebar-toggle .material-symbols-rounded,
+.route-page-section .route-sidebar-restore .material-symbols-rounded {
+  font-size: 20px;
 }
 .route-page-section .trip-info-badge-row {
   display: flex;
@@ -5892,8 +6113,49 @@ function textAvatarStyle(index: unknown) {
   margin-top: 2px;
 }
 .route-page-section .map-canvas {
+  --route-map-control-right-safe: 12px;
+  --route-map-tools-right-safe: 12px;
   height: 100%;
   min-height: 0;
+}
+
+.route-page-section .map-canvas :deep(.mapboxgl-ctrl-top-right) {
+  top: 12px;
+  right: var(--route-map-control-right-safe);
+  transition: right 0.22s ease;
+}
+
+.map-tools-viewport {
+  position: absolute;
+  right: var(--route-map-tools-right-safe);
+  bottom: 20px;
+  left: 12px;
+  z-index: 90;
+  height: 102px;
+  box-sizing: border-box;
+  padding-top: 48px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  pointer-events: none;
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+  transition: right 0.22s ease, opacity 0.18s ease;
+}
+
+.map-tools-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.route-page-section .map-tools-viewport .map-tools {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: max-content;
+  min-width: max-content;
+  margin: 0 auto;
+  pointer-events: auto;
+  transform: none;
 }
 
 .route-page-section .map-canvas.navigation-guide-mode {
@@ -5999,7 +6261,7 @@ function textAvatarStyle(index: unknown) {
   background: rgb(255 255 255 / 96%);
   border: 1px solid #fecdd3;
   border-radius: 6px;
-  bottom: 16px;
+  bottom: 82px;
   color: #be123c;
   display: flex;
   font-size: 12px;
@@ -6503,9 +6765,9 @@ function textAvatarStyle(index: unknown) {
 
 .map-sticker-palette {
   position: absolute;
-  right: 76px;
-  bottom: 86px;
-  z-index: 8;
+  left: 50%;
+  bottom: 82px;
+  z-index: 35;
   display: grid;
   grid-template-columns: repeat(4, 42px);
   gap: 7px;
@@ -6515,6 +6777,20 @@ function textAvatarStyle(index: unknown) {
   background: rgba(255, 252, 246, .96);
   box-shadow: 0 18px 48px rgba(15, 23, 42, .18), 0 2px 8px rgba(15, 23, 42, .08);
   backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+}
+
+.map-sticker-palette::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: var(--popover-anchor-x, 50%);
+  width: 12px;
+  height: 12px;
+  border-right: 1px solid rgba(15, 23, 42, .1);
+  border-bottom: 1px solid rgba(15, 23, 42, .1);
+  background: rgba(255, 252, 246, .96);
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .map-sticker-option {
@@ -6552,8 +6828,8 @@ function textAvatarStyle(index: unknown) {
 .map-object-actions {
   position: absolute;
   left: 50%;
-  bottom: 26px;
-  z-index: 8;
+  bottom: 82px;
+  z-index: 24;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -6584,5 +6860,270 @@ function textAvatarStyle(index: unknown) {
 
 .map-object-actions .material-symbols-rounded {
   font-size: 16px;
+}
+
+.route-page-section .tool-popover::after {
+  left: var(--popover-anchor-x, 50%);
+}
+
+@media (max-width: 1439px) {
+  .route-page-section .map-shell {
+    --route-panel-width: 52px;
+  }
+
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(380px, calc(100% - 24px));
+    z-index: 75;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 340px;
+    --route-map-tools-right-safe: 340px;
+  }
+
+  .route-page-section .map-tools .tool-btn {
+    flex: 0 0 40px;
+  }
+
+  .route-page-section .detailbar {
+    width: min(420px, calc(100% - var(--sidebar-width, 360px) - 76px));
+  }
+}
+
+@media (max-width: 1023px) {
+  .route-page-section .map-shell,
+  .route-page-section .map-shell.is-route-utility-collapsed,
+  .route-page-section .map-shell.is-sidebar-hidden {
+    --sidebar-width: 0px;
+    --route-panel-width: 0px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .route-page-section .sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(360px, calc(100% - 64px));
+    border-right: 1px solid var(--line);
+    box-shadow: 18px 0 48px rgba(15, 23, 42, 0.18);
+  }
+
+  .route-page-section .sidebar.is-hidden {
+    transform: translateX(calc(-100% - 24px));
+  }
+
+  .route-page-section .route-utility-sidebar,
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(380px, calc(100% - 64px));
+    z-index: 75;
+  }
+
+  .route-page-section .route-utility-sidebar.is-collapsed {
+    width: 52px;
+  }
+
+  .route-page-section .map-canvas {
+    --route-map-control-right-safe: 64px;
+    --route-map-tools-right-safe: 64px;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 392px;
+    --route-map-tools-right-safe: 392px;
+  }
+
+  .route-page-section .detailbar {
+    top: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: min(440px, calc(100% - 76px));
+    z-index: 50;
+  }
+
+  .route-page-section .detailbar.is-hidden {
+    transform: translateX(calc(-100% - 24px));
+  }
+}
+
+@media (max-width: 767px) {
+  .route-page-section {
+    top: 64px !important;
+  }
+
+  .route-page-section .sidebar {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(72dvh, calc(100% - 12px));
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -18px 52px rgba(15, 23, 42, 0.20);
+    transform: translateY(0);
+  }
+
+  .route-page-section .sidebar.is-hidden {
+    transform: translateY(calc(100% + 24px));
+  }
+
+  .route-page-section .sidebar-content {
+    padding: 54px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .route-page-section .sidebar-toggle {
+    top: 14px;
+    right: 14px;
+    width: 108px;
+    height: 42px;
+    border-radius: 999px;
+    transform: none;
+  }
+
+  .route-page-section .sidebar-toggle:hover {
+    transform: scale(1.04);
+  }
+
+  .sidebar-sheet-handle {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 2;
+    display: block;
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.34);
+    transform: translateX(-50%);
+  }
+
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(72dvh, calc(100% - 12px));
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -18px 52px rgba(15, 23, 42, 0.20);
+  }
+
+  .route-page-section .route-utility-sidebar.is-collapsed {
+    top: 12px;
+    right: 12px;
+    bottom: auto;
+    width: auto;
+    height: 52px;
+    flex-direction: row;
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    border-radius: 999px;
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.16);
+  }
+
+  .route-page-section .route-utility-sidebar.is-collapsed .route-utility-header {
+    padding: 6px 2px 6px 6px;
+    border-right: 1px solid rgba(15, 23, 42, 0.08);
+    border-bottom: 0;
+  }
+
+  .route-page-section .route-utility-sidebar.is-collapsed .route-utility-tabs {
+    grid-template-columns: repeat(4, 40px);
+    align-content: center;
+    gap: 2px;
+    padding: 6px;
+    border-bottom: 0;
+  }
+
+  .route-page-section .route-utility-sidebar.is-collapsed .route-utility-tab {
+    width: 40px;
+    height: 40px;
+  }
+
+  .route-page-section .map-canvas {
+    --route-map-control-right-safe: min(268px, calc(100% - 52px));
+    --route-map-tools-right-safe: 12px;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 12px;
+    --route-map-tools-right-safe: 12px;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-tools-viewport {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .route-sidebar-restore {
+    top: 12px;
+    width: 108px;
+    padding: 0 12px;
+  }
+
+  .route-page-section .detailbar {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(76dvh, calc(100% - 12px));
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -18px 52px rgba(15, 23, 42, 0.22);
+    transform: translateY(0);
+  }
+
+  .route-page-section .detailbar.is-hidden {
+    transform: translateY(calc(100% + 24px));
+  }
+
+  .route-page-section .detailbar-scroll {
+    padding: 22px 18px calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .route-page-section .map-tools-viewport {
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .route-page-section .map-tools {
+    border-radius: 14px;
+  }
+
+  .map-object-actions,
+  .map-drawing-status {
+    bottom: calc(74px + env(safe-area-inset-bottom));
+  }
+
+  .map-object-actions > span {
+    display: none;
+  }
+
+  .map-sticker-palette {
+    max-width: calc(100% - 24px);
+  }
+
+  .route-page-section .tool-popover {
+    max-width: calc(100% - 24px);
+    min-width: min(240px, calc(100% - 24px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-page-section .map-shell,
+  .route-page-section .sidebar,
+  .route-page-section .route-utility-sidebar {
+    transition-duration: 0.01ms !important;
+  }
 }
 </style>
