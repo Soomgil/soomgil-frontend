@@ -82,25 +82,37 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/trips/:tripId/vote',
+      name: 'TripVote',
+      component: () => import('@/pages/TripVotePage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/community',
       name: 'Community',
-      component: () => import('@/pages/CommunityPage.vue'),
+      component: () => import('@/pages/CommunityFeedPage.vue'),
+    },
+    {
+      path: '/community/threads/:threadId',
+      name: 'CommunityThread',
+      component: () => import('@/pages/CommunityThreadDetailPage.vue'),
     },
     {
       path: '/community/feed',
       name: 'Feed',
       redirect: { name: 'Community' },
     },
+    // 여행 스냅샷 게시글 UI는 신규 커뮤니티에서 사용하지 않는다.
+    // 기존 링크가 깨지지 않도록 새 공개 피드로 보낸다.
     {
       path: '/community/stories',
       name: 'Stories',
-      component: () => import('@/pages/StoriesPage.vue'),
+      redirect: { name: 'Community' },
     },
     {
       path: '/community/story-write',
       name: 'StoryWrite',
-      component: () => import('@/pages/StoryWritePage.vue'),
-      meta: { requiresAuth: true },
+      redirect: { name: 'Community' },
     },
     {
       path: '/record',

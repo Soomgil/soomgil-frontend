@@ -502,7 +502,7 @@ async function fetchHomeData() {
         <div v-else-if="featuredStories.length === 0" class="home-section-state home-section-state--wide">
           <span class="material-symbols-rounded home-section-state-icon">auto_stories</span>
           <p>아직 공개된 여행기가 없어요.</p>
-          <a class="btn primary home-section-state-cta" href="#" @click.prevent="router.push('/community/story-write')">첫 여행기 작성하기</a>
+          <a class="btn primary home-section-state-cta" href="#" @click.prevent="router.push('/community')">커뮤니티 둘러보기</a>
         </div>
         <div v-else class="home-community-grid">
           <div

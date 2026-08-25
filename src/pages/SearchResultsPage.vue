@@ -290,7 +290,7 @@ function exploreSection(section: 'trips' | 'places' | 'posts' | 'users') {
   const target: Record<typeof section, string> = {
     trips: '/my-trips',
     places: '/community',
-    posts: '/community/stories',
+    posts: '/community',
     users: '/community',
   }
   router.push({ path: target[section], query: q ? { q } : {} })

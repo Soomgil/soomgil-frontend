@@ -531,7 +531,7 @@ function handleUserClick(userId: string) {
               <span class="material-symbols-rounded mypage-empty-icon">auto_stories</span>
               <p class="mypage-empty-title">작성한 여행기가 없어요</p>
               <p class="mypage-empty-desc">여행에서 만난 순간들을 기록으로 남겨보세요.</p>
-              <button type="button" class="mypage-empty-cta" @click="router.push('/community/story-write')">여행기 쓰기</button>
+              <button type="button" class="mypage-empty-cta" @click="router.push('/community')">커뮤니티 가기</button>
             </div>
 
             <!-- 데이터 있을 때 -->
