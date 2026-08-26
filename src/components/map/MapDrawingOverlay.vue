@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { projectMapObject } from './mapObjectGeometry'
 import type { DrawingPreviewEvent, DrawingPreviewPhase } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
+import type { MapDrawing } from '@/types/itinerary'
 import { simplifyPathToLimit } from '@/utils/pathSimplification'
 
 export type MapDrawingTool = 'cursor' | 'route-pen' | 'pen' | 'eraser' | 'sticker' | 'image'
@@ -25,6 +27,7 @@ interface ScreenPoint {
 }
 
 const STORED_STROKE_MAX_POINTS = 100
+const ERASER_RADIUS_PX = 12
 
 const props = withDefaults(defineProps<{
   drawings: MapDrawingStroke[]
@@ -35,16 +38,18 @@ const props = withDefaults(defineProps<{
   drawingsVisible?: boolean
   projectionRevision: number
   routeWaypoints?: LngLat[]
+  objects?: MapDrawing[]
   project: (coordinate: LngLat) => ScreenPoint | null
   unproject: (point: ScreenPoint) => LngLat | null
 }>(), {
   drawingsVisible: true,
   routeWaypoints: () => [],
+  objects: () => [],
 })
 
 const emit = defineEmits<{
   create: [drawing: MapDrawingDraft]
-  erase: [drawingId: string]
+  erase: [drawingIds: string[]]
   preview: [event: DrawingPreviewEvent]
   routePoint: [coordinate: LngLat]
   pan: [delta: ScreenPoint]
@@ -61,6 +66,9 @@ let activeRoutePointPointerId: number | null = null
 let routePointStart: ScreenPoint | null = null
 let activePanPointerId: number | null = null
 let lastPanPoint: ScreenPoint | null = null
+let activeEraserPointerId: number | null = null
+let lastEraserPoint: ScreenPoint | null = null
+let erasedDuringGesture = new Set<string>()
 
 const editable = computed(() => props.enabled && (props.tool === 'route-pen' || props.tool === 'pen' || props.tool === 'eraser'))
 const currentPath = computed(() => smoothStrokePath(currentPoints.value))
@@ -80,6 +88,14 @@ const projectedDrawings = computed(() => {
       .map(props.project)
       .filter((point): point is ScreenPoint => point !== null)),
   }))
+})
+const projectedObjects = computed(() => {
+  void props.projectionRevision
+  return props.objects.flatMap((drawing) => {
+    if (!drawing.transform) return []
+    const projected = projectMapObject(drawing.transform, props.project)
+    return projected ? [{ id: drawing.id, corners: projected.corners }] : []
+  })
 })
 
 function smoothStrokePath(points: ScreenPoint[]) {
@@ -114,6 +130,123 @@ function localPoint(event: Pick<PointerEvent, 'clientX' | 'clientY'>): ScreenPoi
 
 function pointDistance(left: ScreenPoint, right: ScreenPoint) {
   return Math.hypot(right.x - left.x, right.y - left.y)
+}
+
+function pointToSegmentDistance(point: ScreenPoint, start: ScreenPoint, end: ScreenPoint) {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  if (dx === 0 && dy === 0) return pointDistance(point, start)
+  const ratio = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)))
+  return pointDistance(point, { x: start.x + dx * ratio, y: start.y + dy * ratio })
+}
+
+function orientation(first: ScreenPoint, second: ScreenPoint, third: ScreenPoint) {
+  return (second.x - first.x) * (third.y - first.y) - (second.y - first.y) * (third.x - first.x)
+}
+
+function pointOnSegment(point: ScreenPoint, start: ScreenPoint, end: ScreenPoint) {
+  return Math.abs(orientation(start, end, point)) < 0.0001
+    && point.x >= Math.min(start.x, end.x) && point.x <= Math.max(start.x, end.x)
+    && point.y >= Math.min(start.y, end.y) && point.y <= Math.max(start.y, end.y)
+}
+
+function segmentsIntersect(a: ScreenPoint, b: ScreenPoint, c: ScreenPoint, d: ScreenPoint) {
+  const abC = orientation(a, b, c)
+  const abD = orientation(a, b, d)
+  const cdA = orientation(c, d, a)
+  const cdB = orientation(c, d, b)
+  if (((abC < 0 && abD > 0) || (abC > 0 && abD < 0))
+    && ((cdA < 0 && cdB > 0) || (cdA > 0 && cdB < 0))) return true
+  return pointOnSegment(c, a, b)
+    || pointOnSegment(d, a, b)
+    || pointOnSegment(a, c, d)
+    || pointOnSegment(b, c, d)
+}
+
+function segmentDistance(a: ScreenPoint, b: ScreenPoint, c: ScreenPoint, d: ScreenPoint) {
+  if (segmentsIntersect(a, b, c, d)) return 0
+  return Math.min(
+    pointToSegmentDistance(a, c, d),
+    pointToSegmentDistance(b, c, d),
+    pointToSegmentDistance(c, a, b),
+    pointToSegmentDistance(d, a, b),
+  )
+}
+
+function pointInPolygon(point: ScreenPoint, polygon: ScreenPoint[]) {
+  let inside = false
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+    const currentPoint = polygon[index]!
+    const previousPoint = polygon[previous]!
+    const crosses = (currentPoint.y > point.y) !== (previousPoint.y > point.y)
+      && point.x < (previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)
+        / (previousPoint.y - currentPoint.y || Number.EPSILON) + currentPoint.x
+    if (crosses) inside = !inside
+  }
+  return inside
+}
+
+function collectEraserHits(start: ScreenPoint, end: ScreenPoint) {
+  projectedDrawings.value.forEach((drawing) => {
+    const points = drawing.coordinates.map(props.project).filter((point): point is ScreenPoint => point !== null)
+    for (let index = 1; index < points.length; index += 1) {
+      if (segmentDistance(start, end, points[index - 1]!, points[index]!) <= ERASER_RADIUS_PX + drawing.width / 2) {
+        erasedDuringGesture.add(drawing.id)
+        break
+      }
+    }
+  })
+  projectedObjects.value.forEach((object) => {
+    if (pointInPolygon(start, object.corners) || pointInPolygon(end, object.corners)) {
+      erasedDuringGesture.add(object.id)
+      return
+    }
+    for (let index = 0; index < object.corners.length; index += 1) {
+      const edgeStart = object.corners[index]!
+      const edgeEnd = object.corners[(index + 1) % object.corners.length]!
+      if (segmentDistance(start, end, edgeStart, edgeEnd) <= ERASER_RADIUS_PX) {
+        erasedDuringGesture.add(object.id)
+        return
+      }
+    }
+  })
+}
+
+function beginEraser(event: PointerEvent) {
+  if (props.tool !== 'eraser' || event.button !== 0) return false
+  const point = localPoint(event)
+  if (!point) return true
+  event.preventDefault()
+  activeEraserPointerId = event.pointerId
+  lastEraserPoint = point
+  erasedDuringGesture = new Set()
+  collectEraserHits(point, point)
+  surface.value?.setPointerCapture?.(event.pointerId)
+  return true
+}
+
+function extendEraser(event: PointerEvent) {
+  if (activeEraserPointerId !== event.pointerId || !lastEraserPoint) return false
+  for (const sample of pointerSamples(event)) {
+    const point = localPoint(sample)
+    if (!point) continue
+    collectEraserHits(lastEraserPoint, point)
+    lastEraserPoint = point
+  }
+  event.preventDefault()
+  return true
+}
+
+function finishEraser(event: PointerEvent, commit = true) {
+  if (activeEraserPointerId !== event.pointerId) return false
+  if (commit) extendEraser(event)
+  const drawingIds = [...erasedDuringGesture]
+  activeEraserPointerId = null
+  lastEraserPoint = null
+  erasedDuringGesture = new Set()
+  releasePointerCapture(event.pointerId)
+  if (commit && drawingIds.length > 0) emit('erase', drawingIds)
+  return true
 }
 
 function createPreviewId() {
@@ -165,6 +298,7 @@ function beginStroke(event: PointerEvent) {
     surface.value?.setPointerCapture?.(event.pointerId)
     return
   }
+  if (beginEraser(event)) return
   if ((props.tool !== 'route-pen' && props.tool !== 'pen') || event.button !== 0) return
   const point = localPoint(event)
   if (!point) return
@@ -183,6 +317,7 @@ function beginStroke(event: PointerEvent) {
 }
 
 function extendStroke(event: PointerEvent) {
+  if (extendEraser(event)) return
   if (activePanPointerId === event.pointerId) {
     const point = localPoint(event)
     if (!point || !lastPanPoint) return
@@ -212,6 +347,7 @@ function releasePointerCapture(pointerId: number) {
 }
 
 function finishStroke(event: PointerEvent) {
+  if (finishEraser(event)) return
   if (activePanPointerId === event.pointerId) {
     activePanPointerId = null
     lastPanPoint = null
@@ -254,6 +390,7 @@ function finishCapturedStroke(pointerId: number) {
 }
 
 function cancelStroke(event: PointerEvent) {
+  if (finishEraser(event, false)) return
   if (activePanPointerId === event.pointerId) {
     activePanPointerId = null
     lastPanPoint = null
@@ -275,6 +412,7 @@ function cancelStroke(event: PointerEvent) {
 }
 
 function handleLostPointerCapture(event: PointerEvent) {
+  if (finishEraser(event)) return
   if (activePanPointerId === event.pointerId) {
     activePanPointerId = null
     lastPanPoint = null
@@ -299,13 +437,6 @@ function finishRoutePoint(event: PointerEvent) {
   if (!point || pointDistance(start, point) > 10) return
   const coordinate = props.unproject(point)
   if (coordinate) emit('routePoint', coordinate)
-}
-
-function eraseDrawing(event: PointerEvent, drawingId: string) {
-  if (!props.enabled || props.tool !== 'eraser') return
-  event.preventDefault()
-  event.stopPropagation()
-  emit('erase', drawingId)
 }
 
 function preventContextMenu(event: MouseEvent) {
@@ -340,14 +471,6 @@ function zoomThroughOverlay(event: WheelEvent) {
     @wheel="zoomThroughOverlay"
   >
     <template v-for="drawing in projectedDrawings" :key="drawing.id">
-      <path
-        v-if="tool === 'eraser'"
-        class="map-drawing-hit-target"
-        :d="drawing.path"
-        stroke="transparent"
-        :stroke-width="Math.max(drawing.width, 24)"
-        @pointerdown="eraseDrawing($event, drawing.id)"
-      />
       <path
         class="map-drawing-stroke"
         :d="drawing.path"
@@ -398,18 +521,12 @@ function zoomThroughOverlay(event: WheelEvent) {
 
 .map-drawing-overlay.erasing {
   cursor: cell;
+  z-index: 5;
 }
 
 .map-drawing-stroke {
   fill: none;
   pointer-events: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.map-drawing-hit-target {
-  fill: none;
-  pointer-events: stroke;
   stroke-linecap: round;
   stroke-linejoin: round;
 }

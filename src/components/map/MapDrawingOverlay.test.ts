@@ -64,14 +64,36 @@ describe('MapDrawingOverlay', () => {
     expect(new Set(previews.map(({ previewId }) => previewId)).size).toBe(1)
   })
 
-  it('지우개로 선택한 stroke id를 전달한다', async () => {
+  it('지우개 드래그 경로에 닿은 stroke와 지도 오브젝트를 한 묶음으로 전달한다', async () => {
     const wrapper = mount(MapDrawingOverlay, {
       props: {
-        drawings: [{
-          id: 'drawing-1',
-          coordinates: [{ lng: 10, lat: 20 }, { lng: 30, lat: 40 }],
-          color: '#1f2937',
-          width: 4,
+        drawings: [
+          {
+            id: 'drawing-1',
+            coordinates: [{ lng: 10, lat: 20 }, { lng: 30, lat: 40 }],
+            color: '#1f2937',
+            width: 4,
+          },
+          {
+            id: 'drawing-2',
+            coordinates: [{ lng: 50, lat: 60 }, { lng: 90, lat: 100 }],
+            color: '#1f2937',
+            width: 4,
+          },
+        ],
+        objects: [{
+          id: 'sticker-1',
+          itineraryDayId: null,
+          drawingType: 'STICKER',
+          geometryFormat: 'GEOJSON',
+          geometry: { type: 'Point', coordinates: [70, 80] },
+          style: null,
+          label: null,
+          mediaFileId: null,
+          stickerCode: 'HEART',
+          transform: { centerLng: 70, centerLat: 80, widthMeters: 100, heightMeters: 100, rotationDeg: 0 },
+          sortOrder: 0,
+          version: 0,
         }],
         tool: 'eraser',
         color: '#1f2937',
@@ -83,11 +105,16 @@ describe('MapDrawingOverlay', () => {
       },
     })
 
-    const hitTarget = wrapper.get('.map-drawing-hit-target')
-    expect(hitTarget.attributes('stroke-width')).toBe('24')
-    await dispatchPointer(hitTarget.element, 'pointerdown', { pointerId: 1, button: 0 })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    })
+    await dispatchPointer(surface.element, 'pointerdown', { pointerId: 1, button: 0, clientX: 5, clientY: 15 })
+    await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, clientX: 55, clientY: 65 })
+    await dispatchPointer(surface.element, 'pointerup', { pointerId: 1, clientX: 95, clientY: 105 })
 
-    expect(wrapper.emitted('erase')).toEqual([['drawing-1']])
+    expect(wrapper.emitted('erase')).toEqual([[['drawing-1', 'drawing-2', 'sticker-1']]])
   })
 
   it('경로 연결 펜은 클릭한 지도 좌표를 routePoint로 전달한다', async () => {

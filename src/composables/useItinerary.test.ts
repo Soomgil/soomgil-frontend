@@ -17,6 +17,7 @@ vi.mock('@/api/itinerary.api', () => ({
 		deleteRoute: vi.fn(),
 		createDrawing: vi.fn(),
 		deleteDrawing: vi.fn(),
+		deleteDrawings: vi.fn(),
   },
 }))
 
@@ -342,5 +343,35 @@ describe('useItinerary', () => {
     })
     expect(state.routes.value).toEqual([route])
     expect(state.itineraryVersion.value).toBe(8)
+  })
+
+  it('지우개로 선택한 drawing들을 한 요청으로 삭제한다', async () => {
+    const drawings = ['drawing-1', 'drawing-2'].map((id) => ({
+      id,
+      itineraryDayId: null,
+      drawingType: 'FREEHAND' as const,
+      geometryFormat: 'GEOJSON' as const,
+      geometry: { type: 'LineString', coordinates: [[127, 37], [127.1, 37.1]] },
+      style: null,
+      label: null,
+      mediaFileId: null,
+      stickerCode: null,
+      transform: null,
+      sortOrder: 0,
+      version: 0,
+    }))
+    vi.mocked(itineraryApi.getItinerary).mockResolvedValue({ ...itinerary, mapDrawings: drawings })
+    vi.mocked(itineraryApi.deleteDrawings).mockResolvedValue({
+      tripId: 'trip-1', itineraryVersion: 4, day: null, item: null,
+      route: null, drawing: null, affectedRouteIds: [],
+    })
+    const state = useItinerary('trip-1')
+    await state.fetchItinerary()
+
+    await state.deleteDrawings(['drawing-1', 'drawing-2', 'drawing-1'])
+
+    expect(itineraryApi.deleteDrawings).toHaveBeenCalledWith('trip-1', ['drawing-1', 'drawing-2'], 3)
+    expect(state.mapDrawings.value).toEqual([])
+    expect(state.itineraryVersion.value).toBe(4)
   })
 })

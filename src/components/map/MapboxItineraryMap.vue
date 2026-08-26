@@ -97,7 +97,7 @@ const emit = defineEmits<{
   selectNearbyPlace: [placeProvider: string, placeId: string]
   viewportChange: [viewport: Viewport]
   drawingCreate: [drawing: MapDrawingDraft]
-  drawingErase: [drawingId: string]
+  drawingErase: [drawingIds: string[]]
   drawingPreview: [event: DrawingPreviewEvent]
   routePoint: [coordinate: LngLat]
   mapObjectPlace: [transform: MapObjectTransform]
@@ -672,6 +672,7 @@ onBeforeUnmount(() => {
       :drawings-visible="drawingsVisible"
       :projection-revision="projectionRevision"
       :route-waypoints="routeWaypoints"
+      :objects="mapObjects"
       :project="projectDrawingCoordinate"
       :unproject="unprojectDrawingPoint"
       @create="emit('drawingCreate', $event)"

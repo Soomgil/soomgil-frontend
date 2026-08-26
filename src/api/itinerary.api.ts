@@ -85,4 +85,12 @@ export const itineraryApi = {
     })
     return response.data
   },
+
+  deleteDrawings: async (tripId: string, drawingIds: string[], baseVersion: number): Promise<ItineraryMutationResponse> => {
+    const response = await http.post<ItineraryMutationResponse>(`/trips/${tripId}/map-drawings/batch-delete`, {
+      baseVersion,
+      drawingIds,
+    })
+    return response.data
+  },
 }
