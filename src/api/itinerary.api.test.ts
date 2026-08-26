@@ -105,6 +105,7 @@ describe('itinerary API', () => {
 		})
 		await itineraryApi.deleteRoute('trip-1', 'route-1', 4)
 		await itineraryApi.deleteDrawing('trip-1', 'drawing-1', 4)
+		await itineraryApi.deleteDrawings('trip-1', ['drawing-1', 'drawing-2'], 5)
 
 		expect(http.post).toHaveBeenCalledWith('/trips/trip-1/itinerary/routes/map-match', routeRequest)
 		expect(http.post).toHaveBeenCalledWith('/trips/trip-1/map-drawings', drawingRequest)
@@ -115,5 +116,9 @@ describe('itinerary API', () => {
 		})
 		expect(http.delete).toHaveBeenCalledWith('/trips/trip-1/itinerary/routes/route-1', { data: { baseVersion: 4 } })
 		expect(http.delete).toHaveBeenCalledWith('/trips/trip-1/map-drawings/drawing-1', { data: { baseVersion: 4 } })
+		expect(http.post).toHaveBeenCalledWith('/trips/trip-1/map-drawings/batch-delete', {
+			baseVersion: 5,
+			drawingIds: ['drawing-1', 'drawing-2'],
+		})
 	})
 })

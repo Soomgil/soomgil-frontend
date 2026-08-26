@@ -155,6 +155,7 @@ vi.mock('@/composables/useItinerary', async () => {
 		createDrawing: vi.fn(),
 		updateDrawing: vi.fn(),
 		deleteDrawing: vi.fn(),
+		deleteDrawings: vi.fn(),
     unscheduledDay: computed(() => days.value.find((day) => day.groupType === 'UNSCHEDULED') ?? null),
   }
   return { useItinerary: () => holder.state }
@@ -376,7 +377,7 @@ describe('RoutePage itinerary integration', () => {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
-    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
+    await vi.waitFor(() => expect(connectedApis.ai.getMessages).toHaveBeenCalled())
 
     const input = wrapper.get('#ai-chat-input')
     await input.setValue('일정을 요약해줘')
@@ -397,7 +398,7 @@ describe('RoutePage itinerary integration', () => {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
-    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
+    await vi.waitFor(() => expect(connectedApis.ai.getMessages).toHaveBeenCalled())
 
     await wrapper.get('#ai-chat-input').setValue('일정을 요약해줘')
     await wrapper.get('#ai-chat-send-btn').trigger('click')
@@ -433,7 +434,7 @@ describe('RoutePage itinerary integration', () => {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
-    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
+    await vi.waitFor(() => expect(connectedApis.ai.getMessages).toHaveBeenCalled())
 
     await wrapper.get('#ai-chat-input').setValue('일정을 요약해줘')
     await wrapper.get('#ai-chat-send-btn').trigger('click')
@@ -484,16 +485,26 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('#trip-chat-panel').classes()).toContain('show')
   })
 
-  it('우측 사이드바 접기 버튼으로 지도 영역을 확장한다', async () => {
+  it('헤더 없이 패널 경계 버튼으로 우측 사이드바를 접고 펼친다', async () => {
     const wrapper = mount(RoutePage, {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
 
-    await wrapper.get('.route-utility-collapse').trigger('click')
+    expect(wrapper.find('.route-utility-header').exists()).toBe(false)
+    const toggle = wrapper.get('.route-utility-toggle')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    await toggle.trigger('click')
 
     expect(wrapper.get('.map-shell').classes()).toContain('is-route-utility-collapsed')
     expect(wrapper.get('.route-utility-sidebar').classes()).toContain('is-collapsed')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.attributes('aria-label')).toBe('우측 패널 열기')
+    expect(wrapper.get('.route-utility-restore').attributes('aria-label')).toBe('우측 패널 열기')
+
+    await wrapper.get('.route-utility-restore').trigger('click')
+    expect(wrapper.get('.map-shell').classes()).not.toContain('is-route-utility-collapsed')
+    expect(wrapper.find('.route-utility-restore').exists()).toBe(false)
   })
 
   it('지도 패널에서 여행 메모와 체크리스트 항목을 바로 저장한다', async () => {
@@ -530,6 +541,7 @@ describe('RoutePage itinerary integration', () => {
     expect(connectedApis.planning.saveNote).toHaveBeenCalledWith('trip-1', {
       scopeType: 'TRIP', itineraryDayId: null,
     }, '렌터카 예약 확인')
+    expect(wrapper.get('.memo-status').text()).toBe('저장됨')
 
     await wrapper.get('#todo-fab').trigger('click')
     await flushPromises()
@@ -2173,7 +2185,7 @@ describe('RoutePage itinerary integration', () => {
     }])
 
     const localDrawingId = (map.props('drawings') as Array<{ id: string }>)[0].id
-    map.vm.$emit('drawingErase', localDrawingId)
+    map.vm.$emit('drawingErase', [localDrawingId])
     await nextTick()
 		expect(map.props('drawings')).toHaveLength(1)
     realtime.instances[0].subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
@@ -2187,7 +2199,7 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
     expect(map.props('drawings')).toEqual([])
-		expect(holder.state.deleteDrawing).toHaveBeenCalledWith('drawing-1')
+		expect(holder.state.deleteDrawings).toHaveBeenCalledWith(['drawing-1'])
   })
 
   it('실시간 연결이 잠시 끊겨도 그린 선을 화면에 유지하고 재연결 후 저장한다', async () => {
@@ -2543,7 +2555,7 @@ describe('RoutePage itinerary integration', () => {
     expect(map.props('drawings')).toHaveLength(1)
 
     const localDrawingId = (map.props('drawings') as Array<{ id: string }>)[0].id
-    map.vm.$emit('drawingErase', localDrawingId)
+    map.vm.$emit('drawingErase', [localDrawingId])
     await flushPromises()
     expect(map.props('drawings')).toEqual([])
 
@@ -2830,8 +2842,9 @@ describe('RoutePage itinerary integration', () => {
     await wrapper.get('.route-sidebar-restore').trigger('click')
     expect(shell.classes()).toContain('is-sidebar-open')
     expect(wrapper.find('.route-panel-backdrop').exists()).toBe(true)
-    expect(wrapper.get('.sidebar-toggle').text()).toContain('일정 닫기')
+    expect(wrapper.get('.sidebar-toggle').attributes('aria-label')).toBe('일정 패널 닫기')
 
+    await wrapper.get('.route-utility-restore').trigger('click')
     await wrapper.get('.route-utility-tab--chat').trigger('click')
     expect(shell.classes()).toContain('is-sidebar-hidden')
     expect(shell.classes()).not.toContain('is-route-utility-collapsed')
@@ -2864,9 +2877,10 @@ describe('RoutePage itinerary integration', () => {
       'is-route-utility-collapsed',
     ]))
     expect(wrapper.get('.route-sidebar-restore').attributes('aria-label')).toBe('일정 패널 열기')
+    expect(wrapper.get('.route-utility-restore').attributes('aria-label')).toBe('우측 패널 열기')
     await wrapper.get('.route-sidebar-restore').trigger('click')
     expect(wrapper.find('.sidebar-sheet-handle').exists()).toBe(true)
-    expect(wrapper.get('.sidebar-toggle').text()).toContain('일정 닫기')
+    expect(wrapper.get('.sidebar-toggle').attributes('aria-label')).toBe('일정 패널 닫기')
   })
 
   it('그리기와 스티커 옵션 상자를 클릭한 도구 버튼 바로 위에 배치한다', async () => {

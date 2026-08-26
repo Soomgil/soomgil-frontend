@@ -2005,7 +2005,6 @@ function closeResponsivePanels() {
 const aiMessage = ref('')
 const aiMessages = ref<RouteAiChatMessage[]>([])
 const chatMessages = ref<TripChatMessage[]>([])
-const aiSessionStatus = ref('')
 const conversationLoading = ref(false)
 const conversationError = ref('')
 
@@ -2104,12 +2103,11 @@ async function loadConversations() {
   conversationLoading.value = true
   conversationError.value = ''
   try {
-    const [sessionResult, aiResult, chatResult] = await Promise.allSettled([
+    const [, aiResult, chatResult] = await Promise.allSettled([
       aiApi.getSession(tripId),
       aiApi.getMessages(tripId),
       chatApi.getMessages(tripId),
     ])
-    if (sessionResult.status === 'fulfilled') aiSessionStatus.value = sessionResult.value.status
     if (aiResult.status === 'fulfilled') aiMessages.value = oldestFirst(aiResult.value.items)
     if (chatResult.status === 'fulfilled') chatMessages.value = oldestFirst(chatResult.value.items)
     if (aiResult.status === 'rejected' || chatResult.status === 'rejected') {
@@ -2303,34 +2301,6 @@ const currentTodos = computed(() => (activeChecklist.value?.items ?? []).map((it
 const completedCount = computed(() => currentTodos.value.filter(t => t.done).length)
 const totalCount = computed(() => currentTodos.value.length)
 const progressPercent = computed(() => totalCount.value === 0 ? 0 : Math.round((completedCount.value / totalCount.value) * 100))
-const routeUtilityPanelMeta = computed(() => {
-  if (activeRoutePanel.value === 'chat') {
-    return {
-      icon: 'forum',
-      title: '여행방 채팅',
-      status: conversationLoading.value ? '불러오는 중...' : `${trip.value.members.length}명 참여 중`,
-    }
-  }
-  if (activeRoutePanel.value === 'memo') {
-    return {
-      icon: 'sticky_note_2',
-      title: '여행 메모',
-      status: memoStatus.value || (memoLoading.value ? '불러오는 중...' : '백엔드 연결됨'),
-    }
-  }
-  if (activeRoutePanel.value === 'todo') {
-    return {
-      icon: 'playlist_add_check',
-      title: '체크리스트',
-      status: `${completedCount.value}/${totalCount.value} 완료 (${progressPercent.value}%)`,
-    }
-  }
-  return {
-    icon: 'auto_awesome',
-    title: '숨길 AI 가이드',
-    status: conversationLoading.value ? '불러오는 중...' : (aiSessionStatus.value || '백엔드 연결됨'),
-  }
-})
 
 async function loadChecklists() {
   if (!tripId) return
@@ -3446,26 +3416,41 @@ function handleDrawingCreate(draft: MapDrawingDraft) {
   createLocalDrawing(draft)
 }
 
-async function eraseLocalDrawing(drawingId: string) {
-	if (!localDrawings.value.some((drawing) => drawing.id === drawingId)) return
-	if (drawingId.startsWith('local-drawing-')) {
+async function eraseLocalDrawings(drawingIds: string[]) {
+	const uniqueIds = [...new Set(drawingIds)]
+	const localIds = uniqueIds.filter((drawingId) => drawingId.startsWith('local-drawing-'))
+	const persistedIds = uniqueIds.filter((drawingId) => !drawingId.startsWith('local-drawing-'))
+	if (localIds.length > 0) {
 		pushUndoState('drawing')
-		localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
-		drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
-		return
+		const erasedIds = new Set(localIds)
+		localDrawings.value = localDrawings.value.filter((drawing) => !erasedIds.has(drawing.id))
+		drawingRetryIds.value = drawingRetryIds.value.filter((id) => !erasedIds.has(id))
 	}
-	const leaseAcquired = await acquireMapObjectLease(drawingId)
-	if (!leaseAcquired) return
+	if (persistedIds.length === 0) return
+
+	const acquiredIds: string[] = []
 	try {
-		await itinerary.deleteDrawing(drawingId)
-		localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
-		drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+		const leaseResults = await Promise.all(persistedIds.map(async (drawingId) => ({
+			drawingId,
+			acquired: await acquireMapObjectLease(drawingId),
+		})))
+		leaseResults.filter((result) => result.acquired).forEach((result) => acquiredIds.push(result.drawingId))
+		if (acquiredIds.length !== persistedIds.length) {
+			throw new Error('Map drawing lease could not be acquired.')
+		}
+		await itinerary.deleteDrawings(persistedIds)
+		const erasedIds = new Set(persistedIds)
+		localDrawings.value = localDrawings.value.filter((drawing) => !erasedIds.has(drawing.id))
+		drawingRetryIds.value = drawingRetryIds.value.filter((id) => !erasedIds.has(id))
+		if (selectedMapObjectId.value && erasedIds.has(selectedMapObjectId.value)) {
+			selectedMapObjectId.value = null
+		}
 	} catch (cause) {
-		console.error('Map drawing could not be deleted.', cause)
-		itineraryActionError.value = '지도 그림을 삭제하지 못했습니다. 최신 상태를 다시 불러왔습니다.'
+		console.error('Map drawings could not be deleted.', cause)
+		itineraryActionError.value = '지우개 경로의 오브젝트를 모두 삭제하지 못했습니다. 최신 상태를 다시 불러왔습니다.'
 		await loadItinerary()
 	} finally {
-		releaseMapObjectLease(drawingId)
+		acquiredIds.forEach(releaseMapObjectLease)
 	}
 }
 
@@ -4165,8 +4150,7 @@ function textAvatarStyle(index: unknown) {
               title="일정 패널 닫기"
               @click="toggleLeftSidebar"
             >
-              <span class="material-symbols-rounded" aria-hidden="true">left_panel_close</span>
-              <span>일정 닫기</span>
+              <span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
             </button>
             <div class="sidebar-content">
               <!-- Trip header card -->
@@ -4441,8 +4425,19 @@ function textAvatarStyle(index: unknown) {
 				title="일정 패널 열기"
 				@click="toggleLeftSidebar"
 			>
-				<span class="material-symbols-rounded" aria-hidden="true">view_sidebar</span>
-				<span>일정 열기</span>
+				<span class="material-symbols-rounded" aria-hidden="true">chevron_right</span>
+			</button>
+			<button
+				v-if="isRouteUtilityCollapsed"
+				class="route-utility-restore"
+				type="button"
+				aria-label="우측 패널 열기"
+				aria-controls="route-utility-sidebar"
+				aria-expanded="false"
+				title="우측 패널 열기"
+				@click="toggleRouteUtilityCollapsed"
+			>
+				<span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
 			</button>
 			<MapboxItineraryMap
 				:stops="mapStops"
@@ -4472,7 +4467,7 @@ function textAvatarStyle(index: unknown) {
               @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
               @viewport-change="mapViewport.updateViewport"
               @drawing-create="handleDrawingCreate"
-              @drawing-erase="eraseLocalDrawing"
+              @drawing-erase="eraseLocalDrawings"
               @drawing-preview="publishDrawingPreview"
               @route-point="addRouteWaypoint"
               @map-object-place="handleMapObjectPlace"
@@ -4818,25 +4813,19 @@ function textAvatarStyle(index: unknown) {
           </aside>
 
           <!-- ═══ ROUTE UTILITY SIDEBAR ═══ -->
-          <aside :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구">
-            <div class="route-utility-header">
-              <div class="route-utility-heading">
-                <span class="material-symbols-rounded" aria-hidden="true">{{ routeUtilityPanelMeta.icon }}</span>
-                <div>
-                  <h3>{{ routeUtilityPanelMeta.title }}</h3>
-                  <p class="route-utility-status">{{ routeUtilityPanelMeta.status }}</p>
-                </div>
-              </div>
-              <button
-                class="route-utility-collapse"
-                type="button"
-                :aria-label="isRouteUtilityCollapsed ? '우측 사이드바 펼치기' : '우측 사이드바 접기'"
-                :title="isRouteUtilityCollapsed ? '펼치기' : '접기'"
-                @click="toggleRouteUtilityCollapsed"
-              >
-                <span class="material-symbols-rounded" aria-hidden="true">{{ isRouteUtilityCollapsed ? 'left_panel_open' : 'right_panel_close' }}</span>
-              </button>
-            </div>
+          <aside id="route-utility-sidebar" :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구" :aria-hidden="isRouteUtilityCollapsed">
+            <button
+              class="route-utility-toggle"
+              type="button"
+              aria-controls="route-utility-sidebar"
+              :aria-expanded="!isRouteUtilityCollapsed"
+              :aria-label="isRouteUtilityCollapsed ? '우측 패널 열기' : '우측 패널 닫기'"
+              :title="isRouteUtilityCollapsed ? '우측 패널 열기' : '우측 패널 닫기'"
+              @click="toggleRouteUtilityCollapsed"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">{{ isRouteUtilityCollapsed ? 'chevron_left' : 'chevron_right' }}</span>
+            </button>
+            <div class="route-utility-content">
             <div class="route-utility-tabs" role="tablist" aria-label="여행 도구">
               <button
                 class="route-utility-tab route-utility-tab--ai"
@@ -4984,6 +4973,7 @@ function textAvatarStyle(index: unknown) {
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">
                 <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
+                <span v-if="memoStatus" class="memo-status" role="status">{{ memoStatus }}</span>
               </div>
               <div class="memo-footer-actions">
                 <button id="memo-clear-btn" class="btn text-danger-btn memo-action-btn" type="button" @click="clearNote">
@@ -5040,6 +5030,7 @@ function textAvatarStyle(index: unknown) {
               </div>
             </div>
           </div>
+            </div>
           </aside>
         </div>
       </section>
@@ -5243,36 +5234,47 @@ function textAvatarStyle(index: unknown) {
   border-radius: 0;
   box-shadow: none;
   display: grid;
-  grid-template-columns: var(--sidebar-width, 360px) minmax(0, 1fr) var(--route-panel-width, 380px);
+  grid-template-columns: minmax(0, 1fr);
   --detailbar-width: 440px;
   --detailbar-offset: 16px;
   --detailbar-gap: 16px;
-  --route-panel-width: 380px;
-  transition: grid-template-columns 0.22s ease;
-}
-.route-page-section .map-shell.is-sidebar-hidden {
-  --sidebar-width: 0px;
-}
-.route-page-section .map-shell.is-route-utility-collapsed {
-  --route-panel-width: 52px;
+  --route-panel-motion-duration: 260ms;
+  --route-panel-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 .route-utility-sidebar {
   --route-accent: #7c3aed;
   --route-accent-rgb: 124, 58, 237;
   display: flex;
+  width: 380px;
   min-width: 0;
   min-height: 0;
   height: 100%;
   flex-direction: column;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   border-left: 1px solid var(--line);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
     #fff;
   box-shadow: -14px 0 32px rgba(15, 23, 42, 0.06);
+  overflow: visible;
+  z-index: 100;
+  transform: translateX(0);
+  will-change: transform;
+  transition:
+    transform var(--route-panel-motion-duration) var(--route-panel-motion-ease),
+    opacity 180ms ease-in,
+    border-radius 0.22s ease;
+}
+.route-utility-content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   overflow: hidden;
-  position: relative;
-  z-index: 55;
-  transition: width 0.22s ease, transform 0.26s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.22s ease;
 }
 .route-utility-sidebar--chat {
   --route-accent: #0891b2;
@@ -5285,67 +5287,6 @@ function textAvatarStyle(index: unknown) {
 .route-utility-sidebar--todo {
   --route-accent: #059669;
   --route-accent-rgb: 5, 150, 105;
-}
-.route-utility-header {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 12px 10px 16px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  background: #fff;
-}
-.route-utility-heading {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-.route-utility-heading > .material-symbols-rounded {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 8px;
-  background: rgba(var(--route-accent-rgb), 0.12);
-  color: var(--route-accent);
-  font-size: 20px;
-}
-.route-utility-heading h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 850;
-  line-height: 1.25;
-}
-.route-utility-heading p {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-.route-utility-collapse {
-  display: grid;
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 999px;
-  background: #fff;
-  color: #64748b;
-  cursor: pointer;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
-}
-.route-utility-collapse:hover {
-  border-color: rgba(var(--route-accent-rgb), 0.26);
-  color: var(--route-accent);
-  background: rgba(var(--route-accent-rgb), 0.07);
-}
-.route-utility-collapse .material-symbols-rounded {
-  font-size: 20px;
 }
 .route-utility-tabs {
   display: grid;
@@ -5412,27 +5353,10 @@ function textAvatarStyle(index: unknown) {
   white-space: nowrap;
 }
 .route-utility-sidebar.is-collapsed {
-  align-items: stretch;
-}
-.route-utility-sidebar.is-collapsed .route-utility-header {
-  justify-content: center;
-  padding: 10px 6px;
-}
-.route-utility-sidebar.is-collapsed .route-utility-heading {
-  display: none;
-}
-.route-utility-sidebar.is-collapsed .route-utility-tabs {
-  grid-template-columns: 1fr;
-  gap: 6px;
-  padding: 6px;
-}
-.route-utility-sidebar.is-collapsed .route-utility-tab {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-}
-.route-utility-sidebar.is-collapsed .route-utility-tab span:not(.material-symbols-rounded) {
-  display: none;
+  transform: translateX(calc(100% + 32px));
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 .route-utility-sidebar .ai-chat-panel,
 .route-utility-sidebar .floating-panel {
@@ -5460,10 +5384,6 @@ function textAvatarStyle(index: unknown) {
 .route-utility-sidebar .floating-panel.show {
   display: flex !important;
   transform: none;
-}
-.route-utility-sidebar.is-collapsed .ai-chat-panel,
-.route-utility-sidebar.is-collapsed .floating-panel {
-  display: none !important;
 }
 .route-utility-sidebar .ai-chat-header,
 .route-utility-sidebar .panel-header {
@@ -5780,6 +5700,14 @@ function textAvatarStyle(index: unknown) {
   font-weight: 750;
   white-space: nowrap;
 }
+.route-utility-sidebar .memo-status {
+  overflow: hidden;
+  color: var(--route-accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .route-utility-sidebar .todo-list {
   display: flex;
   flex-direction: column;
@@ -5805,10 +5733,14 @@ function textAvatarStyle(index: unknown) {
   object-fit: cover;
 }
 .route-page-section .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
   height: 100%;
-  width: 100%;
+  width: 360px;
   overflow: visible;
-  z-index: 70;
+  z-index: 100;
   transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .route-page-section .sidebar.is-hidden {
@@ -5822,38 +5754,37 @@ function textAvatarStyle(index: unknown) {
   box-sizing: border-box;
 }
 .route-page-section .sidebar-toggle,
-.route-page-section .route-sidebar-restore {
-  width: 108px;
-  height: 42px;
-  display: inline-flex;
+.route-page-section .route-sidebar-restore,
+.route-page-section .route-utility-toggle,
+.route-page-section .route-utility-restore {
+  position: absolute;
+  top: 50%;
+  z-index: 82;
+  display: grid;
+  width: 32px;
+  height: 68px;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0 12px;
+  padding: 0;
   border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   color: var(--ink);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  box-shadow: none;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 800;
-  white-space: nowrap;
-  transition: border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  transform: translateY(-50%);
+  transition: none;
 }
 .route-page-section .sidebar-toggle {
-  top: 12px;
-  right: -120px;
-  transform: none;
+  right: -32px;
+  border-left: 0;
+  border-radius: 0 14px 14px 0;
 }
-.route-page-section .sidebar-toggle:hover,
-.route-page-section .route-sidebar-restore:hover {
-  border-color: rgba(124, 58, 237, 0.28);
-  color: var(--violet);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.17);
-  transform: translateY(-1px);
+.route-page-section .route-utility-toggle {
+  left: -32px;
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
 }
 .sidebar-sheet-handle {
   display: none;
@@ -5869,13 +5800,21 @@ function textAvatarStyle(index: unknown) {
   cursor: pointer;
 }
 .route-sidebar-restore {
-  position: absolute;
-  top: 12px;
-  left: 12px;
+  left: 0;
+  border-left: 0;
+  border-radius: 0 14px 14px 0;
+  z-index: 32;
+}
+.route-utility-restore {
+  right: 0;
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
   z-index: 32;
 }
 .route-page-section .sidebar-toggle .material-symbols-rounded,
-.route-page-section .route-sidebar-restore .material-symbols-rounded {
+.route-page-section .route-sidebar-restore .material-symbols-rounded,
+.route-page-section .route-utility-toggle .material-symbols-rounded,
+.route-page-section .route-utility-restore .material-symbols-rounded {
   font-size: 20px;
 }
 .route-page-section .trip-info-badge-row {
@@ -6867,22 +6806,12 @@ function textAvatarStyle(index: unknown) {
 }
 
 @media (max-width: 1439px) {
-  .route-page-section .map-shell {
-    --route-panel-width: 52px;
-  }
-
-  .route-page-section .route-utility-sidebar:not(.is-collapsed) {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
+  .route-page-section .route-utility-sidebar {
     width: min(380px, calc(100% - 24px));
-    z-index: 75;
   }
 
   .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
     --route-map-control-right-safe: 340px;
-    --route-map-tools-right-safe: 340px;
   }
 
   .route-page-section .map-tools .tool-btn {
@@ -6898,16 +6827,10 @@ function textAvatarStyle(index: unknown) {
   .route-page-section .map-shell,
   .route-page-section .map-shell.is-route-utility-collapsed,
   .route-page-section .map-shell.is-sidebar-hidden {
-    --sidebar-width: 0px;
-    --route-panel-width: 0px;
     grid-template-columns: minmax(0, 1fr);
   }
 
   .route-page-section .sidebar {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
     width: min(360px, calc(100% - 64px));
     border-right: 1px solid var(--line);
     box-shadow: 18px 0 48px rgba(15, 23, 42, 0.18);
@@ -6919,16 +6842,11 @@ function textAvatarStyle(index: unknown) {
 
   .route-page-section .route-utility-sidebar,
   .route-page-section .route-utility-sidebar:not(.is-collapsed) {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
     width: min(380px, calc(100% - 64px));
-    z-index: 75;
   }
 
   .route-page-section .route-utility-sidebar.is-collapsed {
-    width: 52px;
+    transform: translateX(calc(100% + 32px));
   }
 
   .route-page-section .map-canvas {
@@ -6938,7 +6856,6 @@ function textAvatarStyle(index: unknown) {
 
   .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
     --route-map-control-right-safe: 392px;
-    --route-map-tools-right-safe: 392px;
   }
 
   .route-page-section .detailbar {
@@ -6981,16 +6898,18 @@ function textAvatarStyle(index: unknown) {
   }
 
   .route-page-section .sidebar-toggle {
-    top: 14px;
-    right: 14px;
-    width: 108px;
-    height: 42px;
-    border-radius: 999px;
-    transform: none;
+    top: -32px;
+    right: 50%;
+    width: 68px;
+    height: 32px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    transform: translateX(50%);
   }
 
-  .route-page-section .sidebar-toggle:hover {
-    transform: scale(1.04);
+  .route-page-section .sidebar-toggle .material-symbols-rounded {
+    transform: rotate(-90deg);
   }
 
   .sidebar-sheet-handle {
@@ -7017,41 +6936,42 @@ function textAvatarStyle(index: unknown) {
     border-bottom: 0;
     border-radius: 24px 24px 0 0;
     box-shadow: 0 -18px 52px rgba(15, 23, 42, 0.20);
+    transform: translateY(0);
+    animation: route-utility-sheet-in var(--route-panel-motion-duration) var(--route-panel-motion-ease) both;
   }
 
   .route-page-section .route-utility-sidebar.is-collapsed {
-    top: 12px;
-    right: 12px;
-    bottom: auto;
-    width: auto;
-    height: 52px;
-    flex-direction: row;
-    border: 1px solid rgba(15, 23, 42, 0.10);
-    border-radius: 999px;
-    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.16);
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(72dvh, calc(100% - 12px));
+    transform: translateY(calc(100% + 24px));
+    animation: none;
   }
 
-  .route-page-section .route-utility-sidebar.is-collapsed .route-utility-header {
-    padding: 6px 2px 6px 6px;
-    border-right: 1px solid rgba(15, 23, 42, 0.08);
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) .route-utility-toggle {
+    top: -32px;
+    left: 50%;
+    width: 68px;
+    height: 32px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
     border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    transform: translateX(-50%);
   }
 
-  .route-page-section .route-utility-sidebar.is-collapsed .route-utility-tabs {
-    grid-template-columns: repeat(4, 40px);
-    align-content: center;
-    gap: 2px;
-    padding: 6px;
-    border-bottom: 0;
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) .route-utility-toggle .material-symbols-rounded {
+    transform: rotate(90deg);
   }
 
-  .route-page-section .route-utility-sidebar.is-collapsed .route-utility-tab {
-    width: 40px;
-    height: 40px;
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) .route-utility-content {
+    border-radius: 24px 24px 0 0;
   }
 
   .route-page-section .map-canvas {
-    --route-map-control-right-safe: min(268px, calc(100% - 52px));
+    --route-map-control-right-safe: 48px;
     --route-map-tools-right-safe: 12px;
   }
 
@@ -7060,15 +6980,16 @@ function textAvatarStyle(index: unknown) {
     --route-map-tools-right-safe: 12px;
   }
 
-  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-tools-viewport {
-    opacity: 0;
-    pointer-events: none;
+  .route-sidebar-restore {
+    top: 50%;
+    width: 32px;
+    padding: 0;
   }
 
-  .route-sidebar-restore {
-    top: 12px;
-    width: 108px;
-    padding: 0 12px;
+  .route-utility-restore {
+    top: 50%;
+    width: 32px;
+    padding: 0;
   }
 
   .route-page-section .detailbar {
@@ -7119,11 +7040,24 @@ function textAvatarStyle(index: unknown) {
   }
 }
 
+@keyframes route-utility-sheet-in {
+  from {
+    transform: translateY(calc(100% + 24px));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .route-page-section .map-shell,
   .route-page-section .sidebar,
   .route-page-section .route-utility-sidebar {
     transition-duration: 0.01ms !important;
+  }
+
+  .route-page-section .route-utility-sidebar {
+    animation-duration: 0.01ms !important;
   }
 }
 </style>
