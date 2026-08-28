@@ -114,6 +114,10 @@ async function submitReply(content: string) {
   }
 }
 
+function isTombstone(reply: CommunityThreadReply) {
+  return reply.content === null || reply.deletedAt !== null
+}
+
 function startEditReply(reply: CommunityThreadReply) {
   editingReplyId.value = reply.id
   replyDraft.value = reply.content ?? ''
@@ -170,13 +174,15 @@ async function submitReport(reasonCode: ReportReasonCode, detail: string | undef
   }
 }
 
-function isTombstone(reply: CommunityThreadReply) {
-  return reply.content === null || reply.deletedAt !== null
-}
-
+/** X처럼 짧은 상대 시간. 하루가 지나면 날짜로. */
 function replyDateLabel(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
+  const diffMin = Math.floor((Date.now() - date.getTime()) / 60_000)
+  if (diffMin < 1) return '방금'
+  if (diffMin < 60) return `${diffMin}분`
+  const diffHour = Math.floor(diffMin / 60)
+  if (diffHour < 24) return `${diffHour}시간`
   return date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
 }
 
@@ -206,17 +212,20 @@ onMounted(async () => {
           @retry="load"
         />
 
-        <template v-else>
+        <div v-else class="thread-detail__surface">
           <ThreadCard
             :thread="thread"
             :saving="savingThread"
             :clickable="false"
+            emphasized
             @like="toggleLike"
             @save="saveThread"
             @remove="removeThread"
             @report="reportThreadTarget = thread"
             @open="() => {}"
           />
+
+          <div class="thread-detail__divider" aria-hidden="true"></div>
 
           <ThreadComposer
             v-if="isAuthenticated"
@@ -232,8 +241,10 @@ onMounted(async () => {
             @error="toast.error"
           />
 
+          <div v-if="isAuthenticated && replies.length" class="thread-detail__divider" aria-hidden="true"></div>
+
           <ul class="thread-detail__replies" data-testid="reply-list">
-            <li v-for="reply in replies" :key="reply.id" class="thread-detail__reply-group">
+            <li v-for="reply in replies" :key="reply.id" class="thread-detail__group">
               <template v-for="item in [reply, ...reply.replies]" :key="item.id">
                 <div
                   class="thread-detail__reply"
@@ -245,6 +256,7 @@ onMounted(async () => {
                     :src="item.author?.profileImageUrl ?? undefined"
                     :name="item.author?.displayName ?? '사용자'"
                     size="sm"
+                    class="thread-detail__reply-avatar"
                   />
                   <div class="thread-detail__reply-body">
                     <div class="thread-detail__reply-head">
@@ -291,6 +303,7 @@ onMounted(async () => {
                         data-testid="reply-reply"
                         @click="replyTarget = item"
                       >
+                        <span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>
                         답글
                       </button>
                       <button
@@ -299,6 +312,7 @@ onMounted(async () => {
                         data-testid="reply-edit"
                         @click="startEditReply(item)"
                       >
+                        <span class="material-symbols-rounded" aria-hidden="true">edit</span>
                         수정
                       </button>
                       <button
@@ -307,6 +321,7 @@ onMounted(async () => {
                         data-testid="reply-delete"
                         @click="removeReply(item)"
                       >
+                        <span class="material-symbols-rounded" aria-hidden="true">delete</span>
                         삭제
                       </button>
                       <button
@@ -315,6 +330,7 @@ onMounted(async () => {
                         data-testid="reply-report"
                         @click="reportReply = item"
                       >
+                        <span class="material-symbols-rounded" aria-hidden="true">flag</span>
                         신고
                       </button>
                     </div>
@@ -323,7 +339,7 @@ onMounted(async () => {
               </template>
             </li>
           </ul>
-        </template>
+        </div>
       </div>
     </section>
 
@@ -341,9 +357,9 @@ onMounted(async () => {
 .thread-detail__column {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   margin: 0 auto;
-  max-width: 680px;
+  max-width: 640px;
   width: 100%;
 }
 
@@ -352,15 +368,14 @@ onMounted(async () => {
   align-self: flex-start;
   background: none;
   border: none;
-  border-radius: 999px;
   color: var(--muted);
   cursor: pointer;
   display: flex;
   font-size: 14px;
   font-weight: 700;
   gap: 4px;
-  padding: 6px 10px 6px 4px;
-  transition: color 0.2s ease;
+  padding: 4px 0;
+  transition: color 0.15s ease;
 }
 
 .thread-detail__back:hover {
@@ -368,70 +383,88 @@ onMounted(async () => {
 }
 
 .thread-detail__back .material-symbols-rounded {
-  font-size: 20px;
+  font-size: 18px;
+}
+
+.thread-detail__surface {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--soft-shadow);
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.thread-detail__divider {
+  background: var(--line);
+  height: 1px;
+  margin: 0 20px;
 }
 
 .thread-detail__replies {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: var(--soft-shadow);
   display: flex;
   flex-direction: column;
   list-style: none;
   margin: 0;
-  padding: 8px 0;
+  padding: 0;
 }
 
-.thread-detail__replies:empty {
-  display: none;
+.thread-detail__group {
+  border-top: 1px solid var(--line);
 }
 
-.thread-detail__reply-group {
-  border-bottom: 1px solid var(--line);
-}
-
-.thread-detail__reply-group:last-child {
-  border-bottom: none;
+.thread-detail__group:first-child {
+  border-top: none;
 }
 
 .thread-detail__reply {
   display: flex;
-  gap: 10px;
-  padding: 16px 22px;
+  gap: 12px;
+  padding: 14px 20px;
 }
 
+/* Threads처럼 하위 답글은 연결선과 함께 들여쓴다 */
 .thread-detail__reply--nested {
-  background: var(--bg);
-  margin: 0 22px 12px 52px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 12px 14px;
+  margin-left: 38px;
+  position: relative;
+}
+
+.thread-detail__reply--nested::before {
+  background: var(--line);
+  border-radius: 999px;
+  bottom: 14px;
+  content: '';
+  left: -20px;
+  position: absolute;
+  top: 0;
+  width: 2px;
+}
+
+.thread-detail__reply-avatar {
+  flex: 0 0 auto;
 }
 
 .thread-detail__reply-body {
-  display: flex;
   flex: 1;
-  flex-direction: column;
-  gap: 4px;
   min-width: 0;
 }
 
 .thread-detail__reply-head {
-  align-items: baseline;
+  align-items: center;
   display: flex;
   gap: 8px;
+  margin-bottom: 2px;
 }
 
 .thread-detail__reply-author {
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
 .thread-detail__reply-date {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .thread-detail__reply-content {
@@ -452,41 +485,52 @@ onMounted(async () => {
 
 .thread-detail__reply-actions {
   display: flex;
-  gap: 12px;
-  margin-top: 2px;
+  gap: 2px;
+  margin-left: -8px;
+  margin-top: 6px;
 }
 
 .thread-detail__reply-actions button {
+  align-items: center;
   background: none;
   border: none;
+  border-radius: 999px;
   color: var(--muted);
   cursor: pointer;
+  display: flex;
   font-size: 12px;
   font-weight: 700;
-  padding: 0;
-  transition: color 0.2s ease;
+  gap: 4px;
+  padding: 5px 9px;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .thread-detail__reply-actions button:hover {
+  background: rgba(0, 102, 255, 0.08);
   color: var(--violet);
+}
+
+.thread-detail__reply-actions .material-symbols-rounded {
+  font-size: 15px;
 }
 
 .thread-detail__reply-edit {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .thread-detail__reply-edit-input {
-  background: var(--bg);
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 12px;
   color: var(--ink);
+  font-family: inherit;
   font-size: 14px;
   line-height: 1.6;
   padding: 10px 12px;
   resize: vertical;
-  width: 100%;
 }
 
 .thread-detail__reply-edit-input:focus {
@@ -496,7 +540,7 @@ onMounted(async () => {
 
 .thread-detail__reply-edit-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -506,14 +550,15 @@ onMounted(async () => {
   border-radius: 999px;
   color: var(--muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  padding: 6px 12px;
+  padding: 7px 14px;
 }
 
 .thread-detail__reply-edit-actions button.save {
   background: linear-gradient(135deg, var(--violet), var(--blue));
   color: #fff;
+  font-weight: 800;
 }
 
 .thread-detail__reply-edit-actions button.save:disabled {

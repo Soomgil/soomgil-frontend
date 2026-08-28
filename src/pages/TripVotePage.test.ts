@@ -109,8 +109,9 @@ describe('여행 방 투표 화면', () => {
     const wrapper = mount(TripVotePage, { global: { stubs } })
     await flushPromises()
 
-    expect(wrapper.findAll('[data-testid="candidate-name"]')).toHaveLength(2)
-    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toBe('3')
+    expect(wrapper.find('[data-testid="candidate-name"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="deck-thumb"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('3 / 3')
   })
 
   it('한 후보에 스티커를 몰아 붙일 수 있다', async () => {
@@ -122,7 +123,7 @@ describe('여행 방 투표 화면', () => {
     await plus.trigger('click')
 
     expect(wrapper.findAll('[data-testid="candidate-sticker-count"]')[0].text()).toBe('2')
-    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toBe('1')
+    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('1 / 3')
   })
 
   it('스티커를 회수하면 남은 개수가 늘어난다', async () => {
@@ -133,7 +134,57 @@ describe('여행 방 투표 화면', () => {
     await wrapper.findAll('[data-testid="candidate-withdraw"]')[0].trigger('click')
 
     expect(wrapper.findAll('[data-testid="candidate-sticker-count"]')[0].text()).toBe('0')
-    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toBe('3')
+    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('3 / 3')
+  })
+
+  it('덱을 넘기면 다음 후보가 보이고, 붙인 곳은 장바구니에 쌓인다', async () => {
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    // 1번 후보에 1개
+    await wrapper.find('[data-testid="candidate-place"]').trigger('click')
+    // 다음 후보로 넘겨서 2개
+    await wrapper.find('[data-testid="deck-next"]').trigger('click')
+    await wrapper.find('[data-testid="candidate-place"]').trigger('click')
+    await wrapper.find('[data-testid="candidate-place"]').trigger('click')
+
+    const items = wrapper.findAll('[data-testid="cart-item"]')
+    expect(items).toHaveLength(2)
+    expect(wrapper.findAll('[data-testid="cart-count"]').map((node) => node.text())).toEqual(['1', '2'])
+    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('0 / 3')
+
+    // 장바구니에서 바로 회수할 수 있다
+    await wrapper.findAll('[data-testid="cart-minus"]')[1].trigger('click')
+    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('1 / 3')
+  })
+
+  it('모두 회수하면 장바구니가 비워진다', async () => {
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    await wrapper.find('[data-testid="candidate-place"]').trigger('click')
+    await wrapper.find('[data-testid="vote-reset"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="cart-empty"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('3 / 3')
+  })
+
+  it('polling 갱신이 제출 전 로컬 스티커 초안을 덮어쓰지 않는다', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await vi.runOnlyPendingTimersAsync()
+
+    await wrapper.find('[data-testid="candidate-place"]').trigger('click')
+    await wrapper.find('[data-testid="candidate-place"]').trigger('click')
+
+    // 5초 polling → 서버는 아직 빈 placements를 돌려준다
+    await vi.advanceTimersByTimeAsync(5000)
+    await vi.runOnlyPendingTimersAsync()
+    vi.useRealTimers()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="candidate-sticker-count"]').text()).toBe('2')
+    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('1 / 3')
   })
 
   it('지급량을 다 쓰면 더 붙일 수 없다', async () => {
@@ -145,7 +196,7 @@ describe('여행 방 투표 화면', () => {
     await plus.trigger('click')
     await plus.trigger('click')
 
-    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toBe('0')
+    expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('0 / 3')
     expect(
       wrapper.findAll('[data-testid="candidate-place"]')[0].attributes('disabled'),
     ).toBeDefined()
@@ -173,7 +224,7 @@ describe('여행 방 투표 화면', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-waiting"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="vote-candidates"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="vote-deck"]').exists()).toBe(false)
   })
 
   it('제출한 참여자는 처음부터 대기 화면을 본다', async () => {
@@ -272,7 +323,7 @@ describe('여행 방 투표 화면', () => {
       selectionCount: 4,
     })
     // 시작 후 투표 화면으로 전환된다.
-    expect(wrapper.find('[data-testid="vote-candidates"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="vote-deck"]').exists()).toBe(true)
   })
 
   it('후보 부족으로 시작이 거절되면 안내 메시지를 보여준다', async () => {
@@ -355,6 +406,6 @@ describe('여행 방 투표 화면', () => {
     vi.useRealTimers()
     await flushPromises()
 
-    expect(mocks.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' } })
+    expect(mocks.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { voteCompleted: '1' } })
   })
 })

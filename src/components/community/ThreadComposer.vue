@@ -124,24 +124,25 @@ function reset() {
 }
 
 defineExpose({ reset })
-
 </script>
 
 <template>
   <form class="thread-composer" data-testid="thread-composer" @submit.prevent="submit">
     <div v-if="replyTargetName" class="thread-composer__reply-target" data-testid="reply-target">
-      <span class="material-symbols-rounded">subdirectory_arrow_right</span>
+      <span class="material-symbols-rounded" aria-hidden="true">subdirectory_arrow_right</span>
       <span><strong>{{ replyTargetName }}</strong>님에게 답글</span>
       <button type="button" data-testid="reply-target-cancel" @click="emit('cancelReply')">취소</button>
     </div>
 
-    <div class="thread-composer__body">
+    <div class="thread-composer__row">
       <BaseAvatar
         v-if="authorName"
         :src="authorImageUrl ?? undefined"
         :name="authorName"
-        size="md"
+        size="sm"
+        class="thread-composer__avatar"
       />
+
       <div class="thread-composer__main">
         <textarea
           v-model="content"
@@ -149,32 +150,31 @@ defineExpose({ reset })
           data-testid="thread-composer-input"
           :placeholder="placeholder"
           :maxlength="maxLength"
-          rows="3"
+          rows="2"
         />
 
         <div v-if="attachments.length" class="thread-composer__previews" data-testid="composer-previews">
           <div
-            v-for="item in attachments"
-            :key="item.key"
+            v-for="attachment in attachments"
+            :key="attachment.key"
             class="thread-composer__preview"
-            :class="{ uploading: item.uploading }"
             data-testid="composer-preview"
           >
-            <img v-if="item.previewUrl" :src="item.previewUrl" alt="첨부 이미지 미리보기" />
-            <span v-if="item.uploading" class="thread-composer__preview-spinner" aria-label="업로드 중" />
+            <img v-if="attachment.previewUrl" :src="attachment.previewUrl" alt="첨부 이미지 미리보기" />
+            <span v-if="attachment.uploading" class="thread-composer__preview-loading" aria-label="업로드 중"></span>
             <button
               type="button"
               class="thread-composer__preview-remove"
               data-testid="composer-preview-remove"
-              aria-label="첨부 이미지 제거"
-              @click="removeAttachment(item.key)"
+              aria-label="첨부 삭제"
+              @click="removeAttachment(attachment.key)"
             >
-              <span class="material-symbols-rounded">close</span>
+              <span class="material-symbols-rounded" aria-hidden="true">close</span>
             </button>
           </div>
         </div>
 
-        <div class="thread-composer__footer">
+        <div class="thread-composer__bar">
           <button
             v-if="allowImages"
             type="button"
@@ -184,8 +184,8 @@ defineExpose({ reset })
             aria-label="이미지 첨부"
             @click="openFilePicker"
           >
-            <span class="material-symbols-rounded">image</span>
-            <span v-if="attachments.length">{{ attachments.length }}/{{ MAX_IMAGES }}</span>
+            <span class="material-symbols-rounded" aria-hidden="true">image</span>
+            <span v-if="attachments.length" class="thread-composer__attach-count">{{ attachments.length }}/{{ MAX_IMAGES }}</span>
           </button>
           <input
             v-if="allowImages"
@@ -193,25 +193,28 @@ defineExpose({ reset })
             type="file"
             accept="image/jpeg,image/png,image/webp"
             multiple
-            class="hidden"
+            hidden
             data-testid="composer-file-input"
             @change="onFilesSelected"
           />
 
+          <span class="thread-composer__spacer"></span>
+
           <span
+            v-if="trimmed.length > 0"
             class="thread-composer__counter"
-            :class="{ over: trimmed.length > maxLength }"
             data-testid="thread-composer-counter"
           >
             {{ trimmed.length }} / {{ maxLength }}
           </span>
+
           <button
             type="submit"
             class="thread-composer__submit"
             data-testid="thread-composer-submit"
             :disabled="!canSubmit"
           >
-            {{ uploadingAny ? '이미지 올리는 중…' : submitLabel }}
+            {{ uploadingAny ? '업로드 중…' : submitLabel }}
           </button>
         </div>
       </div>
@@ -221,116 +224,111 @@ defineExpose({ reset })
 
 <style scoped>
 .thread-composer {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: var(--soft-shadow);
   display: flex;
   flex-direction: column;
-  padding: 20px 22px;
+  gap: 10px;
+  padding: 18px 20px 14px;
 }
 
 .thread-composer__reply-target {
   align-items: center;
-  background: var(--surface-2);
+  background: rgba(0, 102, 255, 0.06);
   border-radius: 12px;
   color: var(--muted);
   display: flex;
   font-size: 13px;
   gap: 6px;
-  margin-bottom: 12px;
   padding: 8px 12px;
 }
 
 .thread-composer__reply-target strong {
-  color: var(--ink);
+  color: var(--violet);
 }
 
 .thread-composer__reply-target .material-symbols-rounded {
-  font-size: 17px;
+  color: var(--violet);
+  font-size: 16px;
 }
 
 .thread-composer__reply-target button {
   background: none;
   border: none;
-  color: var(--violet);
+  color: var(--muted);
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
   margin-left: auto;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.thread-composer__body {
+.thread-composer__row {
   display: flex;
   gap: 12px;
+}
+
+.thread-composer__avatar {
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .thread-composer__main {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
+/* X처럼 테두리 없는 입력 */
 .thread-composer__input {
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 16px;
+  background: transparent;
+  border: none;
   color: var(--ink);
-  font-size: 15px;
+  font-family: inherit;
+  font-size: 16px;
   line-height: 1.6;
-  padding: 12px 14px;
-  resize: vertical;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  width: 100%;
+  min-height: 56px;
+  outline: none;
+  padding: 6px 0 0;
+  resize: none;
 }
 
 .thread-composer__input::placeholder {
   color: var(--muted);
 }
 
-.thread-composer__input:focus {
-  border-color: var(--violet);
-  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12);
-  outline: none;
-}
-
 .thread-composer__previews {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
 }
 
 .thread-composer__preview {
-  border: 1px solid var(--line);
+  aspect-ratio: 4 / 3;
   border-radius: 14px;
   overflow: hidden;
   position: relative;
 }
 
 .thread-composer__preview img {
-  aspect-ratio: 1;
   display: block;
+  height: 100%;
   object-fit: cover;
   width: 100%;
 }
 
-.thread-composer__preview.uploading img {
-  filter: brightness(0.7);
-}
-
-.thread-composer__preview-spinner {
-  animation: composer-spin 0.9s linear infinite;
-  border: 2.5px solid rgba(255, 255, 255, 0.4);
+.thread-composer__preview-loading {
+  animation: composer-spin 0.8s linear infinite;
+  border: 3px solid rgba(255, 255, 255, 0.4);
   border-radius: 999px;
   border-top-color: #fff;
-  height: 22px;
+  height: 26px;
   left: 50%;
-  margin: -11px 0 0 -11px;
+  margin: -13px 0 0 -13px;
   position: absolute;
   top: 50%;
-  width: 22px;
+  width: 26px;
 }
 
 @keyframes composer-spin {
@@ -341,48 +339,50 @@ defineExpose({ reset })
 
 .thread-composer__preview-remove {
   align-items: center;
-  background: rgba(26, 32, 51, 0.65);
+  background: rgba(10, 22, 44, 0.6);
   border: none;
   border-radius: 999px;
   color: #fff;
   cursor: pointer;
   display: flex;
-  height: 22px;
+  height: 26px;
   justify-content: center;
   position: absolute;
   right: 6px;
   top: 6px;
-  width: 22px;
+  width: 26px;
 }
 
 .thread-composer__preview-remove .material-symbols-rounded {
-  font-size: 14px;
+  font-size: 16px;
 }
 
-.thread-composer__footer {
+.thread-composer__bar {
   align-items: center;
+  border-top: 1px solid var(--line);
   display: flex;
   gap: 10px;
+  padding-top: 10px;
 }
 
 .thread-composer__attach {
   align-items: center;
   background: none;
-  border: 1px solid var(--line);
+  border: none;
   border-radius: 999px;
   color: var(--violet);
   cursor: pointer;
   display: flex;
-  font-size: 12px;
-  font-weight: 700;
   gap: 4px;
   height: 34px;
-  padding: 0 10px;
-  transition: background 0.2s ease;
+  justify-content: center;
+  min-width: 34px;
+  padding: 0 6px;
+  transition: background 0.15s ease;
 }
 
-.thread-composer__attach:hover {
-  background: var(--surface-2);
+.thread-composer__attach:hover:not(:disabled) {
+  background: rgba(0, 102, 255, 0.08);
 }
 
 .thread-composer__attach:disabled {
@@ -391,55 +391,43 @@ defineExpose({ reset })
 }
 
 .thread-composer__attach .material-symbols-rounded {
-  font-size: 19px;
+  font-size: 21px;
+}
+
+.thread-composer__attach-count {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.thread-composer__spacer {
+  flex: 1;
 }
 
 .thread-composer__counter {
   color: var(--muted);
   font-size: 12px;
-  margin-left: auto;
-}
-
-.thread-composer__counter.over {
-  color: var(--rose);
+  font-weight: 700;
 }
 
 .thread-composer__submit {
   background: linear-gradient(135deg, var(--violet), var(--blue));
   border: none;
   border-radius: 999px;
-  box-shadow: 0 10px 26px rgba(0, 102, 255, 0.28);
   color: #fff;
   cursor: pointer;
   font-size: 14px;
   font-weight: 800;
-  padding: 10px 22px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  padding: 9px 22px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .thread-composer__submit:hover:not(:disabled) {
-  box-shadow: 0 14px 32px rgba(0, 102, 255, 0.34);
+  box-shadow: 0 10px 22px rgba(0, 102, 255, 0.28);
   transform: translateY(-1px);
 }
 
 .thread-composer__submit:disabled {
-  box-shadow: none;
   cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.hidden {
-  display: none;
-}
-
-@media (max-width: 640px) {
-  .thread-composer {
-    border-radius: 18px;
-    padding: 16px;
-  }
-
-  .thread-composer__previews {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  opacity: 0.45;
 }
 </style>

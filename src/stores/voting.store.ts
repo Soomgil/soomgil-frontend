@@ -28,6 +28,8 @@ export const useVotingStore = defineStore('voting', () => {
 
   /** 제출 전 로컬 배치. 서버 왕복 없이 스티커를 옮기고 회수하기 위한 상태다. */
   const draftPlacements = ref<VoteStickerPlacement[]>([])
+  /** 서버에 저장되지 않은 로컬 스티커 변경이 있는지. polling 갱신이 초안을 덮어쓰지 않게 막는다. */
+  const draftDirty = ref(false)
 
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -59,6 +61,7 @@ export const useVotingStore = defineStore('voting', () => {
     const existing = draftPlacements.value.find((placement) => placement.candidateId === candidateId)
     if (existing) existing.stickerCount += 1
     else draftPlacements.value.push({ candidateId, stickerCount: 1 })
+    draftDirty.value = true
   }
 
   /** 후보에서 스티커를 하나 회수한다. */
@@ -69,12 +72,14 @@ export const useVotingStore = defineStore('voting', () => {
     const placement = draftPlacements.value[index]
     if (placement.stickerCount <= 1) draftPlacements.value.splice(index, 1)
     else placement.stickerCount -= 1
+    draftDirty.value = true
   }
 
   /** 붙인 스티커를 모두 회수한다. */
   function resetStickers() {
     if (isSubmitted.value) return
     draftPlacements.value = []
+    draftDirty.value = true
   }
 
   function applyState(state: {
@@ -85,7 +90,7 @@ export const useVotingStore = defineStore('voting', () => {
     session.value = state.session
     myParticipation.value = state.myParticipation
     nextScreen.value = state.nextScreen
-    if (state.myParticipation) {
+    if (state.myParticipation && !draftDirty.value) {
       draftPlacements.value = state.myParticipation.placements.map((placement) => ({ ...placement }))
     }
   }
@@ -110,6 +115,7 @@ export const useVotingStore = defineStore('voting', () => {
   }
 
   async function load(nextTripId: string) {
+    if (tripId.value !== nextTripId) draftDirty.value = false
     tripId.value = nextTripId
     loading.value = true
     error.value = null
@@ -140,6 +146,7 @@ export const useVotingStore = defineStore('voting', () => {
         draftPlacements.value,
       )
       myParticipation.value = state.myParticipation
+      draftDirty.value = false
     } catch {
       error.value = '스티커를 저장하지 못했습니다.'
       throw new Error('saveStickers failed')
@@ -153,7 +160,9 @@ export const useVotingStore = defineStore('voting', () => {
     submitting.value = true
     error.value = null
     try {
-      applyState(await votingApi.submit(tripId.value, session.value.id, draftPlacements.value))
+      const state = await votingApi.submit(tripId.value, session.value.id, draftPlacements.value)
+      draftDirty.value = false
+      applyState(state)
     } catch {
       error.value = '투표를 제출하지 못했습니다.'
       throw new Error('submit failed')
@@ -217,6 +226,7 @@ export const useVotingStore = defineStore('voting', () => {
     myParticipation.value = null
     result.value = null
     draftPlacements.value = []
+    draftDirty.value = false
     nextScreen.value = 'MAP'
     error.value = null
   }

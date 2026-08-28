@@ -9,10 +9,13 @@ const props = withDefaults(defineProps<{
   saving?: boolean
   /** 상세 화면에서는 카드 클릭 이동과 답글 아이콘 이동을 끈다. */
   clickable?: boolean
+  /** 상세 화면의 본문 글씨를 키운다. */
+  emphasized?: boolean
 }>(), {
   liking: false,
   saving: false,
   clickable: true,
+  emphasized: false,
 })
 
 const emit = defineEmits<{
@@ -34,17 +37,29 @@ const images = computed(() =>
     .filter((url): url is string => Boolean(url)),
 )
 
+/** X처럼 짧은 상대 시간. 하루가 지나면 날짜로. */
 const createdLabel = computed(() => {
   const created = new Date(props.thread.createdAt)
   if (Number.isNaN(created.getTime())) return ''
   const diffMs = Date.now() - created.getTime()
   const diffMin = Math.floor(diffMs / 60_000)
-  if (diffMin < 1) return '방금 전'
-  if (diffMin < 60) return `${diffMin}분 전`
+  if (diffMin < 1) return '방금'
+  if (diffMin < 60) return `${diffMin}분`
   const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24) return `${diffHour}시간 전`
+  if (diffHour < 24) return `${diffHour}시간`
   return created.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
 })
+
+/* ── 더보기 메뉴 ── */
+const menuOpen = ref(false)
+const showMenuButton = computed(() => props.thread.editableByMe || !isTombstone.value)
+
+function onMenu(action: 'edit' | 'remove' | 'report') {
+  menuOpen.value = false
+  if (action === 'edit') startEdit()
+  if (action === 'remove') emit('remove', props.thread)
+  if (action === 'report') emit('report', props.thread)
+}
 
 /* ── 인라인 수정 ── */
 const editing = ref(false)
@@ -74,321 +89,424 @@ watch(
 )
 
 function openThread() {
-  if (props.clickable && !editing.value) emit('open', props.thread.id)
+  if (props.clickable && !editing.value && !menuOpen.value) emit('open', props.thread.id)
 }
 </script>
 
 <template>
   <article
-    class="thread-card"
-    :class="{ 'thread-card--clickable': clickable && !editing }"
+    class="thread-row"
+    :class="{ 'thread-row--clickable': clickable && !editing, 'thread-row--emphasized': emphasized }"
     data-testid="thread-card"
     @click="openThread"
   >
-    <header class="thread-card__header">
-      <BaseAvatar
-        :src="thread.author?.profileImageUrl ?? undefined"
-        :name="thread.author?.displayName ?? '사용자'"
-        size="md"
-      />
-      <div class="thread-card__meta">
-        <span class="thread-card__author">{{ thread.author?.displayName ?? '사용자' }}</span>
-        <span class="thread-card__date">{{ createdLabel }}</span>
-      </div>
-      <div class="thread-card__actions" @click.stop>
-        <template v-if="thread.editableByMe && !isTombstone">
+    <BaseAvatar
+      :src="thread.author?.profileImageUrl ?? undefined"
+      :name="thread.author?.displayName ?? '사용자'"
+      :size="emphasized ? 'md' : 'sm'"
+      class="thread-row__avatar"
+    />
+
+    <div class="thread-row__body">
+      <header class="thread-row__head">
+        <span class="thread-row__author">{{ thread.author?.displayName ?? '사용자' }}</span>
+        <span class="thread-row__time">{{ createdLabel }}</span>
+        <span class="thread-row__spacer"></span>
+
+        <div v-if="showMenuButton && !editing" class="thread-row__menu-wrap" @click.stop>
           <button
-            v-if="!editing"
             type="button"
-            class="thread-card__action"
-            data-testid="thread-edit"
-            aria-label="쓰레드 수정"
-            @click="startEdit"
+            class="thread-row__menu-btn"
+            data-testid="thread-menu"
+            aria-label="더보기"
+            @click="menuOpen = !menuOpen"
           >
-            <span class="material-symbols-rounded">edit</span>
+            <span class="material-symbols-rounded" aria-hidden="true">more_horiz</span>
+          </button>
+
+          <div v-if="menuOpen" class="thread-row__menu-backdrop" @click="menuOpen = false"></div>
+          <div v-if="menuOpen" class="thread-row__menu" role="menu">
+            <button
+              v-if="thread.editableByMe && !isTombstone"
+              type="button"
+              role="menuitem"
+              data-testid="thread-edit"
+              @click="onMenu('edit')"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">edit</span>
+              수정하기
+            </button>
+            <button
+              v-if="thread.editableByMe"
+              type="button"
+              role="menuitem"
+              class="danger"
+              data-testid="thread-delete"
+              @click="onMenu('remove')"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+              삭제하기
+            </button>
+            <button
+              v-if="!thread.editableByMe && !isTombstone"
+              type="button"
+              role="menuitem"
+              class="danger"
+              data-testid="thread-report"
+              @click="onMenu('report')"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">flag</span>
+              신고하기
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <p v-if="isTombstone" class="thread-row__tombstone" data-testid="thread-tombstone">
+        삭제된 글이에요.
+      </p>
+
+      <div v-else-if="editing" class="thread-row__edit" data-testid="thread-edit-form" @click.stop>
+        <textarea
+          v-model="draft"
+          rows="3"
+          :maxlength="500"
+          class="thread-row__edit-input"
+          data-testid="thread-edit-input"
+        />
+        <div class="thread-row__edit-actions">
+          <span class="thread-row__edit-counter">{{ draft.trim().length }} / 500</span>
+          <button type="button" class="thread-row__edit-cancel" data-testid="thread-edit-cancel" @click="cancelEdit">
+            취소
           </button>
           <button
             type="button"
-            class="thread-card__action thread-card__action--danger"
-            data-testid="thread-delete"
-            aria-label="쓰레드 삭제"
-            @click="emit('remove', thread)"
+            class="thread-row__edit-save"
+            data-testid="thread-edit-save"
+            :disabled="!draft.trim() || saving"
+            @click="saveEdit"
           >
-            <span class="material-symbols-rounded">delete</span>
+            저장
           </button>
-        </template>
-        <button
-          v-else-if="!isTombstone"
-          type="button"
-          class="thread-card__action"
-          data-testid="thread-report"
-          aria-label="쓰레드 신고"
-          @click="emit('report', thread)"
-        >
-          <span class="material-symbols-rounded">flag</span>
-        </button>
+        </div>
       </div>
-    </header>
 
-    <p v-if="isTombstone" class="thread-card__tombstone" data-testid="thread-tombstone">
-      <span class="material-symbols-rounded">block</span>
-      삭제된 글입니다.
-    </p>
+      <template v-else>
+        <p class="thread-row__content" data-testid="thread-content">{{ thread.content }}</p>
 
-    <div v-else-if="editing" class="thread-card__edit" data-testid="thread-edit-form" @click.stop>
-      <textarea
-        v-model="draft"
-        rows="3"
-        maxlength="500"
-        class="thread-card__edit-input"
-        data-testid="thread-edit-input"
-      />
-      <div class="thread-card__edit-footer">
-        <span class="thread-card__edit-counter">{{ draft.trim().length }} / 500</span>
-        <button type="button" class="thread-card__edit-cancel" data-testid="thread-edit-cancel" @click="cancelEdit">
-          취소
-        </button>
+        <div
+          v-if="images.length"
+          class="thread-row__media"
+          :class="`thread-row__media--${Math.min(images.length, 4)}`"
+          data-testid="thread-media"
+        >
+          <img
+            v-for="(url, imageIndex) in images.slice(0, 4)"
+            :key="imageIndex"
+            :src="url"
+            alt=""
+            loading="lazy"
+            class="thread-row__image"
+            @click.stop
+          />
+        </div>
+      </template>
+
+      <footer v-if="!editing" class="thread-row__actions" @click.stop>
         <button
           type="button"
-          class="thread-card__edit-save"
-          data-testid="thread-edit-save"
-          :disabled="!draft.trim() || draft.trim().length > 500 || saving"
-          @click="saveEdit"
+          class="thread-row__action"
+          :class="{ 'thread-row__action--liked': thread.likedByMe }"
+          data-testid="thread-like"
+          :disabled="liking || isTombstone"
+          aria-label="좋아요"
+          @click="emit('like', thread)"
         >
-          저장
+          <span class="material-symbols-rounded" aria-hidden="true">favorite</span>
+          <span data-testid="thread-like-count">{{ thread.likeCount }}</span>
         </button>
-      </div>
+
+        <button
+          type="button"
+          class="thread-row__action"
+          data-testid="thread-open"
+          aria-label="답글"
+          @click="clickable ? emit('open', thread.id) : undefined"
+        >
+          <span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>
+          <span data-testid="thread-reply-count">{{ thread.replyCount }}</span>
+        </button>
+      </footer>
     </div>
-
-    <p v-else class="thread-card__content" data-testid="thread-content">{{ thread.content }}</p>
-
-    <div v-if="images.length && !isTombstone" class="thread-card__images" :data-count="images.length" @click.stop>
-      <img
-        v-for="(url, index) in images"
-        :key="url"
-        :src="url"
-        :alt="`첨부 이미지 ${index + 1}`"
-        loading="lazy"
-      />
-    </div>
-
-    <footer class="thread-card__footer" @click.stop>
-      <button
-        type="button"
-        class="thread-card__stat"
-        :class="{ 'thread-card__stat--liked': thread.likedByMe }"
-        :disabled="liking"
-        data-testid="thread-like"
-        :aria-label="thread.likedByMe ? '좋아요 취소' : '좋아요'"
-        @click="emit('like', thread)"
-      >
-        <span class="material-symbols-rounded" :class="{ filled: thread.likedByMe }">favorite</span>
-        <span data-testid="thread-like-count">{{ thread.likeCount }}</span>
-      </button>
-      <button
-        type="button"
-        class="thread-card__stat"
-        data-testid="thread-open"
-        aria-label="답글 보기"
-        @click="clickable ? emit('open', thread.id) : undefined"
-      >
-        <span class="material-symbols-rounded">chat_bubble</span>
-        <span data-testid="thread-reply-count">{{ thread.replyCount }}</span>
-      </button>
-    </footer>
   </article>
 </template>
 
 <style scoped>
-.thread-card {
+.thread-row {
   display: flex;
-  flex-direction: column;
   gap: 12px;
-  padding: 22px 24px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: var(--soft-shadow);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  padding: 16px 20px;
+  background: transparent;
+  transition: background 0.15s ease;
 }
 
-.thread-card--clickable {
+.thread-row--clickable {
   cursor: pointer;
 }
 
-.thread-card--clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
+.thread-row--clickable:hover {
+  background: rgba(0, 102, 255, 0.03);
 }
 
-.thread-card__header {
-  align-items: center;
-  display: flex;
-  gap: 12px;
+.thread-row__avatar {
+  flex: 0 0 auto;
 }
 
-.thread-card__meta {
-  display: flex;
+.thread-row__body {
   flex: 1;
-  flex-direction: column;
   min-width: 0;
 }
 
-.thread-card__author {
+.thread-row__head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 2px;
+  position: relative;
+}
+
+.thread-row__author {
   color: var(--ink);
   font-size: 15px;
   font-weight: 800;
 }
 
-.thread-card__date {
+.thread-row__time {
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
 }
 
-.thread-card__actions {
-  display: flex;
-  gap: 4px;
+.thread-row__spacer {
+  flex: 1;
 }
 
-.thread-card__action {
+.thread-row__menu-wrap {
+  position: relative;
+}
+
+.thread-row__menu-btn {
   align-items: center;
   background: none;
   border: none;
-  border-radius: 12px;
+  border-radius: 999px;
   color: var(--muted);
   cursor: pointer;
   display: flex;
-  height: 34px;
+  height: 30px;
   justify-content: center;
-  transition: background 0.2s ease, color 0.2s ease;
-  width: 34px;
+  width: 30px;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.thread-card__action .material-symbols-rounded {
-  font-size: 19px;
+.thread-row__menu-btn:hover {
+  background: rgba(0, 102, 255, 0.08);
+  color: var(--violet);
 }
 
-.thread-card__action:hover {
-  background: var(--surface-2);
+.thread-row__menu-btn .material-symbols-rounded {
+  font-size: 20px;
+}
+
+.thread-row__menu-backdrop {
+  inset: 0;
+  position: fixed;
+  z-index: 40;
+}
+
+.thread-row__menu {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  min-width: 148px;
+  overflow: hidden;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  z-index: 50;
+}
+
+.thread-row__menu button {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 10px;
   color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+  padding: 9px 10px;
+  text-align: left;
+  transition: background 0.15s ease;
 }
 
-.thread-card__action--danger:hover {
-  background: rgba(255, 92, 141, 0.1);
-  color: var(--rose);
+.thread-row__menu button:hover {
+  background: var(--surface-2);
 }
 
-.thread-card__content {
+.thread-row__menu button.danger {
+  color: var(--rose, #ff5a8a);
+}
+
+.thread-row__menu .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.thread-row__content {
   color: var(--ink);
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.65;
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.thread-card__tombstone {
-  align-items: center;
+.thread-row--emphasized .thread-row__content {
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.thread-row__tombstone {
   color: var(--muted);
-  display: flex;
   font-size: 14px;
-  gap: 6px;
+  font-style: italic;
   margin: 0;
 }
 
-.thread-card__tombstone .material-symbols-rounded {
-  font-size: 17px;
+/* 이미지 그리드: 개수별 레이아웃 */
+.thread-row__media {
+  border-radius: 16px;
+  display: grid;
+  gap: 3px;
+  margin-top: 10px;
+  overflow: hidden;
 }
 
-.thread-card__edit {
+.thread-row__media--1 {
+  grid-template-columns: 1fr;
+}
+
+.thread-row__media--1 .thread-row__image {
+  aspect-ratio: 16 / 10;
+}
+
+.thread-row__media--2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.thread-row__media--3 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.thread-row__media--3 .thread-row__image:first-child {
+  grid-row: span 2;
+  height: 100%;
+}
+
+.thread-row__media--4 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.thread-row__image {
+  aspect-ratio: 1 / 1;
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.thread-row__media--1 .thread-row__image {
+  aspect-ratio: 16 / 10;
+}
+
+/* 수정 폼 */
+.thread-row__edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 4px;
 }
 
-.thread-card__edit-input {
-  background: var(--bg);
+.thread-row__edit-input {
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 14px;
   color: var(--ink);
+  font-family: inherit;
   font-size: 15px;
   line-height: 1.6;
   padding: 12px 14px;
   resize: vertical;
-  width: 100%;
 }
 
-.thread-card__edit-input:focus {
+.thread-row__edit-input:focus {
   border-color: var(--violet);
   outline: none;
 }
 
-.thread-card__edit-footer {
+.thread-row__edit-actions {
   align-items: center;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   justify-content: flex-end;
 }
 
-.thread-card__edit-counter {
+.thread-row__edit-counter {
   color: var(--muted);
   font-size: 12px;
   margin-right: auto;
 }
 
-.thread-card__edit-cancel {
+.thread-row__edit-cancel {
   background: none;
   border: none;
-  border-radius: 999px;
   color: var(--muted);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
-  padding: 8px 14px;
+  padding: 8px 12px;
 }
 
-.thread-card__edit-save {
+.thread-row__edit-save {
   background: linear-gradient(135deg, var(--violet), var(--blue));
   border: none;
   border-radius: 999px;
   color: #fff;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
-  padding: 8px 18px;
+  padding: 8px 20px;
 }
 
-.thread-card__edit-save:disabled {
+.thread-row__edit-save:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-.thread-card__images {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.thread-card__images[data-count='1'] {
-  grid-template-columns: 1fr;
-}
-
-.thread-card__images img {
-  aspect-ratio: 4 / 3;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  max-width: 100%;
-  object-fit: cover;
-  width: 100%;
-}
-
-.thread-card__footer {
+/* 액션 줄 */
+.thread-row__actions {
   display: flex;
-  gap: 18px;
+  gap: 4px;
+  margin-left: -8px;
+  margin-top: 8px;
 }
 
-.thread-card__stat {
+.thread-row__action {
   align-items: center;
   background: none;
   border: none;
@@ -399,39 +517,34 @@ function openThread() {
   font-size: 13px;
   font-weight: 700;
   gap: 5px;
-  padding: 4px 8px;
-  transition: color 0.2s ease;
+  padding: 6px 10px;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.thread-card__stat .material-symbols-rounded {
-  font-size: 20px;
-  font-variation-settings: 'FILL' 0;
+.thread-row__action .material-symbols-rounded {
+  font-size: 19px;
 }
 
-.thread-card__stat .material-symbols-rounded.filled {
+.thread-row__action:hover:not(:disabled) {
+  background: rgba(0, 102, 255, 0.08);
+  color: var(--violet);
+}
+
+.thread-row__action:first-child:hover:not(:disabled) {
+  background: rgba(255, 90, 138, 0.1);
+  color: var(--rose, #ff5a8a);
+}
+
+.thread-row__action--liked {
+  color: var(--rose, #ff5a8a);
+}
+
+.thread-row__action--liked .material-symbols-rounded {
   font-variation-settings: 'FILL' 1;
 }
 
-.thread-card__stat:hover {
-  color: var(--ink);
-}
-
-.thread-card__stat--liked {
-  color: var(--rose);
-}
-
-.thread-card__stat--liked:hover {
-  color: var(--rose);
-}
-
-.thread-card__stat:disabled {
-  opacity: 0.6;
-}
-
-@media (max-width: 640px) {
-  .thread-card {
-    border-radius: 18px;
-    padding: 18px 16px;
-  }
+.thread-row__action:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 </style>

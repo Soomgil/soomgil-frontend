@@ -181,60 +181,64 @@ onMounted(async () => {
       </div>
 
       <div class="community-feed__column">
-        <ThreadComposer
-          v-if="isAuthenticated"
-          ref="composer"
-          :submitting="posting"
-          allow-images
-          :author-name="auth.user?.displayName ?? '나'"
-          :author-image-url="auth.user?.profileImageUrl ?? null"
-          @submit="createThread"
-          @error="toast.error"
-        />
+        <div class="community-feed__surface">
+          <template v-if="isAuthenticated">
+            <ThreadComposer
+              ref="composer"
+              :submitting="posting"
+              allow-images
+              :author-name="auth.user?.displayName ?? '나'"
+              :author-image-url="auth.user?.profileImageUrl ?? null"
+              @submit="createThread"
+              @error="toast.error"
+            />
+            <div class="community-feed__divider" aria-hidden="true"></div>
+          </template>
 
-        <LoadingState v-if="loading" data-testid="feed-loading" />
+          <LoadingState v-if="loading" data-testid="feed-loading" />
 
-        <ErrorState
-          v-else-if="loadError"
-          data-testid="feed-error"
-          message="피드를 불러오지 못했습니다."
-          @retry="loadFeed"
-        />
-
-        <EmptyState
-          v-else-if="isEmpty"
-          data-testid="feed-empty"
-          icon="forum"
-          title="아직 올라온 글이 없어요"
-          description="첫 번째 여행 이야기를 남겨보세요."
-        />
-
-        <div v-else class="community-feed__list" data-testid="feed-list">
-          <ThreadCard
-            v-for="thread in threads"
-            :key="thread.id"
-            :thread="thread"
-            :liking="likingIds.has(thread.id)"
-            :saving="savingIds.has(thread.id)"
-            @open="openThread"
-            @like="toggleLike"
-            @save="saveThread"
-            @remove="removeThread"
-            @report="openReport"
+          <ErrorState
+            v-else-if="loadError"
+            data-testid="feed-error"
+            message="피드를 불러오지 못했습니다."
+            @retry="loadFeed"
           />
 
-          <button
-            v-if="hasMore"
-            type="button"
-            class="community-feed__more"
-            data-testid="feed-load-more"
-            :disabled="loadingMore"
-            @click="loadMore"
-          >
-            <span class="material-symbols-rounded" aria-hidden="true">expand_more</span>
-            {{ loadingMore ? '불러오는 중…' : '더 보기' }}
-          </button>
+          <EmptyState
+            v-else-if="isEmpty"
+            data-testid="feed-empty"
+            icon="forum"
+            title="아직 올라온 글이 없어요"
+            description="첫 번째 여행 이야기를 남겨보세요."
+          />
+
+          <div v-else class="community-feed__list" data-testid="feed-list">
+            <ThreadCard
+              v-for="thread in threads"
+              :key="thread.id"
+              :thread="thread"
+              :liking="likingIds.has(thread.id)"
+              :saving="savingIds.has(thread.id)"
+              @open="openThread"
+              @like="toggleLike"
+              @save="saveThread"
+              @remove="removeThread"
+              @report="openReport"
+            />
+          </div>
         </div>
+
+        <button
+          v-if="hasMore && !loading && !loadError"
+          type="button"
+          class="community-feed__more"
+          data-testid="feed-load-more"
+          :disabled="loadingMore"
+          @click="loadMore"
+        >
+          <span class="material-symbols-rounded" aria-hidden="true">expand_more</span>
+          {{ loadingMore ? '불러오는 중…' : '더 보기' }}
+        </button>
       </div>
     </section>
 
@@ -254,14 +258,33 @@ onMounted(async () => {
   flex-direction: column;
   gap: 16px;
   margin: 0 auto;
-  max-width: 680px;
+  max-width: 640px;
   width: 100%;
+}
+
+/* X/Threads처럼 하나의 면 위에 글이 이어지는 피드 */
+.community-feed__surface {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--soft-shadow);
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.community-feed__divider {
+  background: var(--line);
+  height: 1px;
+  margin: 0 20px;
 }
 
 .community-feed__list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+}
+
+.community-feed__list > :deep(.thread-row) + :deep(.thread-row) {
+  border-top: 1px solid var(--line);
 }
 
 .community-feed__more {

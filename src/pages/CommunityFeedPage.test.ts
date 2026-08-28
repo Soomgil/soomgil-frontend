@@ -188,6 +188,7 @@ describe('커뮤니티 공개 피드 화면', () => {
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
     await flushPromises()
 
+    await wrapper.find('[data-testid="thread-menu"]').trigger('click')
     expect(wrapper.find('[data-testid="thread-edit"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="thread-delete"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="thread-report"]').exists()).toBe(false)
@@ -203,6 +204,7 @@ describe('커뮤니티 공개 피드 화면', () => {
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
     await flushPromises()
 
+    await wrapper.find('[data-testid="thread-menu"]').trigger('click')
     await wrapper.find('[data-testid="thread-edit"]').trigger('click')
     expect(wrapper.find('[data-testid="thread-edit-form"]').exists()).toBe(true)
 
@@ -223,6 +225,7 @@ describe('커뮤니티 공개 피드 화면', () => {
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
     await flushPromises()
 
+    await wrapper.find('[data-testid="thread-menu"]').trigger('click')
     await wrapper.find('[data-testid="thread-edit"]').trigger('click')
     await wrapper.find('[data-testid="thread-edit-input"]').setValue('바꾸다 말았어요')
     await wrapper.find('[data-testid="thread-edit-cancel"]').trigger('click')
@@ -235,6 +238,7 @@ describe('커뮤니티 공개 피드 화면', () => {
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
     await flushPromises()
 
+    await wrapper.find('[data-testid="thread-menu"]').trigger('click')
     expect(wrapper.find('[data-testid="thread-edit"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="thread-report"]').exists()).toBe(true)
   })
@@ -346,6 +350,7 @@ describe('커뮤니티 공개 피드 화면', () => {
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
     await flushPromises()
 
+    await wrapper.find('[data-testid="thread-menu"]').trigger('click')
     await wrapper.find('[data-testid="thread-report"]').trigger('click')
     await flushPromises()
 
