@@ -5,7 +5,9 @@ import type { CommunityThread, PagedCommunityThread } from '@/types/community-th
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
-  user: { id: 'user-1', displayName: '소윤' } as { id: string; displayName: string } | null,
+  user: { id: 'user-1', displayName: '소윤', profileImageUrl: null } as
+    | { id: string; displayName: string; profileImageUrl: string | null }
+    | null,
   communityThreadApi: {
     getThreads: vi.fn(),
     getThread: vi.fn(),
@@ -22,22 +24,34 @@ const mocks = vi.hoisted(() => ({
     reportThread: vi.fn(),
     reportReply: vi.fn(),
   },
+  communityApi: {
+    getReportReasons: vi.fn(),
+  },
+  mediaApi: {
+    uploadFile: vi.fn(),
+  },
 }))
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
 vi.mock('@/api/community-thread.api', () => ({ communityThreadApi: mocks.communityThreadApi }))
+vi.mock('@/api/community.api', () => ({ communityApi: mocks.communityApi }))
+vi.mock('@/api/media.api', () => ({ mediaApi: mocks.mediaApi }))
 vi.mock('@/composables/useToast', () => ({ useToast: () => mocks.toast }))
 vi.mock('@/stores/auth.store', () => ({
   useAuthStore: () => ({
     get user() {
       return mocks.user
     },
+    get isAuthenticated() {
+      return Boolean(mocks.user)
+    },
+    fetchUser: vi.fn(),
   }),
 }))
 
 import CommunityFeedPage from './CommunityFeedPage.vue'
 
-const stubs = { AppShell: { template: '<div><slot /></div>' } }
+const stubs = { AppShell: { template: '<div><slot /></div>' }, Teleport: true }
 
 function thread(overrides: Partial<CommunityThread> = {}): CommunityThread {
   return {
@@ -67,8 +81,12 @@ function pageOf(items: CommunityThread[], totalPages = 1, current = 0): PagedCom
 describe('커뮤니티 공개 피드 화면', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.user = { id: 'user-1', displayName: '소윤' }
+    mocks.user = { id: 'user-1', displayName: '소윤', profileImageUrl: null }
     mocks.communityThreadApi.getThreads.mockResolvedValue(pageOf([thread()]))
+    mocks.communityApi.getReportReasons.mockResolvedValue([
+      { code: 'SPAM', displayName: '스팸 · 광고', isActive: true },
+      { code: 'INAPPROPRIATE', displayName: '부적절한 내용', isActive: true },
+    ])
   })
 
   it('불러오는 동안 loading 상태를 보여준다', async () => {
@@ -175,6 +193,44 @@ describe('커뮤니티 공개 피드 화면', () => {
     expect(wrapper.find('[data-testid="thread-report"]').exists()).toBe(false)
   })
 
+  it('수정 버튼을 누르면 인라인 편집 폼이 열리고 저장하면 PATCH를 보낸다', async () => {
+    mocks.communityThreadApi.getThreads.mockResolvedValue(
+      pageOf([thread({ editableByMe: true })]),
+    )
+    mocks.communityThreadApi.updateThread.mockResolvedValue(
+      thread({ editableByMe: true, content: '수정된 본문', updatedAt: '2026-08-24T01:00:00Z' }),
+    )
+    const wrapper = mount(CommunityFeedPage, { global: { stubs } })
+    await flushPromises()
+
+    await wrapper.find('[data-testid="thread-edit"]').trigger('click')
+    expect(wrapper.find('[data-testid="thread-edit-form"]').exists()).toBe(true)
+
+    await wrapper.find('[data-testid="thread-edit-input"]').setValue('수정된 본문')
+    await wrapper.find('[data-testid="thread-edit-save"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.communityThreadApi.updateThread).toHaveBeenCalledWith('thread-1', {
+      content: '수정된 본문',
+    })
+    expect(wrapper.find('[data-testid="thread-content"]').text()).toBe('수정된 본문')
+  })
+
+  it('수정을 취소하면 원래 본문으로 돌아간다', async () => {
+    mocks.communityThreadApi.getThreads.mockResolvedValue(
+      pageOf([thread({ editableByMe: true })]),
+    )
+    const wrapper = mount(CommunityFeedPage, { global: { stubs } })
+    await flushPromises()
+
+    await wrapper.find('[data-testid="thread-edit"]').trigger('click')
+    await wrapper.find('[data-testid="thread-edit-input"]').setValue('바꾸다 말았어요')
+    await wrapper.find('[data-testid="thread-edit-cancel"]').trigger('click')
+
+    expect(mocks.communityThreadApi.updateThread).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="thread-content"]').text()).toBe('성심당 줄이 미쳤어요')
+  })
+
   it('남의 글에는 신고 버튼만 보여준다', async () => {
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
     await flushPromises()
@@ -209,6 +265,63 @@ describe('커뮤니티 공개 피드 화면', () => {
     expect(wrapper.findAll('[data-testid="thread-card"]')[0].text()).toContain('새 글')
   })
 
+  it('이미지를 첨부하면 업로드 후 mediaFileIds를 함께 보낸다', async () => {
+    mocks.mediaApi.uploadFile.mockResolvedValue({ id: 'media-1' })
+    mocks.communityThreadApi.createThread.mockResolvedValue(
+      thread({ id: 'thread-new', content: '사진 글' }),
+    )
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn(),
+    })
+    const wrapper = mount(CommunityFeedPage, { global: { stubs } })
+    await flushPromises()
+
+    const fileInput = wrapper.find('[data-testid="composer-file-input"]')
+    expect(fileInput.exists()).toBe(true)
+
+    const file = new File(['img'], 'photo.png', { type: 'image/png' })
+    Object.defineProperty(fileInput.element, 'files', { value: [file] })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    expect(mocks.mediaApi.uploadFile).toHaveBeenCalledWith(file, 'COMMUNITY_POST')
+    expect(wrapper.findAll('[data-testid="composer-preview"]')).toHaveLength(1)
+
+    await wrapper.find('[data-testid="thread-composer-input"]').setValue('사진 글')
+    await wrapper.find('[data-testid="thread-composer"]').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.communityThreadApi.createThread).toHaveBeenCalledWith({
+      content: '사진 글',
+      mediaFileIds: ['media-1'],
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it('첨부한 이미지를 제거할 수 있다', async () => {
+    mocks.mediaApi.uploadFile.mockResolvedValue({ id: 'media-1' })
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn(),
+    })
+    const wrapper = mount(CommunityFeedPage, { global: { stubs } })
+    await flushPromises()
+
+    const fileInput = wrapper.find('[data-testid="composer-file-input"]')
+    const file = new File(['img'], 'photo.png', { type: 'image/png' })
+    Object.defineProperty(fileInput.element, 'files', { value: [file] })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    await wrapper.find('[data-testid="composer-preview-remove"]').trigger('click')
+
+    expect(wrapper.findAll('[data-testid="composer-preview"]')).toHaveLength(0)
+    vi.unstubAllGlobals()
+  })
+
   it('비로그인 사용자에게는 작성 폼을 보여주지 않는다', async () => {
     mocks.user = null
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
@@ -228,7 +341,7 @@ describe('커뮤니티 공개 피드 화면', () => {
     expect(wrapper.find('[data-testid="thread-composer-submit"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('신고 버튼은 THREAD 대상으로 신고를 보낸다', async () => {
+  it('신고 버튼을 누르면 사유 선택 모달이 열리고 선택한 사유로 신고한다', async () => {
     mocks.communityThreadApi.reportThread.mockResolvedValue({})
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
     await flushPromises()
@@ -236,7 +349,21 @@ describe('커뮤니티 공개 피드 화면', () => {
     await wrapper.find('[data-testid="thread-report"]').trigger('click')
     await flushPromises()
 
-    expect(mocks.communityThreadApi.reportThread).toHaveBeenCalledWith('thread-1', 'INAPPROPRIATE')
+    expect(wrapper.find('[data-testid="report-modal"]').exists()).toBe(true)
+    // 사유를 고르기 전에는 제출할 수 없다.
+    expect(wrapper.find('[data-testid="report-submit"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.findAll('[data-testid="report-reason"]')[0].setValue(true)
+    await wrapper.find('[data-testid="report-detail"]').setValue('광고 글이에요')
+    await wrapper.find('[data-testid="report-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.communityThreadApi.reportThread).toHaveBeenCalledWith(
+      'thread-1',
+      'SPAM',
+      '광고 글이에요',
+    )
+    expect(wrapper.find('[data-testid="report-modal"]').exists()).toBe(false)
   })
 
   it('답글 아이콘을 누르면 상세로 이동한다', async () => {

@@ -72,22 +72,15 @@ describe('여행 방 투표 진입 가드', () => {
     expect(router.currentRoute.value.name).toBe('Route')
   })
 
-  it('투표가 끝난 뒤 투표 화면에 들어가면 지도로 돌려보낸다', async () => {
-    mocks.ensureGate.mockResolvedValue('MAP')
-    const router = buildRouter()
-
-    await router.push('/trips/trip-1/vote')
-
-    expect(router.currentRoute.value.name).toBe('Route')
-  })
-
-  it('투표가 필요한 상태면 투표 화면에 머문다', async () => {
-    mocks.ensureGate.mockResolvedValue('VOTE')
+  it('투표 화면 직접 진입은 막지 않는다 (방장 투표 시작 화면)', async () => {
+    // 세션이 없어도 방장은 /vote에서 투표를 시작할 수 있어야 하므로
+    // 가드는 리다이렉트하지 않고 페이지가 상태별 화면을 그린다.
     const router = buildRouter()
 
     await router.push('/trips/trip-1/vote')
 
     expect(router.currentRoute.value.name).toBe('TripVote')
+    expect(mocks.ensureGate).not.toHaveBeenCalled()
   })
 
   it('게이트 조회가 실패해도 여행 방 진입을 막지 않는다', async () => {

@@ -162,6 +162,17 @@ export const useVotingStore = defineStore('voting', () => {
     }
   }
 
+  /** 종료된 세션의 결과를 불러온다. 진행 중이거나 세션이 없으면 아무것도 하지 않는다. */
+  async function loadResult() {
+    if (!tripId.value || !session.value || session.value.status !== 'COMPLETED') return null
+    try {
+      result.value = await votingApi.getResult(tripId.value, session.value.id)
+      return result.value
+    } catch {
+      return null
+    }
+  }
+
   async function closeEarly(acknowledgeUnvotedParticipants: boolean) {
     if (!tripId.value || !session.value) return null
     closing.value = true
@@ -236,6 +247,7 @@ export const useVotingStore = defineStore('voting', () => {
     ensureGate,
     load,
     openSession,
+    loadResult,
     saveStickers,
     submit,
     closeEarly,

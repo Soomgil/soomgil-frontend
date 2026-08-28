@@ -7,11 +7,12 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ThreadCard from '@/components/community/ThreadCard.vue'
 import ThreadComposer from '@/components/community/ThreadComposer.vue'
+import ThreadReportModal from '@/components/community/ThreadReportModal.vue'
 import { communityThreadApi } from '@/api/community-thread.api'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToast } from '@/composables/useToast'
 import type { CommunityThread } from '@/types/community-thread'
-import type { PageMeta } from '@/types/community'
+import type { PageMeta, ReportReasonCode } from '@/types/community'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -24,8 +25,13 @@ const loadingMore = ref(false)
 const posting = ref(false)
 const loadError = ref(false)
 const likingIds = ref(new Set<string>())
+const savingIds = ref(new Set<string>())
+const composer = ref<InstanceType<typeof ThreadComposer> | null>(null)
 
-const isAuthenticated = computed(() => Boolean(auth.user))
+const reportTarget = ref<CommunityThread | null>(null)
+const reporting = ref(false)
+
+const isAuthenticated = computed(() => auth.isAuthenticated && Boolean(auth.user))
 const hasMore = computed(() => Boolean(page.value && page.value.page + 1 < page.value.totalPages))
 const isEmpty = computed(() => !loading.value && !loadError.value && threads.value.length === 0)
 
@@ -58,11 +64,15 @@ async function loadMore() {
   }
 }
 
-async function createThread(content: string) {
+async function createThread(content: string, mediaFileIds: string[]) {
   posting.value = true
   try {
-    const created = await communityThreadApi.createThread({ content })
+    const created = await communityThreadApi.createThread({
+      content,
+      ...(mediaFileIds.length ? { mediaFileIds } : {}),
+    })
     threads.value.unshift(created)
+    composer.value?.reset()
     toast.success('글을 올렸어요.')
   } catch {
     toast.error('글을 올리지 못했습니다.')
@@ -92,6 +102,21 @@ async function toggleLike(thread: CommunityThread) {
   }
 }
 
+async function saveThread(thread: CommunityThread, content: string) {
+  if (savingIds.value.has(thread.id)) return
+  savingIds.value.add(thread.id)
+  try {
+    const updated = await communityThreadApi.updateThread(thread.id, { content })
+    const index = threads.value.findIndex((item) => item.id === thread.id)
+    if (index >= 0) threads.value[index] = updated
+    toast.success('글을 수정했어요.')
+  } catch {
+    toast.error('글을 수정하지 못했습니다.')
+  } finally {
+    savingIds.value.delete(thread.id)
+  }
+}
+
 async function removeThread(thread: CommunityThread) {
   try {
     await communityThreadApi.deleteThread(thread.id)
@@ -102,12 +127,25 @@ async function removeThread(thread: CommunityThread) {
   }
 }
 
-async function reportThread(thread: CommunityThread) {
+function openReport(thread: CommunityThread) {
+  if (!isAuthenticated.value) {
+    router.push('/login')
+    return
+  }
+  reportTarget.value = thread
+}
+
+async function submitReport(reasonCode: ReportReasonCode, detail: string | undefined) {
+  if (!reportTarget.value || reporting.value) return
+  reporting.value = true
   try {
-    await communityThreadApi.reportThread(thread.id, 'INAPPROPRIATE')
+    await communityThreadApi.reportThread(reportTarget.value.id, reasonCode, detail)
+    reportTarget.value = null
     toast.success('신고를 접수했어요.')
   } catch {
     toast.error('신고를 접수하지 못했습니다.')
+  } finally {
+    reporting.value = false
   }
 }
 
@@ -115,112 +153,140 @@ function openThread(threadId: string) {
   router.push(`/community/threads/${threadId}`)
 }
 
-function editThread(thread: CommunityThread) {
-  router.push(`/community/threads/${thread.id}`)
-}
-
-onMounted(loadFeed)
+onMounted(async () => {
+  // 새로고침 직후에는 토큰만 있고 user가 비어 있을 수 있다. 작성 폼 노출에 필요하므로 복원한다.
+  if (auth.isAuthenticated && !auth.user) {
+    try { await auth.fetchUser() } catch { /* 조회 실패해도 피드는 노출 */ }
+  }
+  await loadFeed()
+})
 </script>
 
 <template>
   <AppShell>
-    <section class="community-feed">
-      <header class="community-feed-header">
-        <h1 class="community-feed-title">커뮤니티</h1>
-        <p class="community-feed-subtitle">여행 이야기를 짧게 나눠보세요.</p>
-      </header>
+    <section class="section page-with-hero community-feed">
+      <div class="page-hero">
+        <div class="page-hero__copy">
+          <p class="page-hero__eyebrow">
+            <span class="material-symbols-rounded" aria-hidden="true">forum</span>
+            Community
+          </p>
+          <h1 class="page-hero__title">
+            <span class="page-hero__gradient">여행자들의 이야기</span>를<br />나눠보세요
+          </h1>
+          <p class="page-hero__lead">
+            다녀온 곳, 가고 싶은 곳, 지금 떠오른 여행 생각까지. 짧게 남기고 가볍게 답해보세요.
+          </p>
+        </div>
+      </div>
 
-      <ThreadComposer
-        v-if="isAuthenticated"
-        :submitting="posting"
-        @submit="createThread"
-      />
-
-      <LoadingState v-if="loading" data-testid="feed-loading" />
-
-      <ErrorState
-        v-else-if="loadError"
-        data-testid="feed-error"
-        message="피드를 불러오지 못했습니다."
-        @retry="loadFeed"
-      />
-
-      <EmptyState
-        v-else-if="isEmpty"
-        data-testid="feed-empty"
-        icon="forum"
-        title="아직 올라온 글이 없어요"
-        description="첫 번째 여행 이야기를 남겨보세요."
-      />
-
-      <div v-else class="community-feed-list" data-testid="feed-list">
-        <ThreadCard
-          v-for="thread in threads"
-          :key="thread.id"
-          :thread="thread"
-          :liking="likingIds.has(thread.id)"
-          @open="openThread"
-          @like="toggleLike"
-          @edit="editThread"
-          @remove="removeThread"
-          @report="reportThread"
+      <div class="community-feed__column">
+        <ThreadComposer
+          v-if="isAuthenticated"
+          ref="composer"
+          :submitting="posting"
+          allow-images
+          :author-name="auth.user?.displayName ?? '나'"
+          :author-image-url="auth.user?.profileImageUrl ?? null"
+          @submit="createThread"
+          @error="toast.error"
         />
 
-        <button
-          v-if="hasMore"
-          type="button"
-          class="community-feed-more"
-          data-testid="feed-load-more"
-          :disabled="loadingMore"
-          @click="loadMore"
-        >
-          {{ loadingMore ? '불러오는 중…' : '더 보기' }}
-        </button>
+        <LoadingState v-if="loading" data-testid="feed-loading" />
+
+        <ErrorState
+          v-else-if="loadError"
+          data-testid="feed-error"
+          message="피드를 불러오지 못했습니다."
+          @retry="loadFeed"
+        />
+
+        <EmptyState
+          v-else-if="isEmpty"
+          data-testid="feed-empty"
+          icon="forum"
+          title="아직 올라온 글이 없어요"
+          description="첫 번째 여행 이야기를 남겨보세요."
+        />
+
+        <div v-else class="community-feed__list" data-testid="feed-list">
+          <ThreadCard
+            v-for="thread in threads"
+            :key="thread.id"
+            :thread="thread"
+            :liking="likingIds.has(thread.id)"
+            :saving="savingIds.has(thread.id)"
+            @open="openThread"
+            @like="toggleLike"
+            @save="saveThread"
+            @remove="removeThread"
+            @report="openReport"
+          />
+
+          <button
+            v-if="hasMore"
+            type="button"
+            class="community-feed__more"
+            data-testid="feed-load-more"
+            :disabled="loadingMore"
+            @click="loadMore"
+          >
+            <span class="material-symbols-rounded" aria-hidden="true">expand_more</span>
+            {{ loadingMore ? '불러오는 중…' : '더 보기' }}
+          </button>
+        </div>
       </div>
     </section>
+
+    <ThreadReportModal
+      :open="Boolean(reportTarget)"
+      target-label="쓰레드"
+      :submitting="reporting"
+      @close="reportTarget = null"
+      @submit="submitReport"
+    />
   </AppShell>
 </template>
 
 <style scoped>
-.community-feed {
+.community-feed__column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   margin: 0 auto;
-  max-width: 640px;
+  max-width: 680px;
   width: 100%;
 }
 
-.community-feed-header {
-  padding: 24px 16px 8px;
-}
-
-.community-feed-title {
-  color: var(--ink);
-  font-size: 24px;
-  font-weight: 800;
-  margin: 0;
-}
-
-.community-feed-subtitle {
-  color: var(--muted);
-  font-size: 14px;
-  margin: 6px 0 0;
-}
-
-.community-feed-list {
+.community-feed__list {
   display: flex;
   flex-direction: column;
+  gap: 16px;
 }
 
-.community-feed-more {
-  background: none;
-  border: none;
-  color: var(--brand-violet, #6b5bff);
+.community-feed__more {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--violet);
   cursor: pointer;
+  display: flex;
   font-size: 14px;
-  font-weight: 700;
-  padding: 18px;
+  font-weight: 800;
+  gap: 4px;
+  justify-content: center;
+  margin: 4px auto 0;
+  padding: 12px 28px;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.community-feed-more:disabled {
+.community-feed__more:hover:not(:disabled) {
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+
+.community-feed__more:disabled {
   color: var(--muted);
   cursor: not-allowed;
 }

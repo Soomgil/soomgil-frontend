@@ -6,6 +6,7 @@ import type { MyVoteParticipation, TripVoteSessionDetail, TripVoteSessionState }
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+  user: { id: 'owner-1', displayName: '방장' } as { id: string } | null,
   votingApi: {
     getCurrentSession: vi.fn(),
     openSession: vi.fn(),
@@ -14,6 +15,9 @@ const mocks = vi.hoisted(() => ({
     closeSession: vi.fn(),
     getResult: vi.fn(),
   },
+  tripApi: {
+    getTrip: vi.fn(),
+  },
 }))
 
 vi.mock('vue-router', () => ({
@@ -21,7 +25,19 @@ vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { tripId: 'trip-1' } }),
 }))
 vi.mock('@/api/voting.api', () => ({ votingApi: mocks.votingApi }))
+vi.mock('@/api/trip.api', () => ({ tripApi: mocks.tripApi }))
 vi.mock('@/composables/useToast', () => ({ useToast: () => mocks.toast }))
+vi.mock('@/stores/auth.store', () => ({
+  useAuthStore: () => ({
+    get user() {
+      return mocks.user
+    },
+    get isAuthenticated() {
+      return Boolean(mocks.user)
+    },
+    fetchUser: vi.fn(),
+  }),
+}))
 
 import TripVotePage from './TripVotePage.vue'
 
@@ -76,11 +92,17 @@ function state(overrides: Partial<TripVoteSessionState> = {}): TripVoteSessionSt
   }
 }
 
+function tripDetail(ownerUserId = 'owner-1') {
+  return { id: 'trip-1', title: '제주 3박 4일', ownerUserId, regions: [], members: [] }
+}
+
 describe('여행 방 투표 화면', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    mocks.user = { id: 'owner-1' }
     mocks.votingApi.getCurrentSession.mockResolvedValue(state())
+    mocks.tripApi.getTrip.mockResolvedValue(tripDetail())
   })
 
   it('후보 목록과 남은 스티커를 보여준다', async () => {
@@ -190,27 +212,12 @@ describe('여행 방 투표 화면', () => {
     expect(mocks.votingApi.closeSession).toHaveBeenCalledWith('trip-1', 'session-1', true)
   })
 
-  it('전원 제출이면 경고 없이 바로 마감할 수 있다', async () => {
-    mocks.votingApi.getCurrentSession.mockResolvedValue(
-      state({ session: session({ participantSummary: { total: 2, submitted: 2 } }) }),
-    )
+  it('마감 버튼은 방장에게만 보인다', async () => {
+    mocks.user = { id: 'member-9' }
     const wrapper = mount(TripVotePage, { global: { stubs } })
     await flushPromises()
 
-    await wrapper.find('[data-testid="vote-close-open"]').trigger('click')
-
-    expect(wrapper.find('[data-testid="vote-close-warning"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="vote-close-confirm"]').attributes('disabled')).toBeUndefined()
-  })
-
-  it('투표가 이미 끝났으면 지도 화면으로 보낸다', async () => {
-    mocks.votingApi.getCurrentSession.mockResolvedValue(
-      state({ nextScreen: 'MAP', session: session({ status: 'COMPLETED' }) }),
-    )
-    mount(TripVotePage, { global: { stubs } })
-    await flushPromises()
-
-    expect(mocks.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' } })
+    expect(wrapper.find('[data-testid="vote-close-open"]').exists()).toBe(false)
   })
 
   it('참여 현황을 진행률로 보여준다', async () => {
@@ -218,5 +225,136 @@ describe('여행 방 투표 화면', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-progress"]').text()).toContain('1/3')
+  })
+
+  it('세션이 없으면 방장에게 투표 시작 패널을 보여준다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue({
+      hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null,
+    })
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="setup-open"]').exists()).toBe(true)
+  })
+
+  it('세션이 없으면 멤버에게는 안내와 지도 이동만 보여준다', async () => {
+    mocks.user = { id: 'member-9' }
+    mocks.votingApi.getCurrentSession.mockResolvedValue({
+      hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null,
+    })
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="vote-idle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(false)
+  })
+
+  it('방장이 스티커/선정 개수를 정해 투표를 시작한다', async () => {
+    mocks.votingApi.getCurrentSession
+      .mockResolvedValueOnce({ hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null })
+      .mockResolvedValue(state())
+    mocks.votingApi.openSession.mockResolvedValue(session())
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    // 스티커 5 → 4, 선정 3 → 4
+    await wrapper.find('[data-testid="setup-sticker-minus"]').trigger('click')
+    await wrapper.find('[data-testid="setup-selection-plus"]').trigger('click')
+    expect(wrapper.find('[data-testid="setup-sticker-count"]').text()).toBe('4')
+    expect(wrapper.find('[data-testid="setup-selection-count"]').text()).toBe('4')
+
+    await wrapper.find('[data-testid="setup-open"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.votingApi.openSession).toHaveBeenCalledWith('trip-1', {
+      stickerAllowance: 4,
+      selectionCount: 4,
+    })
+    // 시작 후 투표 화면으로 전환된다.
+    expect(wrapper.find('[data-testid="vote-candidates"]').exists()).toBe(true)
+  })
+
+  it('후보 부족으로 시작이 거절되면 안내 메시지를 보여준다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue({
+      hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null,
+    })
+    mocks.votingApi.openSession.mockRejectedValue({
+      response: { data: { code: 'VOTE_CANDIDATE_POOL_INSUFFICIENT' } },
+    })
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    await wrapper.find('[data-testid="setup-open"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="setup-error"]').text()).toContain('후보 관광지를 충분히 찾지 못했어요')
+  })
+
+  it('종료된 세션은 결과 화면을 보여준다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue(state({
+      nextScreen: 'MAP',
+      session: session({ status: 'COMPLETED', completionReason: 'ALL_SUBMITTED' }),
+      myParticipation: participation({ status: 'SUBMITTED' }),
+    }))
+    mocks.votingApi.getResult.mockResolvedValue({
+      sessionId: 'session-1', tripId: 'trip-1', status: 'COMPLETED',
+      completionReason: 'ALL_SUBMITTED', completedAt: null, selectionCount: 2,
+      results: [
+        {
+          candidateId: 'c1', provider: 'KTO', externalPlaceId: '126508', name: '성산일출봉',
+          thumbnailUrl: null, stickerCount: 5, selected: true, selectedRank: 1,
+          itineraryOutcome: 'ADDED', itineraryItemId: 'item-1',
+        },
+        {
+          candidateId: 'c2', provider: 'KTO', externalPlaceId: '126509', name: '우도',
+          thumbnailUrl: null, stickerCount: 1, selected: false, selectedRank: null,
+          itineraryOutcome: null, itineraryItemId: null,
+        },
+      ],
+      unscheduledDayId: null, itineraryVersion: null,
+    })
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="vote-result"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="result-row"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="result-added"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="vote-result-map"]').exists()).toBe(true)
+  })
+
+  it('종료된 세션에서 방장은 새 투표 시작 패널을 열 수 있다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue(state({
+      nextScreen: 'MAP',
+      session: session({ status: 'COMPLETED', completionReason: 'OWNER_EARLY_CLOSE' }),
+    }))
+    mocks.votingApi.getResult.mockResolvedValue(null)
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    await wrapper.find('[data-testid="vote-restart"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(true)
+  })
+
+  it('머무는 동안 투표가 끝나면 지도 화면으로 이동한다', async () => {
+    mocks.votingApi.getCurrentSession
+      .mockResolvedValueOnce(state({ nextScreen: 'WAITING', myParticipation: participation({ status: 'SUBMITTED' }) }))
+      .mockResolvedValue(state({
+        nextScreen: 'MAP',
+        session: session({ status: 'COMPLETED', completionReason: 'ALL_SUBMITTED' }),
+        myParticipation: participation({ status: 'SUBMITTED' }),
+      }))
+    vi.useFakeTimers()
+    mount(TripVotePage, { global: { stubs } })
+    await vi.runOnlyPendingTimersAsync()
+
+    // polling 1회 후 COMPLETED 전환 → 지도 이동
+    await vi.advanceTimersByTimeAsync(5000)
+    await vi.runOnlyPendingTimersAsync()
+    vi.useRealTimers()
+    await flushPromises()
+
+    expect(mocks.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' } })
   })
 })
