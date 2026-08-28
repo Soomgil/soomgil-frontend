@@ -190,7 +190,7 @@ function imageUrl(candidate: TripVoteCandidate | null) {
         <img
           v-if="imageUrl(candidate)"
           :src="imageUrl(candidate)!"
-          :alt="''"
+          :alt="candidate.name ?? '후보 썸네일'"
           draggable="false"
           @error="brokenImages.add(candidate.id)"
         />

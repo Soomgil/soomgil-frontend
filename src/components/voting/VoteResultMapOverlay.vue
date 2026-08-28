@@ -90,7 +90,7 @@ function dismiss() {
             <img
               v-if="row.thumbnailUrl"
               :src="row.thumbnailUrl"
-              alt=""
+              :alt="row.name ?? '선정 관광지'"
               class="vote-map-overlay__thumb"
             />
             <span v-else class="vote-map-overlay__thumb vote-map-overlay__thumb--empty">

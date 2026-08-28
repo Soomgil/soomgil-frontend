@@ -67,7 +67,7 @@ const dots = computed(() => {
         <img
           v-if="row.candidate.thumbnailUrl"
           :src="row.candidate.thumbnailUrl"
-          alt=""
+          :alt="row.candidate.name ?? '후보 썸네일'"
           class="vote-cart__thumb"
         />
         <span v-else class="vote-cart__thumb vote-cart__thumb--empty">

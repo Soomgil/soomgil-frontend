@@ -204,7 +204,7 @@ function openThread() {
             v-for="(url, imageIndex) in images.slice(0, 4)"
             :key="imageIndex"
             :src="url"
-            alt=""
+            :alt="`첨부 이미지 ${imageIndex + 1}`"
             loading="lazy"
             class="thread-row__image"
             @click.stop
