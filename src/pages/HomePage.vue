@@ -6,12 +6,14 @@ import StoryDetailOverlay from '@/components/community/StoryDetailOverlay.vue'
 import { tripApi, type NearestTripDto } from '@/api/trip.api'
 import { communityApi } from '@/api/community.api'
 import { placeApi } from '@/api/place.api'
+import { awardApi } from '@/api/award.api'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToast } from '@/composables/useToast'
 import { communityPostToStory } from '@/utils/community'
 import type { TripSummary, TripDetailMember } from '@/types/trip'
 import type { CommunityPostSummary } from '@/types/community'
 import type { Place } from '@/types/place'
+import type { AwardPhoto } from '@/types/award'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -106,21 +108,26 @@ function openTripSelection(intent: 'invite' | 'share') {
   void router.push({ path: '/my-trips', query: { intent } })
 }
 
-/* ── Hero Carousel ───────────────────────────────────── */
-const slides = computed(() => {
-  const storySlides = featuredStories.value.flatMap((story) => {
-    const image = story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl
-    return image ? [{ image, title: story.title, subtitle: story.summary ?? '여행자의 새로운 이야기', tag: 'story', tagLabel: '여행기' }] : []
-  })
-  const placeSlides = topPlaces.value.flatMap((place) => place.thumbnailUrl ? [{
-    image: place.thumbnailUrl,
-    title: place.placeName,
-    subtitle: place.summary ?? place.address ?? '이번 주 인기 여행지',
-    tag: 'place',
-    tagLabel: '인기 장소',
-  }] : [])
-  return [...storySlides, ...placeSlides].slice(0, 5)
-})
+/* ── Hero Carousel — 관광사진 공모전 수상작 ───────────── */
+const awardPhotos = ref<AwardPhoto[]>([])
+const awardPhotosLoading = ref(true)
+
+/** 저작권 Type1 수상작은 출처 표시가 필요하다. 촬영자와 수상 부문을 함께 노출한다. */
+function awardCredit(photo: AwardPhoto): string {
+  return [photo.photographer, photo.awardDivision, '한국관광공사 관광사진 공모전']
+    .filter(Boolean)
+    .join(' · ')
+}
+
+const slides = computed(() => awardPhotos.value.map((photo) => ({
+  image: photo.imageUrl,
+  title: photo.placeName ?? photo.title ?? '이름 없는 여행지',
+  subtitle: photo.regionName ?? photo.filmLocation ?? '대한민국의 어딘가',
+  caption: photo.title,
+  credit: awardCredit(photo),
+  tag: 'award',
+  tagLabel: '수상작',
+})))
 
 const currentSlide = ref(0)
 let carouselTimer: ReturnType<typeof setInterval> | null = null
@@ -168,15 +175,23 @@ function openFeaturedStory(story: CommunityPostSummary) {
 
 async function fetchHomeData() {
   try {
-    const [placesRes, storiesRes] = await Promise.allSettled([
+    const [placesRes, storiesRes, awardRes] = await Promise.allSettled([
       placeApi.getPopularPlaces(3),
-      communityApi.getPosts({ size: 20, sort: ['likes,desc'] })
+      communityApi.getPosts({ size: 20, sort: ['likes,desc'] }),
+      awardApi.getAwardPhotos({ limit: 5 }),
     ])
 
     if (placesRes.status === 'fulfilled') {
       topPlaces.value = placesRes.value
     } else {
       console.error('Failed to load top places', placesRes.reason)
+    }
+
+    if (awardRes.status === 'fulfilled') {
+      awardPhotos.value = awardRes.value
+    } else {
+      awardPhotos.value = []
+      console.error('Failed to load award photos', awardRes.reason)
     }
 
     if (authStore.isAuthenticated) {
@@ -222,6 +237,7 @@ async function fetchHomeData() {
     topPlacesLoading.value = false
     nearestTripLoading.value = false
     featuredStoriesLoading.value = false
+    awardPhotosLoading.value = false
   }
 }
 </script>
@@ -293,7 +309,11 @@ async function fetchHomeData() {
             </div>
           </div>
           <div class="home-hero-content">
-            <div v-if="slides.length === 0" class="home-section-state home-section-state--wide">
+            <div v-if="awardPhotosLoading" class="home-section-state home-section-state--loading home-section-state--wide">
+              <div class="home-section-spinner"></div>
+              <p>수상작 사진을 불러오는 중…</p>
+            </div>
+            <div v-else-if="slides.length === 0" class="home-section-state home-section-state--wide">
               <span class="material-symbols-rounded home-section-state-icon">landscape</span>
               <p>추천 콘텐츠를 준비하고 있어요.</p>
             </div>
@@ -303,11 +323,16 @@ async function fetchHomeData() {
               class="home-hero-slide"
               :class="{ 'is-active': currentSlide === i }"
             >
-              <img :src="slide.image" :alt="slide.title" />
+              <img :src="slide.image" :alt="slide.caption ?? slide.title" />
               <div class="home-hero-card-overlay">
                 <span class="card-tag" :class="'tag-' + slide.tag">{{ slide.tagLabel }}</span>
                 <h3>{{ slide.title }}</h3>
                 <p>{{ slide.subtitle }}</p>
+                <p v-if="slide.credit" class="home-hero-credit">
+                  <span class="material-symbols-rounded" aria-hidden="true">photo_camera</span>
+                  <span v-if="slide.caption" class="home-hero-credit-title">{{ slide.caption }}</span>
+                  {{ slide.credit }}
+                </p>
               </div>
             </div>
 
@@ -856,6 +881,28 @@ async function fetchHomeData() {
 .home-hero-card-overlay .card-tag.tag-story { background: var(--rose); }
 .home-hero-card-overlay .card-tag.tag-column { background: var(--violet); }
 .home-hero-card-overlay .card-tag.tag-place { background: var(--blue); }
+.home-hero-card-overlay .card-tag.tag-award {
+  background: linear-gradient(135deg, #b8860b, #d4a017);
+}
+.home-hero-credit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px !important;
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.72 !important;
+}
+.home-hero-credit .material-symbols-rounded {
+  font-size: 14px;
+}
+.home-hero-credit-title {
+  font-weight: 800;
+}
+.home-hero-credit-title::after {
+  content: ' ·';
+}
 .home-hero-card-overlay h3 {
   font-size: 20px;
   font-weight: 800;
