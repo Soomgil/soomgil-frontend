@@ -39,6 +39,11 @@ const reporting = ref(false)
 
 const isAuthenticated = computed(() => auth.isAuthenticated && Boolean(auth.user))
 
+/** 하위 답글까지 합친 전체 답글 수. 섹션 헤더에 보여준다. */
+const replyTotal = computed(() =>
+  replies.value.reduce((sum, reply) => sum + 1 + reply.replies.length, 0),
+)
+
 async function load() {
   loading.value = true
   loadError.value = false
@@ -174,15 +179,15 @@ async function submitReport(reasonCode: ReportReasonCode, detail: string | undef
   }
 }
 
-/** X처럼 짧은 상대 시간. 하루가 지나면 날짜로. */
+/** 짧은 상대 시간. 하루가 지나면 날짜로. */
 function replyDateLabel(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   const diffMin = Math.floor((Date.now() - date.getTime()) / 60_000)
   if (diffMin < 1) return '방금'
-  if (diffMin < 60) return `${diffMin}분`
+  if (diffMin < 60) return `${diffMin}분 전`
   const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24) return `${diffHour}시간`
+  if (diffHour < 24) return `${diffHour}시간 전`
   return date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
 }
 
@@ -212,13 +217,13 @@ onMounted(async () => {
           @retry="load"
         />
 
-        <div v-else class="thread-detail__surface">
+        <template v-else>
+          <!-- 본문 카드 -->
           <ThreadCard
             :thread="thread"
             :saving="savingThread"
             :clickable="false"
             emphasized
-            flat
             @like="toggleLike"
             @save="saveThread"
             @remove="removeThread"
@@ -226,121 +231,134 @@ onMounted(async () => {
             @open="() => {}"
           />
 
-          <div class="thread-detail__divider" aria-hidden="true"></div>
+          <!-- 답글 작성 카드 -->
+          <div v-if="isAuthenticated" class="thread-detail__composer-card">
+            <ThreadComposer
+              ref="composer"
+              :submitting="posting"
+              submit-label="답글"
+              placeholder="답글을 남겨보세요"
+              :author-name="auth.user?.displayName ?? '나'"
+              :author-image-url="auth.user?.profileImageUrl ?? null"
+              :reply-target-name="replyTarget?.author?.displayName ?? null"
+              @submit="submitReply"
+              @cancel-reply="replyTarget = null"
+              @error="toast.error"
+            />
+          </div>
 
-          <ThreadComposer
-            v-if="isAuthenticated"
-            ref="composer"
-            :submitting="posting"
-            submit-label="답글"
-            placeholder="답글을 남겨보세요"
-            :author-name="auth.user?.displayName ?? '나'"
-            :author-image-url="auth.user?.profileImageUrl ?? null"
-            :reply-target-name="replyTarget?.author?.displayName ?? null"
-            @submit="submitReply"
-            @cancel-reply="replyTarget = null"
-            @error="toast.error"
-          />
+          <!-- 답글 섹션 카드 -->
+          <div class="thread-detail__replies-card">
+            <div class="thread-detail__replies-head">
+              <span class="thread-detail__replies-icon material-symbols-rounded" aria-hidden="true">
+                chat_bubble
+              </span>
+              <h2 class="thread-detail__replies-title">답글</h2>
+              <span class="thread-detail__replies-count" data-testid="reply-total">{{ replyTotal }}</span>
+            </div>
 
-          <div v-if="isAuthenticated && replies.length" class="thread-detail__divider" aria-hidden="true"></div>
+            <p v-if="replyTotal === 0" class="thread-detail__replies-empty" data-testid="reply-empty">
+              아직 답글이 없어요. 첫 답글을 남겨보세요.
+            </p>
 
-          <ul class="thread-detail__replies" data-testid="reply-list">
-            <li v-for="reply in replies" :key="reply.id" class="thread-detail__group">
-              <template v-for="item in [reply, ...reply.replies]" :key="item.id">
-                <div
-                  class="thread-detail__reply"
-                  :class="{ 'thread-detail__reply--nested': item.depth === 1 }"
-                  data-testid="reply-item"
-                  :data-depth="item.depth"
-                >
-                  <BaseAvatar
-                    :src="item.author?.profileImageUrl ?? undefined"
-                    :name="item.author?.displayName ?? '사용자'"
-                    size="sm"
-                    class="thread-detail__reply-avatar"
-                  />
-                  <div class="thread-detail__reply-body">
-                    <div class="thread-detail__reply-head">
-                      <span class="thread-detail__reply-author">
-                        {{ item.author?.displayName ?? '사용자' }}
-                      </span>
-                      <span class="thread-detail__reply-date">{{ replyDateLabel(item.createdAt) }}</span>
-                    </div>
+            <ul v-else class="thread-detail__replies" data-testid="reply-list">
+              <li v-for="reply in replies" :key="reply.id" class="thread-detail__group">
+                <template v-for="item in [reply, ...reply.replies]" :key="item.id">
+                  <div
+                    class="thread-detail__reply"
+                    :class="{ 'thread-detail__reply--nested': item.depth === 1 }"
+                    data-testid="reply-item"
+                    :data-depth="item.depth"
+                  >
+                    <BaseAvatar
+                      :src="item.author?.profileImageUrl ?? undefined"
+                      :name="item.author?.displayName ?? '사용자'"
+                      size="sm"
+                      class="thread-detail__reply-avatar"
+                    />
+                    <div class="thread-detail__reply-body">
+                      <div class="thread-detail__reply-head">
+                        <span class="thread-detail__reply-author">
+                          {{ item.author?.displayName ?? '사용자' }}
+                        </span>
+                        <span class="thread-detail__reply-date">{{ replyDateLabel(item.createdAt) }}</span>
+                      </div>
 
-                    <p v-if="isTombstone(item)" class="thread-detail__reply-tombstone" data-testid="reply-tombstone">
-                      삭제된 답글입니다.
-                    </p>
+                      <p v-if="isTombstone(item)" class="thread-detail__reply-tombstone" data-testid="reply-tombstone">
+                        삭제된 답글입니다.
+                      </p>
 
-                    <div v-else-if="editingReplyId === item.id" class="thread-detail__reply-edit" data-testid="reply-edit-form">
-                      <textarea
-                        v-model="replyDraft"
-                        rows="2"
-                        maxlength="500"
-                        class="thread-detail__reply-edit-input"
-                        data-testid="reply-edit-input"
-                      />
-                      <div class="thread-detail__reply-edit-actions">
-                        <button type="button" data-testid="reply-edit-cancel" @click="cancelEditReply">취소</button>
+                      <div v-else-if="editingReplyId === item.id" class="thread-detail__reply-edit" data-testid="reply-edit-form">
+                        <textarea
+                          v-model="replyDraft"
+                          rows="2"
+                          maxlength="500"
+                          class="thread-detail__reply-edit-input"
+                          data-testid="reply-edit-input"
+                        />
+                        <div class="thread-detail__reply-edit-actions">
+                          <button type="button" data-testid="reply-edit-cancel" @click="cancelEditReply">취소</button>
+                          <button
+                            type="button"
+                            class="save"
+                            data-testid="reply-edit-save"
+                            :disabled="!replyDraft.trim() || savingReply"
+                            @click="saveReply(item)"
+                          >
+                            저장
+                          </button>
+                        </div>
+                      </div>
+
+                      <p v-else class="thread-detail__reply-content" data-testid="reply-content">
+                        {{ item.content }}
+                      </p>
+
+                      <div v-if="!isTombstone(item) && editingReplyId !== item.id" class="thread-detail__reply-actions">
                         <button
+                          v-if="isAuthenticated && item.depth === 0"
                           type="button"
-                          class="save"
-                          data-testid="reply-edit-save"
-                          :disabled="!replyDraft.trim() || savingReply"
-                          @click="saveReply(item)"
+                          data-testid="reply-reply"
+                          @click="replyTarget = item"
                         >
-                          저장
+                          <span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>
+                          답글
+                        </button>
+                        <button
+                          v-if="item.editableByMe"
+                          type="button"
+                          data-testid="reply-edit"
+                          @click="startEditReply(item)"
+                        >
+                          <span class="material-symbols-rounded" aria-hidden="true">edit</span>
+                          수정
+                        </button>
+                        <button
+                          v-if="item.editableByMe || thread.editableByMe"
+                          type="button"
+                          data-testid="reply-delete"
+                          @click="removeReply(item)"
+                        >
+                          <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                          삭제
+                        </button>
+                        <button
+                          v-if="isAuthenticated && !item.editableByMe"
+                          type="button"
+                          data-testid="reply-report"
+                          @click="reportReply = item"
+                        >
+                          <span class="material-symbols-rounded" aria-hidden="true">flag</span>
+                          신고
                         </button>
                       </div>
                     </div>
-
-                    <p v-else class="thread-detail__reply-content" data-testid="reply-content">
-                      {{ item.content }}
-                    </p>
-
-                    <div v-if="!isTombstone(item) && editingReplyId !== item.id" class="thread-detail__reply-actions">
-                      <button
-                        v-if="isAuthenticated && item.depth === 0"
-                        type="button"
-                        data-testid="reply-reply"
-                        @click="replyTarget = item"
-                      >
-                        <span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>
-                        답글
-                      </button>
-                      <button
-                        v-if="item.editableByMe"
-                        type="button"
-                        data-testid="reply-edit"
-                        @click="startEditReply(item)"
-                      >
-                        <span class="material-symbols-rounded" aria-hidden="true">edit</span>
-                        수정
-                      </button>
-                      <button
-                        v-if="item.editableByMe || thread.editableByMe"
-                        type="button"
-                        data-testid="reply-delete"
-                        @click="removeReply(item)"
-                      >
-                        <span class="material-symbols-rounded" aria-hidden="true">delete</span>
-                        삭제
-                      </button>
-                      <button
-                        v-if="isAuthenticated && !item.editableByMe"
-                        type="button"
-                        data-testid="reply-report"
-                        @click="reportReply = item"
-                      >
-                        <span class="material-symbols-rounded" aria-hidden="true">flag</span>
-                        신고
-                      </button>
-                    </div>
                   </div>
-                </div>
-              </template>
-            </li>
-          </ul>
-        </div>
+                </template>
+              </li>
+            </ul>
+          </div>
+        </template>
       </div>
     </section>
 
@@ -358,7 +376,7 @@ onMounted(async () => {
 .thread-detail__column {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   margin: 0 auto;
   max-width: 640px;
   width: 100%;
@@ -387,19 +405,63 @@ onMounted(async () => {
   font-size: 18px;
 }
 
-.thread-detail__surface {
+/* 작성 폼 카드: 피드와 동일한 문법 */
+.thread-detail__composer-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 20px;
   box-shadow: var(--soft-shadow);
-  overflow: hidden;
-  padding: 4px 0;
 }
 
-.thread-detail__divider {
-  background: var(--line);
-  height: 1px;
-  margin: 0 20px;
+/* 답글 섹션 카드 */
+.thread-detail__replies-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--soft-shadow);
+  padding: 18px 20px;
+}
+
+.thread-detail__replies-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.thread-detail__replies-icon {
+  align-items: center;
+  background: rgba(0, 102, 255, 0.08);
+  border-radius: 999px;
+  color: var(--violet);
+  display: flex;
+  font-size: 16px;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.thread-detail__replies-title {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 900;
+  margin: 0;
+}
+
+.thread-detail__replies-count {
+  color: var(--violet);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.thread-detail__replies-empty {
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 14px;
+  margin: 10px 0 2px;
+  padding: 22px 12px;
+  text-align: center;
 }
 
 .thread-detail__replies {
@@ -410,23 +472,20 @@ onMounted(async () => {
   padding: 0;
 }
 
-.thread-detail__group {
+.thread-detail__group + .thread-detail__group {
   border-top: 1px solid var(--line);
-}
-
-.thread-detail__group:first-child {
-  border-top: none;
 }
 
 .thread-detail__reply {
   display: flex;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 14px 0;
 }
 
-/* Threads처럼 하위 답글은 연결선과 함께 들여쓴다 */
+/* 하위 답글은 연결선과 함께 들여쓴다 */
 .thread-detail__reply--nested {
   margin-left: 38px;
+  padding-top: 0;
   position: relative;
 }
 
@@ -437,7 +496,7 @@ onMounted(async () => {
   content: '';
   left: -20px;
   position: absolute;
-  top: 0;
+  top: 4px;
   width: 2px;
 }
 
@@ -486,9 +545,9 @@ onMounted(async () => {
 
 .thread-detail__reply-actions {
   display: flex;
-  gap: 2px;
-  margin-left: -8px;
-  margin-top: 6px;
+  gap: 4px;
+  margin-left: -9px;
+  margin-top: 4px;
 }
 
 .thread-detail__reply-actions button {
