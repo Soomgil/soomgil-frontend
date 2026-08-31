@@ -427,7 +427,9 @@ defineExpose({ reset })
 }
 
 .thread-composer__submit:disabled {
+  background: var(--surface-2);
+  box-shadow: none;
+  color: var(--muted);
   cursor: not-allowed;
-  opacity: 0.45;
 }
 </style>

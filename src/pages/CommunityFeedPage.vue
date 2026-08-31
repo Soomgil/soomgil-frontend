@@ -181,51 +181,48 @@ onMounted(async () => {
       </div>
 
       <div class="community-feed__column">
-        <div class="community-feed__surface">
-          <template v-if="isAuthenticated">
-            <ThreadComposer
-              ref="composer"
-              :submitting="posting"
-              allow-images
-              :author-name="auth.user?.displayName ?? '나'"
-              :author-image-url="auth.user?.profileImageUrl ?? null"
-              @submit="createThread"
-              @error="toast.error"
-            />
-            <div class="community-feed__divider" aria-hidden="true"></div>
-          </template>
-
-          <LoadingState v-if="loading" data-testid="feed-loading" />
-
-          <ErrorState
-            v-else-if="loadError"
-            data-testid="feed-error"
-            message="피드를 불러오지 못했습니다."
-            @retry="loadFeed"
+        <div v-if="isAuthenticated" class="community-feed__composer-card">
+          <ThreadComposer
+            ref="composer"
+            :submitting="posting"
+            allow-images
+            :author-name="auth.user?.displayName ?? '나'"
+            :author-image-url="auth.user?.profileImageUrl ?? null"
+            @submit="createThread"
+            @error="toast.error"
           />
+        </div>
 
-          <EmptyState
-            v-else-if="isEmpty"
-            data-testid="feed-empty"
-            icon="forum"
-            title="아직 올라온 글이 없어요"
-            description="첫 번째 여행 이야기를 남겨보세요."
+        <LoadingState v-if="loading" data-testid="feed-loading" />
+
+        <ErrorState
+          v-else-if="loadError"
+          data-testid="feed-error"
+          message="피드를 불러오지 못했습니다."
+          @retry="loadFeed"
+        />
+
+        <EmptyState
+          v-else-if="isEmpty"
+          data-testid="feed-empty"
+          icon="forum"
+          title="아직 올라온 글이 없어요"
+          description="첫 번째 여행 이야기를 남겨보세요."
+        />
+
+        <div v-else class="community-feed__list" data-testid="feed-list">
+          <ThreadCard
+            v-for="thread in threads"
+            :key="thread.id"
+            :thread="thread"
+            :liking="likingIds.has(thread.id)"
+            :saving="savingIds.has(thread.id)"
+            @open="openThread"
+            @like="toggleLike"
+            @save="saveThread"
+            @remove="removeThread"
+            @report="openReport"
           />
-
-          <div v-else class="community-feed__list" data-testid="feed-list">
-            <ThreadCard
-              v-for="thread in threads"
-              :key="thread.id"
-              :thread="thread"
-              :liking="likingIds.has(thread.id)"
-              :saving="savingIds.has(thread.id)"
-              @open="openThread"
-              @like="toggleLike"
-              @save="saveThread"
-              @remove="removeThread"
-              @report="openReport"
-            />
-          </div>
         </div>
 
         <button
@@ -262,29 +259,18 @@ onMounted(async () => {
   width: 100%;
 }
 
-/* X/Threads처럼 하나의 면 위에 글이 이어지는 피드 */
-.community-feed__surface {
+/* 작성 폼도 앱 공통 카드 문법을 따른다 */
+.community-feed__composer-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 20px;
   box-shadow: var(--soft-shadow);
-  overflow: hidden;
-  padding: 4px 0;
-}
-
-.community-feed__divider {
-  background: var(--line);
-  height: 1px;
-  margin: 0 20px;
 }
 
 .community-feed__list {
   display: flex;
   flex-direction: column;
-}
-
-.community-feed__list > :deep(.thread-row) + :deep(.thread-row) {
-  border-top: 1px solid var(--line);
+  gap: 16px;
 }
 
 .community-feed__more {

@@ -11,11 +11,14 @@ const props = withDefaults(defineProps<{
   clickable?: boolean
   /** 상세 화면의 본문 글씨를 키운다. */
   emphasized?: boolean
+  /** 다른 면(surface) 안에 넣을 때 카드 테두리/그림자를 끈다. */
+  flat?: boolean
 }>(), {
   liking: false,
   saving: false,
   clickable: true,
   emphasized: false,
+  flat: false,
 })
 
 const emit = defineEmits<{
@@ -37,16 +40,16 @@ const images = computed(() =>
     .filter((url): url is string => Boolean(url)),
 )
 
-/** X처럼 짧은 상대 시간. 하루가 지나면 날짜로. */
+/** 짧은 상대 시간. 하루가 지나면 날짜로. */
 const createdLabel = computed(() => {
   const created = new Date(props.thread.createdAt)
   if (Number.isNaN(created.getTime())) return ''
   const diffMs = Date.now() - created.getTime()
   const diffMin = Math.floor(diffMs / 60_000)
   if (diffMin < 1) return '방금'
-  if (diffMin < 60) return `${diffMin}분`
+  if (diffMin < 60) return `${diffMin}분 전`
   const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24) return `${diffHour}시간`
+  if (diffHour < 24) return `${diffHour}시간 전`
   return created.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
 })
 
@@ -95,206 +98,230 @@ function openThread() {
 
 <template>
   <article
-    class="thread-row"
-    :class="{ 'thread-row--clickable': clickable && !editing, 'thread-row--emphasized': emphasized }"
+    class="thread-card"
+    :class="{
+      'thread-card--clickable': clickable && !editing,
+      'thread-card--emphasized': emphasized,
+      'thread-card--flat': flat,
+    }"
     data-testid="thread-card"
     @click="openThread"
   >
-    <BaseAvatar
-      :src="thread.author?.profileImageUrl ?? undefined"
-      :name="thread.author?.displayName ?? '사용자'"
-      :size="emphasized ? 'md' : 'sm'"
-      class="thread-row__avatar"
-    />
+    <div class="thread-card__main">
+      <BaseAvatar
+        :src="thread.author?.profileImageUrl ?? undefined"
+        :name="thread.author?.displayName ?? '사용자'"
+        :size="emphasized ? 'md' : 'sm'"
+        class="thread-card__avatar"
+      />
 
-    <div class="thread-row__body">
-      <header class="thread-row__head">
-        <span class="thread-row__author">{{ thread.author?.displayName ?? '사용자' }}</span>
-        <span class="thread-row__time">{{ createdLabel }}</span>
-        <span class="thread-row__spacer"></span>
+      <div class="thread-card__body">
+        <div class="thread-card__head">
+          <span class="thread-card__author">{{ thread.author?.displayName ?? '사용자' }}</span>
+          <span class="thread-card__time">{{ createdLabel }}</span>
+          <span class="thread-card__spacer"></span>
 
-        <div v-if="showMenuButton && !editing" class="thread-row__menu-wrap" @click.stop>
-          <button
-            type="button"
-            class="thread-row__menu-btn"
-            data-testid="thread-menu"
-            aria-label="더보기"
-            @click="menuOpen = !menuOpen"
-          >
-            <span class="material-symbols-rounded" aria-hidden="true">more_horiz</span>
-          </button>
-
-          <div v-if="menuOpen" class="thread-row__menu-backdrop" @click="menuOpen = false"></div>
-          <div v-if="menuOpen" class="thread-row__menu" role="menu">
+          <div v-if="showMenuButton && !editing" class="thread-card__menu-wrap" @click.stop>
             <button
-              v-if="thread.editableByMe && !isTombstone"
               type="button"
-              role="menuitem"
-              data-testid="thread-edit"
-              @click="onMenu('edit')"
+              class="thread-card__menu-btn"
+              data-testid="thread-menu"
+              aria-label="더보기"
+              @click="menuOpen = !menuOpen"
             >
-              <span class="material-symbols-rounded" aria-hidden="true">edit</span>
-              수정하기
+              <span class="material-symbols-rounded" aria-hidden="true">more_horiz</span>
+            </button>
+
+            <div v-if="menuOpen" class="thread-card__menu-backdrop" @click="menuOpen = false"></div>
+            <div v-if="menuOpen" class="thread-card__menu" role="menu">
+              <button
+                v-if="thread.editableByMe && !isTombstone"
+                type="button"
+                role="menuitem"
+                data-testid="thread-edit"
+                @click="onMenu('edit')"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">edit</span>
+                수정하기
+              </button>
+              <button
+                v-if="thread.editableByMe"
+                type="button"
+                role="menuitem"
+                class="danger"
+                data-testid="thread-delete"
+                @click="onMenu('remove')"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                삭제하기
+              </button>
+              <button
+                v-if="!thread.editableByMe && !isTombstone"
+                type="button"
+                role="menuitem"
+                class="danger"
+                data-testid="thread-report"
+                @click="onMenu('report')"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">flag</span>
+                신고하기
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p v-if="isTombstone" class="thread-card__tombstone" data-testid="thread-tombstone">
+          삭제된 글이에요.
+        </p>
+
+        <div v-else-if="editing" class="thread-card__edit" data-testid="thread-edit-form" @click.stop>
+          <textarea
+            v-model="draft"
+            rows="3"
+            :maxlength="500"
+            class="thread-card__edit-input"
+            data-testid="thread-edit-input"
+          />
+          <div class="thread-card__edit-actions">
+            <span class="thread-card__edit-counter">{{ draft.trim().length }} / 500</span>
+            <button type="button" class="thread-card__edit-cancel" data-testid="thread-edit-cancel" @click="cancelEdit">
+              취소
             </button>
             <button
-              v-if="thread.editableByMe"
               type="button"
-              role="menuitem"
-              class="danger"
-              data-testid="thread-delete"
-              @click="onMenu('remove')"
+              class="thread-card__edit-save"
+              data-testid="thread-edit-save"
+              :disabled="!draft.trim() || saving"
+              @click="saveEdit"
             >
-              <span class="material-symbols-rounded" aria-hidden="true">delete</span>
-              삭제하기
-            </button>
-            <button
-              v-if="!thread.editableByMe && !isTombstone"
-              type="button"
-              role="menuitem"
-              class="danger"
-              data-testid="thread-report"
-              @click="onMenu('report')"
-            >
-              <span class="material-symbols-rounded" aria-hidden="true">flag</span>
-              신고하기
+              저장
             </button>
           </div>
         </div>
-      </header>
 
-      <p v-if="isTombstone" class="thread-row__tombstone" data-testid="thread-tombstone">
-        삭제된 글이에요.
-      </p>
+        <template v-else>
+          <p class="thread-card__content" data-testid="thread-content">{{ thread.content }}</p>
 
-      <div v-else-if="editing" class="thread-row__edit" data-testid="thread-edit-form" @click.stop>
-        <textarea
-          v-model="draft"
-          rows="3"
-          :maxlength="500"
-          class="thread-row__edit-input"
-          data-testid="thread-edit-input"
-        />
-        <div class="thread-row__edit-actions">
-          <span class="thread-row__edit-counter">{{ draft.trim().length }} / 500</span>
-          <button type="button" class="thread-row__edit-cancel" data-testid="thread-edit-cancel" @click="cancelEdit">
-            취소
-          </button>
-          <button
-            type="button"
-            class="thread-row__edit-save"
-            data-testid="thread-edit-save"
-            :disabled="!draft.trim() || saving"
-            @click="saveEdit"
+          <div
+            v-if="images.length"
+            class="thread-card__media"
+            :class="`thread-card__media--${Math.min(images.length, 4)}`"
+            data-testid="thread-media"
           >
-            저장
-          </button>
-        </div>
+            <img
+              v-for="(url, imageIndex) in images.slice(0, 4)"
+              :key="imageIndex"
+              :src="url"
+              :alt="`첨부 이미지 ${imageIndex + 1}`"
+              loading="lazy"
+              class="thread-card__image"
+              @click.stop
+            />
+          </div>
+        </template>
       </div>
+    </div>
 
-      <template v-else>
-        <p class="thread-row__content" data-testid="thread-content">{{ thread.content }}</p>
+    <div v-if="!editing" class="thread-card__footer" @click.stop>
+      <button
+        type="button"
+        class="thread-card__action"
+        :class="{ 'thread-card__action--liked': thread.likedByMe }"
+        data-testid="thread-like"
+        :disabled="liking || isTombstone"
+        aria-label="좋아요"
+        @click="emit('like', thread)"
+      >
+        <span class="material-symbols-rounded" aria-hidden="true">favorite</span>
+        <span data-testid="thread-like-count">{{ thread.likeCount }}</span>
+      </button>
 
-        <div
-          v-if="images.length"
-          class="thread-row__media"
-          :class="`thread-row__media--${Math.min(images.length, 4)}`"
-          data-testid="thread-media"
-        >
-          <img
-            v-for="(url, imageIndex) in images.slice(0, 4)"
-            :key="imageIndex"
-            :src="url"
-            :alt="`첨부 이미지 ${imageIndex + 1}`"
-            loading="lazy"
-            class="thread-row__image"
-            @click.stop
-          />
-        </div>
-      </template>
-
-      <footer v-if="!editing" class="thread-row__actions" @click.stop>
-        <button
-          type="button"
-          class="thread-row__action"
-          :class="{ 'thread-row__action--liked': thread.likedByMe }"
-          data-testid="thread-like"
-          :disabled="liking || isTombstone"
-          aria-label="좋아요"
-          @click="emit('like', thread)"
-        >
-          <span class="material-symbols-rounded" aria-hidden="true">favorite</span>
-          <span data-testid="thread-like-count">{{ thread.likeCount }}</span>
-        </button>
-
-        <button
-          type="button"
-          class="thread-row__action"
-          data-testid="thread-open"
-          aria-label="답글"
-          @click="clickable ? emit('open', thread.id) : undefined"
-        >
-          <span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>
-          <span data-testid="thread-reply-count">{{ thread.replyCount }}</span>
-        </button>
-      </footer>
+      <button
+        type="button"
+        class="thread-card__action"
+        data-testid="thread-open"
+        aria-label="답글"
+        @click="clickable ? emit('open', thread.id) : undefined"
+      >
+        <span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>
+        <span data-testid="thread-reply-count">{{ thread.replyCount }}</span>
+      </button>
     </div>
   </article>
 </template>
 
 <style scoped>
-.thread-row {
-  display: flex;
-  gap: 12px;
-  padding: 16px 20px;
-  background: transparent;
-  transition: background 0.15s ease;
+.thread-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--soft-shadow);
+  padding: 18px 20px 10px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.thread-row--clickable {
+.thread-card--clickable {
   cursor: pointer;
 }
 
-.thread-row--clickable:hover {
-  background: rgba(0, 102, 255, 0.03);
+.thread-card--clickable:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
 }
 
-.thread-row__avatar {
+.thread-card--flat {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.thread-card--flat:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+.thread-card__main {
+  display: flex;
+  gap: 12px;
+}
+
+.thread-card__avatar {
   flex: 0 0 auto;
 }
 
-.thread-row__body {
+.thread-card__body {
   flex: 1;
   min-width: 0;
 }
 
-.thread-row__head {
+.thread-card__head {
   align-items: center;
   display: flex;
   gap: 8px;
-  margin-bottom: 2px;
+  min-height: 30px;
   position: relative;
 }
 
-.thread-row__author {
+.thread-card__author {
   color: var(--ink);
   font-size: 15px;
   font-weight: 800;
 }
 
-.thread-row__time {
+.thread-card__time {
   color: var(--muted);
   font-size: 13px;
 }
 
-.thread-row__spacer {
+.thread-card__spacer {
   flex: 1;
 }
 
-.thread-row__menu-wrap {
+.thread-card__menu-wrap {
   position: relative;
 }
 
-.thread-row__menu-btn {
+.thread-card__menu-btn {
   align-items: center;
   background: none;
   border: none;
@@ -308,22 +335,22 @@ function openThread() {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.thread-row__menu-btn:hover {
+.thread-card__menu-btn:hover {
   background: rgba(0, 102, 255, 0.08);
   color: var(--violet);
 }
 
-.thread-row__menu-btn .material-symbols-rounded {
+.thread-card__menu-btn .material-symbols-rounded {
   font-size: 20px;
 }
 
-.thread-row__menu-backdrop {
+.thread-card__menu-backdrop {
   inset: 0;
   position: fixed;
   z-index: 40;
 }
 
-.thread-row__menu {
+.thread-card__menu {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -339,7 +366,7 @@ function openThread() {
   z-index: 50;
 }
 
-.thread-row__menu button {
+.thread-card__menu button {
   align-items: center;
   background: none;
   border: none;
@@ -355,74 +382,64 @@ function openThread() {
   transition: background 0.15s ease;
 }
 
-.thread-row__menu button:hover {
+.thread-card__menu button:hover {
   background: var(--surface-2);
 }
 
-.thread-row__menu button.danger {
+.thread-card__menu button.danger {
   color: var(--rose, #ff5a8a);
 }
 
-.thread-row__menu .material-symbols-rounded {
+.thread-card__menu .material-symbols-rounded {
   font-size: 18px;
 }
 
-.thread-row__content {
+.thread-card__content {
   color: var(--ink);
   font-size: 15px;
   line-height: 1.65;
-  margin: 0;
+  margin: 4px 0 0;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.thread-row--emphasized .thread-row__content {
+.thread-card--emphasized .thread-card__content {
   font-size: 17px;
   line-height: 1.7;
 }
 
-.thread-row__tombstone {
+.thread-card__tombstone {
   color: var(--muted);
   font-size: 14px;
   font-style: italic;
-  margin: 0;
+  margin: 4px 0 0;
 }
 
 /* 이미지 그리드: 개수별 레이아웃 */
-.thread-row__media {
-  border-radius: 16px;
+.thread-card__media {
+  border-radius: 14px;
   display: grid;
   gap: 3px;
-  margin-top: 10px;
+  margin-top: 12px;
   overflow: hidden;
 }
 
-.thread-row__media--1 {
+.thread-card__media--1 {
   grid-template-columns: 1fr;
 }
 
-.thread-row__media--1 .thread-row__image {
-  aspect-ratio: 16 / 10;
-}
-
-.thread-row__media--2 {
+.thread-card__media--2,
+.thread-card__media--3,
+.thread-card__media--4 {
   grid-template-columns: 1fr 1fr;
 }
 
-.thread-row__media--3 {
-  grid-template-columns: 1fr 1fr;
-}
-
-.thread-row__media--3 .thread-row__image:first-child {
+.thread-card__media--3 .thread-card__image:first-child {
   grid-row: span 2;
   height: 100%;
 }
 
-.thread-row__media--4 {
-  grid-template-columns: 1fr 1fr;
-}
-
-.thread-row__image {
+.thread-card__image {
   aspect-ratio: 1 / 1;
   display: block;
   height: 100%;
@@ -430,19 +447,19 @@ function openThread() {
   width: 100%;
 }
 
-.thread-row__media--1 .thread-row__image {
+.thread-card__media--1 .thread-card__image {
   aspect-ratio: 16 / 10;
 }
 
 /* 수정 폼 */
-.thread-row__edit {
+.thread-card__edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 4px;
+  margin: 8px 0 10px;
 }
 
-.thread-row__edit-input {
+.thread-card__edit-input {
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -454,25 +471,25 @@ function openThread() {
   resize: vertical;
 }
 
-.thread-row__edit-input:focus {
+.thread-card__edit-input:focus {
   border-color: var(--violet);
   outline: none;
 }
 
-.thread-row__edit-actions {
+.thread-card__edit-actions {
   align-items: center;
   display: flex;
   gap: 10px;
   justify-content: flex-end;
 }
 
-.thread-row__edit-counter {
+.thread-card__edit-counter {
   color: var(--muted);
   font-size: 12px;
   margin-right: auto;
 }
 
-.thread-row__edit-cancel {
+.thread-card__edit-cancel {
   background: none;
   border: none;
   color: var(--muted);
@@ -482,7 +499,7 @@ function openThread() {
   padding: 8px 12px;
 }
 
-.thread-row__edit-save {
+.thread-card__edit-save {
   background: linear-gradient(135deg, var(--violet), var(--blue));
   border: none;
   border-radius: 999px;
@@ -493,20 +510,21 @@ function openThread() {
   padding: 8px 20px;
 }
 
-.thread-row__edit-save:disabled {
+.thread-card__edit-save:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-/* 액션 줄 */
-.thread-row__actions {
+/* 액션바: 카드 전폭, 헤어라인 위에 칩 */
+.thread-card__footer {
+  border-top: 1px solid var(--line);
   display: flex;
-  gap: 4px;
-  margin-left: -8px;
-  margin-top: 8px;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 8px 0 2px;
 }
 
-.thread-row__action {
+.thread-card__action {
   align-items: center;
   background: none;
   border: none;
@@ -515,35 +533,35 @@ function openThread() {
   cursor: pointer;
   display: flex;
   font-size: 13px;
-  font-weight: 700;
-  gap: 5px;
-  padding: 6px 10px;
+  font-weight: 800;
+  gap: 6px;
+  padding: 7px 14px;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.thread-row__action .material-symbols-rounded {
+.thread-card__action .material-symbols-rounded {
   font-size: 19px;
 }
 
-.thread-row__action:hover:not(:disabled) {
+.thread-card__action:hover:not(:disabled) {
   background: rgba(0, 102, 255, 0.08);
   color: var(--violet);
 }
 
-.thread-row__action:first-child:hover:not(:disabled) {
+.thread-card__action:first-child:hover:not(:disabled) {
   background: rgba(255, 90, 138, 0.1);
   color: var(--rose, #ff5a8a);
 }
 
-.thread-row__action--liked {
+.thread-card__action--liked {
   color: var(--rose, #ff5a8a);
 }
 
-.thread-row__action--liked .material-symbols-rounded {
+.thread-card__action--liked .material-symbols-rounded {
   font-variation-settings: 'FILL' 1;
 }
 
-.thread-row__action:disabled {
+.thread-card__action:disabled {
   cursor: default;
   opacity: 0.5;
 }

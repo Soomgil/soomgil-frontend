@@ -218,6 +218,7 @@ onMounted(async () => {
             :saving="savingThread"
             :clickable="false"
             emphasized
+            flat
             @like="toggleLike"
             @save="saveThread"
             @remove="removeThread"
