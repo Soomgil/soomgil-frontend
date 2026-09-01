@@ -41,6 +41,7 @@ const emit = defineEmits<{
 }>()
 
 const MAX_IMAGES = 4
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const content = ref('')
 const attachments = ref<Attachment[]>([])
@@ -68,18 +69,17 @@ function previewUrlOf(file: File) {
   }
 }
 
-async function onFilesSelected(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
-  if (!files.length) return
+/** 파일 선택·드롭·붙여넣기가 공유하는 첨부 경로. 업로드는 즉시 시작한다. */
+async function addFiles(files: File[]) {
+  const images = files.filter((file) => IMAGE_TYPES.includes(file.type))
+  if (!images.length) return
 
   const room = MAX_IMAGES - attachments.value.length
-  if (files.length > room) {
+  if (images.length > room) {
     emit('error', `이미지는 최대 ${MAX_IMAGES}장까지 붙일 수 있어요.`)
   }
 
-  for (const file of files.slice(0, Math.max(room, 0))) {
+  for (const file of images.slice(0, Math.max(room, 0))) {
     const attachment: Attachment = {
       key: `${file.name}-${file.size}-${attachments.value.length}-${Math.random().toString(36).slice(2, 8)}`,
       mediaFileId: null,
@@ -100,6 +100,46 @@ async function onFilesSelected(event: Event) {
   }
   // 업로드에 실패한 첨부는 제출 대상에서 제거한다.
   attachments.value = attachments.value.filter((item) => !item.failed)
+}
+
+async function onFilesSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  await addFiles(files)
+}
+
+/* ── 드래그&드롭 첨부 ── */
+const dragDepth = ref(0)
+const dragActive = computed(() => props.allowImages && dragDepth.value > 0)
+
+function onDragEnter() {
+  if (!props.allowImages) return
+  dragDepth.value += 1
+}
+
+function onDragLeave() {
+  if (!props.allowImages) return
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+}
+
+async function onDrop(event: DragEvent) {
+  dragDepth.value = 0
+  if (!props.allowImages) return
+  await addFiles(Array.from(event.dataTransfer?.files ?? []))
+}
+
+/** 클립보드에 이미지가 있으면 첨부로 받는다. 텍스트 붙여넣기는 그대로 둔다. */
+async function onPaste(event: ClipboardEvent) {
+  if (!props.allowImages) return
+  const files = Array.from(event.clipboardData?.items ?? [])
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null)
+  if (files.length) {
+    event.preventDefault()
+    await addFiles(files)
+  }
 }
 
 function removeAttachment(key: string) {
@@ -127,7 +167,21 @@ defineExpose({ reset })
 </script>
 
 <template>
-  <form class="thread-composer" data-testid="thread-composer" @submit.prevent="submit">
+  <form
+    class="thread-composer"
+    :class="{ 'thread-composer--dragging': dragActive }"
+    data-testid="thread-composer"
+    @submit.prevent="submit"
+    @dragenter.prevent="onDragEnter"
+    @dragover.prevent
+    @dragleave="onDragLeave"
+    @drop.prevent="onDrop"
+  >
+    <div v-if="dragActive" class="thread-composer__drop-hint" aria-hidden="true">
+      <span class="material-symbols-rounded">add_photo_alternate</span>
+      이미지를 놓으면 첨부돼요
+    </div>
+
     <div v-if="replyTargetName" class="thread-composer__reply-target" data-testid="reply-target">
       <span class="material-symbols-rounded" aria-hidden="true">subdirectory_arrow_right</span>
       <span><strong>{{ replyTargetName }}</strong>님에게 답글</span>
@@ -151,6 +205,7 @@ defineExpose({ reset })
           :placeholder="placeholder"
           :maxlength="maxLength"
           rows="2"
+          @paste="onPaste"
         />
 
         <div v-if="attachments.length" class="thread-composer__previews" data-testid="composer-previews">
@@ -181,10 +236,10 @@ defineExpose({ reset })
             class="thread-composer__attach"
             data-testid="composer-attach"
             :disabled="attachments.length >= MAX_IMAGES"
-            aria-label="이미지 첨부"
             @click="openFilePicker"
           >
             <span class="material-symbols-rounded" aria-hidden="true">image</span>
+            사진
             <span v-if="attachments.length" class="thread-composer__attach-count">{{ attachments.length }}/{{ MAX_IMAGES }}</span>
           </button>
           <input
@@ -224,10 +279,38 @@ defineExpose({ reset })
 
 <style scoped>
 .thread-composer {
+  border-radius: 20px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 18px 20px 14px;
+  position: relative;
+}
+
+/* 드래그 중 강조 */
+.thread-composer--dragging {
+  outline: 2px dashed var(--violet);
+  outline-offset: -8px;
+}
+
+.thread-composer__drop-hint {
+  align-items: center;
+  background: rgba(244, 249, 255, 0.92);
+  border-radius: 20px;
+  color: var(--violet);
+  display: flex;
+  font-size: 15px;
+  font-weight: 800;
+  gap: 8px;
+  inset: 0;
+  justify-content: center;
+  pointer-events: none;
+  position: absolute;
+  z-index: 5;
+}
+
+.thread-composer__drop-hint .material-symbols-rounded {
+  font-size: 26px;
 }
 
 .thread-composer__reply-target {
@@ -280,7 +363,6 @@ defineExpose({ reset })
   min-width: 0;
 }
 
-/* X처럼 테두리 없는 입력 */
 .thread-composer__input {
   background: transparent;
   border: none;
@@ -306,7 +388,7 @@ defineExpose({ reset })
 
 .thread-composer__preview {
   aspect-ratio: 4 / 3;
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
   position: relative;
 }
@@ -350,7 +432,12 @@ defineExpose({ reset })
   position: absolute;
   right: 6px;
   top: 6px;
+  transition: background 0.15s ease;
   width: 26px;
+}
+
+.thread-composer__preview-remove:hover {
+  background: rgba(10, 22, 44, 0.85);
 }
 
 .thread-composer__preview-remove .material-symbols-rounded {
@@ -365,24 +452,25 @@ defineExpose({ reset })
   padding-top: 10px;
 }
 
+/* 라벨형 사진 첨부 칩 */
 .thread-composer__attach {
   align-items: center;
-  background: none;
-  border: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--violet);
   cursor: pointer;
   display: flex;
-  gap: 4px;
-  height: 34px;
-  justify-content: center;
-  min-width: 34px;
-  padding: 0 6px;
-  transition: background 0.15s ease;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 5px;
+  padding: 7px 14px;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .thread-composer__attach:hover:not(:disabled) {
-  background: rgba(0, 102, 255, 0.08);
+  background: rgba(0, 102, 255, 0.06);
+  border-color: rgba(0, 102, 255, 0.3);
 }
 
 .thread-composer__attach:disabled {
@@ -391,12 +479,12 @@ defineExpose({ reset })
 }
 
 .thread-composer__attach .material-symbols-rounded {
-  font-size: 21px;
+  font-size: 18px;
 }
 
 .thread-composer__attach-count {
-  font-size: 12px;
-  font-weight: 800;
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .thread-composer__spacer {

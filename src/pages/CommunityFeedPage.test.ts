@@ -326,6 +326,35 @@ describe('커뮤니티 공개 피드 화면', () => {
     vi.unstubAllGlobals()
   })
 
+  it('이미지를 드래그해 놓으면 첨부로 업로드한다', async () => {
+    mocks.mediaApi.uploadFile.mockResolvedValue({ id: 'media-drop' })
+    const wrapper = mount(CommunityFeedPage, { global: { stubs } })
+    await flushPromises()
+
+    const file = new File(['x'], 'drop.png', { type: 'image/png' })
+    await wrapper.find('[data-testid="thread-composer"]').trigger('drop', {
+      dataTransfer: { files: [file] },
+    })
+    await flushPromises()
+
+    expect(mocks.mediaApi.uploadFile).toHaveBeenCalledWith(file, 'COMMUNITY_POST')
+    expect(wrapper.findAll('[data-testid="composer-preview"]')).toHaveLength(1)
+  })
+
+  it('클립보드 이미지를 붙여넣으면 첨부로 업로드한다', async () => {
+    mocks.mediaApi.uploadFile.mockResolvedValue({ id: 'media-paste' })
+    const wrapper = mount(CommunityFeedPage, { global: { stubs } })
+    await flushPromises()
+
+    const file = new File(['x'], 'paste.png', { type: 'image/png' })
+    await wrapper.find('[data-testid="thread-composer-input"]').trigger('paste', {
+      clipboardData: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }] },
+    })
+    await flushPromises()
+
+    expect(mocks.mediaApi.uploadFile).toHaveBeenCalledWith(file, 'COMMUNITY_POST')
+  })
+
   it('비로그인 사용자에게는 작성 폼을 보여주지 않는다', async () => {
     mocks.user = null
     const wrapper = mount(CommunityFeedPage, { global: { stubs } })
