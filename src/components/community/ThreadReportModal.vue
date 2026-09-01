@@ -62,30 +62,39 @@ function submit() {
 <template>
   <BaseModal :open="open" @close="emit('close')">
     <div class="p-6 sm:p-7" data-testid="report-modal">
-      <div class="flex items-center gap-2 mb-1">
-        <span class="material-symbols-rounded text-brand-rose text-[22px]">flag</span>
+      <div class="flex items-center gap-2.5 mb-1">
+        <span class="flex items-center justify-center w-8 h-8 rounded-full bg-brand-rose/10 text-brand-rose">
+          <span class="material-symbols-rounded text-[18px]">flag</span>
+        </span>
         <h2 class="text-lg font-extrabold text-ink">{{ targetLabel }} 신고</h2>
       </div>
-      <p class="text-sm text-muted mb-5">신고 사유를 선택해주세요. 운영팀이 확인 후 처리합니다.</p>
+      <p class="text-sm text-muted mb-5 pl-[42px]">신고 사유를 선택해주세요. 운영팀이 확인 후 처리합니다.</p>
 
       <div v-if="loadingReasons" class="py-6 text-center text-sm text-muted">사유를 불러오는 중…</div>
       <div v-else class="flex flex-col gap-2 mb-4" role="radiogroup" aria-label="신고 사유">
         <label
           v-for="reason in reasons"
           :key="reason.code"
-          class="flex items-center gap-3 px-4 py-3 rounded-2xl border cursor-pointer transition-colors"
+          class="flex items-center gap-3 px-4 py-3 rounded-2xl border cursor-pointer transition-all"
           :class="selected === reason.code
-            ? 'border-brand-violet bg-surface-2 text-ink'
+            ? 'border-brand-violet bg-brand-violet/5 text-ink shadow-[0_6px_16px_rgba(0,102,255,0.10)]'
             : 'border-line text-ink hover:bg-surface-2/60'"
         >
           <input
             v-model="selected"
             type="radio"
             :value="reason.code"
-            class="accent-brand-violet"
+            class="sr-only"
             data-testid="report-reason"
           />
-          <span class="text-sm font-semibold">{{ reason.displayName }}</span>
+          <span
+            class="material-symbols-rounded text-[20px] transition-colors"
+            :class="selected === reason.code ? 'text-brand-violet reason-check--on' : 'text-line'"
+            aria-hidden="true"
+          >
+            {{ selected === reason.code ? 'check_circle' : 'radio_button_unchecked' }}
+          </span>
+          <span class="text-sm font-bold">{{ reason.displayName }}</span>
         </label>
       </div>
 
@@ -94,7 +103,7 @@ function submit() {
         rows="3"
         maxlength="500"
         placeholder="자세한 내용이 있다면 알려주세요 (선택)"
-        class="w-full rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-violet/30 resize-none"
+        class="w-full rounded-2xl border border-line bg-surface-2 px-4 py-3 text-sm text-ink placeholder:text-muted focus:outline-none focus:border-brand-violet focus:bg-surface resize-none"
         data-testid="report-detail"
       />
 
@@ -109,7 +118,7 @@ function submit() {
         </button>
         <button
           type="button"
-          class="px-6 py-2.5 rounded-full text-sm font-bold text-white bg-brand-rose shadow-[0_10px_26px_rgba(255,92,141,0.35)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:pointer-events-none"
+          class="px-6 py-2.5 rounded-full text-sm font-bold text-white bg-brand-rose shadow-[0_10px_26px_rgba(255,92,141,0.35)] hover:-translate-y-0.5 transition-all disabled:bg-surface-2 disabled:text-muted disabled:shadow-none disabled:pointer-events-none"
           :disabled="!selected || submitting"
           data-testid="report-submit"
           @click="submit"
@@ -120,3 +129,9 @@ function submit() {
     </div>
   </BaseModal>
 </template>
+
+<style scoped>
+.reason-check--on {
+  font-variation-settings: 'FILL' 1;
+}
+</style>
