@@ -81,9 +81,15 @@ async function open() {
 
     <div class="vote-setup__panel">
       <div class="vote-setup__row">
+        <span class="vote-setup__row-icon" aria-hidden="true">
+          <span class="material-symbols-rounded">favorite</span>
+        </span>
         <div class="vote-setup__row-copy">
           <strong>1인당 스티커</strong>
           <span>각 멤버가 붙일 수 있는 스티커 개수예요.</span>
+          <span class="vote-setup__dots" aria-hidden="true">
+            <span v-for="dot in stickerAllowance" :key="dot" class="vote-setup__dot"></span>
+          </span>
         </div>
         <div class="vote-setup__stepper" data-testid="setup-sticker-stepper">
           <button type="button" aria-label="스티커 줄이기" data-testid="setup-sticker-minus" @click="stepper('sticker', -1)">
@@ -97,9 +103,15 @@ async function open() {
       </div>
 
       <div class="vote-setup__row">
+        <span class="vote-setup__row-icon vote-setup__row-icon--rank" aria-hidden="true">
+          <span class="material-symbols-rounded">emoji_events</span>
+        </span>
         <div class="vote-setup__row-copy">
           <strong>선정할 관광지</strong>
           <span>스티커를 많이 받은 순서로 일정(일차 미정)에 담아드려요.</span>
+          <span class="vote-setup__ranks" aria-hidden="true">
+            <span v-for="rank in selectionCount" :key="rank" class="vote-setup__rank">{{ rank }}</span>
+          </span>
         </div>
         <div class="vote-setup__stepper" data-testid="setup-selection-stepper">
           <button type="button" aria-label="선정 개수 줄이기" data-testid="setup-selection-minus" @click="stepper('selection', -1)">
@@ -172,7 +184,7 @@ async function open() {
 }
 
 .vote-setup__row {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
   gap: 16px;
   justify-content: space-between;
@@ -182,6 +194,8 @@ async function open() {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .vote-setup__row-copy strong {
@@ -304,4 +318,64 @@ async function open() {
     gap: 8px;
   }
 }
+
+/* 행 아이콘 칩 */
+.vote-setup__row-icon {
+  align-items: center;
+  background: rgba(255, 92, 141, 0.1);
+  border-radius: 999px;
+  color: #ff5c8d;
+  display: flex;
+  flex: 0 0 auto;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.vote-setup__row-icon--rank {
+  background: rgba(0, 102, 255, 0.08);
+  color: var(--violet);
+}
+
+.vote-setup__row-icon .material-symbols-rounded {
+  font-size: 18px;
+  font-variation-settings: 'FILL' 1;
+}
+
+/* 개수 미리보기: 스티커 도트 */
+.vote-setup__dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.vote-setup__dot {
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  border-radius: 999px;
+  height: 11px;
+  width: 11px;
+}
+
+/* 개수 미리보기: 선정 순위 배지 */
+.vote-setup__ranks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.vote-setup__rank {
+  align-items: center;
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  border-radius: 999px;
+  color: #fff;
+  display: flex;
+  font-size: 11px;
+  font-weight: 800;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
 </style>
