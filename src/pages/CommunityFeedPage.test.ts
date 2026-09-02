@@ -218,6 +218,32 @@ describe('커뮤니티 공개 피드 화면', () => {
     expect(wrapper.find('[data-testid="thread-content"]').text()).toBe('수정된 본문')
   })
 
+  it('Esc로 수정을 취소하고 Ctrl+Enter로 저장한다', async () => {
+    mocks.communityThreadApi.getThreads.mockResolvedValue(
+      pageOf([thread({ editableByMe: true })]),
+    )
+    mocks.communityThreadApi.updateThread.mockResolvedValue(
+      thread({ editableByMe: true, content: '키보드 저장', updatedAt: '2026-08-24T01:00:00Z' }),
+    )
+    const wrapper = mount(CommunityFeedPage, { global: { stubs } })
+    await flushPromises()
+
+    // Esc → 취소
+    await wrapper.find('[data-testid="thread-menu"]').trigger('click')
+    await wrapper.find('[data-testid="thread-edit"]').trigger('click')
+    await wrapper.find('[data-testid="thread-edit-input"]').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[data-testid="thread-edit-form"]').exists()).toBe(false)
+    expect(mocks.communityThreadApi.updateThread).not.toHaveBeenCalled()
+
+    // Ctrl+Enter → 저장
+    await wrapper.find('[data-testid="thread-menu"]').trigger('click')
+    await wrapper.find('[data-testid="thread-edit"]').trigger('click')
+    await wrapper.find('[data-testid="thread-edit-input"]').setValue('키보드 저장')
+    await wrapper.find('[data-testid="thread-edit-input"]').trigger('keydown', { key: 'Enter', ctrlKey: true })
+    await flushPromises()
+    expect(mocks.communityThreadApi.updateThread).toHaveBeenCalledWith('thread-1', { content: '키보드 저장' })
+  })
+
   it('수정을 취소하면 원래 본문으로 돌아간다', async () => {
     mocks.communityThreadApi.getThreads.mockResolvedValue(
       pageOf([thread({ editableByMe: true })]),

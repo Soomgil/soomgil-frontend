@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import BaseAvatar from '@/components/common/BaseAvatar.vue'
@@ -123,9 +123,29 @@ function isTombstone(reply: CommunityThreadReply) {
   return reply.content === null || reply.deletedAt !== null
 }
 
+const replyEditInput = ref<HTMLTextAreaElement | null>(null)
+
 function startEditReply(reply: CommunityThreadReply) {
   editingReplyId.value = reply.id
   replyDraft.value = reply.content ?? ''
+  void nextTick(() => {
+    const el = replyEditInput.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  })
+}
+
+/** Esc는 취소, Ctrl/⌘+Enter는 저장. */
+function onReplyEditKeydown(event: KeyboardEvent, reply: CommunityThreadReply) {
+  if (event.key === 'Escape') {
+    cancelEditReply()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault()
+    void saveReply(reply)
+  }
 }
 
 function cancelEditReply() {
@@ -290,11 +310,13 @@ onMounted(async () => {
 
                       <div v-else-if="editingReplyId === item.id" class="thread-detail__reply-edit" data-testid="reply-edit-form">
                         <textarea
+                          ref="replyEditInput"
                           v-model="replyDraft"
                           rows="2"
                           maxlength="500"
                           class="thread-detail__reply-edit-input"
                           data-testid="reply-edit-input"
+                      @keydown="onReplyEditKeydown($event, item)"
                         />
                         <div class="thread-detail__reply-edit-actions">
                           <button type="button" data-testid="reply-edit-cancel" @click="cancelEditReply">취소</button>
@@ -305,7 +327,7 @@ onMounted(async () => {
                             :disabled="!replyDraft.trim() || savingReply"
                             @click="saveReply(item)"
                           >
-                            저장
+                            {{ savingReply ? '저장 중…' : '저장' }}
                           </button>
                         </div>
                       </div>
@@ -622,7 +644,8 @@ onMounted(async () => {
 }
 
 .thread-detail__reply-edit-actions button.save:disabled {
+  background: var(--surface-2);
+  color: var(--muted);
   cursor: not-allowed;
-  opacity: 0.5;
 }
 </style>

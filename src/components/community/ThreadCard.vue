@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import BaseAvatar from '@/components/common/BaseAvatar.vue'
 import type { CommunityThread } from '@/types/community-thread'
 
@@ -68,9 +68,30 @@ function onMenu(action: 'edit' | 'remove' | 'report') {
 const editing = ref(false)
 const draft = ref('')
 
+const editInput = ref<HTMLTextAreaElement | null>(null)
+
 function startEdit() {
   draft.value = props.thread.content ?? ''
   editing.value = true
+  // 폼이 그려진 뒤 바로 입력할 수 있게 포커스를 옮기고 커서를 끝에 둔다.
+  void nextTick(() => {
+    const el = editInput.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  })
+}
+
+/** Esc는 취소, Ctrl/⌘+Enter는 저장. */
+function onEditKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    cancelEdit()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault()
+    saveEdit()
+  }
 }
 
 function cancelEdit() {
@@ -103,6 +124,7 @@ function openThread() {
       'thread-card--clickable': clickable && !editing,
       'thread-card--emphasized': emphasized,
       'thread-card--flat': flat,
+      'thread-card--editing': editing,
     }"
     data-testid="thread-card"
     @click="openThread"
@@ -176,14 +198,16 @@ function openThread() {
 
         <div v-else-if="editing" class="thread-card__edit" data-testid="thread-edit-form" @click.stop>
           <textarea
+            ref="editInput"
             v-model="draft"
             rows="3"
             :maxlength="500"
             class="thread-card__edit-input"
             data-testid="thread-edit-input"
+            @keydown="onEditKeydown"
           />
           <div class="thread-card__edit-actions">
-            <span class="thread-card__edit-counter">{{ draft.trim().length }} / 500</span>
+            <span class="thread-card__edit-counter">{{ draft.trim().length }} / 500 · Esc 취소 · Ctrl+Enter 저장</span>
             <button type="button" class="thread-card__edit-cancel" data-testid="thread-edit-cancel" @click="cancelEdit">
               취소
             </button>
@@ -194,7 +218,7 @@ function openThread() {
               :disabled="!draft.trim() || saving"
               @click="saveEdit"
             >
-              저장
+              {{ saving ? '저장 중…' : '저장' }}
             </button>
           </div>
         </div>
@@ -278,6 +302,12 @@ function openThread() {
 .thread-card--flat:hover {
   box-shadow: none;
   transform: none;
+}
+
+/* 수정 모드: 카드가 편집 중임을 테두리로 알린다 */
+.thread-card--editing {
+  border-color: rgba(0, 102, 255, 0.35);
+  box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.08), var(--soft-shadow);
 }
 
 .thread-card__main {
@@ -511,8 +541,9 @@ function openThread() {
 }
 
 .thread-card__edit-save:disabled {
+  background: var(--surface-2);
+  color: var(--muted);
   cursor: not-allowed;
-  opacity: 0.5;
 }
 
 /* 액션바: 카드 전폭, 헤어라인 위에 칩 */
