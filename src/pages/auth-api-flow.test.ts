@@ -36,6 +36,7 @@ import VerifyEmailPage from './VerifyEmailPage.vue'
 describe('인증 API 화면 흐름', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mocks.route.query = {}
     mocks.route.params = {}
   })
@@ -53,12 +54,27 @@ describe('인증 API 화면 흐름', () => {
 
   it('인증 메일 link의 token을 자동으로 검증한다', async () => {
     mocks.route.query = { token: 'verify-token', email: 'demo@example.com' }
-    mocks.verifyEmail.mockResolvedValue({ id: 'user-1' })
-    mount(VerifyEmailPage)
+    mocks.verifyEmail.mockResolvedValue({ id: 'user-1', email: 'demo@example.com' })
+    const wrapper = mount(VerifyEmailPage)
     await flushPromises()
 
     expect(mocks.verifyEmail).toHaveBeenCalledWith('verify-token')
-    expect(mocks.push).toHaveBeenCalledWith({ path: '/login', query: { verified: '1' } })
+    expect(wrapper.get('[role="status"]').text()).toContain('이메일 인증이 완료')
+    await wrapper.get('[data-testid="go-login"]').trigger('click')
+    expect(mocks.replace).toHaveBeenCalledWith({ path: '/login', query: { verified: '1' } })
+  })
+
+  it('다른 탭에서 인증되면 가입 대기 화면도 완료 상태로 바뀐다', async () => {
+    mocks.route.query = { email: 'demo@example.com' }
+    const wrapper = mount(VerifyEmailPage)
+
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'soomgil.email-verification.completed',
+      newValue: JSON.stringify({ email: 'demo@example.com', completedAt: Date.now() }),
+    }))
+    await flushPromises()
+
+    expect(wrapper.get('[role="status"]').text()).toContain('계정이 활성화되었습니다')
   })
 
   it('만료된 이메일 인증 link를 화면 안에서 안내한다', async () => {
