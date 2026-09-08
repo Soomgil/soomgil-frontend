@@ -2573,6 +2573,7 @@ const mapObjectPreviewSentAt = new Map<string, number>()
 const collaborationConnected = ref(false)
 let cursorSequence = 0
 let lastCursorSentAt = 0
+let lastLocalMapCursorCoordinate: LngLat | null = null
 const collaborationTransport = new StompTransport({
   brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
   accessToken: ensureStoredAccessToken,
@@ -3308,6 +3309,7 @@ async function deleteSelectedMapObject() {
 }
 
 function publishMapCursor(coordinate: LngLat) {
+  lastLocalMapCursorCoordinate = coordinate
   const now = Date.now()
   if (now - lastCursorSentAt < 50) return
   lastCursorSentAt = now
@@ -3318,12 +3320,19 @@ function publishMapCursor(coordinate: LngLat) {
   })
 }
 
+function clearLocalMapCursor() {
+  lastLocalMapCursorCoordinate = null
+}
+
 onMounted(() => {
   void connectRealtimeChannels()
   updateRouteResponsiveLayout()
   window.addEventListener('resize', updateRouteResponsiveLayout)
   cursorPruneTimer = window.setInterval(() => {
     const now = Date.now()
+    if (lastLocalMapCursorCoordinate && now - lastCursorSentAt >= 3_000) {
+      publishMapCursor(lastLocalMapCursorCoordinate)
+    }
     const cutoff = now - 10_000
     remoteMapCursors.value = Object.fromEntries(
       Object.entries(remoteMapCursors.value).filter(([, cursor]) => cursor.receivedAt >= cutoff),
@@ -3353,7 +3362,11 @@ async function simplifyLocalDrawing(drawingId: string) {
   pendingDrawingIds.value = [...pendingDrawingIds.value, drawingId]
   drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
   try {
-    const simplified = await geoApi.simplifyCoordinates({
+    // Long freehand strokes already use a screen-space error tolerance. Sending
+    // them through the 100-point API would discard their preserved bends again.
+    const simplified = drawing.coordinates.length > 100
+      ? { coordinates: drawing.coordinates }
+      : await geoApi.simplifyCoordinates({
       coordinates: drawing.coordinates,
       maxPoints: 100,
     })
@@ -4477,6 +4490,7 @@ function textAvatarStyle(index: unknown) {
               @map-object-preview="previewMapObjectChange"
               @map-object-change="changeMapObject"
               @cursor-move="publishMapCursor"
+              @cursor-leave="clearLocalMapCursor"
             />
 
             <input

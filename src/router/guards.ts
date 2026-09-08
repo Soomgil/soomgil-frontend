@@ -6,6 +6,8 @@ export function applyGuards(router: Router) {
   router.beforeEach(async (to, _from, next) => {
     const auth = useAuthStore()
 
+    await auth.initialize()
+
     if (to.meta.requiresAuth && !auth.isAuthenticated) {
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return

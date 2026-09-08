@@ -27,7 +27,7 @@ function segmentDistanceSquared(point: CartesianPoint, start: CartesianPoint, en
   return deltaX * deltaX + deltaY * deltaY
 }
 
-function simplifyWithTolerance<T>(points: T[], tolerance: number, project: PointProjector<T>) {
+export function simplifyWithTolerance<T>(points: T[], tolerance: number, project: PointProjector<T>) {
   if (points.length <= 2) return [...points]
   const toleranceSquared = tolerance * tolerance
   const retained = new Uint8Array(points.length)

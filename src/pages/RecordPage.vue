@@ -12,8 +12,10 @@ import { findItineraryDayByTakenAt, readPhotoTakenAt } from '@/utils/record-phot
 import type { PagedItems } from '@/types/api'
 import type { TripRecordDay, TripRecordPhoto } from '@/types/media'
 import type { TripSummary } from '@/types/trip'
+import { useLocale } from '@/i18n'
 
 const route = useRoute()
+const { locale } = useLocale()
 const PHOTO_PAGE_SIZE = 30
 const PHOTO_SUMMARY_BATCH_SIZE = 100
 const routeTripId = typeof route.query.tripId === 'string' ? route.query.tripId : null
@@ -462,7 +464,8 @@ onBeforeUnmount(() => {
               <span class="material-symbols-rounded" aria-hidden="true">photo_library</span>
               Travel Memories
             </p>
-            <h1 class="page-hero__title"><span class="page-hero__gradient">여행의 기록</span>을 한눈에 모아보세요</h1>
+            <h1 v-if="locale === 'en'" class="page-hero__title">See your <span class="page-hero__gradient">travel memories</span> at a glance</h1>
+            <h1 v-else class="page-hero__title"><span class="page-hero__gradient">여행의 기록</span>을 한눈에 모아보세요</h1>
             <p class="page-hero__lead">함께 남긴 사진과 순간을 여행별로 정리하고, 다시 보고 싶은 추억을 빠르게 찾아보세요.</p>
           </div>
           <div class="record-page-toolbar page-hero__actions">

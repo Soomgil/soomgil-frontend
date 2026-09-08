@@ -6,6 +6,7 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import { useTripStore } from '@/stores/trip.store'
 import { useAuth } from '@/composables/useAuth'
 import type { TripDetail } from '@/types/trip'
+import { useLocale } from '@/i18n'
 
 type AcceptState = 'loading' | 'success' | 'expired' | 'unavailable' | 'already-member' | 'forbidden' | 'not-found' | 'error' | 'unauthorized'
 
@@ -23,6 +24,7 @@ const route = useRoute()
 const router = useRouter()
 const tripStore = useTripStore()
 const auth = useAuth()
+const { tr } = useLocale()
 const state = ref<AcceptState>('loading')
 const acceptedTrip = ref<TripDetail | null>(null)
 let acceptAttempt = 0
@@ -34,13 +36,13 @@ const inviteCode = computed(() => {
 
 const errorContent = computed(() => {
   const content: Record<Exclude<AcceptState, 'loading' | 'success'>, { icon: string; title: string; message: string }> = {
-    expired: { icon: 'schedule', title: '초대가 만료되었습니다', message: '방장에게 새로운 초대 링크를 요청해 주세요.' },
-    unavailable: { icon: 'link_off', title: '사용할 수 없는 초대입니다', message: '이미 사용되었거나 취소된 초대 링크입니다.' },
-    'already-member': { icon: 'group', title: '이미 참여 중인 여행입니다', message: '내 여행 목록에서 해당 여행을 확인할 수 있습니다.' },
-    forbidden: { icon: 'lock', title: '다른 사용자에게 발급된 초대입니다', message: '초대를 받은 계정으로 로그인해 주세요.' },
-    'not-found': { icon: 'search_off', title: '초대를 찾을 수 없습니다', message: '링크가 정확한지 확인하거나 방장에게 다시 요청해 주세요.' },
-    error: { icon: 'error', title: '초대를 처리하지 못했습니다', message: '잠시 후 다시 시도해 주세요.' },
-    unauthorized: { icon: 'login', title: '로그인이 필요합니다', message: '초대받은 여행에 참여하려면 먼저 로그인해 주세요.' },
+    expired: { icon: 'schedule', title: tr('초대가 만료되었습니다', 'Invitation expired'), message: tr('방장에게 새로운 초대 링크를 요청해 주세요.', 'Ask the trip owner for a new invitation link.') },
+    unavailable: { icon: 'link_off', title: tr('사용할 수 없는 초대입니다', 'Invitation unavailable'), message: tr('이미 사용되었거나 취소된 초대 링크입니다.', 'This invitation link was already used or canceled.') },
+    'already-member': { icon: 'group', title: tr('이미 참여 중인 여행입니다', 'You already joined this trip'), message: tr('내 여행 목록에서 해당 여행을 확인할 수 있습니다.', 'You can find it in My trips.') },
+    forbidden: { icon: 'lock', title: tr('다른 사용자에게 발급된 초대입니다', 'Invitation issued to another user'), message: tr('초대를 받은 계정으로 로그인해 주세요.', 'Log in with the account that received the invitation.') },
+    'not-found': { icon: 'search_off', title: tr('초대를 찾을 수 없습니다', 'Invitation not found'), message: tr('링크가 정확한지 확인하거나 방장에게 다시 요청해 주세요.', 'Check the link or ask the trip owner to send it again.') },
+    error: { icon: 'error', title: tr('초대를 처리하지 못했습니다', 'Could not process the invitation'), message: tr('잠시 후 다시 시도해 주세요.', 'Please try again later.') },
+    unauthorized: { icon: 'login', title: tr('로그인이 필요합니다', 'Login required'), message: tr('초대받은 여행에 참여하려면 먼저 로그인해 주세요.', 'Log in before joining the invited trip.') },
   }
   return state.value === 'loading' || state.value === 'success' ? null : content[state.value]
 })
@@ -107,12 +109,12 @@ watch(inviteCode, () => {
         <template v-else-if="state === 'success' && acceptedTrip">
           <span class="invite-icon success material-symbols-rounded" aria-hidden="true">check_circle</span>
           <p class="eyebrow">Invitation Accepted</p>
-          <h1>초대 수락 완료</h1>
-          <p><strong>{{ acceptedTrip.title }}</strong> 여행에 참여했습니다.</p>
+          <h1>{{ tr('초대 수락 완료', 'Invitation accepted') }}</h1>
+          <p><strong>{{ acceptedTrip.title }}</strong> {{ tr('여행에 참여했습니다.', 'has been added to your trips.') }}</p>
           <div class="invite-actions">
-            <button class="btn ghost" type="button" @click="router.push({ name: 'MyTrips' })">내 여행</button>
+            <button class="btn ghost" type="button" @click="router.push({ name: 'MyTrips' })">{{ tr('내 여행', 'My trips') }}</button>
             <button class="btn primary" type="button" data-testid="go-trip" @click="goToTrip">
-              여행으로 이동
+              {{ tr('여행으로 이동', 'Open trip') }}
               <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
             </button>
           </div>
@@ -124,12 +126,12 @@ watch(inviteCode, () => {
           <h1>{{ errorContent.title }}</h1>
           <p>{{ errorContent.message }}</p>
           <div class="invite-actions">
-            <button v-if="state !== 'unauthorized'" class="btn ghost" type="button" @click="router.push({ name: 'MyTrips' })">내 여행으로 이동</button>
+            <button v-if="state !== 'unauthorized'" class="btn ghost" type="button" @click="router.push({ name: 'MyTrips' })">{{ tr('내 여행으로 이동', 'Go to My trips') }}</button>
             <button v-if="state === 'unauthorized'" class="btn primary" type="button" @click="goToLogin">
-              로그인하고 참여하기
+              {{ tr('로그인하고 참여하기', 'Log in and join') }}
             </button>
             <button v-if="state === 'error'" class="btn primary" type="button" data-testid="retry-invite" @click="acceptInvite">
-              다시 시도
+              {{ tr('다시 시도', 'Try again') }}
             </button>
           </div>
         </template>

@@ -53,34 +53,49 @@ describe('SettingsPage', () => {
     
     const selects = wrapper.findAll('select')
     expect((selects[0].element as HTMLSelectElement).value).toBe('ko')
-    expect((selects[1].element as HTMLSelectElement).value).toBe('Asia/Seoul')
+    expect(selects[0].findAll('option').map((option) => option.attributes('value'))).toEqual(['ko', 'en'])
+    expect(wrapper.text()).not.toContain('타임존')
+    expect(wrapper.text()).not.toContain('마케팅 이메일 수신')
+    expect(wrapper.text()).not.toContain('알림 설정')
     expect(wrapper.text()).not.toContain('프로필 저장')
     expect(wrapper.find('textarea').exists()).toBe(false)
 
     const checkboxes = wrapper.findAll('input[type="checkbox"]')
-    expect((checkboxes[0].element as HTMLInputElement).checked).toBe(true) // marketing
-    expect((checkboxes[1].element as HTMLInputElement).checked).toBe(true) // trip invite
+    expect(checkboxes).toHaveLength(1)
+    expect((checkboxes[0].element as HTMLInputElement).checked).toBe(true)
   })
 
-  it('saves settings correctly and shows success message', async () => {
+  it('saves settings correctly and reports success through a toast only', async () => {
     updateSettings.mockResolvedValue({})
     const wrapper = mount(SettingsPage, {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
     })
     await flushPromises()
 
-    await wrapper.findAll('input[type="checkbox"]')[0].setValue(false) // toggle marketing
+    await wrapper.findAll('input[type="checkbox"]')[0].setValue(false)
     await wrapper.findAll('button').find((button) => button.text() === '설정 저장')!.trigger('click')
 
     expect(updateSettings).toHaveBeenCalledWith({
       displayLanguage: 'ko',
-      timezone: 'Asia/Seoul',
-      marketingEmailOptIn: false,
-      tripInviteEmailOptIn: true,
+      tripInviteEmailOptIn: false,
     })
 
     await flushPromises()
-    expect(wrapper.text()).toContain('설정을 저장했습니다.')
+    expect(toastSuccess).toHaveBeenCalledWith('설정을 저장했습니다.')
+    expect(wrapper.find('.status--success').exists()).toBe(false)
+  })
+
+  it('applies the saved English language to the settings UI', async () => {
+    getSettings.mockResolvedValue({ displayLanguage: 'en', tripInviteEmailOptIn: true })
+    const wrapper = mount(SettingsPage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Preferences')
+    expect(wrapper.text()).toContain('Trip invitation emails')
+    expect(document.documentElement.lang).toBe('en')
   })
 
   it('does not display logout button and only retains account deletion in account management', async () => {
@@ -125,5 +140,17 @@ describe('SettingsPage', () => {
     expect(toastSuccess).toHaveBeenCalledWith('회원 탈퇴가 완료되었습니다.')
     vi.restoreAllMocks()
   })
-})
 
+  it('shows the account email without an email-change control', async () => {
+    const wrapper = mount(SettingsPage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.avatar-change-btn').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('소개 편집')
+    expect(wrapper.text()).toContain('test@example.com')
+    expect(wrapper.text()).not.toContain('이메일 변경')
+    expect(wrapper.find('input[type="email"]').exists()).toBe(false)
+  })
+})

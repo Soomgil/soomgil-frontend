@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { projectMapObject } from './mapObjectGeometry'
+import { createStrokePathBuilder, strokePaths } from './strokePaths'
 import type { DrawingPreviewEvent, DrawingPreviewPhase } from '@/types/collaboration'
 import type { LngLat } from '@/types/geo'
 import type { MapDrawing } from '@/types/itinerary'
-import { simplifyPathToLimit } from '@/utils/pathSimplification'
+import { simplifyWithTolerance } from '@/utils/pathSimplification'
 
 export type MapDrawingTool = 'cursor' | 'route-pen' | 'pen' | 'eraser' | 'sticker' | 'image'
 
@@ -26,7 +27,6 @@ interface ScreenPoint {
   y: number
 }
 
-const STORED_STROKE_MAX_POINTS = 100
 const ERASER_RADIUS_PX = 12
 
 const props = withDefaults(defineProps<{
@@ -54,6 +54,8 @@ const emit = defineEmits<{
   routePoint: [coordinate: LngLat]
   pan: [delta: ScreenPoint]
   wheelZoom: [payload: { point: ScreenPoint; deltaY: number }]
+  cursorMove: [coordinate: LngLat]
+  cursorLeave: []
 }>()
 
 const surface = ref<SVGSVGElement | null>(null)
@@ -71,7 +73,8 @@ let lastEraserPoint: ScreenPoint | null = null
 let erasedDuringGesture = new Set<string>()
 
 const editable = computed(() => props.enabled && (props.tool === 'route-pen' || props.tool === 'pen' || props.tool === 'eraser'))
-const currentPath = computed(() => smoothStrokePath(currentPoints.value))
+const currentStrokePathBuilder = createStrokePathBuilder()
+const currentPaths = computed(() => currentStrokePathBuilder.update(currentPoints.value))
 const projectedRouteWaypoints = computed(() => {
   void props.projectionRevision
   return (props.routeWaypoints ?? [])
@@ -84,7 +87,7 @@ const projectedDrawings = computed(() => {
   if (props.drawingsVisible === false) return []
   return props.drawings.map((drawing) => ({
     ...drawing,
-    path: smoothStrokePath(drawing.coordinates
+    paths: strokePaths(drawing.coordinates
       .map(props.project)
       .filter((point): point is ScreenPoint => point !== null)),
   }))
@@ -97,30 +100,6 @@ const projectedObjects = computed(() => {
     return projected ? [{ id: drawing.id, corners: projected.corners }] : []
   })
 })
-
-function smoothStrokePath(points: ScreenPoint[]) {
-  if (points.length === 0) return ''
-  if (points.length === 1) return `M ${points[0]!.x} ${points[0]!.y}`
-  const commands = [`M ${points[0]!.x} ${points[0]!.y}`]
-
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const previous = points[Math.max(0, index - 1)]!
-    const current = points[index]!
-    const next = points[index + 1]!
-    const following = points[Math.min(points.length - 1, index + 2)]!
-    const firstControl = {
-      x: current.x + (next.x - previous.x) / 6,
-      y: current.y + (next.y - previous.y) / 6,
-    }
-    const secondControl = {
-      x: next.x - (following.x - current.x) / 6,
-      y: next.y - (following.y - current.y) / 6,
-    }
-    commands.push(`C ${firstControl.x} ${firstControl.y} ${secondControl.x} ${secondControl.y} ${next.x} ${next.y}`)
-  }
-
-  return commands.join(' ')
-}
 
 function localPoint(event: Pick<PointerEvent, 'clientX' | 'clientY'>): ScreenPoint | null {
   if (!surface.value) return null
@@ -279,7 +258,8 @@ function appendPoint(point: ScreenPoint) {
 }
 
 function naturalStrokePoints(points: ScreenPoint[]) {
-  return simplifyPathToLimit(points, STORED_STROKE_MAX_POINTS, point => point, 0.75)
+  // Bound visual error instead of discarding detail to meet a fixed point count.
+  return points.length <= 100 ? points : simplifyWithTolerance(points, 0.75, point => point)
 }
 
 function pointerSamples(event: PointerEvent): Array<Pick<PointerEvent, 'clientX' | 'clientY'>> {
@@ -312,6 +292,7 @@ function beginStroke(event: PointerEvent) {
   activePointerId = event.pointerId
   activePreviewId = createPreviewId()
   activePreviewSequence = 0
+  currentStrokePathBuilder.reset()
   currentPoints.value = [point]
   surface.value?.setPointerCapture?.(event.pointerId)
 }
@@ -339,6 +320,13 @@ function extendStroke(event: PointerEvent) {
   if (changed) emitPreview('UPDATE')
 }
 
+function movePointer(event: PointerEvent) {
+  const point = localPoint(event)
+  const coordinate = point ? props.unproject(point) : null
+  if (coordinate) emit('cursorMove', coordinate)
+  extendStroke(event)
+}
+
 function releasePointerCapture(pointerId: number) {
   const element = surface.value
   if (element?.hasPointerCapture?.(pointerId)) {
@@ -364,7 +352,7 @@ function finishStroke(event: PointerEvent) {
   const coordinates = points
     .map(props.unproject)
     .filter((coordinate): coordinate is LngLat => coordinate !== null)
-  emitPreview('END', points)
+  emitPreview('END')
   if (coordinates.length >= 2) {
     emit('create', { coordinates, color: props.color, width: props.width })
   }
@@ -379,7 +367,7 @@ function finishCapturedStroke(pointerId: number) {
   const coordinates = points
     .map(props.unproject)
     .filter((coordinate): coordinate is LngLat => coordinate !== null)
-  emitPreview('END', points)
+  emitPreview('END')
   if (coordinates.length >= 2) {
     emit('create', { coordinates, color: props.color, width: props.width })
   }
@@ -462,8 +450,8 @@ function zoomThroughOverlay(event: WheelEvent) {
     :class="{ editable, erasing: tool === 'eraser' }"
     aria-label="지도 그림 레이어"
     @pointerdown="beginStroke"
-    @pointermove="extendStroke"
-    @pointerrawupdate="extendStroke"
+    @pointermove="movePointer"
+    @pointerleave="emit('cursorLeave')"
     @pointerup="finishStroke"
     @pointercancel="cancelStroke"
     @lostpointercapture="handleLostPointerCapture"
@@ -472,16 +460,19 @@ function zoomThroughOverlay(event: WheelEvent) {
   >
     <template v-for="drawing in projectedDrawings" :key="drawing.id">
       <path
+        v-for="(path, index) in drawing.paths"
+        :key="index"
         class="map-drawing-stroke"
-        :d="drawing.path"
+        :d="path"
         :stroke="drawing.color"
         :stroke-width="drawing.width"
       />
     </template>
     <path
-      v-if="currentPoints.length > 1"
+      v-for="(path, index) in currentPaths"
+      :key="index"
       class="map-drawing-stroke is-current"
-      :d="currentPath"
+      :d="path"
       :stroke="color"
       :stroke-width="width"
     />
