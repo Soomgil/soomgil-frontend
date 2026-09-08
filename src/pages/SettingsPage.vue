@@ -1,43 +1,33 @@
 <script setup lang="ts">
-import { ref, computed, unref, onMounted, watchEffect } from 'vue'
+import { ref, computed, unref, onMounted, watch, watchEffect } from 'vue'
 import router from '@/router'
 import AppShell from '@/components/layout/AppShell.vue'
 import { useAuth } from '@/composables/useAuth'
 import { userApi } from '@/api/user.api'
-import { mediaApi } from '@/api/media.api'
 import type { UpdateUserSettingsRequest, UserProfileVisibility } from '@/types/auth'
 import { useToast } from '@/composables/useToast'
+import { useLocale } from '@/i18n'
 
 const { logout, user, fetchUser } = useAuth()
 const currentUser = computed(() => unref(user))
 const toast = useToast()
+const { t, setLocale } = useLocale()
 
 const loading = ref(false)
 const saving = ref(false)
 
 const settingsForm = ref({
   displayLanguage: 'ko',
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul',
-  marketingEmailOptIn: false,
   tripInviteEmailOptIn: true,
 })
 
-const timezones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul']
 const languages = [
   { value: 'ko', label: '한국어' },
   { value: 'en', label: 'English' },
-  { value: 'ja', label: '日本語' },
-  { value: 'zh-CN', label: '简体中文' },
 ]
 
-const message = ref('')
 const errorMessage = ref('')
 const accountLoading = ref(false)
-
-// 프로필 이미지 변경 상태
-const photoInput = ref<HTMLInputElement | null>(null)
-const uploadingPhoto = ref(false)
-const avatarPreviewUrl = ref<string | null>(null)
 
 // 프로필 공개 범위 상태
 const profileVisibility = ref<UserProfileVisibility>('PUBLIC')
@@ -48,6 +38,11 @@ watchEffect(() => {
     profileVisibility.value = currentUser.value.profileVisibility
   }
 })
+
+watch(
+  () => settingsForm.value.displayLanguage,
+  (language) => setLocale(language),
+)
 
 const userAvatar = computed(() => {
   if (currentUser.value?.displayName) {
@@ -62,54 +57,15 @@ onMounted(async () => {
     const settings = await userApi.getSettings()
     settingsForm.value = {
       displayLanguage: settings.displayLanguage || 'ko',
-      timezone: settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-      marketingEmailOptIn: settings.marketingEmailOptIn,
       tripInviteEmailOptIn: settings.tripInviteEmailOptIn,
     }
+    setLocale(settingsForm.value.displayLanguage)
   } catch {
-    errorMessage.value = '계정 설정을 불러오지 못했습니다.'
+    errorMessage.value = t('settings.loadError')
   } finally {
     loading.value = false
   }
 })
-
-function triggerPhotoPicker() {
-  photoInput.value?.click()
-}
-
-async function onPhotoSelected(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-
-  if (!file.type.startsWith('image/')) {
-    toast.error('이미지 파일만 선택할 수 있습니다.')
-    input.value = ''
-    return
-  }
-
-  uploadingPhoto.value = true
-  if (avatarPreviewUrl.value) {
-    URL.revokeObjectURL(avatarPreviewUrl.value)
-  }
-  avatarPreviewUrl.value = URL.createObjectURL(file)
-
-  try {
-    const mediaFile = await mediaApi.uploadFile(file, 'PROFILE_IMAGE')
-    if (userApi.updateMe) {
-      await userApi.updateMe({ profileMediaFileId: mediaFile.id })
-    }
-    if (fetchUser) {
-      await fetchUser()
-    }
-    toast.success('프로필 사진이 변경되었습니다.')
-  } catch (err: any) {
-    toast.error(err?.message || '프로필 사진을 변경하지 못했습니다.')
-  } finally {
-    uploadingPhoto.value = false
-    input.value = ''
-  }
-}
 
 async function updateProfileVisibility(newVisibility: UserProfileVisibility) {
   if (profileVisibility.value === newVisibility || updatingVisibility.value) return
@@ -123,25 +79,25 @@ async function updateProfileVisibility(newVisibility: UserProfileVisibility) {
     if (fetchUser) {
       await fetchUser()
     }
-    toast.success(newVisibility === 'PUBLIC' ? '공개 프로필로 변경되었습니다.' : '비공개 계정으로 변경되었습니다.')
+    toast.success(newVisibility === 'PUBLIC' ? t('settings.publicChanged') : t('settings.privateChanged'))
   } catch (err: any) {
     profileVisibility.value = prev
-    toast.error('프로필 공개 범위를 변경하지 못했습니다.')
+    toast.error(t('settings.visibilityError'))
   } finally {
     updatingVisibility.value = false
   }
 }
 
 async function requestAccountDeletion() {
-  if (!window.confirm('계정을 즉시 탈퇴할까요? 개인정보와 로그인 수단이 삭제되며 되돌릴 수 없습니다. 소유한 여행방은 다음 구성원에게 이전되고, 혼자 있는 여행방은 삭제됩니다.')) return
+  if (!window.confirm(t('settings.deleteConfirm'))) return
   accountLoading.value = true
   errorMessage.value = ''
   try {
     await userApi.deleteMe()
     await logout()
-    toast.success('회원 탈퇴가 완료되었습니다.')
+    toast.success(t('settings.deleteSuccess'))
   } catch (error: any) {
-    errorMessage.value = error?.response?.data?.detail || '계정을 탈퇴하지 못했습니다.'
+    errorMessage.value = error?.response?.data?.detail || t('settings.deleteError')
   } finally {
     accountLoading.value = false
   }
@@ -149,18 +105,16 @@ async function requestAccountDeletion() {
 
 async function saveSettings() {
   saving.value = true
-  message.value = ''
   errorMessage.value = ''
   try {
     const payload: UpdateUserSettingsRequest = {
       displayLanguage: settingsForm.value.displayLanguage,
-      timezone: settingsForm.value.timezone,
-      marketingEmailOptIn: settingsForm.value.marketingEmailOptIn,
       tripInviteEmailOptIn: settingsForm.value.tripInviteEmailOptIn,
     }
     await userApi.updateSettings(payload)
-    message.value = '설정을 저장했습니다.'
-    toast.success('설정을 저장했습니다.')
+    if (fetchUser) await fetchUser()
+    setLocale(settingsForm.value.displayLanguage)
+    toast.success(t('settings.saved'))
   } catch {
     // 에러는 인터셉터에서 처리
   } finally {
@@ -168,254 +122,162 @@ async function saveSettings() {
   }
 }
 
-function goToProfile() {
-  if (!currentUser.value?.id) return
-  if (router?.push) {
-    router.push(`/mypage/${currentUser.value.id}`)
-  } else {
-    window.location.href = `/mypage/${currentUser.value.id}`
-  }
-}
 </script>
 
 <template>
   <AppShell>
     <div class="settings-page profile-settings-page page-with-hero max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- 헤더 (Page Hero) -->
-      <header class="settings-heading page-hero">
-        <div class="page-hero__copy">
-          <p class="page-hero__eyebrow">
-            <span class="material-symbols-rounded" aria-hidden="true">tune</span> Preferences
-          </p>
-          <h1 class="page-hero__title">
-            <span class="page-hero__gradient">서비스 환경</span>을 관리하세요
-          </h1>
-          <p class="page-hero__lead">
-            표시 언어, 표준 시간대 및 알림 수신 환경을 나에게 맞게 설정하세요.
-          </p>
-        </div>
-        <div class="page-hero__actions">
-          <a
-            v-if="currentUser?.id"
-            :href="`/mypage/${currentUser.id}`"
-            class="btn ghost settings-hero-link"
-            @click.prevent="goToProfile"
-          >
-            <span class="material-symbols-rounded" aria-hidden="true">badge</span>
-            내 프로필 바로가기
-            <span class="material-symbols-rounded arrow-icon" aria-hidden="true">arrow_forward</span>
-          </a>
-        </div>
-      </header>
-
       <!-- 로딩 상태 알림 -->
       <div v-if="loading" class="settings-loading-card">
-        <span class="material-symbols-rounded animate-spin">progress_activity</span>
-        <p class="text-muted">불러오는 중…</p>
+        <div class="loading-spinner-wrap">
+          <span class="material-symbols-rounded animate-spin">progress_activity</span>
+        </div>
+        <p class="loading-text">{{ t('common.loading') }}</p>
       </div>
 
-      <!-- 메인 2열 레이아웃 -->
+      <!-- 메인 2열 그리드 레이아웃 -->
       <div v-else class="settings-layout">
-        <!-- 좌측: 프로필 요약 카드 -->
+        <!-- 1열 1행: 프로필 요약 카드 (호버 효과 제거, 환경설정 카드와 높이 일치) -->
         <aside class="settings-summary">
           <div class="settings-summary__cover">
             <div class="summary-cover-art" />
           </div>
 
-          <!-- 상단 중앙에 더 크게 배치된 아바타 및 사진 변경 기능 -->
+          <!-- 상단 중앙 아바타 -->
           <div class="settings-summary__avatar-wrap">
-            <div class="settings-summary__avatar">
-              <img
-                v-if="avatarPreviewUrl || currentUser?.profileImageUrl"
-                :src="avatarPreviewUrl || currentUser?.profileImageUrl || ''"
-                :alt="currentUser?.displayName || 'User'"
-              />
-              <span v-else>{{ userAvatar }}</span>
-
-              <!-- 사진 업로드 진행 중 스피너 -->
-              <div v-if="uploadingPhoto" class="avatar-upload-overlay">
-                <span class="material-symbols-rounded animate-spin">progress_activity</span>
+            <div class="settings-summary__avatar-outer">
+              <div class="settings-summary__avatar">
+                <img
+                  v-if="currentUser?.profileImageUrl"
+                  :src="currentUser.profileImageUrl"
+                  :alt="currentUser?.displayName || 'User'"
+                />
+                <span v-else class="avatar-fallback">{{ userAvatar }}</span>
               </div>
             </div>
-
-            <!-- 프로필 이미지 변경 버튼 -->
-            <button
-              type="button"
-              class="avatar-change-btn"
-              :disabled="uploadingPhoto"
-              title="프로필 이미지 변경"
-              aria-label="프로필 이미지 변경"
-              @click="triggerPhotoPicker"
-            >
-              <span class="material-symbols-rounded" aria-hidden="true">photo_camera</span>
-            </button>
-
-            <input
-              ref="photoInput"
-              type="file"
-              accept="image/*"
-              style="display: none;"
-              @change="onPhotoSelected"
-            />
           </div>
 
           <div class="settings-summary__profile">
-            <h2 class="settings-summary__name">{{ currentUser?.displayName || '여행자' }}</h2>
-            <p class="settings-summary__email">{{ currentUser?.email || '이메일 없음' }}</p>
-            <p v-if="currentUser?.bio" class="settings-summary__bio">{{ currentUser.bio }}</p>
+            <h2 class="settings-summary__name" :data-no-translate="currentUser?.displayName ? '' : undefined">{{ currentUser?.displayName || '여행자' }}</h2>
 
-            <!-- 공개 프로필 변경 기능 -->
-            <div class="settings-visibility-section">
-              <div class="settings-visibility-header">
-                <span class="settings-visibility-title">프로필 공개 범위</span>
-                <span
-                  class="settings-summary__badge"
-                  :class="profileVisibility === 'PRIVATE' ? 'badge--private' : 'badge--public'"
-                >
-                  <span class="material-symbols-rounded" aria-hidden="true">{{ profileVisibility === 'PRIVATE' ? 'lock' : 'public' }}</span>
-                  {{ profileVisibility === 'PRIVATE' ? '비공개' : '공개' }}
-                </span>
+            <!-- 계정 이메일 정보 -->
+            <div class="settings-summary__email-section">
+              <div class="settings-summary__email-pill">
+                <span class="material-symbols-rounded email-icon" aria-hidden="true">mail</span>
+                <span :data-no-translate="currentUser?.email ? '' : undefined">{{ currentUser?.email || t('settings.emailMissing') }}</span>
               </div>
-
-              <div class="visibility-segmented-control">
-                <button
-                  type="button"
-                  class="visibility-segment-btn"
-                  :class="{ 'is-active': profileVisibility === 'PUBLIC' }"
-                  :disabled="updatingVisibility"
-                  @click="updateProfileVisibility('PUBLIC')"
-                >
-                  <span class="material-symbols-rounded" aria-hidden="true">public</span>
-                  공개
-                </button>
-                <button
-                  type="button"
-                  class="visibility-segment-btn"
-                  :class="{ 'is-active': profileVisibility === 'PRIVATE' }"
-                  :disabled="updatingVisibility"
-                  @click="updateProfileVisibility('PRIVATE')"
-                >
-                  <span class="material-symbols-rounded" aria-hidden="true">lock</span>
-                  비공개
-                </button>
-              </div>
-              <small class="settings-visibility-hint">
-                {{ profileVisibility === 'PUBLIC' ? '모든 사용자가 내 프로필을 확인할 수 있습니다.' : '승인된 팔로워만 내 프로필을 볼 수 있습니다.' }}
-              </small>
             </div>
-          </div>
 
-          <div class="settings-summary__actions">
-            <a
-              v-if="currentUser?.id"
-              :href="`/mypage/${currentUser.id}`"
-              class="settings-summary__link-btn"
-              @click.prevent="goToProfile"
-            >
-              <span class="material-symbols-rounded" aria-hidden="true">person</span>
-              내 프로필 보기
-              <span class="material-symbols-rounded arrow-icon" aria-hidden="true">arrow_forward</span>
-            </a>
+            <!-- 소개문구 영역 (정적 텍스트 표시) -->
+            <div class="settings-summary__bio-section">
+              <p class="settings-summary__bio" :data-no-translate="currentUser?.bio ? '' : undefined">
+                {{ currentUser?.bio || t('settings.bioMissing') }}
+              </p>
+            </div>
           </div>
         </aside>
 
-        <!-- 우측: 설정 패널 목록 -->
-        <div class="settings-form">
-          <!-- 1. 환경 설정, 알림 설정, 설정 저장을 하나의 카드로 합치고 구분선으로 구분 -->
+        <!-- 2열: 환경설정 카드 + 계정관리 카드 (붙어있도록 단일 그룹으로 구성) -->
+        <div class="settings-cards-group">
+          <!-- 환경 설정 카드 -->
           <section class="settings-panel settings-panel--unified">
-            <!-- 1-1. 환경 설정 영역 -->
-            <div class="settings-section">
-              <div class="settings-panel__head">
-                <div class="panel-head-title-group">
-                  <div class="panel-head-icon panel-head-icon--violet">
-                    <span class="material-symbols-rounded" aria-hidden="true">language</span>
-                  </div>
-                  <div>
-                    <h2>환경 설정</h2>
-                    <p>서비스 표시 방식과 표준 시간대를 선택합니다.</p>
-                  </div>
+            <!-- 카드 헤더 (설명 및 뱃지 제거) -->
+            <div class="settings-panel__head">
+              <div class="panel-head-title-group">
+                <div class="panel-head-icon panel-head-icon--violet">
+                  <span class="material-symbols-rounded" aria-hidden="true">tune</span>
                 </div>
-                <span class="settings-panel__badge settings-panel__badge--info">기본 환경</span>
+                <div>
+                  <h2>{{ t('settings.environment') }}</h2>
+                </div>
               </div>
+            </div>
 
-              <div class="settings-field-grid">
-                <!-- 표시 언어 -->
-                <label class="settings-field">
-                  <span class="settings-field__label">
-                    <span class="material-symbols-rounded" aria-hidden="true">translate</span>
-                    표시 언어
-                  </span>
+            <!-- 환경 및 알림, 공개 범위 설정 항목 목록 -->
+            <div class="settings-items-list">
+              <!-- 1. 표시 언어 항목 -->
+              <div class="settings-item-card">
+                <div class="settings-item__icon-wrap">
+                  <span class="material-symbols-rounded" aria-hidden="true">translate</span>
+                </div>
+                <div class="settings-item__info">
+                  <label for="settings-lang-select" class="settings-item__title">
+                    {{ t('settings.language') }}
+                  </label>
+                  <p class="settings-item__desc">
+                    {{ t('settings.languageHint') }}
+                  </p>
+                </div>
+                <div class="settings-item__control">
                   <div class="settings-select-wrap">
-                    <select v-model="settingsForm.displayLanguage" class="field settings-select">
+                    <select
+                      id="settings-lang-select"
+                      v-model="settingsForm.displayLanguage"
+                      class="field settings-select"
+                    >
                       <option v-for="language in languages" :key="language.value" :value="language.value">
                         {{ language.label }}
                       </option>
                     </select>
                     <span class="material-symbols-rounded select-chevron" aria-hidden="true">expand_more</span>
                   </div>
-                  <small>서비스 메뉴, 안내 및 시스템 메시지에 적용될 언어입니다.</small>
-                </label>
-
-                <!-- 타임존 -->
-                <label class="settings-field">
-                  <span class="settings-field__label">
-                    <span class="material-symbols-rounded" aria-hidden="true">schedule</span>
-                    타임존
-                  </span>
-                  <div class="settings-select-wrap">
-                    <select v-model="settingsForm.timezone" class="field settings-select">
-                      <option v-for="tz in timezones" :key="tz" :value="tz">{{ tz }}</option>
-                    </select>
-                    <span class="material-symbols-rounded select-chevron" aria-hidden="true">expand_more</span>
-                  </div>
-                  <small>여행 일정과 공유 기록의 기준 시간대로 사용됩니다.</small>
-                </label>
-              </div>
-            </div>
-
-            <!-- 구분선 1 -->
-            <hr class="settings-divider" />
-
-            <!-- 1-2. 알림 설정 영역 -->
-            <div class="settings-section">
-              <div class="settings-panel__head">
-                <div class="panel-head-title-group">
-                  <div class="panel-head-icon panel-head-icon--emerald">
-                    <span class="material-symbols-rounded" aria-hidden="true">notifications</span>
-                  </div>
-                  <div>
-                    <h2>알림 설정</h2>
-                    <p>중요한 여행 알림 및 소식 수신 여부를 선택합니다.</p>
-                  </div>
                 </div>
-                <span class="settings-panel__badge">이메일 알림</span>
               </div>
 
-              <div class="settings-toggle-list">
-                <!-- 마케팅 이메일 수신 (checkbox 0 for test compatibility) -->
-                <div
-                  class="settings-toggle"
-                  @click="settingsForm.marketingEmailOptIn = !settingsForm.marketingEmailOptIn"
-                >
-                  <div class="settings-toggle__info">
-                    <strong>마케팅 이메일 수신</strong>
-                    <small>숨길의 신규 여행지 추천, 특가 혜택 및 이벤트 소식을 이메일로 받아봅니다.</small>
-                  </div>
-                  <label class="switch-control" @click.stop>
-                    <input type="checkbox" v-model="settingsForm.marketingEmailOptIn" />
-                    <span class="switch-track" />
-                  </label>
+              <!-- 2. 프로필 공개 범위 항목 ("공개" 텍스트 적절한 설명으로 개선) -->
+              <div class="settings-item-card">
+                <div class="settings-item__icon-wrap">
+                  <span class="material-symbols-rounded" aria-hidden="true">visibility</span>
                 </div>
-
-                <!-- 여행 초대 이메일 수신 (checkbox 1 for test compatibility) -->
-                <div
-                  class="settings-toggle"
-                  @click="settingsForm.tripInviteEmailOptIn = !settingsForm.tripInviteEmailOptIn"
-                >
-                  <div class="settings-toggle__info">
-                    <strong>여행 초대 이메일 수신</strong>
-                    <small>동행자나 친구가 새로운 여행 일정에 나를 초대했을 때 이메일 알림을 받습니다.</small>
+                <div class="settings-item__info">
+                  <span class="settings-item__title">{{ t('settings.visibility') }}</span>
+                  <p class="settings-item__desc">
+                    {{ profileVisibility === 'PUBLIC' ? t('settings.publicHint') : t('settings.privateHint') }}
+                  </p>
+                </div>
+                <div class="settings-item__control">
+                  <div class="visibility-segmented-control">
+                    <button
+                      type="button"
+                      class="visibility-segment-btn"
+                      :class="{ 'is-active': profileVisibility === 'PUBLIC' }"
+                      :disabled="updatingVisibility"
+                      @click="updateProfileVisibility('PUBLIC')"
+                    >
+                      <span class="material-symbols-rounded" aria-hidden="true">public</span>
+                      <span>{{ t('settings.public') }}</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="visibility-segment-btn"
+                      :class="{ 'is-active': profileVisibility === 'PRIVATE' }"
+                      :disabled="updatingVisibility"
+                      @click="updateProfileVisibility('PRIVATE')"
+                    >
+                      <span class="material-symbols-rounded" aria-hidden="true">lock</span>
+                      <span>{{ t('settings.private') }}</span>
+                    </button>
                   </div>
+                </div>
+              </div>
+
+              <!-- 3. 여행 초대 이메일 수신 토글 항목 -->
+              <div
+                class="settings-item-card settings-item-card--toggle"
+                role="button"
+                tabindex="0"
+                @click="settingsForm.tripInviteEmailOptIn = !settingsForm.tripInviteEmailOptIn"
+                @keydown.enter.prevent="settingsForm.tripInviteEmailOptIn = !settingsForm.tripInviteEmailOptIn"
+                @keydown.space.prevent="settingsForm.tripInviteEmailOptIn = !settingsForm.tripInviteEmailOptIn"
+              >
+                <div class="settings-item__icon-wrap">
+                  <span class="material-symbols-rounded" aria-hidden="true">mark_email_unread</span>
+                </div>
+                <div class="settings-item__info">
+                  <strong class="settings-item__title">{{ t('settings.tripEmail') }}</strong>
+                  <p class="settings-item__desc">{{ t('settings.tripEmailHint') }}</p>
+                </div>
+                <div class="settings-item__control">
                   <label class="switch-control" @click.stop>
                     <input type="checkbox" v-model="settingsForm.tripInviteEmailOptIn" />
                     <span class="switch-track" />
@@ -424,15 +286,13 @@ function goToProfile() {
               </div>
             </div>
 
-            <!-- 구분선 2 -->
-            <hr class="settings-divider" />
-
-            <!-- 1-3. 설정 저장 영역 -->
+            <!-- 하단 액션 영역 -->
             <div class="settings-section settings-section--actions">
               <div class="settings-actions-status">
-                <p v-if="message" class="settings-save-status text-brand-violet">{{ message }}</p>
-                <p v-else-if="errorMessage" class="settings-save-status error-status text-brand-rose">{{ errorMessage }}</p>
-                <p v-else class="text-sm text-muted">선택한 변경사항을 서비스에 반영하려면 저장하세요.</p>
+                <p v-if="errorMessage" class="settings-save-status error-status text-brand-rose">
+                  <span class="material-symbols-rounded" aria-hidden="true">error</span>
+                  <span>{{ errorMessage }}</span>
+                </p>
               </div>
               <div class="settings-actions-buttons">
                 <button
@@ -440,14 +300,12 @@ function goToProfile() {
                   type="button"
                   :disabled="saving"
                   @click="saveSettings"
-                >
-                  설정 저장
-                </button>
+                >{{ t('common.save') }}</button>
               </div>
             </div>
           </section>
 
-          <!-- 2. 계정 관리 및 위험 구역 (로그아웃 제거, 계정 탈퇴만 유지) -->
+          <!-- 2열 2행: 회원 정보 삭제 카드 (환경설정 카드 바로 아래 붙어서 표시) -->
           <section class="settings-panel settings-panel--danger">
             <div class="settings-panel__head">
               <div class="panel-head-title-group">
@@ -455,33 +313,31 @@ function goToProfile() {
                   <span class="material-symbols-rounded" aria-hidden="true">shield</span>
                 </div>
                 <div>
-                  <h2>계정 관리</h2>
-                  <p>계정 삭제와 관련된 민감한 작업입니다.</p>
+                  <h2>{{ t('settings.account') }}</h2>
                 </div>
               </div>
-              <span class="settings-panel__badge settings-panel__badge--warning">보안</span>
             </div>
 
-            <!-- 계정 삭제 카드 -->
-            <div class="settings-danger-card">
-              <div class="settings-danger-card__head">
-                <div class="settings-danger-card__title-wrap">
-                  <span class="material-symbols-rounded text-brand-rose" aria-hidden="true">warning</span>
-                  <h2 class="settings-danger-title">계정 삭제</h2>
+            <!-- 계정 탈퇴 안내 및 액션 행 (설명 텍스트 2행 표시) -->
+            <div class="settings-danger-row">
+              <div class="settings-danger-bullet-list">
+                <div class="danger-bullet-item">
+                  <span class="material-symbols-rounded bullet-icon" aria-hidden="true">cancel</span>
+                  <span>{{ t('settings.deleteData') }}</span>
+                </div>
+                <div class="danger-bullet-item">
+                  <span class="material-symbols-rounded bullet-icon" aria-hidden="true">cancel</span>
+                  <span>{{ t('settings.deleteTrips') }}</span>
                 </div>
               </div>
-              <p class="settings-danger-desc">
-                탈퇴 즉시 개인정보와 로그인 수단이 삭제되고 모든 기기에서 로그아웃됩니다. 소유한 여행방은 다음 구성원에게 이전되며, 다른 구성원이 없으면 함께 삭제됩니다.
-              </p>
-              <div class="settings-danger-card__footer">
+
+              <div class="settings-danger-action">
                 <button
                   type="button"
                   class="btn danger-action-btn"
                   :disabled="accountLoading"
                   @click="requestAccountDeletion"
-                >
-                  계정 탈퇴
-                </button>
+                >{{ t('settings.withdraw') }}</button>
               </div>
             </div>
           </section>
@@ -494,457 +350,664 @@ function goToProfile() {
 <style scoped>
 .settings-page {
   position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 80vh;
 }
 
-/* 로딩 상태 */
+/* 로딩 상태 카드 */
 .settings-loading-card {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16px;
   padding: 80px 24px;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.75);
   border-radius: 24px;
-  border: 1px solid var(--line);
-  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
 }
 
-.settings-loading-card .material-symbols-rounded {
-  font-size: 36px;
-  color: var(--violet);
+.loading-spinner-wrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(0, 102, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* 히어로 액션 버튼 */
-.settings-hero-link {
-  height: 44px;
-  padding: 0 18px;
-  border-radius: 999px;
+.loading-spinner-wrap .material-symbols-rounded {
+  font-size: 28px;
+  color: var(--violet, #0066ff);
+}
+
+.loading-text {
   font-size: 14px;
   font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid var(--line);
-  color: var(--ink);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
-  transition: all 0.25s ease;
+  color: var(--muted, #68718a);
+  margin: 0;
 }
 
-.settings-hero-link:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  color: var(--violet);
-  transform: translateY(-1px);
+/* 메인 2열 그리드 레이아웃 (1열: 프로필 카드, 2열: 환경설정+계정관리 카드 그룹) */
+.settings-layout {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(300px, 336px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
 }
 
-.settings-hero-link .arrow-icon {
-  font-size: 16px;
-  transition: transform 0.2s ease;
+/* ==========================================================================
+   좌측 1열: 프로필 요약 카드 (상단 위치 일치, 호버 효과 제거)
+   ========================================================================== */
+.settings-summary {
+  position: relative !important;
+  top: 0 !important;
+  margin-top: 0 !important;
+  height: fit-content;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 16px 36px rgba(0, 102, 255, 0.04),
+              0 1px 3px rgba(0, 0, 0, 0.02);
+  transform: none !important;
+  transition: none !important;
 }
 
-.settings-hero-link:hover .arrow-icon {
-  transform: translateX(3px);
+.settings-summary:hover {
+  transform: none !important;
+  box-shadow: 0 16px 36px rgba(0, 102, 255, 0.04),
+              0 1px 3px rgba(0, 0, 0, 0.02) !important;
 }
 
-/* 프로필 요약 카드 아트 */
+/* 상단 커버 아트 배너 */
+.settings-summary__cover {
+  position: relative;
+  height: 96px;
+  background: #0f172a;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.settings-summary__cover img {
+  transform: none !important;
+  transition: none !important;
+}
+
+.settings-summary:hover .settings-summary__cover img {
+  transform: none !important;
+}
+
 .summary-cover-art {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(0, 209, 255, 0.2) 50%, rgba(255, 200, 87, 0.15) 100%);
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #1e3a8a 0%, #0066ff 100%);
 }
 
+/* 상단 중앙 아바타 (하단 여백 축소: 0) */
 .settings-summary__avatar-wrap {
   position: relative;
   display: flex;
   justify-content: center;
-  margin: -60px auto 12px;
-  width: 120px;
-  height: 120px;
+  margin: -20px auto 0;
   z-index: 2;
+  flex-shrink: 0;
 }
 
+.settings-summary__avatar-outer {
+  position: relative;
+  width: 104px;
+  height: 104px;
+}
+
+/* 프로필 이미지 호버링 효과 완전 제거 */
 .settings-summary__avatar {
   position: relative;
-  width: 120px;
-  height: 120px;
+  width: 104px;
+  height: 104px;
   border-radius: 50%;
   overflow: hidden;
-  border: 4px solid #fff;
-  background: linear-gradient(135deg, var(--violet), var(--blue));
-  color: #fff;
-  font-size: 38px;
+  border: 4px solid #ffffff;
+  background: linear-gradient(135deg, var(--violet, #0066ff) 0%, var(--blue, #00d1ff) 100%);
+  color: #ffffff;
+  font-size: 32px;
   font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12px 28px rgba(0, 102, 255, 0.25), 0 0 0 1px rgba(0, 102, 255, 0.08);
+  box-shadow: 0 6px 18px rgba(0, 102, 255, 0.14);
+  cursor: default;
+  pointer-events: none;
+  transform: none !important;
+  transition: none !important;
+}
+
+.settings-summary:hover .settings-summary__avatar,
+.settings-summary__avatar:hover {
+  transform: none !important;
+  box-shadow: 0 6px 18px rgba(0, 102, 255, 0.14) !important;
 }
 
 .settings-summary__avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  pointer-events: none;
+  transform: none !important;
+  transition: none !important;
 }
 
-.avatar-upload-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  border-radius: 50%;
+.avatar-fallback {
+  user-select: none;
 }
 
-.avatar-change-btn {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--violet, #0066ff);
-  color: #fff;
-  border: 2.5px solid #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 102, 255, 0.35);
-  transition: all 0.2s ease;
-  z-index: 3;
-}
-
-.avatar-change-btn:hover:not(:disabled) {
-  transform: scale(1.1);
-  background: #0052cc;
-}
-
-.avatar-change-btn .material-symbols-rounded {
-  font-size: 18px;
-}
-
+/* 프로필 텍스트 정보 (아바타와의 상단 여백 축소) */
 .settings-summary__profile {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 0 24px 20px;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 24px 24px;
   text-align: center;
 }
 
 .settings-summary__name {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 800;
-  color: var(--ink);
-  letter-spacing: -0.01em;
+  color: var(--ink, #1a2033);
+  letter-spacing: -0.02em;
 }
 
-.settings-summary__email {
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
+/* 계정 이메일 정보 */
+.settings-summary__email-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.settings-summary__email-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  font-size: 12px;
+  color: var(--muted, #68718a);
+  font-weight: 500;
+}
+
+.settings-summary__email-pill span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-summary__email-pill .email-icon {
+  font-size: 14px;
+  color: var(--muted, #68718a);
+}
+
+/* 소개문구 영역 (정적 텍스트 표시) */
+.settings-summary__bio-section {
+  width: 100%;
+  margin-top: 8px;
 }
 
 .settings-summary__bio {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--muted);
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted, #68718a);
   line-height: 1.5;
   word-break: keep-all;
+  text-align: center;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
-/* 공개 프로필 토글 섹션 */
-.settings-visibility-section {
-  width: 100%;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-  text-align: left;
+/* ==========================================================================
+   우측 2열: 카드 그룹 (환경설정과 계정관리 카드가 붙어있도록 구성)
+   ========================================================================== */
+.settings-cards-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 0;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 16px 36px rgba(0, 102, 255, 0.04),
+              0 1px 3px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
-.settings-visibility-header {
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 18px;
+  padding: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.settings-panel--unified {
+  border-bottom: 1px solid rgba(227, 234, 244, 0.8);
+}
+
+/* 패널 헤더 */
+.settings-panel__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
-.settings-visibility-title {
-  font-size: 13px;
+.panel-head-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-head-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  transform: none;
+  transition: none;
+}
+
+.settings-panel:hover .panel-head-icon {
+  transform: none;
+}
+
+.panel-head-icon--violet {
+  background: rgba(0, 102, 255, 0.08);
+  color: var(--violet, #0066ff);
+  border: 1px solid rgba(0, 102, 255, 0.16);
+}
+
+.panel-head-icon--orange {
+  background: rgba(255, 92, 141, 0.08);
+  color: var(--rose, #ff5c8d);
+  border: 1px solid rgba(255, 92, 141, 0.18);
+}
+
+.panel-head-icon .material-symbols-rounded {
+  font-size: 20px;
+}
+
+.panel-head-title-group h2 {
+  margin: 0;
+  font-size: 18px;
   font-weight: 800;
-  color: var(--ink);
+  color: var(--ink, #1a2033);
+  letter-spacing: -0.02em;
 }
 
-.visibility-segmented-control {
+/* ==========================================================================
+   통합 환경설정 카드 내부 항목 (Items List - 슬림화)
+   ========================================================================== */
+.settings-items-list {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 3px;
-  background: rgba(0, 0, 0, 0.04);
-  border-radius: 12px;
+  gap: 12px;
+}
+
+.settings-item-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 72px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(227, 234, 244, 0.85);
+  border-radius: 14px;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.settings-item-card:hover {
+  background: #ffffff;
+  border-color: rgba(0, 102, 255, 0.25);
+}
+
+.settings-item-card--toggle {
+  cursor: pointer;
+}
+
+.settings-item__icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(0, 102, 255, 0.06);
+  border: 1px solid rgba(0, 102, 255, 0.1);
+  color: var(--violet, #0066ff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.settings-item__icon-wrap .material-symbols-rounded {
+  font-size: 19px;
+}
+
+.settings-item__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-item__title {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink, #1a2033);
+  margin-bottom: 2px;
+  letter-spacing: -0.01em;
+}
+
+.settings-item__desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #68718a);
+  line-height: 1.35;
+  word-break: keep-all;
+}
+
+.settings-item__control {
+  flex-shrink: 0;
+}
+
+/* 셀렉트 드롭다운 */
+.settings-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-select {
+  min-width: 100px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 30px 0 12px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1.5px solid var(--line, #e3eaf4);
+  color: var(--ink, #1a2033);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.settings-select:hover {
+  border-color: rgba(0, 102, 255, 0.35);
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: var(--violet, #0066ff);
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12);
+}
+
+.select-chevron {
+  position: absolute;
+  right: 10px;
+  color: var(--muted, #68718a);
+  pointer-events: none;
+  font-size: 16px;
+}
+
+/* 세그먼트 컨트롤 */
+.visibility-segmented-control {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  gap: 2px;
+  padding: 2px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
 .visibility-segment-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 36px;
-  border-radius: 9px;
+  gap: 4px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
   border: none;
   background: transparent;
-  color: var(--muted);
-  font-size: 13px;
+  color: var(--muted, #68718a);
+  font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.visibility-segment-btn:hover:not(.is-active):not(:disabled) {
+  color: var(--ink, #1a2033);
 }
 
 .visibility-segment-btn.is-active {
-  background: #fff;
-  color: var(--violet);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+  color: var(--violet, #0066ff);
   font-weight: 800;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
 }
 
 .visibility-segment-btn .material-symbols-rounded {
-  font-size: 16px;
-}
-
-.settings-visibility-hint {
-  font-size: 11.5px;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-.settings-summary__badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.settings-summary__badge .material-symbols-rounded {
-  font-size: 13px;
-}
-
-.settings-summary__badge.badge--public {
-  background: rgba(0, 224, 209, 0.1);
-  color: #008f86;
-  border: 1px solid rgba(0, 224, 209, 0.25);
-}
-
-.settings-summary__badge.badge--private {
-  background: rgba(255, 92, 141, 0.1);
-  color: var(--rose);
-  border: 1px solid rgba(255, 92, 141, 0.25);
-}
-
-.settings-summary__actions {
-  padding: 0 24px 24px;
-}
-
-.settings-summary__link-btn {
-  width: 100%;
-  height: 42px;
-  border-radius: 14px;
-  background: #fff;
-  border: 1px solid var(--line);
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-decoration: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-  transition: all 0.25s ease;
-}
-
-.settings-summary__link-btn:hover {
-  background: rgba(99, 102, 241, 0.05);
-  border-color: rgba(99, 102, 241, 0.3);
-  color: var(--violet);
-  transform: translateY(-1px);
-}
-
-.settings-summary__link-btn .arrow-icon {
-  font-size: 15px;
-  transition: transform 0.2s ease;
-}
-
-.settings-summary__link-btn:hover .arrow-icon {
-  transform: translateX(3px);
-}
-
-/* 필드 라벨 & 셀렉트 커스텀 */
-.settings-field__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   font-size: 14px;
-  font-weight: 800;
-  color: var(--ink);
 }
 
-.settings-field__label .material-symbols-rounded {
-  font-size: 16px;
-  color: var(--violet);
+.visibility-segment-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.settings-select-wrap {
+/* 토글 스위치 컴포넌트 */
+.switch-control {
   position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.settings-select {
-  width: 100%;
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 40px !important;
+  display: inline-block;
+  width: 40px;
+  height: 24px;
+  flex-shrink: 0;
   cursor: pointer;
 }
 
-.select-chevron {
+.switch-control input {
+  opacity: 0;
+  width: 0;
+  height: 0;
   position: absolute;
-  right: 14px;
-  color: var(--muted);
-  pointer-events: none;
-  font-size: 20px;
 }
 
-/* 하나의 카드로 합쳐진 패널 & 섹션 & 구분선 */
-.settings-panel--unified {
-  display: grid;
-  gap: 24px;
+.switch-track {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 34px;
+  transition: background-color 0.25s ease;
 }
 
-.settings-section {
-  display: grid;
-  gap: 20px;
+.switch-track::after {
+  content: "";
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+  transition: transform 0.25s ease;
 }
 
+.switch-control input:checked + .switch-track {
+  background: var(--violet, #0066ff);
+}
+
+.switch-control input:checked + .switch-track::after {
+  transform: translateX(16px);
+}
+
+/* 하단 액션 영역 (저장 바) */
 .settings-section--actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding-top: 4px;
+  gap: 12px;
+  padding-top: 2px;
+  min-height: 38px;
 }
 
-.settings-divider {
-  border: none;
-  height: 1px;
-  background: var(--line, #e3eaf4);
-  margin: 0;
-  opacity: 0.8;
-}
-
-/* 스위치 정보 텍스트 */
-.settings-toggle__info {
+.settings-actions-status {
   flex: 1;
   min-width: 0;
 }
 
-/* 저장 액션 바 버튼 */
+.settings-save-status {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.settings-save-status .material-symbols-rounded {
+  font-size: 16px;
+}
+
+.error-status {
+  color: var(--rose, #ff5c8d);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 92, 141, 0.08);
+  border: 1px solid rgba(255, 92, 141, 0.2);
+}
+
+.settings-actions-buttons {
+  margin-left: auto;
+}
+
+/* 저장 버튼 */
 .settings-save-btn {
-  height: 46px;
-  padding: 0 26px;
-  border-radius: 14px;
-  font-size: 14px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 20px;
+  border-radius: 10px;
+  font-size: 13px;
   font-weight: 800;
   cursor: pointer;
   border: none;
+  background: var(--violet, #0066ff);
+  color: #ffffff;
+  box-shadow: 0 3px 10px rgba(0, 102, 255, 0.18);
+  transition: background-color 0.2s ease;
 }
 
-.settings-save-status.error-status::before {
-  content: "⚠️";
+.settings-save-btn:hover:not(:disabled) {
+  background: #0052cc;
 }
 
-/* 계정 관리 */
+.settings-save-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   2. 회원 정보 삭제 카드 (환경설정 카드 바로 아래 부착)
+   ========================================================================== */
 .settings-panel--danger {
-  border-color: rgba(255, 92, 141, 0.2);
+  background: rgba(255, 92, 141, 0.02);
 }
 
-.settings-panel__badge--warning {
-  background: rgba(249, 115, 22, 0.1);
-  border: 1px solid rgba(249, 115, 22, 0.2);
-  color: #ea580c;
-}
-
-/* 위험 구역 카드 */
-.settings-danger-card {
-  padding: 22px;
-  border-radius: 18px;
-  background: rgba(255, 92, 141, 0.04);
-  border: 1.5px dashed rgba(255, 92, 141, 0.25);
-  display: grid;
-  gap: 12px;
-}
-
-.settings-danger-card__head {
+.settings-danger-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
 }
 
-.settings-danger-card__title-wrap {
+/* 계정관리 설명 텍스트 2행 표시 */
+.settings-danger-bullet-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.danger-bullet-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--ink, #1a2033);
+  font-weight: 600;
+  line-height: 1.35;
 }
 
-.settings-danger-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 800;
+.danger-bullet-item .bullet-icon {
+  font-size: 15px;
   color: var(--rose, #ff5c8d);
+  flex-shrink: 0;
 }
 
-.settings-danger-desc {
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.settings-danger-card__footer {
-  display: flex;
-  justify-content: flex-end;
+.settings-danger-action {
+  flex-shrink: 0;
 }
 
 .danger-action-btn {
   height: 40px;
-  padding: 0 20px;
-  border-radius: 12px;
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
   border: 1.5px solid rgba(255, 92, 141, 0.35);
-  background: #fff;
+  background: #ffffff;
   color: var(--rose, #ff5c8d);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 800;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: all 0.2s ease;
 }
 
 .danger-action-btn:hover:not(:disabled) {
   background: var(--rose, #ff5c8d);
-  color: #fff;
+  color: #ffffff;
   border-color: var(--rose, #ff5c8d);
-  box-shadow: 0 6px 18px rgba(255, 92, 141, 0.25);
-  transform: translateY(-1px);
 }
 
 .danger-action-btn:disabled {
@@ -952,24 +1015,56 @@ function goToProfile() {
   cursor: not-allowed;
 }
 
-/* 반응형 */
+/* ==========================================================================
+   반응형 모바일 미디어 쿼리 (Responsive)
+   ========================================================================== */
 @media (max-width: 900px) {
   .settings-layout {
     grid-template-columns: 1fr;
+    gap: 16px;
   }
 
   .settings-summary {
-    position: static;
+    width: 100%;
+  }
+
+  .settings-cards-group {
+    width: 100%;
+  }
+
+  .settings-panel {
+    padding: 16px 14px;
+  }
+
+  .settings-item-card {
+    padding: 10px 12px;
+    gap: 10px;
   }
 
   .settings-section--actions {
     flex-direction: column;
     align-items: stretch;
-    gap: 14px;
+    gap: 10px;
   }
 
   .settings-actions-buttons,
-  .settings-actions-buttons .btn {
+  .settings-save-btn {
+    width: 100%;
+  }
+
+  .settings-danger-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .settings-danger-bullet-list {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .danger-action-btn {
     width: 100%;
   }
 }
