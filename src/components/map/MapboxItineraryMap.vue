@@ -107,6 +107,7 @@ const emit = defineEmits<{
   mapObjectPreview: [drawingId: string, transform: MapObjectTransform]
   mapObjectChange: [drawingId: string, transform: MapObjectTransform]
   cursorMove: [coordinate: LngLat]
+  cursorLeave: []
 }>()
 
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
@@ -630,6 +631,7 @@ async function initializeMap() {
     createdMap.on('move', updateDrawingProjection)
     createdMap.on('resize', updateDrawingProjection)
     createdMap.on('mousemove', (event) => emit('cursorMove', { lng: event.lngLat.lng, lat: event.lngLat.lat }))
+    createdMap.on('mouseleave', () => emit('cursorLeave'))
     createdMap.on('click', () => {
       if (!props.mapObjectPlacement) emit('mapObjectSelect', null)
     })
@@ -681,6 +683,8 @@ onBeforeUnmount(() => {
       @route-point="emit('routePoint', $event)"
       @pan="panMapByOverlayDelta"
       @wheel-zoom="zoomMapByOverlayWheel"
+      @cursor-move="emit('cursorMove', $event)"
+      @cursor-leave="emit('cursorLeave')"
     />
     <MapObjectOverlay
       :key="mapObjectEpoch"

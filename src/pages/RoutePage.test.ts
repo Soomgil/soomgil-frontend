@@ -316,6 +316,7 @@ describe('RoutePage itinerary integration', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
@@ -2151,6 +2152,67 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('.map-viewport-status[role="alert"]').text()).toContain('지도 범위를 동기화하지 못했습니다.')
     await wrapper.get('.map-viewport-retry').trigger('click')
     expect(holder.viewportState.retry).toHaveBeenCalledOnce()
+  })
+
+  it('긴 그림의 굴곡을 100점으로 다시 줄이지 않고 저장한다', async () => {
+    const wrapper = mount(RoutePage, { global: { stubs: {
+      AppShell: { template: '<div><slot /></div>' },
+      LoadingState: true, ErrorState: true, EmptyState: true,
+    } } })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const coordinates = Array.from({ length: 1001 }, (_, index) => ({
+      lng: 127 + index / 100000, lat: 36 + (index % 2) / 1000,
+    }))
+    map.vm.$emit('drawingCreate', { coordinates, color: '#000', width: 4 })
+    await flushPromises()
+    expect(geo.simplifyCoordinates).not.toHaveBeenCalled()
+    expect(holder.state.createDrawing).toHaveBeenCalledWith(expect.objectContaining({
+      geometry: { type: 'LineString', coordinates: coordinates.map(p => [p.lng, p.lat]) },
+    }))
+    expect(map.props('drawings')?.[0]?.coordinates).toEqual(coordinates)
+  })
+
+  it('그리기 모드의 커서를 전송하고 지도 위에 멈춰 있어도 주기적으로 갱신한다', async () => {
+    let now = 1_000
+    const dateNow = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const timer = { callback: null as (() => void) | null }
+    const setInterval = vi.spyOn(window, 'setInterval').mockImplementation(((handler: TimerHandler) => {
+      timer.callback = handler as () => void
+      return 123 as unknown as ReturnType<typeof window.setInterval>
+    }) as unknown as typeof window.setInterval)
+    const clearInterval = vi.spyOn(window, 'clearInterval')
+      .mockImplementation((() => undefined) as typeof window.clearInterval)
+    const wrapper = mount(RoutePage, { global: { stubs: {
+      AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true,
+    } } })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const transport = realtime.instances[0]
+
+    map.vm.$emit('cursorMove', { lng: 127.1, lat: 36.1 })
+    await nextTick()
+    expect(transport.published.at(-1)).toEqual({
+      destination: '/app/trips/trip-1/cursor',
+      payload: { longitude: 127.1, latitude: 36.1, sequence: 1 },
+    })
+
+    now += 3_000
+    timer.callback?.()
+    expect(transport.published.at(-1)).toEqual({
+      destination: '/app/trips/trip-1/cursor',
+      payload: { longitude: 127.1, latitude: 36.1, sequence: 2 },
+    })
+
+    map.vm.$emit('cursorLeave')
+    now += 3_000
+    timer.callback?.()
+    expect(transport.published.filter((item: { destination: string }) => item.destination.endsWith('/cursor'))).toHaveLength(2)
+    wrapper.unmount()
+    expect(clearInterval).toHaveBeenCalledWith(123)
+    dateNow.mockRestore()
+    setInterval.mockRestore()
+    clearInterval.mockRestore()
   })
 
   it('새 지도 그림을 좌표 단순화한 뒤 표시하고 지운다', async () => {
