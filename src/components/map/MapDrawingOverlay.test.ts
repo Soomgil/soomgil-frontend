@@ -24,6 +24,99 @@ async function dispatchPointer(
 }
 
 describe('MapDrawingOverlay', () => {
+  it('그리기 레이어가 포인터 위치와 이탈을 지도 커서 이벤트로 전달한다', async () => {
+    const wrapper = mount(MapDrawingOverlay, { props: {
+      drawings: [], tool: 'pen', color: '#000', width: 4, enabled: true,
+      projectionRevision: 0, project, unproject,
+    } })
+    const surface = wrapper.get('svg')
+    vi.spyOn(surface.element, 'getBoundingClientRect').mockReturnValue({
+      left: 5, top: 10, right: 405, bottom: 310, width: 400, height: 300, x: 5, y: 10,
+      toJSON: () => ({}),
+    })
+
+    await dispatchPointer(surface.element, 'pointermove', { pointerId: 1, clientX: 25, clientY: 40 })
+    await dispatchPointer(surface.element, 'pointerleave', { pointerId: 1, clientX: 25, clientY: 40 })
+
+    expect(wrapper.emitted('cursorMove')).toEqual([[{ lng: 20, lat: 30 }]])
+    expect(wrapper.emitted('cursorLeave')).toHaveLength(1)
+  })
+
+  it('긴 획을 계속 그려도 확정한 앞부분의 SVG 노드와 경로를 변경하지 않는다', async () => {
+    const wrapper = mount(MapDrawingOverlay, { props: {
+      drawings: [], tool: 'pen', color: '#000', width: 4, enabled: true,
+      projectionRevision: 0, project, unproject,
+    } })
+    const surface = wrapper.get('svg').element
+    const samples = Array.from({ length: 4001 }, (_, index) => ({
+      clientX: 300 + Math.cos(index / 17) * 200,
+      clientY: 300 + Math.sin(index / 23) * 200,
+    }))
+    await dispatchPointer(surface, 'pointerdown', { pointerId: 1, ...samples[0]! })
+    await dispatchPointer(surface, 'pointermove', {
+      pointerId: 1, ...samples[1000]!, coalescedEvents: samples.slice(1, 1001),
+    })
+    const firstPaths = wrapper.findAll('.is-current').slice(0, -1)
+      .map(path => ({ element: path.element, d: path.attributes('d') }))
+    expect(firstPaths.length).toBeGreaterThan(0)
+    await dispatchPointer(surface, 'pointermove', {
+      pointerId: 1, ...samples.at(-1)!, coalescedEvents: samples.slice(1001),
+    })
+    firstPaths.forEach(({ element, d }, index) => {
+      expect(wrapper.findAll('.is-current')[index]!.element).toBe(element)
+      expect(element.getAttribute('d')).toBe(d)
+    })
+    await dispatchPointer(surface, 'pointercancel', { pointerId: 1 })
+    expect(wrapper.findAll('.is-current')).toHaveLength(0)
+    await dispatchPointer(surface, 'pointerdown', { pointerId: 2, clientX: 10, clientY: 20 })
+    await dispatchPointer(surface, 'pointermove', { pointerId: 2, clientX: 20, clientY: 30 })
+    expect(wrapper.findAll('.is-current')).toHaveLength(1)
+    expect(wrapper.get('.is-current').attributes('d')).toMatch(/^M 10 20 /)
+  })
+
+  it('raw update 뒤 같은 coalesced 이동이 와도 이전 좌표로 되돌아가지 않는다', async () => {
+    const wrapper = mount(MapDrawingOverlay, { props: {
+      drawings: [], tool: 'pen', color: '#000', width: 4, enabled: true,
+      projectionRevision: 0, project, unproject,
+    } })
+    const surface = wrapper.get('svg').element
+    await dispatchPointer(surface, 'pointerdown', { pointerId: 1, clientX: 0, clientY: 0 })
+    const samples = [{ clientX: 10, clientY: 20 }, { clientX: 20, clientY: 0 }]
+    for (const sample of samples) {
+      await dispatchPointer(surface, 'pointerrawupdate', { pointerId: 1, ...sample })
+    }
+    await dispatchPointer(surface, 'pointermove', {
+      pointerId: 1, clientX: 20, clientY: 0, coalescedEvents: samples,
+    })
+    await dispatchPointer(surface, 'pointerup', { pointerId: 1, clientX: 20, clientY: 0 })
+    expect(wrapper.emitted('create')?.[0]?.[0]).toMatchObject({
+      coordinates: [{ lng: 0, lat: 0 }, { lng: 10, lat: 20 }, { lng: 20, lat: 0 }],
+    })
+  })
+
+  it('수천 개의 굴곡이 있는 긴 선을 저장해도 굴곡을 버리지 않는다', async () => {
+    const wrapper = mount(MapDrawingOverlay, { props: {
+      drawings: [], tool: 'pen', color: '#000', width: 4, enabled: true,
+      projectionRevision: 0, project, unproject,
+    } })
+    const surface = wrapper.get('svg').element
+    const samples = Array.from({ length: 2001 }, (_, index) => ({
+      clientX: index * 2, clientY: index % 2 === 0 ? 0 : 20,
+    }))
+    await dispatchPointer(surface, 'pointerdown', { pointerId: 1, ...samples[0]! })
+    await dispatchPointer(surface, 'pointermove', {
+      pointerId: 1, ...samples.at(-1)!, coalescedEvents: samples.slice(1),
+    })
+    const livePaths = wrapper.findAll('.is-current').map(path => path.attributes('d'))
+    await dispatchPointer(surface, 'pointerup', { pointerId: 1, ...samples.at(-1)! })
+    const drawing = wrapper.emitted('create')![0]![0] as {
+      coordinates: Array<{ lng: number; lat: number }>; color: string; width: number
+    }
+    expect(drawing.coordinates).toEqual(samples.map(p => ({ lng: p.clientX, lat: p.clientY })))
+    await wrapper.setProps({ drawings: [{ id: 'saved', ...drawing }] })
+    expect(wrapper.findAll('.map-drawing-stroke').map(path => path.attributes('d'))).toEqual(livePaths)
+  })
+
   it('포인터 이동을 지도 좌표 stroke로 변환한다', async () => {
     const wrapper = mount(MapDrawingOverlay, {
       props: {
@@ -355,8 +448,9 @@ describe('MapDrawingOverlay', () => {
     expect(created.coordinates.at(-1)).toEqual({ lng: 100, lat: 150 })
     expect(wrapper.emitted('preview')?.at(-1)?.[0]).toEqual(expect.objectContaining({
       phase: 'END',
-      coordinates: created.coordinates,
     }))
+    const preview = wrapper.emitted('preview')!.at(-1)![0] as { coordinates: unknown[] }
+    expect(preview.coordinates.length).toBeGreaterThan(created.coordinates.length)
   })
 
   it('포인터 캡처를 이미 잃은 경우에도 stroke를 정상 완료한다', async () => {
