@@ -18,10 +18,12 @@ import StoryWriteModal from "@/components/community/StoryWriteModal.vue";
 import { useModal } from "@/composables/useModal";
 import { useToast } from "@/composables/useToast";
 import { useAuthStore } from "@/stores/auth.store";
+import { useLocale } from "@/i18n";
 
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
+const { locale } = useLocale();
 const auth = useAuthStore();
 
 interface StoryView {
@@ -555,7 +557,11 @@ watch(
               <span class="material-symbols-rounded">explore</span>
               Trip Community
             </p>
-            <h1 class="community-hero-title">
+            <h1 v-if="locale === 'en'" class="community-hero-title">
+              Share your <span class="community-hero-gradient">travel stories</span>,<br />
+              discover new <span class="community-hero-gradient">routes</span>
+            </h1>
+            <h1 v-else class="community-hero-title">
               <span class="community-hero-gradient">여행의 기록</span>을 나누고,<br />
               새로운 <span class="community-hero-gradient">루트</span>를 발견하세요
             </h1>
@@ -625,7 +631,7 @@ watch(
                       type="button"
                       class="today-pick-dot"
                       :class="{ active: idx === popularIndex }"
-                      :aria-label="`${idx + 1}번째 인기 여행기로 이동`"
+                      :aria-label="locale === 'en' ? `Go to popular story ${idx + 1}` : `${idx + 1}번째 인기 여행기로 이동`"
                       :aria-pressed="idx === popularIndex"
                       @click="popularIndex = idx"
                     ></button>

@@ -3,9 +3,11 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth.api'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import { useLocale } from '@/i18n'
 
 const router = useRouter()
 const route = useRoute()
+const { tr } = useLocale()
 
 const initialToken = (route.query.token as string) || ''
 const step = ref<'request' | 'confirm'>(initialToken ? 'confirm' : 'request')
@@ -22,10 +24,10 @@ async function handleRequest() {
   submitError.value = ''
   try {
     await authApi.requestPasswordReset(email.value.trim())
-    requestMessage.value = '재설정 메일을 발송했습니다. 메일의 링크를 열거나 토큰을 입력해주세요.'
+    requestMessage.value = tr('재설정 메일을 발송했습니다. 메일의 링크를 열거나 토큰을 입력해주세요.', 'Reset email sent. Open the link or enter the token from the email.')
     step.value = 'confirm'
   } catch {
-    submitError.value = '재설정 메일을 발송하지 못했습니다. 잠시 후 다시 시도해주세요.'
+    submitError.value = tr('재설정 메일을 발송하지 못했습니다. 잠시 후 다시 시도해주세요.', 'Could not send the reset email. Please try again later.')
   } finally {
     submitting.value = false
   }
@@ -42,7 +44,7 @@ async function handleReset() {
     })
     router.push({ path: '/login', query: { reset: '1' } })
   } catch {
-    submitError.value = '재설정 링크가 만료되었거나 새 비밀번호를 사용할 수 없습니다.'
+    submitError.value = tr('재설정 링크가 만료되었거나 새 비밀번호를 사용할 수 없습니다.', 'The reset link expired or the new password cannot be used.')
   } finally {
     submitting.value = false
   }
@@ -56,21 +58,21 @@ async function handleReset() {
       <section class="auth-card auth-modern-card" style="grid-template-columns: 1fr;">
         <form class="auth-form auth-modern-form" @submit.prevent="step === 'request' ? handleRequest() : handleReset()">
           <div class="auth-form-head">
-            <h2>비밀번호 재설정</h2>
-            <p v-if="step === 'request'">가입하신 이메일을 입력하면 재설정 토큰을 발송합니다.</p>
-            <p v-else>이메일로 받은 토큰과 새 비밀번호를 입력하세요.</p>
+            <h2>{{ tr('비밀번호 재설정', 'Reset password') }}</h2>
+            <p v-if="step === 'request'">{{ tr('가입하신 이메일을 입력하면 재설정 토큰을 발송합니다.', 'Enter your account email to receive a reset token.') }}</p>
+            <p v-else>{{ tr('이메일로 받은 토큰과 새 비밀번호를 입력하세요.', 'Enter the token from your email and a new password.') }}</p>
           </div>
 
           <template v-if="step === 'request'">
             <label>
-              <span class="small muted">이메일</span>
+              <span class="small muted">{{ tr('이메일', 'Email') }}</span>
               <span class="auth-field-wrap">
                 <span class="material-symbols-rounded">mail</span>
-                <input v-model="email" class="field" type="email" aria-label="이메일">
+                <input v-model="email" class="field" type="email" :aria-label="tr('이메일', 'Email')">
               </span>
             </label>
             <button class="btn primary auth-main-action" type="submit" :disabled="submitting">
-              <span class="material-symbols-rounded">send</span>재설정 메일 발송
+              <span class="material-symbols-rounded">send</span>{{ tr('재설정 메일 발송', 'Send reset email') }}
             </button>
           </template>
 
@@ -79,26 +81,26 @@ async function handleReset() {
           <template v-else>
             <p v-if="requestMessage" class="small" style="color: var(--blue); margin-bottom: 8px;">{{ requestMessage }}</p>
             <label>
-              <span class="small muted">재설정 토큰</span>
+              <span class="small muted">{{ tr('재설정 토큰', 'Reset token') }}</span>
               <span class="auth-field-wrap">
                 <span class="material-symbols-rounded">vpn_key</span>
-                <input v-model="token" class="field" type="text" aria-label="재설정 토큰">
+                <input v-model="token" class="field" type="text" :aria-label="tr('재설정 토큰', 'Reset token')">
               </span>
             </label>
             <label>
-              <span class="small muted">새 비밀번호</span>
+              <span class="small muted">{{ tr('새 비밀번호', 'New password') }}</span>
               <span class="auth-field-wrap">
                 <span class="material-symbols-rounded">lock</span>
-                <input v-model="newPassword" class="field" type="password" aria-label="새 비밀번호">
+                <input v-model="newPassword" class="field" type="password" :aria-label="tr('새 비밀번호', 'New password')">
               </span>
             </label>
             <button class="btn primary auth-main-action" type="submit" :disabled="submitting">
-              <span class="material-symbols-rounded">lock_reset</span>비밀번호 재설정
+              <span class="material-symbols-rounded">lock_reset</span>{{ tr('비밀번호 재설정', 'Reset password') }}
             </button>
           </template>
 
           <p class="small muted auth-switch">
-            <a href="#" @click.prevent="router.push('/login')">로그인으로 돌아가기</a>
+            <a href="#" @click.prevent="router.push('/login')">{{ tr('로그인으로 돌아가기', 'Back to login') }}</a>
           </p>
         </form>
       </section>

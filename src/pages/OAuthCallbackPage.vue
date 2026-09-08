@@ -4,10 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import type { OAuthProvider } from '@/types/auth'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import { useLocale } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { tr } = useLocale()
 
 const status = ref<'processing' | 'error'>('processing')
 const errorMessage = ref('')
@@ -22,7 +24,7 @@ onMounted(async () => {
   // 1. provider 검증
   if (!VALID_PROVIDERS.includes(providerRaw as OAuthProvider)) {
     status.value = 'error'
-    errorMessage.value = `지원하지 않는 OAuth 제공자입니다: ${providerRaw}`
+    errorMessage.value = `${tr('지원하지 않는 OAuth 제공자입니다', 'Unsupported OAuth provider')}: ${providerRaw}`
     return
   }
 
@@ -30,12 +32,12 @@ onMounted(async () => {
   const errorParam = route.query.error as string | undefined
   if (errorParam) {
     status.value = 'error'
-    errorMessage.value = `제공자에서 로그인이 거부되었습니다: ${errorParam}`
+    errorMessage.value = `${tr('제공자에서 로그인이 거부되었습니다', 'Login was declined by the provider')}: ${errorParam}`
     return
   }
   if (!code || !state) {
     status.value = 'error'
-    errorMessage.value = 'authorization code 또는 state가 없습니다.'
+    errorMessage.value = tr('authorization code 또는 state가 없습니다.', 'The authorization code or state is missing.')
     return
   }
 
@@ -46,7 +48,7 @@ onMounted(async () => {
   } catch (e: unknown) {
     status.value = 'error'
     errorMessage.value =
-      e instanceof Error ? e.message : 'OAuth 로그인 중 오류가 발생했습니다.'
+      e instanceof Error ? e.message : tr('OAuth 로그인 중 오류가 발생했습니다.', 'An error occurred during OAuth login.')
     console.error('[OAuthCallback] failed:', e)
   }
 })
@@ -60,18 +62,18 @@ onMounted(async () => {
         <div class="auth-form auth-modern-form">
           <!-- 처리 중 -->
           <div v-if="status === 'processing'" class="oauth-callback-state">
-            <div class="oauth-spinner" aria-label="로그인 처리 중"></div>
-            <h2>로그인 처리 중...</h2>
-            <p class="small muted">잠시만 기다려주세요.</p>
+            <div class="oauth-spinner" :aria-label="tr('로그인 처리 중', 'Processing login')"></div>
+            <h2>{{ tr('로그인 처리 중...', 'Processing login...') }}</h2>
+            <p class="small muted">{{ tr('잠시만 기다려주세요.', 'Please wait a moment.') }}</p>
           </div>
 
           <!-- 실패 -->
           <div v-else class="oauth-callback-state">
             <span class="material-symbols-rounded oauth-error-icon" aria-hidden="true">error</span>
-            <h2>로그인 실패</h2>
+            <h2>{{ tr('로그인 실패', 'Login failed') }}</h2>
             <p class="small" style="color: var(--rose); margin-bottom: 16px;">{{ errorMessage }}</p>
             <button class="btn primary auth-main-action" type="button" @click="router.push('/login')">
-              <span class="material-symbols-rounded">login</span>로그인 페이지로
+              <span class="material-symbols-rounded">login</span>{{ tr('로그인 페이지로', 'Go to login') }}
             </button>
           </div>
         </div>

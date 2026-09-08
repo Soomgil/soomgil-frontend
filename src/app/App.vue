@@ -3,9 +3,11 @@ import { watch } from 'vue'
 import { RouterView } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { useSwipeStore } from '@/stores/swipe.store'
+import { useUiLocalizer } from '@/i18n/ui-localizer'
 
 const auth = useAuthStore()
 const swipe = useSwipeStore()
+useUiLocalizer()
 
 watch(
   () => auth.token,
