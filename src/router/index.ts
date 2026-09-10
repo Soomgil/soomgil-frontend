@@ -90,29 +90,23 @@ const router = createRouter({
     {
       path: '/community',
       name: 'Community',
-      component: () => import('@/pages/CommunityFeedPage.vue'),
-    },
-    {
-      path: '/community/threads/:threadId',
-      name: 'CommunityThread',
-      component: () => import('@/pages/CommunityThreadDetailPage.vue'),
+      component: () => import('@/pages/CommunityPage.vue'),
     },
     {
       path: '/community/feed',
       name: 'Feed',
       redirect: { name: 'Community' },
     },
-    // 여행 스냅샷 게시글 UI는 신규 커뮤니티에서 사용하지 않는다.
-    // 기존 링크가 깨지지 않도록 새 공개 피드로 보낸다.
     {
       path: '/community/stories',
       name: 'Stories',
-      redirect: { name: 'Community' },
+      component: () => import('@/pages/StoriesPage.vue'),
     },
     {
       path: '/community/story-write',
       name: 'StoryWrite',
-      redirect: { name: 'Community' },
+      component: () => import('@/pages/StoryWritePage.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/record',

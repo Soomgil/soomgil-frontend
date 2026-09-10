@@ -1,37 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import router from './index'
 
-describe('커뮤니티 라우트', () => {
-  it('/community는 새 공개 피드 화면을 사용한다', () => {
+describe('기존 여행기 커뮤니티 라우트', () => {
+  it('커뮤니티 목록에 기존 여행기 화면을 연결한다', () => {
     const route = router.getRoutes().find((item) => item.path === '/community')
-
-    expect(route?.name).toBe('Community')
+    expect(route?.components?.default?.toString()).toContain('CommunityPage.vue')
   })
 
-  it('쓰레드 상세 라우트를 제공한다', () => {
-    expect(router.resolve('/community/threads/thread-1').name).toBe('CommunityThread')
-    expect(router.resolve('/community/threads/thread-1').params.threadId).toBe('thread-1')
+  it('여행기 목록과 작성 화면으로 직접 이동할 수 있다', () => {
+    for (const path of ['/community/stories', '/community/story-write']) {
+      const route = router.getRoutes().find((item) => item.path === path)
+      expect(route?.redirect).toBeUndefined()
+      expect(route?.components?.default).toBeDefined()
+    }
+    expect(router.resolve('/community/story-write').meta.requiresAuth).toBe(true)
   })
 
-  it('여행 스냅샷 게시글 화면은 새 피드로 redirect한다', () => {
-    const stories = router.getRoutes().find((item) => item.path === '/community/stories')
-    const storyWrite = router.getRoutes().find((item) => item.path === '/community/story-write')
-
-    expect(stories?.redirect).toEqual({ name: 'Community' })
-    expect(storyWrite?.redirect).toEqual({ name: 'Community' })
+  it('스레드 화면은 더 이상 등록하지 않는다', () => {
+    expect(router.getRoutes().some((route) => route.name === 'CommunityThread')).toBe(false)
   })
 
-  it('스냅샷 게시글 전용 화면 컴포넌트를 더 이상 연결하지 않는다', () => {
-    const stories = router.getRoutes().find((item) => item.path === '/community/stories')
-    const storyWrite = router.getRoutes().find((item) => item.path === '/community/story-write')
-
-    expect(stories?.components).toBeUndefined()
-    expect(storyWrite?.components).toBeUndefined()
-  })
-
-  it('여행 방 투표 라우트를 인증 전용으로 제공한다', () => {
+  it('여행방 투표는 기존대로 로그인한 사용자에게 제공한다', () => {
     const vote = router.resolve('/trips/trip-1/vote')
-
     expect(vote.name).toBe('TripVote')
     expect(vote.meta.requiresAuth).toBe(true)
   })
