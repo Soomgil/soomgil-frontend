@@ -8,6 +8,7 @@ export interface Note {
   scopeType: PlanningScopeType
   itineraryDayId: string | null
   content: string
+  version: number
   deletedAt: string | null
 }
 

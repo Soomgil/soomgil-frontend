@@ -512,7 +512,7 @@ describe('RoutePage itinerary integration', () => {
     connectedApis.planning.saveNote.mockResolvedValue({
       note: {
         id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
-        content: '렌터카 예약 확인', deletedAt: null,
+        content: '렌터카 예약 확인', version: 1, deletedAt: null,
       },
     })
     connectedApis.planning.saveChecklist.mockResolvedValue({
@@ -541,7 +541,7 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     expect(connectedApis.planning.saveNote).toHaveBeenCalledWith('trip-1', {
       scopeType: 'TRIP', itineraryDayId: null,
-    }, '렌터카 예약 확인')
+    }, '렌터카 예약 확인', 0)
     expect(wrapper.get('.memo-status').text()).toBe('저장됨')
 
     await wrapper.get('#todo-fab').trigger('click')
@@ -555,6 +555,128 @@ describe('RoutePage itinerary integration', () => {
     expect(connectedApis.planning.addChecklistItem).toHaveBeenCalledWith(
       'trip-1', 'checklist-1', '여권 챙기기', 0,
     )
+  })
+
+  it('작성 중인 메모를 버리지 않도록 날짜 전환 전에 확인한다', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('아직 저장하지 않은 메모')
+    const dayOneTab = wrapper.findAll('#memo-day-tags button').find((button) => button.text() === '1일차')
+    expect(dayOneTab).toBeDefined()
+    await dayOneTab!.trigger('click')
+
+    expect(confirmSpy).toHaveBeenCalledWith('작성 중인 내용을 버리고 다른 메모로 이동할까요?')
+    expect(wrapper.get('#memo-day-tags .active-memo').text()).toBe('전체')
+    expect((wrapper.get('#memo-textarea').element as HTMLTextAreaElement).value).toBe('아직 저장하지 않은 메모')
+    confirmSpy.mockRestore()
+  })
+
+  it('메모가 다른 멤버에 의해 먼저 바뀌면 작성 중인 내용을 보존한다', async () => {
+    connectedApis.planning.getNote.mockResolvedValue({
+      id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+      content: '기존 메모', version: 3, deletedAt: null,
+    })
+    connectedApis.planning.saveNote.mockRejectedValue({
+      response: { status: 409, data: { code: 'PLANNING_VERSION_CONFLICT' } },
+    })
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('내가 작성 중인 메모')
+    await wrapper.get('#memo-copy-btn').trigger('click')
+    await flushPromises()
+
+    expect(connectedApis.planning.saveNote).toHaveBeenCalledWith('trip-1', {
+      scopeType: 'TRIP', itineraryDayId: null,
+    }, '내가 작성 중인 메모', 3)
+    expect((wrapper.get('#memo-textarea').element as HTMLTextAreaElement).value).toBe('내가 작성 중인 메모')
+    expect(wrapper.get('.memo-status').text()).toBe('다른 멤버가 먼저 수정했습니다.')
+    expect(wrapper.get('.memo-reload-btn').text()).toBe('최신 메모 불러오기')
+  })
+
+  it('작성 중 실시간 메모 변경을 받아도 입력 내용을 갑자기 덮어쓰지 않는다', async () => {
+    connectedApis.planning.getNote.mockResolvedValue({
+      id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+      content: '기존 메모', version: 2, deletedAt: null,
+    })
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('내 초안')
+
+    realtime.instances[0].subscriptions.get('/topic/trips/trip-1/planning')?.({
+      tripId: 'trip-1',
+      actorUserId: 'user-2',
+      eventType: 'planning.note.upserted',
+      note: {
+        id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+        content: '동행자가 저장한 메모', version: 3, deletedAt: null,
+      },
+    })
+    await nextTick()
+
+    expect((wrapper.get('#memo-textarea').element as HTMLTextAreaElement).value).toBe('내 초안')
+    expect(wrapper.get('.memo-status').text()).toBe('다른 멤버가 먼저 수정했습니다.')
+  })
+
+  it('더 최신 실시간 이벤트 뒤에 도착한 저장 응답으로 상태를 되돌리지 않는다', async () => {
+    connectedApis.planning.getNote.mockResolvedValue({
+      id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+      content: '기존 메모', version: 2, deletedAt: null,
+    })
+    let resolveSave!: (value: unknown) => void
+    connectedApis.planning.saveNote.mockReturnValue(new Promise((resolve) => {
+      resolveSave = resolve
+    }))
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('내 저장 내용')
+    await wrapper.get('#memo-copy-btn').trigger('click')
+
+    realtime.instances[0].subscriptions.get('/topic/trips/trip-1/planning')?.({
+      tripId: 'trip-1',
+      actorUserId: 'user-2',
+      eventType: 'planning.note.upserted',
+      note: {
+        id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+        content: '동행자의 최신 메모', version: 4, deletedAt: null,
+      },
+    })
+    resolveSave({
+      note: {
+        id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+        content: '내 저장 내용', version: 3, deletedAt: null,
+      },
+    })
+    await flushPromises()
+
+    expect((wrapper.get('#memo-textarea').element as HTMLTextAreaElement).value).toBe('내 저장 내용')
+    expect(wrapper.get('.memo-status').text()).toBe('다른 멤버가 먼저 수정했습니다.')
+    expect(wrapper.find('.memo-reload-btn').exists()).toBe(true)
   })
 
 	it('실제 여행 멤버와 체크리스트 완료자의 프로필 이미지를 표시한다', async () => {
