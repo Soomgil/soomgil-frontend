@@ -9,6 +9,8 @@ import type {
 import { authApi } from '@/api/auth.api'
 import { userApi } from '@/api/user.api'
 import { clearCollaborationSessionIds } from '@/realtime/collaborationSession'
+import { setLocale } from '@/i18n'
+import { ensureStoredAccessToken } from '@/auth/accessToken'
 
 /* ── OAuth 진행 중 상태 (CSRF state 검증용) ──
  * 리다이렉트 전 sessionStorage에 저장, 콜백 페이지에서 state 일치 여부 검증.
@@ -41,6 +43,13 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const token = ref<string | null>(localStorage.getItem('accessToken'))
   const isAuthenticated = computed(() => !!token.value)
+  const initialized = ref(false)
+  let initializationPromise: Promise<void> | null = null
+
+  function _setUser(next: User) {
+    user.value = next
+    setLocale(next.displayLanguage)
+  }
 
   function _persistAuth(accessToken: string, refreshToken: string, expiresIn?: number) {
     token.value = accessToken
@@ -65,7 +74,7 @@ export const useAuthStore = defineStore('auth', () => {
   /** 이메일/비밀번호 로그인 → 토큰 저장 + user 채우기 */
   async function login(email: string, password: string, _rememberMe = false) {
     const { token: authToken, user: fetchedUser } = await authApi.login(email, password)
-    user.value = fetchedUser
+    _setUser(fetchedUser)
     _persistAuth(authToken.accessToken, authToken.refreshToken, authToken.expiresIn)
   }
 
@@ -104,7 +113,7 @@ export const useAuthStore = defineStore('auth', () => {
         redirectUri: pending.redirectUri,
         state,
       })
-      user.value = fetchedUser
+      _setUser(fetchedUser)
       _persistAuth(authToken.accessToken, authToken.refreshToken, authToken.expiresIn)
       if (!authToken.onboarded) {
         return '/register?oauth=1'
@@ -124,13 +133,44 @@ export const useAuthStore = defineStore('auth', () => {
   async function verifyEmail(token: string): Promise<User> {
     const verified = await authApi.verifyEmail({ token })
     // 인증 완료 시 user 정보 채움 (자동 로그인은 아님 → /login 이동)
-    user.value = verified
+    _setUser(verified)
     return verified
   }
 
   /** /me 재조회 → user 동기화 */
   async function fetchUser() {
-    user.value = await userApi.getMe()
+    _setUser(await userApi.getMe())
+  }
+
+  /** 저장된 토큰을 검증·갱신하고 새로고침 뒤 현재 사용자 정보를 복원한다. */
+  async function initialize() {
+    if (initialized.value) return
+    if (initializationPromise) return initializationPromise
+
+    initializationPromise = (async () => {
+      let completed = false
+      try {
+        const accessToken = await ensureStoredAccessToken()
+        if (!accessToken) {
+          _clearAuth()
+          completed = true
+          return
+        }
+        token.value = accessToken
+        await fetchUser()
+        completed = true
+      } catch {
+        // 401/refresh 실패 시 HTTP 계층이 저장 토큰을 정리한다. 일시적인 네트워크
+        // 오류라면 남아 있는 토큰을 유지해 다음 탐색에서 재시도할 수 있게 한다.
+        token.value = localStorage.getItem('accessToken')
+        completed = !token.value
+      } finally {
+        initialized.value = completed
+        initializationPromise = null
+      }
+    })()
+
+    return initializationPromise
   }
 
   /** 소셜 최초 온보딩 완료 처리 → 토큰 저장 및 user 채우기 */
@@ -139,7 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
       displayName,
       acceptedPolicyDocumentIds,
     })
-    user.value = fetchedUser
+    _setUser(fetchedUser)
     _persistAuth(authToken.accessToken, authToken.refreshToken, authToken.expiresIn)
   }
 
@@ -156,5 +196,8 @@ export const useAuthStore = defineStore('auth', () => {
     _clearAuth()
   }
 
-  return { user, token, isAuthenticated, login, loginWithOAuth, completeOAuthLogin, register, verifyEmail, fetchUser, onboard, logout }
+  return {
+    user, token, isAuthenticated, initialized, initialize,
+    login, loginWithOAuth, completeOAuthLogin, register, verifyEmail, fetchUser, onboard, logout,
+  }
 })

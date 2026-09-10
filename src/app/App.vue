@@ -4,9 +4,11 @@ import { RouterView } from 'vue-router'
 import VoteResultMapOverlay from '@/components/voting/VoteResultMapOverlay.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useSwipeStore } from '@/stores/swipe.store'
+import { useUiLocalizer } from '@/i18n/ui-localizer'
 
 const auth = useAuthStore()
 const swipe = useSwipeStore()
+useUiLocalizer()
 
 watch(
   () => auth.token,

@@ -6,8 +6,6 @@ import type {
   User,
   UserSettings,
   UserSummary,
-  UserSession,
-  SecurityEvent,
 } from '@/types/auth'
 import type { PagedItems } from '@/types/api'
 import { mapBackendUser } from '@/types/auth'
@@ -28,7 +26,7 @@ export const userApi = {
     return mapBackendUser(res.data)
   },
 
-  /** 계정 삭제 요청 (DELETE /me, 202 ACCEPTED) */
+  /** 계정 즉시 탈퇴 (DELETE /me, 204 NO CONTENT) */
   deleteMe: async (): Promise<void> => {
     await http.delete('/me')
   },
@@ -42,20 +40,6 @@ export const userApi = {
   /** 내 설정 수정 (PATCH /me/settings) */
   updateSettings: async (data: UpdateUserSettingsRequest): Promise<UserSettings> => {
     const res = await http.patch<UserSettings>('/me/settings', data)
-    return res.data
-  },
-
-  getSessions: async (page = 0, size = 20): Promise<PagedItems<UserSession>> => {
-    const res = await http.get<PagedItems<UserSession>>('/me/sessions', { params: { page, size } })
-    return res.data
-  },
-
-  revokeSession: async (sessionId: string): Promise<void> => {
-    await http.delete(`/me/sessions/${sessionId}`)
-  },
-
-  getSecurityEvents: async (page = 0, size = 20): Promise<PagedItems<SecurityEvent>> => {
-    const res = await http.get<PagedItems<SecurityEvent>>('/me/security-events', { params: { page, size } })
     return res.data
   },
 

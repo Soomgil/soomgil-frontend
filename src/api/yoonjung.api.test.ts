@@ -49,9 +49,19 @@ describe('윤정 담당 API 계약', () => {
   it('메모와 체크리스트를 planning 계약으로 저장한다', async () => {
     const mutation = { note: { id: 'note-1' }, checklist: null }
     put.mockResolvedValue({ data: mutation })
-    await planningApi.saveNote('trip-1', { scopeType: 'DAY', itineraryDayId: 'day-1' }, '예약 확인')
+    await planningApi.saveNote('trip-1', { scopeType: 'DAY', itineraryDayId: 'day-1' }, '예약 확인', 3)
     expect(put).toHaveBeenCalledWith('/trips/trip-1/planning/notes', {
-      scopeType: 'DAY', itineraryDayId: 'day-1', content: '예약 확인',
+      scopeType: 'DAY', itineraryDayId: 'day-1', content: '예약 확인', baseVersion: 3,
+    })
+  })
+
+  it('메모 삭제에도 마지막으로 읽은 버전을 전달한다', async () => {
+    del.mockResolvedValue({ data: undefined })
+
+    await planningApi.deleteNote('trip-1', 'note-1', 4)
+
+    expect(del).toHaveBeenCalledWith('/trips/trip-1/planning/notes/note-1', {
+      data: { baseVersion: 4 },
     })
   })
 

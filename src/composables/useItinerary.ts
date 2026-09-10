@@ -306,6 +306,17 @@ export function useItinerary(tripId: string) {
     })
   }
 
+  async function deleteDrawings(drawingIds: string[]) {
+    const uniqueIds = [...new Set(drawingIds)]
+    if (uniqueIds.length === 0) return
+    return runMutation(async () => {
+      const response = await itineraryApi.deleteDrawings(tripId, uniqueIds, itineraryVersion.value)
+      const deletedIds = new Set(uniqueIds)
+      mapDrawings.value = mapDrawings.value.filter((drawing) => !deletedIds.has(drawing.id))
+      applyMutation(response)
+    })
+  }
+
   return {
     itineraryVersion,
     days,
@@ -331,5 +342,6 @@ export function useItinerary(tripId: string) {
     createDrawing,
     updateDrawing,
     deleteDrawing,
+    deleteDrawings,
   }
 }

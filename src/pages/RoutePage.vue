@@ -1946,9 +1946,23 @@ watch(activeDay, () => {
 
 /* ── Panels ── */
 type RouteUtilityPanel = 'ai' | 'chat' | 'memo' | 'todo'
+type RouteLayoutMode = 'wide' | 'compact' | 'overlay' | 'mobile'
+
+function routeLayoutModeForWidth(width: number): RouteLayoutMode {
+  if (width >= 1440) return 'wide'
+  if (width >= 1024) return 'compact'
+  if (width >= 768) return 'overlay'
+  return 'mobile'
+}
+
+const initialViewportWidth = typeof window === 'undefined' ? 1440 : window.innerWidth
+const routeViewportWidth = ref(initialViewportWidth)
+const routeLayoutMode = computed(() => routeLayoutModeForWidth(routeViewportWidth.value))
+const isRouteOverlayLayout = computed(() => routeViewportWidth.value < 1024)
+const isLeftSidebarOpen = ref(initialViewportWidth >= 1024)
 
 const activeRoutePanel = ref<RouteUtilityPanel>('ai')
-const isRouteUtilityCollapsed = ref(false)
+const isRouteUtilityCollapsed = ref(initialViewportWidth < 1440)
 const isAiChatOpen = computed(() => activeRoutePanel.value === 'ai')
 const isTripChatOpen = computed(() => activeRoutePanel.value === 'chat')
 const isMemoOpen = computed(() => activeRoutePanel.value === 'memo')
@@ -1958,6 +1972,7 @@ const activeConversation = ref<'ai' | 'chat'>('ai')
 function togglePanel(panel: RouteUtilityPanel) {
   activeRoutePanel.value = panel
   isRouteUtilityCollapsed.value = false
+  if (isRouteOverlayLayout.value) isLeftSidebarOpen.value = false
   if (panel === 'ai' || panel === 'chat') {
     activeConversation.value = panel
     void loadConversations()
@@ -1969,14 +1984,27 @@ function togglePanel(panel: RouteUtilityPanel) {
 }
 
 function toggleRouteUtilityCollapsed() {
+  const willOpen = isRouteUtilityCollapsed.value
   isRouteUtilityCollapsed.value = !isRouteUtilityCollapsed.value
+  if (willOpen && isRouteOverlayLayout.value) isLeftSidebarOpen.value = false
+}
+
+function toggleLeftSidebar() {
+  const willOpen = !isLeftSidebarOpen.value
+  isLeftSidebarOpen.value = willOpen
+  if (willOpen && isRouteOverlayLayout.value) isRouteUtilityCollapsed.value = true
+}
+
+function closeResponsivePanels() {
+  if (!isRouteOverlayLayout.value) return
+  isLeftSidebarOpen.value = false
+  isRouteUtilityCollapsed.value = true
 }
 
 /* ── AI / trip chat ── */
 const aiMessage = ref('')
 const aiMessages = ref<RouteAiChatMessage[]>([])
 const chatMessages = ref<TripChatMessage[]>([])
-const aiSessionStatus = ref('')
 const conversationLoading = ref(false)
 const conversationError = ref('')
 
@@ -2075,12 +2103,11 @@ async function loadConversations() {
   conversationLoading.value = true
   conversationError.value = ''
   try {
-    const [sessionResult, aiResult, chatResult] = await Promise.allSettled([
+    const [, aiResult, chatResult] = await Promise.allSettled([
       aiApi.getSession(tripId),
       aiApi.getMessages(tripId),
       chatApi.getMessages(tripId),
     ])
-    if (sessionResult.status === 'fulfilled') aiSessionStatus.value = sessionResult.value.status
     if (aiResult.status === 'fulfilled') aiMessages.value = oldestFirst(aiResult.value.items)
     if (chatResult.status === 'fulfilled') chatMessages.value = oldestFirst(chatResult.value.items)
     if (aiResult.status === 'rejected' || chatResult.status === 'rejected') {
@@ -2153,8 +2180,14 @@ const dayTagLabels = computed(() => [
 ])
 const activeMemoDay = ref('전체')
 const notes = ref<Record<string, Note | null>>({})
+const loadedMemoVersions = ref<Record<string, number>>({})
+const memoLoadTokens: Record<string, number> = {}
+const memoRemoteRevisions: Record<string, number> = {}
+const deletedMemoIds = new Set<string>()
 const memoLoading = ref(false)
 const memoStatus = ref('')
+const memoDirty = ref(false)
+const memoConflict = ref(false)
 
 function scopeForTag(tag: string): PlanningScope {
   if (tag === '전체') return { scopeType: 'TRIP', itineraryDayId: null }
@@ -2164,6 +2197,8 @@ function scopeForTag(tag: string): PlanningScope {
 }
 
 async function switchMemoDay(tag: string) {
+  if (tag === activeMemoDay.value || memoLoading.value) return
+  if (memoDirty.value && !window.confirm('작성 중인 내용을 버리고 다른 메모로 이동할까요?')) return
   activeMemoDay.value = tag
   await loadNote(tag)
 }
@@ -2185,26 +2220,56 @@ function formatMemo(kind: 'bold' | 'italic' | 'underline' | 'strike' | 'bullet' 
   else if (kind === 'number') replacement = selected.split('\n').map((line, index) => `${index + 1}. ${line}`).join('\n')
   else replacement = `${wrappers[kind][0]}${selected}${wrappers[kind][1]}`
   memoTextDisplay.value = `${memoTextDisplay.value.slice(0, start)}${replacement}${memoTextDisplay.value.slice(end)}`
+  markMemoDirty()
   requestAnimationFrame(() => {
     textarea.focus()
     textarea.setSelectionRange(start, start + replacement.length)
   })
 }
 
+function markMemoDirty() {
+  memoDirty.value = true
+  if (!memoConflict.value) memoStatus.value = ''
+}
+
+function showMemoConflict() {
+  memoConflict.value = true
+  memoStatus.value = '다른 멤버가 먼저 수정했습니다.'
+}
+
+function isMemoVersionConflict(error: any) {
+  const code = error?.response?.data?.code ?? error?.response?.data?.errorCode
+  return error?.response?.status === 409 && code === 'PLANNING_VERSION_CONFLICT'
+}
+
 async function loadNote(tag = activeMemoDay.value) {
   if (!tripId) return
   const scope = scopeForTag(tag)
   if (scope.scopeType === 'DAY' && !scope.itineraryDayId) return
+  const loadToken = (memoLoadTokens[tag] ?? 0) + 1
+  memoLoadTokens[tag] = loadToken
   memoLoading.value = true
   memoStatus.value = ''
   try {
     const note = await planningApi.getNote(tripId, scope)
+    if (memoLoadTokens[tag] !== loadToken) return
     notes.value[tag] = note
-    memoTextDisplay.value = note?.content ?? ''
+    loadedMemoVersions.value[tag] = note?.version ?? 0
+    if (activeMemoDay.value === tag) {
+      memoTextDisplay.value = note?.content ?? ''
+      memoDirty.value = false
+      memoConflict.value = false
+    }
   } catch (error: any) {
+    if (memoLoadTokens[tag] !== loadToken) return
     if (error?.response?.status === 404) {
       notes.value[tag] = null
-      memoTextDisplay.value = ''
+      loadedMemoVersions.value[tag] = 0
+      if (activeMemoDay.value === tag) {
+        memoTextDisplay.value = ''
+        memoDirty.value = false
+        memoConflict.value = false
+      }
     } else {
       memoStatus.value = '불러오기 실패'
     }
@@ -2214,40 +2279,78 @@ async function loadNote(tag = activeMemoDay.value) {
 }
 
 async function saveNote() {
+  const tag = activeMemoDay.value
   const content = memoTextDisplay.value.trim()
-  const scope = scopeForTag(activeMemoDay.value)
+  const scope = scopeForTag(tag)
   if (!content || (scope.scopeType === 'DAY' && !scope.itineraryDayId)) return
+  const remoteRevisionAtStart = memoRemoteRevisions[tag] ?? 0
   memoLoading.value = true
   memoStatus.value = '저장 중…'
   try {
-    const result = await planningApi.saveNote(tripId, scope, content)
-    notes.value[activeMemoDay.value] = result.note
+    const result = await planningApi.saveNote(
+      tripId,
+      scope,
+      content,
+      loadedMemoVersions.value[tag] ?? 0,
+    )
+    if ((memoRemoteRevisions[tag] ?? 0) !== remoteRevisionAtStart) {
+      if (!memoConflict.value) memoStatus.value = '다른 멤버의 최신 메모를 반영했습니다.'
+      return
+    }
+    if (!result.note) throw new Error('Saved note is missing from the response.')
+    notes.value[tag] = result.note
+    loadedMemoVersions.value[tag] = result.note.version
+    memoDirty.value = false
+    memoConflict.value = false
     memoStatus.value = '저장됨'
-  } catch {
-    memoStatus.value = '저장 실패'
+  } catch (error: any) {
+    if (isMemoVersionConflict(error)) showMemoConflict()
+    else memoStatus.value = '저장 실패'
   } finally {
     memoLoading.value = false
   }
 }
 
 async function clearNote() {
-  const note = notes.value[activeMemoDay.value]
+  const tag = activeMemoDay.value
+  const note = notes.value[tag]
   if (!note) {
     memoTextDisplay.value = ''
+    memoDirty.value = false
+    memoConflict.value = false
     return
   }
   if (!window.confirm('이 메모를 삭제할까요?')) return
+  const remoteRevisionAtStart = memoRemoteRevisions[tag] ?? 0
   memoLoading.value = true
   try {
-    await planningApi.deleteNote(tripId, note.id)
-    notes.value[activeMemoDay.value] = null
+    await planningApi.deleteNote(
+      tripId,
+      note.id,
+      loadedMemoVersions.value[tag] ?? note.version,
+    )
+    deletedMemoIds.add(note.id)
+    if ((memoRemoteRevisions[tag] ?? 0) !== remoteRevisionAtStart) {
+      if (!memoConflict.value) memoStatus.value = '다른 멤버의 최신 메모를 반영했습니다.'
+      return
+    }
+    notes.value[tag] = null
+    loadedMemoVersions.value[tag] = 0
     memoTextDisplay.value = ''
+    memoDirty.value = false
+    memoConflict.value = false
     memoStatus.value = '삭제됨'
-  } catch {
-    memoStatus.value = '삭제 실패'
+  } catch (error: any) {
+    if (isMemoVersionConflict(error)) showMemoConflict()
+    else memoStatus.value = '삭제 실패'
   } finally {
     memoLoading.value = false
   }
+}
+
+async function reloadLatestMemo() {
+  if (memoDirty.value && !window.confirm('작성 중인 내용을 버리고 최신 메모를 불러올까요?')) return
+  await loadNote()
 }
 
 /* ── Todo (day-filtered) ── */
@@ -2274,34 +2377,6 @@ const currentTodos = computed(() => (activeChecklist.value?.items ?? []).map((it
 const completedCount = computed(() => currentTodos.value.filter(t => t.done).length)
 const totalCount = computed(() => currentTodos.value.length)
 const progressPercent = computed(() => totalCount.value === 0 ? 0 : Math.round((completedCount.value / totalCount.value) * 100))
-const routeUtilityPanelMeta = computed(() => {
-  if (activeRoutePanel.value === 'chat') {
-    return {
-      icon: 'forum',
-      title: '여행방 채팅',
-      status: conversationLoading.value ? '불러오는 중...' : `${trip.value.members.length}명 참여 중`,
-    }
-  }
-  if (activeRoutePanel.value === 'memo') {
-    return {
-      icon: 'sticky_note_2',
-      title: '여행 메모',
-      status: memoStatus.value || (memoLoading.value ? '불러오는 중...' : '백엔드 연결됨'),
-    }
-  }
-  if (activeRoutePanel.value === 'todo') {
-    return {
-      icon: 'playlist_add_check',
-      title: '체크리스트',
-      status: `${completedCount.value}/${totalCount.value} 완료 (${progressPercent.value}%)`,
-    }
-  }
-  return {
-    icon: 'auto_awesome',
-    title: '숨길 AI 가이드',
-    status: conversationLoading.value ? '불러오는 중...' : (aiSessionStatus.value || '백엔드 연결됨'),
-  }
-})
 
 async function loadChecklists() {
   if (!tripId) return
@@ -2413,25 +2488,55 @@ const mapObjectPlacement = computed(() => (
   activeTool.value === 'sticker' || (activeTool.value === 'image' && pendingImageMediaId.value !== null)
 ))
 
-const penPopoverStyle = ref<{ left?: string }>({})
+type ToolPopoverStyle = Record<string, string>
 
-function updatePenPopoverPosition() {
-  const penBtn = document.getElementById('pen-btn')
-  const mapShell = document.querySelector('.map-shell')
-  if (!penBtn || !mapShell) return
+const mapCanvasRef = ref<HTMLElement | null>(null)
+const penToolButtonRef = ref<HTMLButtonElement | null>(null)
+const stickerToolButtonRef = ref<HTMLButtonElement | null>(null)
+const penPopoverRef = ref<HTMLElement | null>(null)
+const stickerPopoverRef = ref<HTMLElement | null>(null)
+const penPopoverStyle = ref<ToolPopoverStyle>({})
+const stickerPopoverStyle = ref<ToolPopoverStyle>({})
 
-  const penBtnRect = penBtn.getBoundingClientRect()
-  const shellRect = mapShell.getBoundingClientRect()
+function anchoredToolPopoverStyle(
+  button: HTMLElement | null,
+  popover: HTMLElement | null,
+): ToolPopoverStyle {
+  const canvas = mapCanvasRef.value
+  if (!button || !popover || !canvas) return {}
 
-  const leftOffset = penBtnRect.left - shellRect.left + (penBtnRect.width / 2)
-  penPopoverStyle.value = {
-    left: `${leftOffset}px`,
+  const buttonRect = button.getBoundingClientRect()
+  const canvasRect = canvas.getBoundingClientRect()
+  const popoverRect = popover.getBoundingClientRect()
+  const popoverWidth = popoverRect.width || 240
+  const halfWidth = popoverWidth / 2
+  const edgeGap = 12
+  const buttonCenter = buttonRect.left - canvasRect.left + (buttonRect.width / 2)
+  const clampedCenter = Math.min(
+    Math.max(buttonCenter, halfWidth + edgeGap),
+    Math.max(halfWidth + edgeGap, canvasRect.width - halfWidth - edgeGap),
+  )
+  const anchorX = buttonCenter - (clampedCenter - halfWidth)
+
+  return {
+    left: `${clampedCenter}px`,
+    bottom: `${Math.max(edgeGap, canvasRect.bottom - buttonRect.top + 10)}px`,
+    '--popover-anchor-x': `${Math.min(Math.max(anchorX, 16), popoverWidth - 16)}px`,
+  }
+}
+
+function updateToolPopoverPositions() {
+  if (isPenPopoverOpen.value) {
+    penPopoverStyle.value = anchoredToolPopoverStyle(penToolButtonRef.value, penPopoverRef.value)
+  }
+  if (activeTool.value === 'sticker') {
+    stickerPopoverStyle.value = anchoredToolPopoverStyle(stickerToolButtonRef.value, stickerPopoverRef.value)
   }
 }
 
 watch(isPenPopoverOpen, (isOpen) => {
   if (isOpen) {
-    nextTick(updatePenPopoverPosition)
+    nextTick(updateToolPopoverPositions)
   }
 })
 
@@ -2443,13 +2548,14 @@ watch(activeTool, (newTool) => {
     clearPendingRouteSelection()
   }
   if (newTool !== 'image') pendingImageMediaId.value = null
+  if (newTool === 'sticker') nextTick(updateToolPopoverPositions)
 })
 
 function selectMapTool(tool: MapDrawingTool) {
   if (activeTool.value === tool) {
     if (tool === 'pen') {
       isPenPopoverOpen.value = !isPenPopoverOpen.value
-      if (isPenPopoverOpen.value) nextTick(updatePenPopoverPosition)
+      if (isPenPopoverOpen.value) nextTick(updateToolPopoverPositions)
     }
     return
   }
@@ -2467,8 +2573,32 @@ function selectMapTool(tool: MapDrawingTool) {
   }
   if (tool === 'pen') {
     isPenPopoverOpen.value = true
-    nextTick(updatePenPopoverPosition)
+    nextTick(updateToolPopoverPositions)
   }
+}
+
+let previousRouteLayoutMode = routeLayoutMode.value
+
+function updateRouteResponsiveLayout() {
+  if (typeof window === 'undefined') return
+  routeViewportWidth.value = window.innerWidth
+  const nextMode = routeLayoutMode.value
+
+  if (nextMode !== previousRouteLayoutMode) {
+    if (nextMode === 'wide') {
+      isLeftSidebarOpen.value = true
+      isRouteUtilityCollapsed.value = false
+    } else if (nextMode === 'compact') {
+      isLeftSidebarOpen.value = true
+      isRouteUtilityCollapsed.value = true
+    } else {
+      isLeftSidebarOpen.value = false
+      isRouteUtilityCollapsed.value = true
+    }
+    previousRouteLayoutMode = nextMode
+  }
+
+  nextTick(updateToolPopoverPositions)
 }
 
 function toggleStandardMapView() {
@@ -2519,6 +2649,7 @@ const mapObjectPreviewSentAt = new Map<string, number>()
 const collaborationConnected = ref(false)
 let cursorSequence = 0
 let lastCursorSentAt = 0
+let lastLocalMapCursorCoordinate: LngLat | null = null
 const collaborationTransport = new StompTransport({
   brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
   accessToken: ensureStoredAccessToken,
@@ -2529,6 +2660,7 @@ const collaborationTransport = new StompTransport({
 			serverRedoAvailable.value = false
 		}
     if (reconnected) void itinerary.fetchItinerary()
+    if (drawingRetryIds.value.length > 0) retryDrawingSimplification()
   },
   onDisconnected: () => {
 		collaborationConnected.value = false
@@ -2550,6 +2682,7 @@ const drawingPreviewChannel = useDrawingPreviewChannel({
   tripId,
   clientId: globalThis.crypto?.randomUUID?.() ?? `drawing-client-${Date.now()}`,
   transport: collaborationTransport,
+  currentSessionId: getCollaborationSessionId,
 })
 const mapDrawings = computed(() => [
   ...localDrawings.value,
@@ -2843,6 +2976,7 @@ function applyPlanningRealtimeEvent(message: unknown) {
   if (!message || typeof message !== 'object') return false
   const event = message as {
     eventType?: string
+    actorUserId?: string
     note?: Note
     noteId?: string
     checklist?: Checklist
@@ -2856,16 +2990,44 @@ function applyPlanningRealtimeEvent(message: unknown) {
       if (!event.note) return false
       const tag = tagForScope(event.note.scopeType, event.note.itineraryDayId)
       if (!tag) return false
+      if (deletedMemoIds.has(event.note.id)) return true
+      const current = notes.value[tag]
+      if (current?.id === event.note.id && current.version >= event.note.version) return true
+      memoLoadTokens[tag] = (memoLoadTokens[tag] ?? 0) + 1
+      const isRemote = event.actorUserId !== currentUserId.value
+      if (isRemote) memoRemoteRevisions[tag] = (memoRemoteRevisions[tag] ?? 0) + 1
       notes.value = { ...notes.value, [tag]: event.note }
-      if (activeMemoDay.value === tag) memoTextDisplay.value = event.note.content
+      if (activeMemoDay.value === tag) {
+        if (memoDirty.value && isRemote) {
+          showMemoConflict()
+        } else {
+          memoTextDisplay.value = event.note.content
+          loadedMemoVersions.value[tag] = event.note.version
+          memoDirty.value = false
+          memoConflict.value = false
+        }
+      }
       return true
     }
     case 'planning.note.deleted': {
       const entries = Object.entries(notes.value)
       const tag = entries.find(([, note]) => note?.id === event.noteId)?.[0]
       if (!tag) return false
+      if (event.noteId) deletedMemoIds.add(event.noteId)
+      memoLoadTokens[tag] = (memoLoadTokens[tag] ?? 0) + 1
+      const isRemote = event.actorUserId !== currentUserId.value
+      if (isRemote) memoRemoteRevisions[tag] = (memoRemoteRevisions[tag] ?? 0) + 1
       notes.value = { ...notes.value, [tag]: null }
-      if (activeMemoDay.value === tag) memoTextDisplay.value = ''
+      if (activeMemoDay.value === tag) {
+        if (memoDirty.value && isRemote) {
+          showMemoConflict()
+        } else {
+          memoTextDisplay.value = ''
+          loadedMemoVersions.value[tag] = 0
+          memoDirty.value = false
+          memoConflict.value = false
+        }
+      }
       return true
     }
     case 'planning.checklist.upserted':
@@ -3062,7 +3224,8 @@ function disconnectTripRealtime() {
 }
 
 watch(itinerary.mapDrawings, (drawings) => {
-	localDrawings.value = drawings.flatMap((drawing) => {
+	const optimisticDrawings = localDrawings.value.filter((drawing) => drawing.id.startsWith('local-drawing-'))
+	const serverDrawings = drawings.flatMap((drawing) => {
 		const geometry = drawing.geometry as { type?: string; coordinates?: unknown }
 		if (geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) return []
 		const coordinates = geometry.coordinates.flatMap((coordinate) => (
@@ -3078,6 +3241,7 @@ watch(itinerary.mapDrawings, (drawings) => {
 			width: typeof drawing.style?.width === 'number' ? drawing.style.width : 6,
 		}]
 	})
+	localDrawings.value = [...serverDrawings, ...optimisticDrawings]
 }, { deep: true, immediate: true })
 
 async function syncMapObjectImages(drawings: MapDrawing[]) {
@@ -3250,6 +3414,7 @@ async function deleteSelectedMapObject() {
 }
 
 function publishMapCursor(coordinate: LngLat) {
+  lastLocalMapCursorCoordinate = coordinate
   const now = Date.now()
   if (now - lastCursorSentAt < 50) return
   lastCursorSentAt = now
@@ -3260,11 +3425,19 @@ function publishMapCursor(coordinate: LngLat) {
   })
 }
 
+function clearLocalMapCursor() {
+  lastLocalMapCursorCoordinate = null
+}
+
 onMounted(() => {
   void connectRealtimeChannels()
-  window.addEventListener('resize', updatePenPopoverPosition)
+  updateRouteResponsiveLayout()
+  window.addEventListener('resize', updateRouteResponsiveLayout)
   cursorPruneTimer = window.setInterval(() => {
     const now = Date.now()
+    if (lastLocalMapCursorCoordinate && now - lastCursorSentAt >= 3_000) {
+      publishMapCursor(lastLocalMapCursorCoordinate)
+    }
     const cutoff = now - 10_000
     remoteMapCursors.value = Object.fromEntries(
       Object.entries(remoteMapCursors.value).filter(([, cursor]) => cursor.receivedAt >= cutoff),
@@ -3278,7 +3451,7 @@ onMounted(() => {
 onUnmounted(() => {
   void drawingPreviewChannel.disconnect()
   disconnectTripRealtime()
-  window.removeEventListener('resize', updatePenPopoverPosition)
+  window.removeEventListener('resize', updateRouteResponsiveLayout)
   if (cursorPruneTimer) clearInterval(cursorPruneTimer)
   cursorPruneTimer = null
   Object.values(mapObjectImageUrls.value).forEach((url) => URL.revokeObjectURL(url))
@@ -3287,10 +3460,18 @@ onUnmounted(() => {
 async function simplifyLocalDrawing(drawingId: string) {
   const drawing = localDrawings.value.find((candidate) => candidate.id === drawingId)
   if (!drawing || pendingDrawingIds.value.includes(drawingId)) return
+  if (drawingId.startsWith('local-drawing-') && (!collaborationConnected.value || !getCollaborationSessionId())) {
+    queueDrawingRetry(drawingId)
+    return
+  }
   pendingDrawingIds.value = [...pendingDrawingIds.value, drawingId]
   drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
   try {
-    const simplified = await geoApi.simplifyCoordinates({
+    // Long freehand strokes already use a screen-space error tolerance. Sending
+    // them through the 100-point API would discard their preserved bends again.
+    const simplified = drawing.coordinates.length > 100
+      ? { coordinates: drawing.coordinates }
+      : await geoApi.simplifyCoordinates({
       coordinates: drawing.coordinates,
       maxPoints: 100,
     })
@@ -3311,31 +3492,38 @@ async function simplifyLocalDrawing(drawingId: string) {
 				style: { color: drawing.color, width: drawing.width },
 				sortOrder: itinerary.mapDrawings.value.length,
 			})
-			const currentIndex = localDrawings.value.findIndex(candidate => candidate.id === drawingId)
-			if (currentIndex >= 0) localDrawings.value[currentIndex] = { ...localDrawings.value[currentIndex], id: created.id }
+			localDrawings.value = [
+				...localDrawings.value.filter(candidate => candidate.id !== drawingId && candidate.id !== created.id),
+				{ id: created.id, coordinates: simplified.coordinates, color: drawing.color, width: drawing.width },
+			]
+			simplifiedDrawingCoordinates.delete(drawingId)
+			simplifiedDrawingCoordinates.set(created.id, simplified.coordinates)
 		}
   } catch {
     if (localDrawings.value.some((candidate) => candidate.id === drawingId)) {
-      if (!drawingRetryIds.value.includes(drawingId)) {
-        drawingRetryIds.value = [...drawingRetryIds.value, drawingId]
-      }
+      queueDrawingRetry(drawingId)
     }
   } finally {
     pendingDrawingIds.value = pendingDrawingIds.value.filter((id) => id !== drawingId)
   }
 }
 
-function createLocalDrawing(draft: MapDrawingDraft) {
-  if (!collaborationConnected.value || !getCollaborationSessionId()) {
-    itineraryActionError.value = '실시간 협업 연결 후 지도에 그려 주세요.'
-    return
+function queueDrawingRetry(drawingId: string) {
+  if (!drawingRetryIds.value.includes(drawingId)) {
+    drawingRetryIds.value = [...drawingRetryIds.value, drawingId]
   }
+}
+
+function createLocalDrawing(draft: MapDrawingDraft) {
   pushUndoState('drawing')
   const drawing: MapDrawingStroke = {
     id: `local-drawing-${++localDrawingSequence}`,
     ...draft,
   }
   localDrawings.value = [...localDrawings.value, drawing]
+  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+    itineraryActionError.value = '실시간 연결이 복구되면 그린 선을 자동으로 저장합니다.'
+  }
   void simplifyLocalDrawing(drawing.id)
 }
 
@@ -3346,26 +3534,41 @@ function handleDrawingCreate(draft: MapDrawingDraft) {
   createLocalDrawing(draft)
 }
 
-async function eraseLocalDrawing(drawingId: string) {
-	if (!localDrawings.value.some((drawing) => drawing.id === drawingId)) return
-	if (drawingId.startsWith('local-drawing-')) {
+async function eraseLocalDrawings(drawingIds: string[]) {
+	const uniqueIds = [...new Set(drawingIds)]
+	const localIds = uniqueIds.filter((drawingId) => drawingId.startsWith('local-drawing-'))
+	const persistedIds = uniqueIds.filter((drawingId) => !drawingId.startsWith('local-drawing-'))
+	if (localIds.length > 0) {
 		pushUndoState('drawing')
-		localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
-		drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
-		return
+		const erasedIds = new Set(localIds)
+		localDrawings.value = localDrawings.value.filter((drawing) => !erasedIds.has(drawing.id))
+		drawingRetryIds.value = drawingRetryIds.value.filter((id) => !erasedIds.has(id))
 	}
-	const leaseAcquired = await acquireMapObjectLease(drawingId)
-	if (!leaseAcquired) return
+	if (persistedIds.length === 0) return
+
+	const acquiredIds: string[] = []
 	try {
-		await itinerary.deleteDrawing(drawingId)
-		localDrawings.value = localDrawings.value.filter((drawing) => drawing.id !== drawingId)
-		drawingRetryIds.value = drawingRetryIds.value.filter((id) => id !== drawingId)
+		const leaseResults = await Promise.all(persistedIds.map(async (drawingId) => ({
+			drawingId,
+			acquired: await acquireMapObjectLease(drawingId),
+		})))
+		leaseResults.filter((result) => result.acquired).forEach((result) => acquiredIds.push(result.drawingId))
+		if (acquiredIds.length !== persistedIds.length) {
+			throw new Error('Map drawing lease could not be acquired.')
+		}
+		await itinerary.deleteDrawings(persistedIds)
+		const erasedIds = new Set(persistedIds)
+		localDrawings.value = localDrawings.value.filter((drawing) => !erasedIds.has(drawing.id))
+		drawingRetryIds.value = drawingRetryIds.value.filter((id) => !erasedIds.has(id))
+		if (selectedMapObjectId.value && erasedIds.has(selectedMapObjectId.value)) {
+			selectedMapObjectId.value = null
+		}
 	} catch (cause) {
-		console.error('Map drawing could not be deleted.', cause)
-		itineraryActionError.value = '지도 그림을 삭제하지 못했습니다. 최신 상태를 다시 불러왔습니다.'
+		console.error('Map drawings could not be deleted.', cause)
+		itineraryActionError.value = '지우개 경로의 오브젝트를 모두 삭제하지 못했습니다. 최신 상태를 다시 불러왔습니다.'
 		await loadItinerary()
 	} finally {
-		releaseMapObjectLease(drawingId)
+		acquiredIds.forEach(releaseMapObjectLease)
 	}
 }
 
@@ -4046,10 +4249,27 @@ function textAvatarStyle(index: unknown) {
 <template>
   <AppShell>
     <section class="section full-screen route-page-section">
-      <div :class="['map-shell', { 'has-detailbar-open': isDetailbarOpen, 'is-route-utility-collapsed': isRouteUtilityCollapsed }]">
+      <div :class="['map-shell', `route-layout--${routeLayoutMode}`, {
+        'has-detailbar-open': isDetailbarOpen,
+        'is-route-utility-collapsed': isRouteUtilityCollapsed,
+        'is-sidebar-open': isLeftSidebarOpen,
+        'is-sidebar-hidden': !isLeftSidebarOpen,
+      }]">
 
           <!-- ═══ SIDEBAR ═══ -->
-          <aside class="sidebar">
+          <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
+            <span class="sidebar-sheet-handle" aria-hidden="true"></span>
+            <button
+              class="sidebar-toggle"
+              type="button"
+              aria-label="일정 패널 닫기"
+              aria-controls="route-itinerary-sidebar"
+              aria-expanded="true"
+              title="일정 패널 닫기"
+              @click="toggleLeftSidebar"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
+            </button>
             <div class="sidebar-content">
               <!-- Trip header card -->
               <div :class="['trip-header-card', sidebarTheme]" id="trip-header-card-container">
@@ -4303,8 +4523,40 @@ function textAvatarStyle(index: unknown) {
 
           </aside>
 
+          <button
+            v-if="isRouteOverlayLayout && (isLeftSidebarOpen || !isRouteUtilityCollapsed)"
+            class="route-panel-backdrop"
+            type="button"
+            aria-label="열린 패널 닫기"
+            @click="closeResponsivePanels"
+          ></button>
+
           <!-- ═══ MAP CANVAS ═══ -->
-          <div :class="['map-canvas', { 'navigation-guide-mode': navigationGuideMode }]" :aria-label="`${trip.title} 지도`">
+          <div ref="mapCanvasRef" :class="['map-canvas', { 'navigation-guide-mode': navigationGuideMode }]" :aria-label="`${trip.title} 지도`">
+			<button
+				v-if="!isLeftSidebarOpen"
+				class="route-sidebar-restore"
+				type="button"
+				aria-label="일정 패널 열기"
+				aria-controls="route-itinerary-sidebar"
+				aria-expanded="false"
+				title="일정 패널 열기"
+				@click="toggleLeftSidebar"
+			>
+				<span class="material-symbols-rounded" aria-hidden="true">chevron_right</span>
+			</button>
+			<button
+				v-if="isRouteUtilityCollapsed"
+				class="route-utility-restore"
+				type="button"
+				aria-label="우측 패널 열기"
+				aria-controls="route-utility-sidebar"
+				aria-expanded="false"
+				title="우측 패널 열기"
+				@click="toggleRouteUtilityCollapsed"
+			>
+				<span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
+			</button>
 			<MapboxItineraryMap
 				:stops="mapStops"
 				:routes="visibleMapRoutes"
@@ -4333,7 +4585,7 @@ function textAvatarStyle(index: unknown) {
               @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
               @viewport-change="mapViewport.updateViewport"
               @drawing-create="handleDrawingCreate"
-              @drawing-erase="eraseLocalDrawing"
+              @drawing-erase="eraseLocalDrawings"
               @drawing-preview="publishDrawingPreview"
               @route-point="addRouteWaypoint"
               @map-object-place="handleMapObjectPlace"
@@ -4343,6 +4595,7 @@ function textAvatarStyle(index: unknown) {
               @map-object-preview="previewMapObjectChange"
               @map-object-change="changeMapObject"
               @cursor-move="publishMapCursor"
+              @cursor-leave="clearLocalMapCursor"
             />
 
             <input
@@ -4353,7 +4606,15 @@ function textAvatarStyle(index: unknown) {
               @change="handleMapImageSelected"
             >
 
-            <div v-if="activeTool === 'sticker'" class="map-sticker-palette" aria-label="지도 스티커 선택">
+            <div
+              v-if="activeTool === 'sticker'"
+              id="sticker-popover"
+              ref="stickerPopoverRef"
+              class="map-sticker-palette"
+              role="dialog"
+              aria-label="지도 스티커 선택"
+              :style="stickerPopoverStyle"
+            >
               <button
                 v-for="sticker in MAP_STICKERS"
                 :key="sticker.code"
@@ -4368,7 +4629,7 @@ function textAvatarStyle(index: unknown) {
               <span class="map-sticker-help">지도에서 놓을 위치를 선택하세요</span>
             </div>
 
-            <div v-if="selectedMapObjectId" class="map-object-actions">
+            <div v-if="selectedMapObjectId && activeTool === 'cursor'" class="map-object-actions">
               <span>모서리로 크기 조절 · 위 핸들로 회전</span>
               <button type="button" :disabled="itinerary.mutating.value" @click="deleteSelectedMapObject">
                 <span class="material-symbols-rounded" aria-hidden="true">delete</span>
@@ -4393,10 +4654,10 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <div v-if="drawingRetryIds.length > 0" class="map-drawing-status" role="alert">
-              <span>그림 좌표를 정리하지 못했습니다.</span>
+              <span>그림 저장을 완료하지 못했습니다.</span>
               <button
                 type="button"
-                aria-label="그림 좌표 정리 다시 시도"
+                aria-label="그림 저장 다시 시도"
                 title="다시 시도"
                 @click="retryDrawingSimplification"
               >
@@ -4405,7 +4666,7 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <!-- ===== Pen popover ===== -->
-            <div :class="['tool-popover', { 'is-open': isPenPopoverOpen }]" id="pen-popover" :style="penPopoverStyle" :aria-hidden="!isPenPopoverOpen">
+            <div ref="penPopoverRef" :class="['tool-popover', { 'is-open': isPenPopoverOpen }]" id="pen-popover" role="dialog" aria-label="자유 그리기 설정" :style="penPopoverStyle" :aria-hidden="!isPenPopoverOpen">
               <div class="popover-section">
                 <div class="popover-title">펜 굵기</div>
                 <div class="thickness-options">
@@ -4435,7 +4696,8 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <!-- ===== Toolbox ===== -->
-            <div class="map-tools">
+            <div class="map-tools-viewport" @scroll.passive="updateToolPopoverPositions">
+              <div class="map-tools">
               <!-- Drawing tools -->
               <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" data-tool="cursor" :aria-pressed="activeTool === 'cursor'" :disabled="itinerary.mutating.value" @click="selectMapTool('cursor')">
                 <span class="material-symbols-rounded">arrow_selector_tool</span>
@@ -4445,7 +4707,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded">polyline</span>
                 <span class="tool-tip">경로 연결 펜</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" :aria-pressed="activeTool === 'pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('pen')">
+              <button ref="penToolButtonRef" :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" aria-controls="pen-popover" :aria-expanded="isPenPopoverOpen" :aria-pressed="activeTool === 'pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('pen')">
                 <span class="material-symbols-rounded">edit</span>
                 <span class="tool-tip">자유 그리기</span>
               </button>
@@ -4453,7 +4715,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded">ink_eraser</span>
                 <span class="tool-tip">그림 지우개</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'sticker' }]" type="button" data-tool="sticker" :aria-pressed="activeTool === 'sticker'" :disabled="itinerary.mutating.value" @click="selectMapTool('sticker')">
+              <button ref="stickerToolButtonRef" :class="['tool-btn', { active: activeTool === 'sticker' }]" type="button" data-tool="sticker" aria-controls="sticker-popover" :aria-expanded="activeTool === 'sticker'" :aria-pressed="activeTool === 'sticker'" :disabled="itinerary.mutating.value" @click="selectMapTool('sticker')">
                 <span class="material-symbols-rounded">emoji_emotions</span>
                 <span class="tool-tip">스티커 삽입</span>
               </button>
@@ -4523,6 +4785,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded">redo</span>
                 <span class="tool-tip">다시 실행 (Ctrl+Y)</span>
               </button>
+              </div>
             </div>
           </div>
 
@@ -4669,25 +4932,19 @@ function textAvatarStyle(index: unknown) {
           </aside>
 
           <!-- ═══ ROUTE UTILITY SIDEBAR ═══ -->
-          <aside :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구">
-            <div class="route-utility-header">
-              <div class="route-utility-heading">
-                <span class="material-symbols-rounded" aria-hidden="true">{{ routeUtilityPanelMeta.icon }}</span>
-                <div>
-                  <h3>{{ routeUtilityPanelMeta.title }}</h3>
-                  <p class="route-utility-status">{{ routeUtilityPanelMeta.status }}</p>
-                </div>
-              </div>
-              <button
-                class="route-utility-collapse"
-                type="button"
-                :aria-label="isRouteUtilityCollapsed ? '우측 사이드바 펼치기' : '우측 사이드바 접기'"
-                :title="isRouteUtilityCollapsed ? '펼치기' : '접기'"
-                @click="toggleRouteUtilityCollapsed"
-              >
-                <span class="material-symbols-rounded" aria-hidden="true">{{ isRouteUtilityCollapsed ? 'left_panel_open' : 'right_panel_close' }}</span>
-              </button>
-            </div>
+          <aside id="route-utility-sidebar" :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구" :aria-hidden="isRouteUtilityCollapsed">
+            <button
+              class="route-utility-toggle"
+              type="button"
+              aria-controls="route-utility-sidebar"
+              :aria-expanded="!isRouteUtilityCollapsed"
+              :aria-label="isRouteUtilityCollapsed ? '우측 패널 열기' : '우측 패널 닫기'"
+              :title="isRouteUtilityCollapsed ? '우측 패널 열기' : '우측 패널 닫기'"
+              @click="toggleRouteUtilityCollapsed"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">{{ isRouteUtilityCollapsed ? 'chevron_left' : 'chevron_right' }}</span>
+            </button>
+            <div class="route-utility-content">
             <div class="route-utility-tabs" role="tablist" aria-label="여행 도구">
               <button
                 class="route-utility-tab route-utility-tab--ai"
@@ -4817,27 +5074,32 @@ function textAvatarStyle(index: unknown) {
             <div class="panel-tabs" id="memo-day-tags">
               <button v-for="tag in dayTagLabels" :key="tag" type="button"
                 :class="['panel-tab-tag', { 'active-memo': activeMemoDay === tag }]"
+                :disabled="memoLoading"
                 @click="switchMemoDay(tag)">{{ tag }}</button>
             </div>
             <!-- 미니 포맷 툴바 -->
             <div class="memo-toolbar">
-              <button type="button" class="toolbar-btn" title="굵게" aria-label="굵게" @click="formatMemo('bold')"><span class="material-symbols-rounded">format_bold</span></button>
-              <button type="button" class="toolbar-btn" title="기울임" aria-label="기울임" @click="formatMemo('italic')"><span class="material-symbols-rounded">format_italic</span></button>
-              <button type="button" class="toolbar-btn" title="밑줄" aria-label="밑줄" @click="formatMemo('underline')"><span class="material-symbols-rounded">format_underlined</span></button>
-              <button type="button" class="toolbar-btn" title="취소선" aria-label="취소선" @click="formatMemo('strike')"><span class="material-symbols-rounded">format_strikethrough</span></button>
+              <button type="button" class="toolbar-btn" title="굵게" aria-label="굵게" :disabled="memoLoading" @click="formatMemo('bold')"><span class="material-symbols-rounded">format_bold</span></button>
+              <button type="button" class="toolbar-btn" title="기울임" aria-label="기울임" :disabled="memoLoading" @click="formatMemo('italic')"><span class="material-symbols-rounded">format_italic</span></button>
+              <button type="button" class="toolbar-btn" title="밑줄" aria-label="밑줄" :disabled="memoLoading" @click="formatMemo('underline')"><span class="material-symbols-rounded">format_underlined</span></button>
+              <button type="button" class="toolbar-btn" title="취소선" aria-label="취소선" :disabled="memoLoading" @click="formatMemo('strike')"><span class="material-symbols-rounded">format_strikethrough</span></button>
               <div class="toolbar-divider"></div>
-              <button type="button" class="toolbar-btn" title="글머리 기호" aria-label="글머리 기호" @click="formatMemo('bullet')"><span class="material-symbols-rounded">format_list_bulleted</span></button>
-              <button type="button" class="toolbar-btn" title="번호 매기기" aria-label="번호 매기기" @click="formatMemo('number')"><span class="material-symbols-rounded">format_list_numbered</span></button>
+              <button type="button" class="toolbar-btn" title="글머리 기호" aria-label="글머리 기호" :disabled="memoLoading" @click="formatMemo('bullet')"><span class="material-symbols-rounded">format_list_bulleted</span></button>
+              <button type="button" class="toolbar-btn" title="번호 매기기" aria-label="번호 매기기" :disabled="memoLoading" @click="formatMemo('number')"><span class="material-symbols-rounded">format_list_numbered</span></button>
             </div>
             <div class="panel-body memo-body">
-              <textarea id="memo-textarea" ref="memoTextarea" placeholder="여행 계획, 팁, 예약 정보 등을 자유롭게 메모해보세요." v-model="memoTextDisplay"></textarea>
+              <textarea id="memo-textarea" ref="memoTextarea" placeholder="여행 계획, 팁, 예약 정보 등을 자유롭게 메모해보세요." v-model="memoTextDisplay" :disabled="memoLoading" @input="markMemoDirty"></textarea>
             </div>
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">
                 <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
+                <span v-if="memoStatus" class="memo-status" role="status">{{ memoStatus }}</span>
+                <button v-if="memoConflict" type="button" class="memo-reload-btn" @click="reloadLatestMemo">
+                  최신 메모 불러오기
+                </button>
               </div>
               <div class="memo-footer-actions">
-                <button id="memo-clear-btn" class="btn text-danger-btn memo-action-btn" type="button" @click="clearNote">
+                <button id="memo-clear-btn" class="btn text-danger-btn memo-action-btn" type="button" :disabled="memoLoading" @click="clearNote">
                   <span class="material-symbols-rounded">delete</span>
                   초기화
                 </button>
@@ -4891,6 +5153,7 @@ function textAvatarStyle(index: unknown) {
               </div>
             </div>
           </div>
+            </div>
           </aside>
         </div>
       </section>
@@ -5087,35 +5350,53 @@ function textAvatarStyle(index: unknown) {
   color: #fff;
 }
 .route-page-section .map-shell {
+  position: relative;
   flex: 1;
   min-height: 0;
   border: 0;
   border-radius: 0;
   box-shadow: none;
   display: grid;
-  grid-template-columns: var(--sidebar-width, 360px) minmax(0, 1fr) var(--route-panel-width, 380px);
+  grid-template-columns: minmax(0, 1fr);
   --detailbar-width: 440px;
   --detailbar-offset: 16px;
   --detailbar-gap: 16px;
-  --route-panel-width: 380px;
-  transition: grid-template-columns 0.22s ease;
-}
-.route-page-section .map-shell.is-route-utility-collapsed {
-  --route-panel-width: 52px;
+  --route-panel-motion-duration: 260ms;
+  --route-panel-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 .route-utility-sidebar {
   --route-accent: #7c3aed;
   --route-accent-rgb: 124, 58, 237;
   display: flex;
+  width: 380px;
   min-width: 0;
   min-height: 0;
   height: 100%;
   flex-direction: column;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   border-left: 1px solid var(--line);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
     #fff;
   box-shadow: -14px 0 32px rgba(15, 23, 42, 0.06);
+  overflow: visible;
+  z-index: 100;
+  transform: translateX(0);
+  will-change: transform;
+  transition:
+    transform var(--route-panel-motion-duration) var(--route-panel-motion-ease),
+    opacity 180ms ease-in,
+    border-radius 0.22s ease;
+}
+.route-utility-content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   overflow: hidden;
 }
 .route-utility-sidebar--chat {
@@ -5129,67 +5410,6 @@ function textAvatarStyle(index: unknown) {
 .route-utility-sidebar--todo {
   --route-accent: #059669;
   --route-accent-rgb: 5, 150, 105;
-}
-.route-utility-header {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 12px 10px 16px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  background: #fff;
-}
-.route-utility-heading {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-.route-utility-heading > .material-symbols-rounded {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border-radius: 8px;
-  background: rgba(var(--route-accent-rgb), 0.12);
-  color: var(--route-accent);
-  font-size: 20px;
-}
-.route-utility-heading h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 850;
-  line-height: 1.25;
-}
-.route-utility-heading p {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-.route-utility-collapse {
-  display: grid;
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 999px;
-  background: #fff;
-  color: #64748b;
-  cursor: pointer;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
-}
-.route-utility-collapse:hover {
-  border-color: rgba(var(--route-accent-rgb), 0.26);
-  color: var(--route-accent);
-  background: rgba(var(--route-accent-rgb), 0.07);
-}
-.route-utility-collapse .material-symbols-rounded {
-  font-size: 20px;
 }
 .route-utility-tabs {
   display: grid;
@@ -5256,27 +5476,10 @@ function textAvatarStyle(index: unknown) {
   white-space: nowrap;
 }
 .route-utility-sidebar.is-collapsed {
-  align-items: stretch;
-}
-.route-utility-sidebar.is-collapsed .route-utility-header {
-  justify-content: center;
-  padding: 10px 6px;
-}
-.route-utility-sidebar.is-collapsed .route-utility-heading {
-  display: none;
-}
-.route-utility-sidebar.is-collapsed .route-utility-tabs {
-  grid-template-columns: 1fr;
-  gap: 6px;
-  padding: 6px;
-}
-.route-utility-sidebar.is-collapsed .route-utility-tab {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-}
-.route-utility-sidebar.is-collapsed .route-utility-tab span:not(.material-symbols-rounded) {
-  display: none;
+  transform: translateX(calc(100% + 32px));
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 .route-utility-sidebar .ai-chat-panel,
 .route-utility-sidebar .floating-panel {
@@ -5304,10 +5507,6 @@ function textAvatarStyle(index: unknown) {
 .route-utility-sidebar .floating-panel.show {
   display: flex !important;
   transform: none;
-}
-.route-utility-sidebar.is-collapsed .ai-chat-panel,
-.route-utility-sidebar.is-collapsed .floating-panel {
-  display: none !important;
 }
 .route-utility-sidebar .ai-chat-header,
 .route-utility-sidebar .panel-header {
@@ -5624,6 +5823,24 @@ function textAvatarStyle(index: unknown) {
   font-weight: 750;
   white-space: nowrap;
 }
+.route-utility-sidebar .memo-status {
+  overflow: hidden;
+  color: var(--route-accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-utility-sidebar .memo-reload-btn {
+  border: 0;
+  background: transparent;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: underline;
+  white-space: nowrap;
+}
 .route-utility-sidebar .todo-list {
   display: flex;
   flex-direction: column;
@@ -5649,13 +5866,89 @@ function textAvatarStyle(index: unknown) {
   object-fit: cover;
 }
 .route-page-section .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
   height: 100%;
-  width: 100%;
+  width: 360px;
   overflow: visible;
+  z-index: 100;
+  transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.route-page-section .sidebar.is-hidden {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 .route-page-section .sidebar-content {
   width: 100%;
   box-sizing: border-box;
+}
+.route-page-section .sidebar-toggle,
+.route-page-section .route-sidebar-restore,
+.route-page-section .route-utility-toggle,
+.route-page-section .route-utility-restore {
+  position: absolute;
+  top: 50%;
+  z-index: 82;
+  display: grid;
+  width: 32px;
+  height: 68px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  box-shadow: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: none;
+}
+.route-page-section .sidebar-toggle {
+  right: -32px;
+  border-left: 0;
+  border-radius: 0 14px 14px 0;
+}
+.route-page-section .route-utility-toggle {
+  left: -32px;
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
+}
+.sidebar-sheet-handle {
+  display: none;
+}
+.route-panel-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  padding: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+}
+.route-sidebar-restore {
+  left: 0;
+  border-left: 0;
+  border-radius: 0 14px 14px 0;
+  z-index: 32;
+}
+.route-utility-restore {
+  right: 0;
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
+  z-index: 32;
+}
+.route-page-section .sidebar-toggle .material-symbols-rounded,
+.route-page-section .route-sidebar-restore .material-symbols-rounded,
+.route-page-section .route-utility-toggle .material-symbols-rounded,
+.route-page-section .route-utility-restore .material-symbols-rounded {
+  font-size: 20px;
 }
 .route-page-section .trip-info-badge-row {
   display: flex;
@@ -5892,8 +6185,49 @@ function textAvatarStyle(index: unknown) {
   margin-top: 2px;
 }
 .route-page-section .map-canvas {
+  --route-map-control-right-safe: 12px;
+  --route-map-tools-right-safe: 12px;
   height: 100%;
   min-height: 0;
+}
+
+.route-page-section .map-canvas :deep(.mapboxgl-ctrl-top-right) {
+  top: 12px;
+  right: var(--route-map-control-right-safe);
+  transition: right 0.22s ease;
+}
+
+.map-tools-viewport {
+  position: absolute;
+  right: var(--route-map-tools-right-safe);
+  bottom: 20px;
+  left: 12px;
+  z-index: 90;
+  height: 102px;
+  box-sizing: border-box;
+  padding-top: 48px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  pointer-events: none;
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+  transition: right 0.22s ease, opacity 0.18s ease;
+}
+
+.map-tools-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.route-page-section .map-tools-viewport .map-tools {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: max-content;
+  min-width: max-content;
+  margin: 0 auto;
+  pointer-events: auto;
+  transform: none;
 }
 
 .route-page-section .map-canvas.navigation-guide-mode {
@@ -5999,7 +6333,7 @@ function textAvatarStyle(index: unknown) {
   background: rgb(255 255 255 / 96%);
   border: 1px solid #fecdd3;
   border-radius: 6px;
-  bottom: 16px;
+  bottom: 82px;
   color: #be123c;
   display: flex;
   font-size: 12px;
@@ -6503,9 +6837,9 @@ function textAvatarStyle(index: unknown) {
 
 .map-sticker-palette {
   position: absolute;
-  right: 76px;
-  bottom: 86px;
-  z-index: 8;
+  left: 50%;
+  bottom: 82px;
+  z-index: 35;
   display: grid;
   grid-template-columns: repeat(4, 42px);
   gap: 7px;
@@ -6515,6 +6849,20 @@ function textAvatarStyle(index: unknown) {
   background: rgba(255, 252, 246, .96);
   box-shadow: 0 18px 48px rgba(15, 23, 42, .18), 0 2px 8px rgba(15, 23, 42, .08);
   backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+}
+
+.map-sticker-palette::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: var(--popover-anchor-x, 50%);
+  width: 12px;
+  height: 12px;
+  border-right: 1px solid rgba(15, 23, 42, .1);
+  border-bottom: 1px solid rgba(15, 23, 42, .1);
+  background: rgba(255, 252, 246, .96);
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .map-sticker-option {
@@ -6552,8 +6900,8 @@ function textAvatarStyle(index: unknown) {
 .map-object-actions {
   position: absolute;
   left: 50%;
-  bottom: 26px;
-  z-index: 8;
+  bottom: 82px;
+  z-index: 24;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -6584,5 +6932,265 @@ function textAvatarStyle(index: unknown) {
 
 .map-object-actions .material-symbols-rounded {
   font-size: 16px;
+}
+
+.route-page-section .tool-popover::after {
+  left: var(--popover-anchor-x, 50%);
+}
+
+@media (max-width: 1439px) {
+  .route-page-section .route-utility-sidebar {
+    width: min(380px, calc(100% - 24px));
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 340px;
+  }
+
+  .route-page-section .map-tools .tool-btn {
+    flex: 0 0 40px;
+  }
+
+  .route-page-section .detailbar {
+    width: min(420px, calc(100% - var(--sidebar-width, 360px) - 76px));
+  }
+}
+
+@media (max-width: 1023px) {
+  .route-page-section .map-shell,
+  .route-page-section .map-shell.is-route-utility-collapsed,
+  .route-page-section .map-shell.is-sidebar-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .route-page-section .sidebar {
+    width: min(360px, calc(100% - 64px));
+    border-right: 1px solid var(--line);
+    box-shadow: 18px 0 48px rgba(15, 23, 42, 0.18);
+  }
+
+  .route-page-section .sidebar.is-hidden {
+    transform: translateX(calc(-100% - 24px));
+  }
+
+  .route-page-section .route-utility-sidebar,
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) {
+    width: min(380px, calc(100% - 64px));
+  }
+
+  .route-page-section .route-utility-sidebar.is-collapsed {
+    transform: translateX(calc(100% + 32px));
+  }
+
+  .route-page-section .map-canvas {
+    --route-map-control-right-safe: 64px;
+    --route-map-tools-right-safe: 64px;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 392px;
+  }
+
+  .route-page-section .detailbar {
+    top: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: min(440px, calc(100% - 76px));
+    z-index: 50;
+  }
+
+  .route-page-section .detailbar.is-hidden {
+    transform: translateX(calc(-100% - 24px));
+  }
+}
+
+@media (max-width: 767px) {
+  .route-page-section {
+    top: 64px !important;
+  }
+
+  .route-page-section .sidebar {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(72dvh, calc(100% - 12px));
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -18px 52px rgba(15, 23, 42, 0.20);
+    transform: translateY(0);
+  }
+
+  .route-page-section .sidebar.is-hidden {
+    transform: translateY(calc(100% + 24px));
+  }
+
+  .route-page-section .sidebar-content {
+    padding: 54px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .route-page-section .sidebar-toggle {
+    top: -32px;
+    right: 50%;
+    width: 68px;
+    height: 32px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    transform: translateX(50%);
+  }
+
+  .route-page-section .sidebar-toggle .material-symbols-rounded {
+    transform: rotate(-90deg);
+  }
+
+  .sidebar-sheet-handle {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 2;
+    display: block;
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.34);
+    transform: translateX(-50%);
+  }
+
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(72dvh, calc(100% - 12px));
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -18px 52px rgba(15, 23, 42, 0.20);
+    transform: translateY(0);
+    animation: route-utility-sheet-in var(--route-panel-motion-duration) var(--route-panel-motion-ease) both;
+  }
+
+  .route-page-section .route-utility-sidebar.is-collapsed {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(72dvh, calc(100% - 12px));
+    transform: translateY(calc(100% + 24px));
+    animation: none;
+  }
+
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) .route-utility-toggle {
+    top: -32px;
+    left: 50%;
+    width: 68px;
+    height: 32px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    transform: translateX(-50%);
+  }
+
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) .route-utility-toggle .material-symbols-rounded {
+    transform: rotate(90deg);
+  }
+
+  .route-page-section .route-utility-sidebar:not(.is-collapsed) .route-utility-content {
+    border-radius: 24px 24px 0 0;
+  }
+
+  .route-page-section .map-canvas {
+    --route-map-control-right-safe: 48px;
+    --route-map-tools-right-safe: 12px;
+  }
+
+  .route-page-section .map-shell:not(.is-route-utility-collapsed) .map-canvas {
+    --route-map-control-right-safe: 12px;
+    --route-map-tools-right-safe: 12px;
+  }
+
+  .route-sidebar-restore {
+    top: 50%;
+    width: 32px;
+    padding: 0;
+  }
+
+  .route-utility-restore {
+    top: 50%;
+    width: 32px;
+    padding: 0;
+  }
+
+  .route-page-section .detailbar {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(76dvh, calc(100% - 12px));
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -18px 52px rgba(15, 23, 42, 0.22);
+    transform: translateY(0);
+  }
+
+  .route-page-section .detailbar.is-hidden {
+    transform: translateY(calc(100% + 24px));
+  }
+
+  .route-page-section .detailbar-scroll {
+    padding: 22px 18px calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .route-page-section .map-tools-viewport {
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .route-page-section .map-tools {
+    border-radius: 14px;
+  }
+
+  .map-object-actions,
+  .map-drawing-status {
+    bottom: calc(74px + env(safe-area-inset-bottom));
+  }
+
+  .map-object-actions > span {
+    display: none;
+  }
+
+  .map-sticker-palette {
+    max-width: calc(100% - 24px);
+  }
+
+  .route-page-section .tool-popover {
+    max-width: calc(100% - 24px);
+    min-width: min(240px, calc(100% - 24px));
+  }
+}
+
+@keyframes route-utility-sheet-in {
+  from {
+    transform: translateY(calc(100% + 24px));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-page-section .map-shell,
+  .route-page-section .sidebar,
+  .route-page-section .route-utility-sidebar {
+    transition-duration: 0.01ms !important;
+  }
+
+  .route-page-section .route-utility-sidebar {
+    animation-duration: 0.01ms !important;
+  }
 }
 </style>

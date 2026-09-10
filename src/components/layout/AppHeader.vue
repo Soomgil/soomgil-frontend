@@ -9,35 +9,38 @@ import { useTheme } from '@/composables/useTheme'
 import type { PageMeta } from '@/types/api'
 import type { Notification } from '@/types/notification'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
+import { useLocale } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { isDarkMode, toggleTheme } = useTheme()
+const { t } = useLocale()
 
 /* ── Nav Items ── */
-const landingNavItems = [
-  { label: '홈', key: 'home', href: '/#home' },
-  { label: '기능', key: 'features', href: '/#features' },
-  { label: '사용 흐름', key: 'flow', href: '/#flow' },
-  { label: '템플릿', key: 'templates', href: '/#templates' },
-]
+const landingNavItems = computed(() => [
+  { label: t('nav.home'), key: 'home', href: '/#home' },
+  { label: t('nav.features'), key: 'features', href: '/#features' },
+  { label: t('nav.flow'), key: 'flow', href: '/#flow' },
+  { label: t('nav.templates'), key: 'templates', href: '/#templates' },
+])
 
-const serviceNavItems = [
-  { label: '홈', key: 'home', path: '/home' },
-  { label: '내 여행', key: 'my-trips', path: '/my-trips' },
-  { label: '취향 수집', key: 'swipe', path: '/swipe' },
-  { label: '커뮤니티', key: 'community', path: '/community' },
-  { label: '기록', key: 'record', path: '/record' },
-]
+const serviceNavItems = computed(() => [
+  { label: t('nav.home'), key: 'home', path: '/home' },
+  { label: t('nav.trips'), key: 'my-trips', path: '/my-trips' },
+  { label: t('nav.preferences'), key: 'swipe', path: '/swipe' },
+  { label: t('nav.community'), key: 'community', path: '/community' },
+  { label: t('nav.records'), key: 'record', path: '/record' },
+])
 
 const isLandingPage = computed(() => route.path === '/')
-const currentNavItems = computed(() => isLandingPage.value ? landingNavItems : serviceNavItems)
+const isRouteWorkspace = computed(() => route.path.startsWith('/trips/') && route.path.endsWith('/route'))
+const currentNavItems = computed(() => isLandingPage.value ? landingNavItems.value : serviceNavItems.value)
 
 const activeNavKey = computed(() => {
   if (isLandingPage.value) return ''
   const path = route.path
-  for (const item of serviceNavItems) {
+  for (const item of serviceNavItems.value) {
     if (path.startsWith(item.path)) return item.key
   }
   if (path === '/home') return 'home'
@@ -207,7 +210,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <header class="topbar">
+  <header :class="['topbar', { 'route-workspace-header': isRouteWorkspace }]">
     <!-- Left: Brand -->
     <div style="min-width:220px">
       <a
@@ -248,7 +251,7 @@ async function handleLogout() {
     <div class="header-actions" style="min-width:220px; display:flex; justify-content:flex-end; align-items:center; gap:8px;">
 
       <!-- Theme Toggle -->
-      <button v-if="route.path.startsWith('/trips/') && route.path.endsWith('/route')" type="button" class="btn ghost icon-btn" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; cursor:pointer;" :title="isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'" @click="toggleTheme">
+      <button v-if="isRouteWorkspace" type="button" class="btn ghost icon-btn" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; cursor:pointer;" :title="isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'" @click="toggleTheme">
         <span class="material-symbols-rounded">{{ isDarkMode ? 'light_mode' : 'dark_mode' }}</span>
       </button>
 
@@ -342,25 +345,25 @@ async function handleLogout() {
             </div>
             <div style="display:grid; gap:4px;">
               <a href="#" style="font-size:13px; color:var(--ink); text-decoration:none; padding:8px; border-radius:8px; display:flex; align-items:center; gap:8px;" class="profile-item-link" @click.prevent="closeAllDropdowns(); router.push('/mypage')">
-                <span class="material-symbols-rounded" style="font-size:18px; color:var(--muted)">person</span>마이페이지
+                <span class="material-symbols-rounded" style="font-size:18px; color:var(--muted)">person</span>{{ t('common.myPage') }}
               </a>
               <a href="#" style="font-size:13px; color:var(--ink); text-decoration:none; padding:8px; border-radius:8px; display:flex; align-items:center; gap:8px;" class="profile-item-link" @click.prevent="closeAllDropdowns(); router.push('/settings')">
-                <span class="material-symbols-rounded" style="font-size:18px; color:var(--muted)">settings</span>설정
+                <span class="material-symbols-rounded" style="font-size:18px; color:var(--muted)">settings</span>{{ t('common.settings') }}
               </a>
               <a href="#" style="font-size:13px; color:var(--rose); text-decoration:none; padding:8px; border-radius:8px; display:flex; align-items:center; gap:8px;" class="profile-item-link" @click.prevent="handleLogout">
-                <span class="material-symbols-rounded" style="font-size:18px; color:var(--rose)">logout</span>로그아웃
+                <span class="material-symbols-rounded" style="font-size:18px; color:var(--rose)">logout</span>{{ t('auth.logout') }}
               </a>
             </div>
           </div>
         </div>
       </template>
       <template v-else-if="isLandingPage">
-        <a class="btn ghost" href="#" @click.prevent="router.push('/login')" style="font-size:14px">로그인</a>
-        <a class="btn primary" href="#" @click.prevent="router.push('/register')" style="font-size:14px">회원가입</a>
+        <a class="btn ghost" href="#" @click.prevent="router.push('/login')" style="font-size:14px">{{ t('auth.login') }}</a>
+        <a class="btn primary" href="#" @click.prevent="router.push('/register')" style="font-size:14px">{{ t('auth.register') }}</a>
       </template>
       <template v-else>
-        <a class="btn ghost" href="#" @click.prevent="router.push('/login')" style="font-size:14px">로그인</a>
-        <a class="btn primary" href="#" @click.prevent="router.push('/register')" style="font-size:14px">회원가입</a>
+        <a class="btn ghost" href="#" @click.prevent="router.push('/login')" style="font-size:14px">{{ t('auth.login') }}</a>
+        <a class="btn primary" href="#" @click.prevent="router.push('/register')" style="font-size:14px">{{ t('auth.register') }}</a>
       </template>
     </div>
   </header>
@@ -469,6 +472,40 @@ async function handleLogout() {
 
 .notification-dismiss .material-symbols-rounded {
   font-size: 16px;
+}
+
+@media (max-width: 1023px) {
+  .topbar.route-workspace-header {
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  .route-workspace-header .nav {
+    display: none;
+  }
+
+  .route-workspace-header > div:first-child,
+  .route-workspace-header .header-actions {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .topbar.route-workspace-header {
+    height: 64px;
+    min-height: 64px;
+    flex-wrap: nowrap;
+    padding: 0 12px;
+  }
+
+  .route-workspace-header .brand img {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .route-workspace-header .brand > span {
+    display: none;
+  }
 }
 
 @media (max-width: 480px) {

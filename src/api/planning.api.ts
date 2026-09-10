@@ -12,16 +12,24 @@ export const planningApi = {
     return response.status === 204 ? null : response.data
   },
 
-  async saveNote(tripId: string, scope: PlanningScope, content: string): Promise<PlanningMutationResponse> {
+  async saveNote(
+    tripId: string,
+    scope: PlanningScope,
+    content: string,
+    baseVersion: number,
+  ): Promise<PlanningMutationResponse> {
     const response = await http.put<PlanningMutationResponse>(`/trips/${tripId}/planning/notes`, {
       ...scope,
       content,
+      baseVersion,
     })
     return response.data
   },
 
-  async deleteNote(tripId: string, noteId: string): Promise<void> {
-    await http.delete(`/trips/${tripId}/planning/notes/${noteId}`)
+  async deleteNote(tripId: string, noteId: string, baseVersion: number): Promise<void> {
+    await http.delete(`/trips/${tripId}/planning/notes/${noteId}`, {
+      data: { baseVersion },
+    })
   },
 
   async getChecklists(tripId: string, scope?: Partial<PlanningScope>): Promise<Checklist[]> {

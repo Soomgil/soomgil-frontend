@@ -155,6 +155,7 @@ vi.mock('@/composables/useItinerary', async () => {
 		createDrawing: vi.fn(),
 		updateDrawing: vi.fn(),
 		deleteDrawing: vi.fn(),
+		deleteDrawings: vi.fn(),
     unscheduledDay: computed(() => days.value.find((day) => day.groupType === 'UNSCHEDULED') ?? null),
   }
   return { useItinerary: () => holder.state }
@@ -183,6 +184,7 @@ vi.mock('@/composables/useMapViewport', async () => {
 describe('RoutePage itinerary integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
     localStorage.clear()
 		localStorage.setItem('accessToken', 'e30.eyJ1c2VySWQiOiJ1c2VyLTEifQ.')
     clearCollaborationSessionIds()
@@ -314,6 +316,7 @@ describe('RoutePage itinerary integration', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
@@ -375,7 +378,7 @@ describe('RoutePage itinerary integration', () => {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
-    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
+    await vi.waitFor(() => expect(connectedApis.ai.getMessages).toHaveBeenCalled())
 
     const input = wrapper.get('#ai-chat-input')
     await input.setValue('일정을 요약해줘')
@@ -396,7 +399,7 @@ describe('RoutePage itinerary integration', () => {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
-    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
+    await vi.waitFor(() => expect(connectedApis.ai.getMessages).toHaveBeenCalled())
 
     await wrapper.get('#ai-chat-input').setValue('일정을 요약해줘')
     await wrapper.get('#ai-chat-send-btn').trigger('click')
@@ -432,7 +435,7 @@ describe('RoutePage itinerary integration', () => {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
-    await vi.waitFor(() => expect(wrapper.get('.route-utility-status').text()).not.toContain('불러오는 중'))
+    await vi.waitFor(() => expect(connectedApis.ai.getMessages).toHaveBeenCalled())
 
     await wrapper.get('#ai-chat-input').setValue('일정을 요약해줘')
     await wrapper.get('#ai-chat-send-btn').trigger('click')
@@ -483,23 +486,33 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('#trip-chat-panel').classes()).toContain('show')
   })
 
-  it('우측 사이드바 접기 버튼으로 지도 영역을 확장한다', async () => {
+  it('헤더 없이 패널 경계 버튼으로 우측 사이드바를 접고 펼친다', async () => {
     const wrapper = mount(RoutePage, {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
 
-    await wrapper.get('.route-utility-collapse').trigger('click')
+    expect(wrapper.find('.route-utility-header').exists()).toBe(false)
+    const toggle = wrapper.get('.route-utility-toggle')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    await toggle.trigger('click')
 
     expect(wrapper.get('.map-shell').classes()).toContain('is-route-utility-collapsed')
     expect(wrapper.get('.route-utility-sidebar').classes()).toContain('is-collapsed')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.attributes('aria-label')).toBe('우측 패널 열기')
+    expect(wrapper.get('.route-utility-restore').attributes('aria-label')).toBe('우측 패널 열기')
+
+    await wrapper.get('.route-utility-restore').trigger('click')
+    expect(wrapper.get('.map-shell').classes()).not.toContain('is-route-utility-collapsed')
+    expect(wrapper.find('.route-utility-restore').exists()).toBe(false)
   })
 
   it('지도 패널에서 여행 메모와 체크리스트 항목을 바로 저장한다', async () => {
     connectedApis.planning.saveNote.mockResolvedValue({
       note: {
         id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
-        content: '렌터카 예약 확인', deletedAt: null,
+        content: '렌터카 예약 확인', version: 1, deletedAt: null,
       },
     })
     connectedApis.planning.saveChecklist.mockResolvedValue({
@@ -528,7 +541,8 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     expect(connectedApis.planning.saveNote).toHaveBeenCalledWith('trip-1', {
       scopeType: 'TRIP', itineraryDayId: null,
-    }, '렌터카 예약 확인')
+    }, '렌터카 예약 확인', 0)
+    expect(wrapper.get('.memo-status').text()).toBe('저장됨')
 
     await wrapper.get('#todo-fab').trigger('click')
     await flushPromises()
@@ -541,6 +555,128 @@ describe('RoutePage itinerary integration', () => {
     expect(connectedApis.planning.addChecklistItem).toHaveBeenCalledWith(
       'trip-1', 'checklist-1', '여권 챙기기', 0,
     )
+  })
+
+  it('작성 중인 메모를 버리지 않도록 날짜 전환 전에 확인한다', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('아직 저장하지 않은 메모')
+    const dayOneTab = wrapper.findAll('#memo-day-tags button').find((button) => button.text() === '1일차')
+    expect(dayOneTab).toBeDefined()
+    await dayOneTab!.trigger('click')
+
+    expect(confirmSpy).toHaveBeenCalledWith('작성 중인 내용을 버리고 다른 메모로 이동할까요?')
+    expect(wrapper.get('#memo-day-tags .active-memo').text()).toBe('전체')
+    expect((wrapper.get('#memo-textarea').element as HTMLTextAreaElement).value).toBe('아직 저장하지 않은 메모')
+    confirmSpy.mockRestore()
+  })
+
+  it('메모가 다른 멤버에 의해 먼저 바뀌면 작성 중인 내용을 보존한다', async () => {
+    connectedApis.planning.getNote.mockResolvedValue({
+      id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+      content: '기존 메모', version: 3, deletedAt: null,
+    })
+    connectedApis.planning.saveNote.mockRejectedValue({
+      response: { status: 409, data: { code: 'PLANNING_VERSION_CONFLICT' } },
+    })
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('내가 작성 중인 메모')
+    await wrapper.get('#memo-copy-btn').trigger('click')
+    await flushPromises()
+
+    expect(connectedApis.planning.saveNote).toHaveBeenCalledWith('trip-1', {
+      scopeType: 'TRIP', itineraryDayId: null,
+    }, '내가 작성 중인 메모', 3)
+    expect((wrapper.get('#memo-textarea').element as HTMLTextAreaElement).value).toBe('내가 작성 중인 메모')
+    expect(wrapper.get('.memo-status').text()).toBe('다른 멤버가 먼저 수정했습니다.')
+    expect(wrapper.get('.memo-reload-btn').text()).toBe('최신 메모 불러오기')
+  })
+
+  it('작성 중 실시간 메모 변경을 받아도 입력 내용을 갑자기 덮어쓰지 않는다', async () => {
+    connectedApis.planning.getNote.mockResolvedValue({
+      id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+      content: '기존 메모', version: 2, deletedAt: null,
+    })
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('내 초안')
+
+    realtime.instances[0].subscriptions.get('/topic/trips/trip-1/planning')?.({
+      tripId: 'trip-1',
+      actorUserId: 'user-2',
+      eventType: 'planning.note.upserted',
+      note: {
+        id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+        content: '동행자가 저장한 메모', version: 3, deletedAt: null,
+      },
+    })
+    await nextTick()
+
+    expect((wrapper.get('#memo-textarea').element as HTMLTextAreaElement).value).toBe('내 초안')
+    expect(wrapper.get('.memo-status').text()).toBe('다른 멤버가 먼저 수정했습니다.')
+  })
+
+  it('더 최신 실시간 이벤트 뒤에 도착한 저장 응답으로 상태를 되돌리지 않는다', async () => {
+    connectedApis.planning.getNote.mockResolvedValue({
+      id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+      content: '기존 메모', version: 2, deletedAt: null,
+    })
+    let resolveSave!: (value: unknown) => void
+    connectedApis.planning.saveNote.mockReturnValue(new Promise((resolve) => {
+      resolveSave = resolve
+    }))
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    await wrapper.get('#memo-fab').trigger('click')
+    await flushPromises()
+    await wrapper.get('#memo-textarea').setValue('내 저장 내용')
+    await wrapper.get('#memo-copy-btn').trigger('click')
+
+    realtime.instances[0].subscriptions.get('/topic/trips/trip-1/planning')?.({
+      tripId: 'trip-1',
+      actorUserId: 'user-2',
+      eventType: 'planning.note.upserted',
+      note: {
+        id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+        content: '동행자의 최신 메모', version: 4, deletedAt: null,
+      },
+    })
+    resolveSave({
+      note: {
+        id: 'note-1', tripId: 'trip-1', scopeType: 'TRIP', itineraryDayId: null,
+        content: '내 저장 내용', version: 3, deletedAt: null,
+      },
+    })
+    await flushPromises()
+
+    expect((wrapper.get('#memo-textarea').element as HTMLTextAreaElement).value).toBe('내 저장 내용')
+    expect(wrapper.get('.memo-status').text()).toBe('다른 멤버가 먼저 수정했습니다.')
+    expect(wrapper.find('.memo-reload-btn').exists()).toBe(true)
   })
 
 	it('실제 여행 멤버와 체크리스트 완료자의 프로필 이미지를 표시한다', async () => {
@@ -2140,6 +2276,67 @@ describe('RoutePage itinerary integration', () => {
     expect(holder.viewportState.retry).toHaveBeenCalledOnce()
   })
 
+  it('긴 그림의 굴곡을 100점으로 다시 줄이지 않고 저장한다', async () => {
+    const wrapper = mount(RoutePage, { global: { stubs: {
+      AppShell: { template: '<div><slot /></div>' },
+      LoadingState: true, ErrorState: true, EmptyState: true,
+    } } })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const coordinates = Array.from({ length: 1001 }, (_, index) => ({
+      lng: 127 + index / 100000, lat: 36 + (index % 2) / 1000,
+    }))
+    map.vm.$emit('drawingCreate', { coordinates, color: '#000', width: 4 })
+    await flushPromises()
+    expect(geo.simplifyCoordinates).not.toHaveBeenCalled()
+    expect(holder.state.createDrawing).toHaveBeenCalledWith(expect.objectContaining({
+      geometry: { type: 'LineString', coordinates: coordinates.map(p => [p.lng, p.lat]) },
+    }))
+    expect(map.props('drawings')?.[0]?.coordinates).toEqual(coordinates)
+  })
+
+  it('그리기 모드의 커서를 전송하고 지도 위에 멈춰 있어도 주기적으로 갱신한다', async () => {
+    let now = 1_000
+    const dateNow = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const timer = { callback: null as (() => void) | null }
+    const setInterval = vi.spyOn(window, 'setInterval').mockImplementation(((handler: TimerHandler) => {
+      timer.callback = handler as () => void
+      return 123 as unknown as ReturnType<typeof window.setInterval>
+    }) as unknown as typeof window.setInterval)
+    const clearInterval = vi.spyOn(window, 'clearInterval')
+      .mockImplementation((() => undefined) as typeof window.clearInterval)
+    const wrapper = mount(RoutePage, { global: { stubs: {
+      AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true,
+    } } })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const transport = realtime.instances[0]
+
+    map.vm.$emit('cursorMove', { lng: 127.1, lat: 36.1 })
+    await nextTick()
+    expect(transport.published.at(-1)).toEqual({
+      destination: '/app/trips/trip-1/cursor',
+      payload: { longitude: 127.1, latitude: 36.1, sequence: 1 },
+    })
+
+    now += 3_000
+    timer.callback?.()
+    expect(transport.published.at(-1)).toEqual({
+      destination: '/app/trips/trip-1/cursor',
+      payload: { longitude: 127.1, latitude: 36.1, sequence: 2 },
+    })
+
+    map.vm.$emit('cursorLeave')
+    now += 3_000
+    timer.callback?.()
+    expect(transport.published.filter((item: { destination: string }) => item.destination.endsWith('/cursor'))).toHaveLength(2)
+    wrapper.unmount()
+    expect(clearInterval).toHaveBeenCalledWith(123)
+    dateNow.mockRestore()
+    setInterval.mockRestore()
+    clearInterval.mockRestore()
+  })
+
   it('새 지도 그림을 좌표 단순화한 뒤 표시하고 지운다', async () => {
     localStorage.setItem('accessToken', 'e30.eyJ1c2VySWQiOiJ1c2VyLTEifQ.')
     const wrapper = mount(RoutePage, {
@@ -2172,7 +2369,7 @@ describe('RoutePage itinerary integration', () => {
     }])
 
     const localDrawingId = (map.props('drawings') as Array<{ id: string }>)[0].id
-    map.vm.$emit('drawingErase', localDrawingId)
+    map.vm.$emit('drawingErase', [localDrawingId])
     await nextTick()
 		expect(map.props('drawings')).toHaveLength(1)
     realtime.instances[0].subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
@@ -2186,7 +2383,82 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
     expect(map.props('drawings')).toEqual([])
-		expect(holder.state.deleteDrawing).toHaveBeenCalledWith('drawing-1')
+		expect(holder.state.deleteDrawings).toHaveBeenCalledWith(['drawing-1'])
+  })
+
+  it('실시간 연결이 잠시 끊겨도 그린 선을 화면에 유지하고 재연결 후 저장한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    const transport = realtime.instances[0]
+    clearCollaborationSessionIds()
+    transport.connected = false
+
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await nextTick()
+
+    expect(map.props('drawings')).toEqual([expect.objectContaining({
+      id: 'local-drawing-1',
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+    })])
+    expect(wrapper.get('.map-drawing-status').text()).toContain('그림 저장을 완료하지 못했습니다.')
+    expect(geo.simplifyCoordinates).not.toHaveBeenCalled()
+
+    registerCollaborationSessionId('session-2')
+    transport.connect()
+    await flushPromises()
+
+    expect(geo.simplifyCoordinates).toHaveBeenCalledOnce()
+    expect(holder.state.createDrawing).toHaveBeenCalledOnce()
+    expect(map.props('drawings')).toEqual([expect.objectContaining({ id: 'drawing-1' })])
+  })
+
+  it('서버 일정이 갱신되어도 저장 대기 중인 로컬 선을 유지한다', async () => {
+    geo.simplifyCoordinates.mockImplementationOnce(() => new Promise(() => undefined))
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    map.vm.$emit('drawingCreate', {
+      coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
+      color: '#1f2937',
+      width: 4,
+    })
+    await nextTick()
+
+    holder.state.mapDrawings.value = [{
+      id: 'server-drawing',
+      drawingType: 'FREEHAND',
+      geometry: { type: 'LineString', coordinates: [[126, 35], [127, 36]] },
+      style: { color: '#ef4444', width: 2 },
+    }]
+    await nextTick()
+
+    expect(map.props('drawings')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'server-drawing' }),
+      expect.objectContaining({ id: 'local-drawing-1' }),
+    ]))
   })
 
   it('지도 drawing preview를 전송하고 다른 사용자의 preview를 표시한다', async () => {
@@ -2217,7 +2489,7 @@ describe('RoutePage itinerary integration', () => {
       destination: '/app/trips/trip-1/map-drawing-preview',
       payload: expect.objectContaining({ previewId: 'local-preview', coordinates: expect.any(Array) }),
     })])
-    expect(transport.published[0].payload.coordinates).toHaveLength(32)
+    expect(transport.published[0].payload.coordinates.length).toBeLessThanOrEqual(100)
 
     transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
       tripId: 'trip-1', clientId: 'remote-client', previewId: 'remote-preview', sequence: 1,
@@ -2467,7 +2739,7 @@ describe('RoutePage itinerary integration', () => {
     expect(map.props('drawings')).toHaveLength(1)
 
     const localDrawingId = (map.props('drawings') as Array<{ id: string }>)[0].id
-    map.vm.$emit('drawingErase', localDrawingId)
+    map.vm.$emit('drawingErase', [localDrawingId])
     await flushPromises()
     expect(map.props('drawings')).toEqual([])
 
@@ -2717,7 +2989,7 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
-    expect(wrapper.get('.map-drawing-status[role="alert"]').text()).toContain('그림 좌표를 정리하지 못했습니다.')
+    expect(wrapper.get('.map-drawing-status[role="alert"]').text()).toContain('그림 저장을 완료하지 못했습니다.')
     wrapper.getComponent(MapboxItineraryMap).vm.$emit('drawingCreate', {
       coordinates: [{ lng: 126, lat: 35 }, { lng: 127, lat: 36 }],
       color: '#ef4444',
@@ -2730,5 +3002,113 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     expect(geo.simplifyCoordinates).toHaveBeenCalledTimes(3)
     expect(wrapper.find('.map-drawing-status').exists()).toBe(false)
+  })
+
+  it('화면 폭에 맞춰 좌측 일정 패널과 우측 협업 패널의 기본 상태를 전환한다', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 900 })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const shell = wrapper.get('.map-shell')
+    expect(shell.classes()).toContain('route-layout--overlay')
+    expect(shell.classes()).toContain('is-sidebar-hidden')
+    expect(shell.classes()).toContain('is-route-utility-collapsed')
+
+    await wrapper.get('.route-sidebar-restore').trigger('click')
+    expect(shell.classes()).toContain('is-sidebar-open')
+    expect(wrapper.find('.route-panel-backdrop').exists()).toBe(true)
+    expect(wrapper.get('.sidebar-toggle').attributes('aria-label')).toBe('일정 패널 닫기')
+
+    await wrapper.get('.route-utility-restore').trigger('click')
+    await wrapper.get('.route-utility-tab--chat').trigger('click')
+    expect(shell.classes()).toContain('is-sidebar-hidden')
+    expect(shell.classes()).not.toContain('is-route-utility-collapsed')
+
+    window.innerWidth = 1440
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+    expect(shell.classes()).toContain('route-layout--wide')
+    expect(shell.classes()).toContain('is-sidebar-open')
+    expect(shell.classes()).not.toContain('is-route-utility-collapsed')
+  })
+
+  it('모바일에서는 일정 패널을 닫은 상태와 bottom sheet 레이아웃 클래스로 시작한다', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 390 })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.map-shell').classes()).toEqual(expect.arrayContaining([
+      'route-layout--mobile',
+      'is-sidebar-hidden',
+      'is-route-utility-collapsed',
+    ]))
+    expect(wrapper.get('.route-sidebar-restore').attributes('aria-label')).toBe('일정 패널 열기')
+    expect(wrapper.get('.route-utility-restore').attributes('aria-label')).toBe('우측 패널 열기')
+    await wrapper.get('.route-sidebar-restore').trigger('click')
+    expect(wrapper.find('.sidebar-sheet-handle').exists()).toBe(true)
+    expect(wrapper.get('.sidebar-toggle').attributes('aria-label')).toBe('일정 패널 닫기')
+  })
+
+  it('그리기와 스티커 옵션 상자를 클릭한 도구 버튼 바로 위에 배치한다', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.map-tools-viewport').find('.map-tools').exists()).toBe(true)
+    const rect = (left: number, top: number, width: number, height: number) => ({
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    } as DOMRect)
+    vi.spyOn(wrapper.get('.map-canvas').element, 'getBoundingClientRect').mockReturnValue(rect(360, 72, 600, 728))
+    vi.spyOn(wrapper.get('[data-tool="pen"]').element, 'getBoundingClientRect').mockReturnValue(rect(480, 700, 40, 40))
+    vi.spyOn(wrapper.get('#pen-popover').element, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 240, 160))
+
+    await wrapper.get('[data-tool="pen"]').trigger('click')
+    await nextTick()
+    expect(wrapper.get('#pen-popover').attributes('style')).toContain('left: 140px')
+    expect(wrapper.get('#pen-popover').attributes('style')).toContain('bottom: 110px')
+
+    vi.spyOn(wrapper.get('[data-tool="sticker"]').element, 'getBoundingClientRect').mockReturnValue(rect(568, 700, 40, 40))
+    await wrapper.get('[data-tool="sticker"]').trigger('click')
+    await nextTick()
+    vi.spyOn(wrapper.get('#sticker-popover').element, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 204, 210))
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+    expect(wrapper.get('#sticker-popover').attributes('style')).toContain('left: 228px')
+    expect(wrapper.get('#sticker-popover').attributes('style')).toContain('bottom: 110px')
   })
 })

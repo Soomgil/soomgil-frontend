@@ -1,6 +1,7 @@
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import type { OAuthProvider, RegisterRequest } from '@/types/auth'
+import { toRef } from 'vue'
 
 export function useAuth() {
   const auth = useAuthStore()
@@ -37,5 +38,12 @@ export function useAuth() {
     router.push('/')
   }
 
-  return { ...auth, login, loginWithOAuth, register, logout }
+  return {
+    ...auth,
+    user: toRef(auth, 'user'),
+    login,
+    loginWithOAuth,
+    register,
+    logout,
+  }
 }

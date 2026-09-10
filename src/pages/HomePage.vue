@@ -12,10 +12,12 @@ import { communityPostToStory } from '@/utils/community'
 import type { TripSummary, TripDetailMember } from '@/types/trip'
 import type { CommunityPostSummary } from '@/types/community'
 import type { Place } from '@/types/place'
+import { useLocale } from '@/i18n'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const toast = useToast()
+const { locale } = useLocale()
 const creatingInvite = ref(false)
 const inviteTargetTrip = ref<TripSummary | null>(null)
 
@@ -69,7 +71,7 @@ const nearestTripDday = computed(() => {
 const nearestTripDateLabel = computed(() => {
   if (!nearestTrip.value?.startDate) return '여행 기간 미정'
   try {
-    return new Intl.DateTimeFormat('ko-KR', {
+    return new Intl.DateTimeFormat(locale.value === 'en' ? 'en-US' : 'ko-KR', {
       month: 'long',
       day: 'numeric',
       weekday: 'short',
@@ -80,6 +82,9 @@ const nearestTripDateLabel = computed(() => {
 })
 
 const userName = computed(() => authStore.user?.displayName?.trim() || '회원')
+const nearestTripWaitingLabel = computed(() => locale.value === 'en'
+  ? `An upcoming trip for ${userName.value}`
+  : `${userName.value}님을 기다리는 일정`)
 
 /* ── Search ────────────────────────────────────────────── */
 const searchCategories: { key: string; icon: string; isNew?: boolean }[] = [
@@ -323,7 +328,7 @@ async function fetchHomeData() {
                   width: currentSlide === i ? '24px' : '8px',
                 }"
                 @click="goToSlide(i)"
-                :aria-label="`슬라이드 ${i + 1}`"
+                :aria-label="locale === 'en' ? `Slide ${i + 1}` : `슬라이드 ${i + 1}`"
               />
             </div>
           </div>
@@ -444,7 +449,7 @@ async function fetchHomeData() {
 
                 <div class="home-nearest-copy">
                   <span class="home-nearest-dday-text">{{ nearestTripDday ?? '날짜 미정' }}</span>
-                  <p class="home-nearest-waiting">{{ userName }}님을 기다리는 일정</p>
+                  <p class="home-nearest-waiting">{{ nearestTripWaitingLabel }}</p>
                   <h3 class="home-nearest-trip-title">{{ nearestTrip.title }}</h3>
                 </div>
 

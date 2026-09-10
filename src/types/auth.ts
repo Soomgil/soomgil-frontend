@@ -181,27 +181,6 @@ export interface UserSettings {
   tripInviteEmailOptIn: boolean
 }
 
-export interface UserSession {
-  id: string
-  refreshTokenFamilyId: string
-  refreshTokenVersion: number
-  deviceName: string | null
-  deviceOs: string | null
-  lastUsedAt: string | null
-  lastRefreshedAt: string | null
-  expiresAt: string
-  revokedAt: string | null
-  revocationReason: string | null
-}
-
-export interface SecurityEvent {
-  id: number
-  eventType: string
-  success: boolean
-  failureReason: string | null
-  createdAt: string
-}
-
 export interface UserSummary {
   id: string
   displayName: string

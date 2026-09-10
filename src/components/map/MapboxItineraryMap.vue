@@ -97,7 +97,7 @@ const emit = defineEmits<{
   selectNearbyPlace: [placeProvider: string, placeId: string]
   viewportChange: [viewport: Viewport]
   drawingCreate: [drawing: MapDrawingDraft]
-  drawingErase: [drawingId: string]
+  drawingErase: [drawingIds: string[]]
   drawingPreview: [event: DrawingPreviewEvent]
   routePoint: [coordinate: LngLat]
   mapObjectPlace: [transform: MapObjectTransform]
@@ -107,6 +107,7 @@ const emit = defineEmits<{
   mapObjectPreview: [drawingId: string, transform: MapObjectTransform]
   mapObjectChange: [drawingId: string, transform: MapObjectTransform]
   cursorMove: [coordinate: LngLat]
+  cursorLeave: []
 }>()
 
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
@@ -606,7 +607,7 @@ async function initializeMap() {
     })
     map = createdMap
     appliedMapStyle = mapStyle.value
-    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left')
+    createdMap.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     createdMap.on('style.load', () => {
       if (sequence !== initializationSequence || map !== createdMap) return
       if (appliedMapStyle !== mapStyle.value) {
@@ -630,6 +631,7 @@ async function initializeMap() {
     createdMap.on('move', updateDrawingProjection)
     createdMap.on('resize', updateDrawingProjection)
     createdMap.on('mousemove', (event) => emit('cursorMove', { lng: event.lngLat.lng, lat: event.lngLat.lat }))
+    createdMap.on('mouseleave', () => emit('cursorLeave'))
     createdMap.on('click', () => {
       if (!props.mapObjectPlacement) emit('mapObjectSelect', null)
     })
@@ -672,6 +674,7 @@ onBeforeUnmount(() => {
       :drawings-visible="drawingsVisible"
       :projection-revision="projectionRevision"
       :route-waypoints="routeWaypoints"
+      :objects="mapObjects"
       :project="projectDrawingCoordinate"
       :unproject="unprojectDrawingPoint"
       @create="emit('drawingCreate', $event)"
@@ -680,6 +683,8 @@ onBeforeUnmount(() => {
       @route-point="emit('routePoint', $event)"
       @pan="panMapByOverlayDelta"
       @wheel-zoom="zoomMapByOverlayWheel"
+      @cursor-move="emit('cursorMove', $event)"
+      @cursor-leave="emit('cursorLeave')"
     />
     <MapObjectOverlay
       :key="mapObjectEpoch"

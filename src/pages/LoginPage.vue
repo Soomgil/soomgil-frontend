@@ -5,10 +5,12 @@ import { useAuth } from '@/composables/useAuth'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import OAuthButtons from '@/components/auth/OAuthButtons.vue'
 import { getAuthErrorMessage } from '@/utils/auth-error'
+import { useLocale } from '@/i18n'
 
 const router = useRouter()
 const route = useRoute()
 const { login, loginWithOAuth } = useAuth()
+const { t } = useLocale()
 
 const email = ref('')
 const password = ref('')
@@ -60,31 +62,31 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
           ></div>
           <div class="auth-visual-content">
             <p class="eyebrow">Welcome Back</p>
-            <h1>함께 만들던 여행을 바로 이어가세요</h1>
-            <p>초대받은 여행방, 저장한 루트, 멤버 취향 분석이 계정에 안전하게 동기화되어 있습니다.</p>
+            <h1>{{ t('login.hero') }}</h1>
+            <p>{{ t('login.heroDesc') }}</p>
           </div>
         </div>
 
         <form class="auth-form auth-modern-form" aria-label="로그인" @submit.prevent="handleLogin">
           <div class="auth-form-head">
-            <h2>로그인</h2>
-            <p>내 여행 대시보드로 돌아가 계획을 계속 정리하세요.</p>
+            <h2>{{ t('auth.login') }}</h2>
+            <p>{{ t('login.desc') }}</p>
           </div>
 
           <OAuthButtons mode="signin" :disabled="submitting" @select="handleOAuthLogin" />
-          <div class="divider"><span>또는 이메일로 로그인</span></div>
+          <div class="divider"><span>{{ t('login.emailOption') }}</span></div>
 
           <label>
-            <span class="small muted">이메일</span>
+            <span class="small muted">{{ t('login.email') }}</span>
             <span class="auth-field-wrap"><span class="material-symbols-rounded">mail</span><input v-model="email" class="field" type="email" aria-label="이메일"></span>
           </label>
           <label>
-            <span class="small muted">비밀번호</span>
+            <span class="small muted">{{ t('login.password') }}</span>
             <span class="auth-field-wrap"><span class="material-symbols-rounded">lock</span><input v-model="password" class="field" type="password" aria-label="비밀번호"></span>
           </label>
           <div class="auth-form-options">
-            <label class="auth-check"><input v-model="rememberMe" type="checkbox"> 로그인 유지</label>
-            <a href="#" @click.prevent="router.push('/reset-password')">비밀번호 찾기</a>
+            <label class="auth-check"><input v-model="rememberMe" type="checkbox"> {{ t('login.remember') }}</label>
+            <a href="#" @click.prevent="router.push('/reset-password')">{{ t('login.forgot') }}</a>
           </div>
 
           <div class="auth-feedback-slot" data-testid="auth-feedback" aria-live="polite">
@@ -93,10 +95,10 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
           </div>
 
           <button class="btn primary auth-main-action" type="submit" :disabled="submitting">
-            <span class="material-symbols-rounded">login</span>로그인
+            <span class="material-symbols-rounded">login</span>{{ t('auth.login') }}
           </button>
 
-          <p class="small muted auth-switch">계정이 없나요? <a href="#" @click.prevent="router.push('/register')">회원가입</a></p>
+          <p class="small muted auth-switch">{{ t('login.noAccount') }} <a href="#" @click.prevent="router.push('/register')">{{ t('auth.register') }}</a></p>
         </form>
       </section>
     </main>

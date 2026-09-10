@@ -120,7 +120,7 @@ describe('MapboxItineraryMap', () => {
     await nextTick()
 
     expect(mapbox.Map).toHaveBeenCalledOnce()
-    expect(mapbox.map.addControl).toHaveBeenCalledWith(expect.any(Object), 'top-left')
+    expect(mapbox.map.addControl).toHaveBeenCalledWith(expect.any(Object), 'top-right')
     expect(mapbox.Marker).toHaveBeenCalledTimes(2)
     expect(mapbox.Marker).toHaveBeenNthCalledWith(1, expect.objectContaining({
       anchor: 'bottom',
@@ -465,16 +465,20 @@ describe('MapboxItineraryMap', () => {
     const draft = { coordinates: drawing.coordinates, color: drawing.color, width: drawing.width }
     const preview = { previewId: 'preview-1', sequence: 1, phase: 'UPDATE', ...draft }
     overlay.vm.$emit('create', draft)
-    overlay.vm.$emit('erase', drawing.id)
+    overlay.vm.$emit('erase', [drawing.id])
     overlay.vm.$emit('preview', preview)
     overlay.vm.$emit('routePoint', { lng: 127.4, lat: 36.4 })
+    overlay.vm.$emit('cursorMove', { lng: 127.41, lat: 36.41 })
+    overlay.vm.$emit('cursorLeave')
     overlay.vm.$emit('pan', { x: 12, y: -8 })
     await nextTick()
 
     expect(wrapper.emitted('drawingCreate')).toEqual([[draft]])
-    expect(wrapper.emitted('drawingErase')).toEqual([[drawing.id]])
+    expect(wrapper.emitted('drawingErase')).toEqual([[[drawing.id]]])
     expect(wrapper.emitted('drawingPreview')).toEqual([[preview]])
     expect(wrapper.emitted('routePoint')).toEqual([[{ lng: 127.4, lat: 36.4 }]])
+    expect(wrapper.emitted('cursorMove')).toEqual([[{ lng: 127.41, lat: 36.41 }]])
+    expect(wrapper.emitted('cursorLeave')).toHaveLength(1)
     expect(mapbox.map.panBy).toHaveBeenCalledWith([-12, 8], { duration: 0 })
   })
 

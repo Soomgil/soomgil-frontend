@@ -12,6 +12,12 @@ export interface DrawingPreviewEvent {
 }
 
 export interface DrawingPreviewMessage extends DrawingPreviewEvent {
+  /**
+   * 한 획 안에서 이 구간의 시작 좌표 번호. 없으면 기존 전체 미리보기 메시지다.
+   * 구간 메시지의 END는 해당 구간의 확정이며, CANCEL은 획 전체를 취소한다.
+   * 같은 sequence의 서로 다른 구간은 함께 수신할 수 있다.
+   */
+  coordinateOffset?: number
   tripId: string
   clientId: string
   sentAt: string

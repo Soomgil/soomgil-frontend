@@ -1,16 +1,17 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getSettings, getSessions, getSecurityEvents, updateSettings, logout } = vi.hoisted(() => ({
+const { getSettings, updateSettings, deleteMe, logout, toastSuccess, updateMe } = vi.hoisted(() => ({
   getSettings: vi.fn(),
-  getSessions: vi.fn(),
-  getSecurityEvents: vi.fn(),
   updateSettings: vi.fn(),
+  deleteMe: vi.fn(),
   logout: vi.fn(),
+  toastSuccess: vi.fn(),
+  updateMe: vi.fn(),
 }))
 
 vi.mock('@/api/user.api', () => ({
-  userApi: { getSettings, getSessions, getSecurityEvents, updateSettings },
+  userApi: { getSettings, updateSettings, deleteMe, updateMe },
 }))
 
 vi.mock('@/composables/useAuth', () => ({
@@ -20,15 +21,18 @@ vi.mock('@/composables/useAuth', () => ({
   }),
 }))
 
+vi.mock('@/composables/useToast', () => ({
+  useToast: () => ({ success: toastSuccess, error: vi.fn(), info: vi.fn() }),
+}))
 import SettingsPage from './SettingsPage.vue'
 
 describe('SettingsPage', () => {
   beforeEach(() => {
     getSettings.mockReset()
-    getSessions.mockReset()
-    getSecurityEvents.mockReset()
     updateSettings.mockReset()
+    deleteMe.mockReset()
     logout.mockReset()
+    toastSuccess.mockReset()
 
     getSettings.mockResolvedValue({
       displayLanguage: 'ko',
@@ -36,8 +40,6 @@ describe('SettingsPage', () => {
       marketingEmailOptIn: true,
       tripInviteEmailOptIn: true,
     })
-    getSessions.mockResolvedValue({ items: [] })
-    getSecurityEvents.mockResolvedValue({ items: [] })
   })
 
   it('loads account settings on mount and uses option controls', async () => {
@@ -51,55 +53,104 @@ describe('SettingsPage', () => {
     
     const selects = wrapper.findAll('select')
     expect((selects[0].element as HTMLSelectElement).value).toBe('ko')
-    expect((selects[1].element as HTMLSelectElement).value).toBe('Asia/Seoul')
+    expect(selects[0].findAll('option').map((option) => option.attributes('value'))).toEqual(['ko', 'en'])
+    expect(wrapper.text()).not.toContain('타임존')
+    expect(wrapper.text()).not.toContain('마케팅 이메일 수신')
+    expect(wrapper.text()).not.toContain('알림 설정')
     expect(wrapper.text()).not.toContain('프로필 저장')
     expect(wrapper.find('textarea').exists()).toBe(false)
 
     const checkboxes = wrapper.findAll('input[type="checkbox"]')
-    expect((checkboxes[0].element as HTMLInputElement).checked).toBe(true) // marketing
-    expect((checkboxes[1].element as HTMLInputElement).checked).toBe(true) // trip invite
+    expect(checkboxes).toHaveLength(1)
+    expect((checkboxes[0].element as HTMLInputElement).checked).toBe(true)
   })
 
-  it('renders actual login session data', async () => {
-    getSessions.mockResolvedValue({ items: [{ id: 'session-1', deviceName: 'Chrome', deviceOs: 'Windows', expiresAt: '2026-06-30T00:00:00Z' }] })
-    const wrapper = mount(SettingsPage, {
-      global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
-    })
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Chrome')
-    expect(wrapper.text()).toContain('Windows')
-  })
-
-  it('saves settings correctly and shows success message', async () => {
+  it('saves settings correctly and reports success through a toast only', async () => {
     updateSettings.mockResolvedValue({})
     const wrapper = mount(SettingsPage, {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
     })
     await flushPromises()
 
-    await wrapper.findAll('input[type="checkbox"]')[0].setValue(false) // toggle marketing
+    await wrapper.findAll('input[type="checkbox"]')[0].setValue(false)
     await wrapper.findAll('button').find((button) => button.text() === '설정 저장')!.trigger('click')
 
     expect(updateSettings).toHaveBeenCalledWith({
       displayLanguage: 'ko',
-      timezone: 'Asia/Seoul',
-      marketingEmailOptIn: false,
-      tripInviteEmailOptIn: true,
+      tripInviteEmailOptIn: false,
     })
 
     await flushPromises()
-    expect(wrapper.text()).toContain('설정을 저장했습니다.')
+    expect(toastSuccess).toHaveBeenCalledWith('설정을 저장했습니다.')
+    expect(wrapper.find('.status--success').exists()).toBe(false)
   })
 
-  it('triggers logout', async () => {
+  it('applies the saved English language to the settings UI', async () => {
+    getSettings.mockResolvedValue({ displayLanguage: 'en', tripInviteEmailOptIn: true })
+    const wrapper = mount(SettingsPage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Preferences')
+    expect(wrapper.text()).toContain('Trip invitation emails')
+    expect(document.documentElement.lang).toBe('en')
+  })
+
+  it('does not display logout button and only retains account deletion in account management', async () => {
     const wrapper = mount(SettingsPage, {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
     })
     await flushPromises()
 
-    await wrapper.findAll('button').find((button) => button.text() === '로그아웃')!.trigger('click')
-    expect(logout).toHaveBeenCalled()
+    const logoutButton = wrapper.findAll('button').find((button) => button.text() === '로그아웃')
+    expect(logoutButton).toBeUndefined()
+    expect(wrapper.findAll('button').find((button) => button.text() === '계정 탈퇴')!.exists()).toBe(true)
+  })
+
+  it('allows updating profile visibility between public and private', async () => {
+    updateMe.mockResolvedValue({})
+    const wrapper = mount(SettingsPage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+
+    const privateBtn = wrapper.findAll('button').find((button) => button.text().includes('비공개'))!
+    await privateBtn.trigger('click')
+
+    expect(updateMe).toHaveBeenCalledWith({ profileVisibility: 'PRIVATE' })
+    await flushPromises()
+    expect(toastSuccess).toHaveBeenCalledWith('비공개 계정으로 변경되었습니다.')
+  })
+
+  it('deletes the account immediately after confirmation and logs out', async () => {
+    deleteMe.mockResolvedValue(undefined)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(SettingsPage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === '계정 탈퇴')!.trigger('click')
+    await flushPromises()
+
+    expect(deleteMe).toHaveBeenCalledOnce()
+    expect(logout).toHaveBeenCalledOnce()
+    expect(toastSuccess).toHaveBeenCalledWith('회원 탈퇴가 완료되었습니다.')
+    vi.restoreAllMocks()
+  })
+
+  it('shows the account email without an email-change control', async () => {
+    const wrapper = mount(SettingsPage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.avatar-change-btn').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('소개 편집')
+    expect(wrapper.text()).toContain('test@example.com')
+    expect(wrapper.text()).not.toContain('이메일 변경')
+    expect(wrapper.find('input[type="email"]').exists()).toBe(false)
   })
 })
-
