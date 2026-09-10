@@ -2180,8 +2180,14 @@ const dayTagLabels = computed(() => [
 ])
 const activeMemoDay = ref('전체')
 const notes = ref<Record<string, Note | null>>({})
+const loadedMemoVersions = ref<Record<string, number>>({})
+const memoLoadTokens: Record<string, number> = {}
+const memoRemoteRevisions: Record<string, number> = {}
+const deletedMemoIds = new Set<string>()
 const memoLoading = ref(false)
 const memoStatus = ref('')
+const memoDirty = ref(false)
+const memoConflict = ref(false)
 
 function scopeForTag(tag: string): PlanningScope {
   if (tag === '전체') return { scopeType: 'TRIP', itineraryDayId: null }
@@ -2191,6 +2197,8 @@ function scopeForTag(tag: string): PlanningScope {
 }
 
 async function switchMemoDay(tag: string) {
+  if (tag === activeMemoDay.value || memoLoading.value) return
+  if (memoDirty.value && !window.confirm('작성 중인 내용을 버리고 다른 메모로 이동할까요?')) return
   activeMemoDay.value = tag
   await loadNote(tag)
 }
@@ -2212,26 +2220,56 @@ function formatMemo(kind: 'bold' | 'italic' | 'underline' | 'strike' | 'bullet' 
   else if (kind === 'number') replacement = selected.split('\n').map((line, index) => `${index + 1}. ${line}`).join('\n')
   else replacement = `${wrappers[kind][0]}${selected}${wrappers[kind][1]}`
   memoTextDisplay.value = `${memoTextDisplay.value.slice(0, start)}${replacement}${memoTextDisplay.value.slice(end)}`
+  markMemoDirty()
   requestAnimationFrame(() => {
     textarea.focus()
     textarea.setSelectionRange(start, start + replacement.length)
   })
 }
 
+function markMemoDirty() {
+  memoDirty.value = true
+  if (!memoConflict.value) memoStatus.value = ''
+}
+
+function showMemoConflict() {
+  memoConflict.value = true
+  memoStatus.value = '다른 멤버가 먼저 수정했습니다.'
+}
+
+function isMemoVersionConflict(error: any) {
+  const code = error?.response?.data?.code ?? error?.response?.data?.errorCode
+  return error?.response?.status === 409 && code === 'PLANNING_VERSION_CONFLICT'
+}
+
 async function loadNote(tag = activeMemoDay.value) {
   if (!tripId) return
   const scope = scopeForTag(tag)
   if (scope.scopeType === 'DAY' && !scope.itineraryDayId) return
+  const loadToken = (memoLoadTokens[tag] ?? 0) + 1
+  memoLoadTokens[tag] = loadToken
   memoLoading.value = true
   memoStatus.value = ''
   try {
     const note = await planningApi.getNote(tripId, scope)
+    if (memoLoadTokens[tag] !== loadToken) return
     notes.value[tag] = note
-    memoTextDisplay.value = note?.content ?? ''
+    loadedMemoVersions.value[tag] = note?.version ?? 0
+    if (activeMemoDay.value === tag) {
+      memoTextDisplay.value = note?.content ?? ''
+      memoDirty.value = false
+      memoConflict.value = false
+    }
   } catch (error: any) {
+    if (memoLoadTokens[tag] !== loadToken) return
     if (error?.response?.status === 404) {
       notes.value[tag] = null
-      memoTextDisplay.value = ''
+      loadedMemoVersions.value[tag] = 0
+      if (activeMemoDay.value === tag) {
+        memoTextDisplay.value = ''
+        memoDirty.value = false
+        memoConflict.value = false
+      }
     } else {
       memoStatus.value = '불러오기 실패'
     }
@@ -2241,40 +2279,78 @@ async function loadNote(tag = activeMemoDay.value) {
 }
 
 async function saveNote() {
+  const tag = activeMemoDay.value
   const content = memoTextDisplay.value.trim()
-  const scope = scopeForTag(activeMemoDay.value)
+  const scope = scopeForTag(tag)
   if (!content || (scope.scopeType === 'DAY' && !scope.itineraryDayId)) return
+  const remoteRevisionAtStart = memoRemoteRevisions[tag] ?? 0
   memoLoading.value = true
   memoStatus.value = '저장 중…'
   try {
-    const result = await planningApi.saveNote(tripId, scope, content)
-    notes.value[activeMemoDay.value] = result.note
+    const result = await planningApi.saveNote(
+      tripId,
+      scope,
+      content,
+      loadedMemoVersions.value[tag] ?? 0,
+    )
+    if ((memoRemoteRevisions[tag] ?? 0) !== remoteRevisionAtStart) {
+      if (!memoConflict.value) memoStatus.value = '다른 멤버의 최신 메모를 반영했습니다.'
+      return
+    }
+    if (!result.note) throw new Error('Saved note is missing from the response.')
+    notes.value[tag] = result.note
+    loadedMemoVersions.value[tag] = result.note.version
+    memoDirty.value = false
+    memoConflict.value = false
     memoStatus.value = '저장됨'
-  } catch {
-    memoStatus.value = '저장 실패'
+  } catch (error: any) {
+    if (isMemoVersionConflict(error)) showMemoConflict()
+    else memoStatus.value = '저장 실패'
   } finally {
     memoLoading.value = false
   }
 }
 
 async function clearNote() {
-  const note = notes.value[activeMemoDay.value]
+  const tag = activeMemoDay.value
+  const note = notes.value[tag]
   if (!note) {
     memoTextDisplay.value = ''
+    memoDirty.value = false
+    memoConflict.value = false
     return
   }
   if (!window.confirm('이 메모를 삭제할까요?')) return
+  const remoteRevisionAtStart = memoRemoteRevisions[tag] ?? 0
   memoLoading.value = true
   try {
-    await planningApi.deleteNote(tripId, note.id)
-    notes.value[activeMemoDay.value] = null
+    await planningApi.deleteNote(
+      tripId,
+      note.id,
+      loadedMemoVersions.value[tag] ?? note.version,
+    )
+    deletedMemoIds.add(note.id)
+    if ((memoRemoteRevisions[tag] ?? 0) !== remoteRevisionAtStart) {
+      if (!memoConflict.value) memoStatus.value = '다른 멤버의 최신 메모를 반영했습니다.'
+      return
+    }
+    notes.value[tag] = null
+    loadedMemoVersions.value[tag] = 0
     memoTextDisplay.value = ''
+    memoDirty.value = false
+    memoConflict.value = false
     memoStatus.value = '삭제됨'
-  } catch {
-    memoStatus.value = '삭제 실패'
+  } catch (error: any) {
+    if (isMemoVersionConflict(error)) showMemoConflict()
+    else memoStatus.value = '삭제 실패'
   } finally {
     memoLoading.value = false
   }
+}
+
+async function reloadLatestMemo() {
+  if (memoDirty.value && !window.confirm('작성 중인 내용을 버리고 최신 메모를 불러올까요?')) return
+  await loadNote()
 }
 
 /* ── Todo (day-filtered) ── */
@@ -2900,6 +2976,7 @@ function applyPlanningRealtimeEvent(message: unknown) {
   if (!message || typeof message !== 'object') return false
   const event = message as {
     eventType?: string
+    actorUserId?: string
     note?: Note
     noteId?: string
     checklist?: Checklist
@@ -2913,16 +2990,44 @@ function applyPlanningRealtimeEvent(message: unknown) {
       if (!event.note) return false
       const tag = tagForScope(event.note.scopeType, event.note.itineraryDayId)
       if (!tag) return false
+      if (deletedMemoIds.has(event.note.id)) return true
+      const current = notes.value[tag]
+      if (current?.id === event.note.id && current.version >= event.note.version) return true
+      memoLoadTokens[tag] = (memoLoadTokens[tag] ?? 0) + 1
+      const isRemote = event.actorUserId !== currentUserId.value
+      if (isRemote) memoRemoteRevisions[tag] = (memoRemoteRevisions[tag] ?? 0) + 1
       notes.value = { ...notes.value, [tag]: event.note }
-      if (activeMemoDay.value === tag) memoTextDisplay.value = event.note.content
+      if (activeMemoDay.value === tag) {
+        if (memoDirty.value && isRemote) {
+          showMemoConflict()
+        } else {
+          memoTextDisplay.value = event.note.content
+          loadedMemoVersions.value[tag] = event.note.version
+          memoDirty.value = false
+          memoConflict.value = false
+        }
+      }
       return true
     }
     case 'planning.note.deleted': {
       const entries = Object.entries(notes.value)
       const tag = entries.find(([, note]) => note?.id === event.noteId)?.[0]
       if (!tag) return false
+      if (event.noteId) deletedMemoIds.add(event.noteId)
+      memoLoadTokens[tag] = (memoLoadTokens[tag] ?? 0) + 1
+      const isRemote = event.actorUserId !== currentUserId.value
+      if (isRemote) memoRemoteRevisions[tag] = (memoRemoteRevisions[tag] ?? 0) + 1
       notes.value = { ...notes.value, [tag]: null }
-      if (activeMemoDay.value === tag) memoTextDisplay.value = ''
+      if (activeMemoDay.value === tag) {
+        if (memoDirty.value && isRemote) {
+          showMemoConflict()
+        } else {
+          memoTextDisplay.value = ''
+          loadedMemoVersions.value[tag] = 0
+          memoDirty.value = false
+          memoConflict.value = false
+        }
+      }
       return true
     }
     case 'planning.checklist.upserted':
@@ -4969,28 +5074,32 @@ function textAvatarStyle(index: unknown) {
             <div class="panel-tabs" id="memo-day-tags">
               <button v-for="tag in dayTagLabels" :key="tag" type="button"
                 :class="['panel-tab-tag', { 'active-memo': activeMemoDay === tag }]"
+                :disabled="memoLoading"
                 @click="switchMemoDay(tag)">{{ tag }}</button>
             </div>
             <!-- 미니 포맷 툴바 -->
             <div class="memo-toolbar">
-              <button type="button" class="toolbar-btn" title="굵게" aria-label="굵게" @click="formatMemo('bold')"><span class="material-symbols-rounded">format_bold</span></button>
-              <button type="button" class="toolbar-btn" title="기울임" aria-label="기울임" @click="formatMemo('italic')"><span class="material-symbols-rounded">format_italic</span></button>
-              <button type="button" class="toolbar-btn" title="밑줄" aria-label="밑줄" @click="formatMemo('underline')"><span class="material-symbols-rounded">format_underlined</span></button>
-              <button type="button" class="toolbar-btn" title="취소선" aria-label="취소선" @click="formatMemo('strike')"><span class="material-symbols-rounded">format_strikethrough</span></button>
+              <button type="button" class="toolbar-btn" title="굵게" aria-label="굵게" :disabled="memoLoading" @click="formatMemo('bold')"><span class="material-symbols-rounded">format_bold</span></button>
+              <button type="button" class="toolbar-btn" title="기울임" aria-label="기울임" :disabled="memoLoading" @click="formatMemo('italic')"><span class="material-symbols-rounded">format_italic</span></button>
+              <button type="button" class="toolbar-btn" title="밑줄" aria-label="밑줄" :disabled="memoLoading" @click="formatMemo('underline')"><span class="material-symbols-rounded">format_underlined</span></button>
+              <button type="button" class="toolbar-btn" title="취소선" aria-label="취소선" :disabled="memoLoading" @click="formatMemo('strike')"><span class="material-symbols-rounded">format_strikethrough</span></button>
               <div class="toolbar-divider"></div>
-              <button type="button" class="toolbar-btn" title="글머리 기호" aria-label="글머리 기호" @click="formatMemo('bullet')"><span class="material-symbols-rounded">format_list_bulleted</span></button>
-              <button type="button" class="toolbar-btn" title="번호 매기기" aria-label="번호 매기기" @click="formatMemo('number')"><span class="material-symbols-rounded">format_list_numbered</span></button>
+              <button type="button" class="toolbar-btn" title="글머리 기호" aria-label="글머리 기호" :disabled="memoLoading" @click="formatMemo('bullet')"><span class="material-symbols-rounded">format_list_bulleted</span></button>
+              <button type="button" class="toolbar-btn" title="번호 매기기" aria-label="번호 매기기" :disabled="memoLoading" @click="formatMemo('number')"><span class="material-symbols-rounded">format_list_numbered</span></button>
             </div>
             <div class="panel-body memo-body">
-              <textarea id="memo-textarea" ref="memoTextarea" placeholder="여행 계획, 팁, 예약 정보 등을 자유롭게 메모해보세요." v-model="memoTextDisplay"></textarea>
+              <textarea id="memo-textarea" ref="memoTextarea" placeholder="여행 계획, 팁, 예약 정보 등을 자유롭게 메모해보세요." v-model="memoTextDisplay" :disabled="memoLoading" @input="markMemoDirty"></textarea>
             </div>
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">
                 <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
                 <span v-if="memoStatus" class="memo-status" role="status">{{ memoStatus }}</span>
+                <button v-if="memoConflict" type="button" class="memo-reload-btn" @click="reloadLatestMemo">
+                  최신 메모 불러오기
+                </button>
               </div>
               <div class="memo-footer-actions">
-                <button id="memo-clear-btn" class="btn text-danger-btn memo-action-btn" type="button" @click="clearNote">
+                <button id="memo-clear-btn" class="btn text-danger-btn memo-action-btn" type="button" :disabled="memoLoading" @click="clearNote">
                   <span class="material-symbols-rounded">delete</span>
                   초기화
                 </button>
@@ -5720,6 +5829,16 @@ function textAvatarStyle(index: unknown) {
   font-size: 12px;
   font-weight: 800;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-utility-sidebar .memo-reload-btn {
+  border: 0;
+  background: transparent;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: underline;
   white-space: nowrap;
 }
 .route-utility-sidebar .todo-list {
