@@ -13,6 +13,7 @@ vi.mock('@/api/itinerary.api', () => ({
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
     reorder: vi.fn(),
+    updateRouteMode: vi.fn(),
 		mapMatchRoute: vi.fn(),
 		deleteRoute: vi.fn(),
 		createDrawing: vi.fn(),
@@ -78,6 +79,29 @@ const itinerary: Itinerary = {
 }
 
 describe('useItinerary', () => {
+  it('이동수단 변경 결과를 affectedRouteIds 처리 후 유지한다', async () => {
+    const state = useItinerary('trip-1')
+    state.routes.value = [route]
+    state.itineraryVersion.value = 3
+    const updated: TripRoute = { ...route, mode: 'CYCLING', distanceMeters: 800, durationSeconds: 240 }
+    vi.mocked(itineraryApi.updateRouteMode).mockResolvedValue({ tripId: 'trip-1', itineraryVersion: 4,
+      day: null, item: null, route: updated, drawing: null, affectedRouteIds: [route.id] })
+    await state.updateRouteMode(route.id, 'CYCLING')
+    expect(itineraryApi.updateRouteMode).toHaveBeenCalledWith('trip-1', route.id, 3, 'CYCLING')
+    expect(state.routes.value).toEqual([updated])
+    expect(state.itineraryVersion.value).toBe(4)
+  })
+
+  it('경로 재계산 실패 시 기존 구간과 버전을 보존한다', async () => {
+    const state = useItinerary('trip-1')
+    state.routes.value = [route]
+    state.itineraryVersion.value = 3
+    vi.mocked(itineraryApi.updateRouteMode).mockRejectedValue(new Error('NoRoute'))
+    await expect(state.updateRouteMode(route.id, 'DRIVING')).rejects.toThrow('NoRoute')
+    expect(state.routes.value).toEqual([route])
+    expect(state.itineraryVersion.value).toBe(3)
+    expect(state.mutating.value).toBe(false)
+  })
   beforeEach(() => {
     vi.resetAllMocks()
     scheduledDay.items = []

@@ -363,7 +363,7 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('일부 대화 내역을 불러오지 못했습니다.')
-    const retry = wrapper.findAll('button').find((button) => button.text().includes('다시 시도'))
+    const retry = wrapper.findAll('#ai-chat-panel button').find((button) => button.text().trim() === '다시 시도')
     await retry!.trigger('click')
     await flushPromises()
 
@@ -1306,7 +1306,7 @@ describe('RoutePage itinerary integration', () => {
     ])
   })
 
-  it('경로 펜에서 지도 마커의 일정 item id로 두 장소를 연결한다', async () => {
+  it.each(['WALKING', 'CYCLING', 'DRIVING'] as const)('경로 펜에서 선택한 %s 이동수단으로 두 장소를 연결한다', async (mode) => {
     holder.state.fetchItinerary.mockImplementationOnce(async () => {
       holder.state.days.value = [{
         id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
@@ -1353,6 +1353,13 @@ describe('RoutePage itinerary integration', () => {
     const map = wrapper.getComponent(MapboxItineraryMap)
 
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    await nextTick()
+    const modeLabels = {
+      WALKING: '도보',
+      CYCLING: '자전거',
+      DRIVING: '자동차',
+    } as const
+    await wrapper.get(`#route-mode-popover button[aria-label="${modeLabels[mode]}"]`).trigger('click')
     map.vm.$emit('selectPlace', undefined, undefined, 'item-1')
     await nextTick()
     map.vm.$emit('selectPlace', undefined, undefined, 'item-2')
@@ -1361,7 +1368,7 @@ describe('RoutePage itinerary integration', () => {
     expect(holder.state.mapMatchRoute).toHaveBeenCalledWith({
       originItineraryItemId: 'item-1',
       destinationItineraryItemId: 'item-2',
-      mode: 'WALKING',
+      mode,
       coordinates: [{ lng: 127.38, lat: 36.35 }, { lng: 127.39, lat: 36.36 }],
     })
     expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
