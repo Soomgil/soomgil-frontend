@@ -7,7 +7,7 @@ import type { MapCursorView, MapObjectLockView } from './MapObjectOverlay.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from './MapDrawingOverlay.vue'
 import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { LngLat, Viewport } from '@/types/geo'
-import type { MapDrawing, MapObjectTransform } from '@/types/itinerary'
+import type { MapDrawing, MapObjectTransform, RouteMode } from '@/types/itinerary'
 import type { AccessibilityFlag, PlaceAccessibility } from '@/types/place'
 import { useTheme } from '@/composables/useTheme'
 
@@ -39,6 +39,8 @@ export interface ItineraryMapStop {
 
 export interface ItineraryMapRoute {
   id: string
+  provider?: string
+  mode?: RouteMode
   geometry: Record<string, unknown>
   originItineraryItemId?: string | null
   destinationItineraryItemId?: string | null
@@ -118,6 +120,7 @@ const projectionRevision = ref(0)
 let mapboxgl: typeof import('mapbox-gl').default | null = null
 let map: MapboxMap | null = null
 let markers: MapboxMarker[] = []
+let routeModeMarkers: MapboxMarker[] = []
 let resizeObserver: ResizeObserver | null = null
 let lineLayerIds: string[] = []
 let styleReady = false
@@ -134,7 +137,12 @@ const MAPBOX_STYLE_NAVIGATION_DAY = 'mapbox://styles/mapbox/navigation-day-v1'
 const MAPBOX_STYLE_NAVIGATION_NIGHT = 'mapbox://styles/mapbox/navigation-night-v1'
 const MAPBOX_STYLE_STANDARD = 'mapbox://styles/mapbox/standard'
 const STANDARD_VIEW_CAMERA = { pitch: 60, bearing: -20 }
-const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899']
+const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16', '#f59e0b', '#64748b']
+const ROUTE_MODE_META: Record<RouteMode, { icon: string; label: string; color: string; bg: string }> = {
+  WALKING: { icon: 'directions_walk', label: '도보', color: '#2563eb', bg: '#eff6ff' },
+  CYCLING: { icon: 'directions_bike', label: '자전거', color: '#059669', bg: '#ecfdf5' },
+  DRIVING: { icon: 'directions_car', label: '자동차', color: '#ea580c', bg: '#fff7ed' },
+}
 
 const mapStyle = computed(() => {
   if (props.standardView) {
@@ -167,11 +175,11 @@ function syncStandardViewCamera(isStandardView: boolean) {
 watch(() => props.standardView, syncStandardViewCamera)
 
 function dayClass(dayIndex: number) {
-  return dayIndex <= 0 ? 'day-color-5' : `day-color-${((dayIndex - 1) % 5) + 1}`
+  return dayIndex <= 0 ? `day-color-${DAY_ROUTE_COLORS.length}` : `day-color-${((dayIndex - 1) % DAY_ROUTE_COLORS.length) + 1}`
 }
 
 function dayRouteColor(dayIndex: number) {
-  if (dayIndex <= 0) return DAY_ROUTE_COLORS[4]
+  if (dayIndex <= 0) return DAY_ROUTE_COLORS[DAY_ROUTE_COLORS.length - 1]
   return DAY_ROUTE_COLORS[(dayIndex - 1) % DAY_ROUTE_COLORS.length]
 }
 
@@ -179,6 +187,10 @@ function routeLineColor(route: ItineraryMapRoute) {
   const origin = props.stops.find((stop) => stop.id === route.originItineraryItemId)
   const destination = props.stops.find((stop) => stop.id === route.destinationItineraryItemId)
   return dayRouteColor(origin?.dayIndex ?? destination?.dayIndex ?? 1)
+}
+
+function routeModeMeta(mode: RouteMode | undefined) {
+  return ROUTE_MODE_META[mode ?? 'WALKING']
 }
 
 const ACCESSIBILITY_MARKERS: Partial<Record<AccessibilityFlag, { icon: string; label: string }>> = {
@@ -358,6 +370,8 @@ function clearRouteLayers() {
     if (map?.getSource(id)) map.removeSource(id)
   })
   lineLayerIds = []
+  routeModeMarkers.forEach((marker) => marker.remove())
+  routeModeMarkers = []
 }
 
 function routeAnchorCoordinate(itemId?: string | null): [number, number] | null {
@@ -425,6 +439,30 @@ function routeLineString(route: ItineraryMapRoute): { type: 'LineString'; coordi
   return anchoredCoordinates.length >= 2 ? { type: 'LineString', coordinates: anchoredCoordinates } : null
 }
 
+function routeMidpointCoordinate(coordinates: [number, number][]) {
+  if (coordinates.length === 0) return null
+  return coordinates[Math.floor((coordinates.length - 1) / 2)] ?? null
+}
+
+function createRouteModeMarkerElement(route: ItineraryMapRoute) {
+  const meta = routeModeMeta(route.mode)
+  const el = document.createElement('span')
+  el.className = 'map-route-mode-marker'
+  el.style.setProperty('--route-mode-color', meta.color)
+  el.style.setProperty('--route-mode-bg', meta.bg)
+  el.setAttribute('aria-label', `${meta.label} 경로`)
+
+  const icon = document.createElement('span')
+  icon.className = 'material-symbols-rounded'
+  icon.textContent = meta.icon
+
+  const label = document.createElement('span')
+  label.textContent = meta.label
+
+  el.append(icon, label)
+  return el
+}
+
 function renderRoutes() {
   if (!map || !styleReady) return
   clearRouteLayers()
@@ -450,10 +488,21 @@ function renderRoutes() {
         'line-color': routeLineColor(route),
         'line-width': 5,
         'line-opacity': 0.95,
+        'line-dasharray': route.provider === 'USER_TRACE' ? [2, 2] : [1, 0],
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
     })
     lineLayerIds.push(id)
+
+    const midpoint = routeMidpointCoordinate(geometry.coordinates)
+    if (midpoint && mapboxgl) {
+      routeModeMarkers.push(new mapboxgl.Marker({
+        element: createRouteModeMarkerElement(route),
+        anchor: 'center',
+      })
+        .setLngLat(midpoint)
+        .addTo(map!))
+    }
   })
 }
 
@@ -726,6 +775,57 @@ onBeforeUnmount(() => {
 
 .itinerary-map :deep(.mapboxgl-marker) {
   z-index: 2;
+}
+
+.itinerary-map :deep(.map-route-mode-marker) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in srgb, var(--route-mode-color) 34%, #ffffff);
+  border-radius: 999px;
+  background: var(--route-mode-bg);
+  color: var(--route-mode-color);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.itinerary-map :deep(.map-route-mode-marker .material-symbols-rounded) {
+  font-size: 15px;
+}
+
+.itinerary-map :deep(.day-color-6) {
+  --day-color: #8b5cf6;
+  --day-color-bg: rgba(139, 92, 246, 0.08);
+  --day-color-border: rgba(139, 92, 246, 0.22);
+}
+
+.itinerary-map :deep(.day-color-7) {
+  --day-color: #06b6d4;
+  --day-color-bg: rgba(6, 182, 212, 0.08);
+  --day-color-border: rgba(6, 182, 212, 0.22);
+}
+
+.itinerary-map :deep(.day-color-8) {
+  --day-color: #84cc16;
+  --day-color-bg: rgba(132, 204, 22, 0.08);
+  --day-color-border: rgba(132, 204, 22, 0.22);
+}
+
+.itinerary-map :deep(.day-color-9) {
+  --day-color: #f59e0b;
+  --day-color-bg: rgba(245, 158, 11, 0.08);
+  --day-color-border: rgba(245, 158, 11, 0.22);
+}
+
+.itinerary-map :deep(.day-color-10) {
+  --day-color: #64748b;
+  --day-color-bg: rgba(100, 116, 139, 0.08);
+  --day-color-border: rgba(100, 116, 139, 0.22);
 }
 
 .itinerary-map :deep(.map-preview-place-card) {
