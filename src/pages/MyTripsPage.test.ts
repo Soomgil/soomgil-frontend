@@ -293,7 +293,7 @@ describe('MyTripsPage', () => {
     expect(wrapper.text()).toContain('보관한 여행이 없습니다.')
   })
 
-  it('보관된 여행 필터에서도 보딩패스 티켓 UI를 유지한다', async () => {
+  it('보관된 여행 필터에서도 깔끔한 여행 카드를 유지한다', async () => {
     store.trips = [{
       ...trip,
       id: 'archived-1',
@@ -310,26 +310,36 @@ describe('MyTripsPage', () => {
     await archivedFilter.trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="trip-ticket"]').exists()).toBe(true)
+    expect(wrapper.find('.timeline-card').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="trip-ticket"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('지난 부산 여행')
     expect(wrapper.text()).toContain('2026.07.10 - 2026.07.12')
   })
 
-  it('캐러셀 조작부를 티켓 바깥 아래에 표시한다', async () => {
+  it('보딩패스와 캐러셀 없이 여행 카드 목록만 표시한다', async () => {
     store.trips = [trip, { ...trip, id: 'trip-2', title: '두 번째 여행' }]
     const wrapper = mount(MyTripsPage, {
       global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
     })
     await flushPromises()
 
-    const panel = wrapper.get('.next-trip-panel')
-    const ticket = panel.get('[data-testid="trip-ticket"]')
-    const navigation = panel.get('.next-trip-nav')
+    expect(wrapper.find('.next-trip-panel').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="trip-ticket"]').exists()).toBe(false)
+    expect(wrapper.find('.next-trip-nav').exists()).toBe(false)
+    expect(wrapper.findAll('.timeline-card')).toHaveLength(2)
+  })
 
-    expect(ticket.find('.next-trip-nav').exists()).toBe(false)
-    expect(navigation.element.parentElement).toBe(panel.element)
-    expect(navigation.findAll('.carousel-dot')).toHaveLength(2)
-    expect(navigation.findAll('button')).toHaveLength(2)
+  it('여행 커버를 불러오지 못하면 카드 아이콘으로 대체한다', async () => {
+    store.trips = [{ ...trip, coverImageUrl: 'https://images.invalid/trip.jpg' }]
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await flushPromises()
+
+    await wrapper.get('.timeline-card-avatar-wrapper img').trigger('error')
+
+    expect(wrapper.find('.timeline-card-avatar-wrapper img').exists()).toBe(false)
+    expect(wrapper.get('.timeline-card-avatar-wrapper--placeholder').text()).toContain('travel_explore')
   })
 
   it('방장 카드에는 투표 버튼이 있고 누르면 투표 화면으로 이동한다', async () => {
