@@ -5,6 +5,9 @@ import type { TripSummary } from '@/types/trip'
 
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
 const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: {} as Record<string, string> }))
+const itinerary = vi.hoisted(() => ({ createDay: vi.fn() }))
+const tripApiMock = vi.hoisted(() => ({ createInvite: vi.fn() }))
+const users = vi.hoisted(() => ({ searchUsers: vi.fn() }))
 
 const trip = {
   id: 'trip-1',
@@ -31,13 +34,16 @@ const store = vi.hoisted(() => ({
 
 vi.mock('@/stores/trip.store', () => ({ useTripStore: () => store }))
 vi.mock('@/stores/auth.store', () => ({
-  useAuthStore: () => ({ user: { displayName: '김숨길' } }),
+  useAuthStore: () => ({ user: { id: 'owner-1', displayName: '김숨길' } }),
 }))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: routing.push, replace: routing.replace }),
   useRoute: () => ({ query: routing.query }),
 }))
 vi.mock('@/api/geo.api', () => ({ geoApi: geo }))
+vi.mock('@/api/itinerary.api', () => ({ itineraryApi: itinerary }))
+vi.mock('@/api/trip.api', () => ({ tripApi: tripApiMock }))
+vi.mock('@/api/user.api', () => ({ userApi: users }))
 
 describe('MyTripsPage', () => {
   beforeEach(() => {
@@ -50,6 +56,14 @@ describe('MyTripsPage', () => {
     store.loadMoreError = null
     store.hasMoreTrips = false
     store.createTrip.mockResolvedValue(trip)
+    itinerary.createDay.mockImplementation((_tripId: string, request: { baseVersion: number }) => Promise.resolve({
+      itineraryVersion: request.baseVersion + 1,
+    }))
+    tripApiMock.createInvite.mockResolvedValue({})
+    users.searchUsers.mockResolvedValue({
+      items: [],
+      page: { page: 0, size: 8, totalElements: 0, totalPages: 0, sort: [] },
+    })
     geo.searchLegalRegions.mockResolvedValue({
       items: [],
       page: { page: 0, size: 10, totalElements: 0, totalPages: 0, sort: [] },
@@ -87,6 +101,8 @@ describe('MyTripsPage', () => {
     await vi.advanceTimersByTimeAsync(300)
     await wrapper.get('[role="option"]').trigger('click')
     vi.useRealTimers()
+    await wrapper.get('input[name="startDate"]').setValue('2026-10-01')
+    await wrapper.get('input[name="endDate"]').setValue('2026-10-03')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
@@ -95,6 +111,8 @@ describe('MyTripsPage', () => {
       title: '새 부산 여행',
       displayDestination: '부산광역시',
       legalRegionCodes: ['2600000000'],
+      startDate: '2026-10-01',
+      endDate: '2026-10-03',
     })
     expect(activeFilter?.attributes('aria-pressed')).toBe('true')
   })
@@ -139,6 +157,8 @@ describe('MyTripsPage', () => {
     await wrapper.get('input[name="displayDestination"]').setValue('부산')
     await vi.advanceTimersByTimeAsync(300)
     await wrapper.get('[role="option"]').trigger('click')
+    await wrapper.get('input[name="startDate"]').setValue('2026-10-01')
+    await wrapper.get('input[name="endDate"]').setValue('2026-10-03')
     await wrapper.get('form').trigger('submit')
     await Promise.resolve()
 
@@ -146,8 +166,65 @@ describe('MyTripsPage', () => {
       title: '부산 여행',
       displayDestination: '부산광역시',
       legalRegionCodes: ['2600000000'],
+      startDate: '2026-10-01',
+      endDate: '2026-10-03',
     })
     wrapper.unmount()
+  })
+
+  it('여행 기간과 동행자를 함께 정하고 투표 화면으로 바로 이동한다', async () => {
+    vi.useFakeTimers()
+    geo.searchLegalRegions.mockResolvedValue({
+      items: [{
+        code: '2600000000', name: '부산광역시', fullName: '부산광역시',
+        level: 'SIDO', parentCode: null, isActive: true,
+      }],
+      page: { page: 0, size: 10, totalElements: 1, totalPages: 1, sort: [] },
+    })
+    users.searchUsers.mockResolvedValue({
+      items: [{ id: 'friend-1', displayName: '민경철', profileImageUrl: null }],
+      page: { page: 0, size: 8, totalElements: 1, totalPages: 1, sort: [] },
+    })
+
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await wrapper.get('button.btn.primary').trigger('click')
+    await wrapper.get('input[name="title"]').setValue('부산 팀 여행')
+    await wrapper.get('input[name="displayDestination"]').setValue('부산')
+    await vi.advanceTimersByTimeAsync(300)
+    await wrapper.get('[role="option"]').trigger('click')
+    vi.useRealTimers()
+    await wrapper.get('input[name="startDate"]').setValue('2026-10-01')
+    await wrapper.get('input[name="endDate"]').setValue('2026-10-03')
+    await wrapper.get('input[name="companionSearch"]').setValue('민경철')
+    const searchButton = wrapper.findAll('button').find((button) => button.text() === '검색')!
+    await searchButton.trigger('click')
+    await flushPromises()
+    await wrapper.get('[role="option"]').trigger('click')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(itinerary.createDay).toHaveBeenNthCalledWith(1, 'trip-1', {
+      baseVersion: 0,
+      groupType: 'DAY',
+      dayNumber: 1,
+      date: '2026-10-01',
+      sortOrder: 1,
+    })
+    expect(itinerary.createDay).toHaveBeenNthCalledWith(3, 'trip-1', expect.objectContaining({
+      baseVersion: 2,
+      groupType: 'DAY',
+      dayNumber: 3,
+      date: '2026-10-03',
+    }))
+    expect(itinerary.createDay).toHaveBeenNthCalledWith(4, 'trip-1', {
+      baseVersion: 3,
+      groupType: 'UNSCHEDULED',
+      sortOrder: 4,
+    })
+    expect(tripApiMock.createInvite).toHaveBeenCalledWith('trip-1', { inviteeUserId: 'friend-1' })
+    expect(routing.push).toHaveBeenCalledWith({ name: 'TripVote', params: { tripId: 'trip-1' } })
   })
 
   it('첫 진입에서 실제 여행 목록의 첫 페이지를 요청한다', async () => {

@@ -12,8 +12,12 @@ import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
 import { useModal } from '@/composables/useModal'
 import { useTripStore } from '@/stores/trip.store'
 import { useAuthStore } from '@/stores/auth.store'
+import { itineraryApi } from '@/api/itinerary.api'
+import { tripApi } from '@/api/trip.api'
+import { userApi } from '@/api/user.api'
 import type { TripFilter, TripSummary } from '@/types/trip'
 import type { LegalRegion } from '@/types/geo'
+import type { UserSummary } from '@/types/auth'
 import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 
 const router = useRouter()
@@ -26,6 +30,13 @@ const searchQuery = ref('')
 const newTitle = ref('')
 const newDestination = ref('')
 const selectedRegion = ref<LegalRegion | null>(null)
+const newStartDate = ref('')
+const newEndDate = ref('')
+const companionQuery = ref('')
+const companionResults = ref<UserSummary[]>([])
+const selectedCompanions = ref<UserSummary[]>([])
+const searchingCompanions = ref(false)
+const companionSearchError = ref('')
 const createError = ref('')
 const activeSettingsTrip = ref<TripSummary | null>(null)
 const defaultSettingsTab = ref<'tab-settings' | 'tab-members'>('tab-settings')
@@ -34,6 +45,35 @@ const requestedIntent = computed(() => typeof route.query.intent === 'string' ? 
 const intentMessage = computed(() => requestedIntent.value === 'invite' || requestedIntent.value === 'share'
   ? '초대할 여행의 설정 버튼을 눌러 멤버 관리 탭에서 초대 링크를 만들거나 공유하세요.'
   : null)
+
+const createDayCount = computed(() => {
+  if (!newStartDate.value || !newEndDate.value) return 0
+  const start = parseDateInput(newStartDate.value)
+  const end = parseDateInput(newEndDate.value)
+  if (!start || !end || end < start) return 0
+  return Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1
+})
+
+const createNightCount = computed(() => Math.max(0, createDayCount.value - 1))
+
+function parseDateInput(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  return new Date(year, month - 1, day)
+}
+
+function formatDateInput(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
 
 function scrollTimeline(direction: number) {
   const el = timelineEl.value
@@ -199,6 +239,68 @@ function closeTripSettings() {
   activeSettingsTrip.value = null
 }
 
+async function searchCompanions() {
+  const query = companionQuery.value.trim()
+  if (!query) {
+    companionResults.value = []
+    companionSearchError.value = '함께 갈 사람의 이름을 입력해 주세요.'
+    return
+  }
+
+  searchingCompanions.value = true
+  companionSearchError.value = ''
+  try {
+    const response = await userApi.searchUsers(query, 0, 8)
+    const selectedIds = new Set(selectedCompanions.value.map((user) => user.id))
+    companionResults.value = response.items.filter(
+      (user) => user.id !== authStore.user?.id && !selectedIds.has(user.id),
+    )
+    if (companionResults.value.length === 0) {
+      companionSearchError.value = '추가할 수 있는 사용자를 찾지 못했습니다.'
+    }
+  } catch {
+    companionResults.value = []
+    companionSearchError.value = '사용자를 검색하지 못했습니다.'
+  } finally {
+    searchingCompanions.value = false
+  }
+}
+
+function addCompanion(user: UserSummary) {
+  if (selectedCompanions.value.some((selected) => selected.id === user.id)) return
+  selectedCompanions.value.push(user)
+  companionResults.value = companionResults.value.filter((candidate) => candidate.id !== user.id)
+  companionQuery.value = ''
+  companionSearchError.value = ''
+}
+
+function removeCompanion(userId: string) {
+  selectedCompanions.value = selectedCompanions.value.filter((user) => user.id !== userId)
+}
+
+async function createInitialItinerary(tripId: string, baseVersion: number) {
+  const start = parseDateInput(newStartDate.value)
+  if (!start) throw new Error('INVALID_START_DATE')
+
+  let version = baseVersion
+  for (let index = 0; index < createDayCount.value; index += 1) {
+    const response = await itineraryApi.createDay(tripId, {
+      baseVersion: version,
+      groupType: 'DAY',
+      dayNumber: index + 1,
+      date: formatDateInput(addDays(start, index)),
+      sortOrder: index + 1,
+    })
+    version = response.itineraryVersion
+  }
+
+  await itineraryApi.createDay(tripId, {
+    baseVersion: version,
+    groupType: 'UNSCHEDULED',
+    sortOrder: createDayCount.value + 1,
+  })
+}
+
 async function handleCreateTrip() {
   const title = newTitle.value.trim()
   if (!title) {
@@ -212,21 +314,41 @@ async function handleCreateTrip() {
     return
   }
 
+  if (!newStartDate.value || !newEndDate.value) {
+    createError.value = '여행 시작일과 종료일을 선택해 주세요.'
+    return
+  }
+
+  if (createDayCount.value === 0) {
+    createError.value = '종료 날짜는 시작 날짜 이후로 선택해 주세요.'
+    return
+  }
+
   createError.value = ''
   try {
     const created = await tripStore.createTrip({
       title,
       displayDestination: newDestination.value.trim() || undefined,
       legalRegionCodes: [selectedRegion.value.code],
+      startDate: newStartDate.value,
+      endDate: newEndDate.value,
     })
+
+    await createInitialItinerary(created.id, created.itineraryVersion)
+    await Promise.all(selectedCompanions.value.map((user) => (
+      tripApi.createInvite(created.id, { inviteeUserId: user.id })
+    )))
+
     resetForm()
     createModal.close()
     if (activeFilter.value === 'past') activeFilter.value = 'upcoming'
     if (requestedIntent.value === 'route' || requestedIntent.value === 'ai') {
       await router.replace({ name: 'Route', params: { tripId: created.id }, query: requestedIntent.value === 'ai' ? { panel: 'ai' } : {} })
+    } else {
+      await router.push({ name: 'TripVote', params: { tripId: created.id } })
     }
   } catch {
-    createError.value = '여행을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.'
+    createError.value = '여행의 초기 설정을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.'
   }
 }
 
@@ -234,6 +356,12 @@ function resetForm() {
   newTitle.value = ''
   newDestination.value = ''
   selectedRegion.value = null
+  newStartDate.value = ''
+  newEndDate.value = ''
+  companionQuery.value = ''
+  companionResults.value = []
+  selectedCompanions.value = []
+  companionSearchError.value = ''
   createError.value = ''
 }
 
@@ -548,8 +676,9 @@ watch(filteredTrips, () => {
       <div class="modal-card trip-create-card" role="dialog" aria-modal="true" aria-labelledby="trip-create-title">
         <div class="modal-header">
           <div>
-            <p class="eyebrow">New Trip</p>
+            <p class="eyebrow">Plan & Invite</p>
             <h3 id="trip-create-title">새 여행 만들기</h3>
+            <p class="trip-create-intro">여행 정보와 동행자를 한 번에 정하고 바로 장소 투표를 시작하세요.</p>
           </div>
           <button class="icon-btn" type="button" aria-label="닫기" @click="closeCreateModal">
             <span class="material-symbols-rounded">close</span>
@@ -572,12 +701,112 @@ watch(filteredTrips, () => {
             <p class="trip-create-hint">검색 결과에서 지역을 고르면 그 지역으로 장소를 추천하고 투표 후보를 뽑습니다.</p>
           </div>
 
+          <div class="trip-create-grid trip-create-date-grid">
+            <label class="form-label">
+              <span class="form-label-text">시작일</span>
+              <input
+                v-model="newStartDate"
+                class="field"
+                type="date"
+                name="startDate"
+                required
+                data-testid="trip-create-start-date"
+              >
+            </label>
+            <label class="form-label">
+              <span class="form-label-text">종료일</span>
+              <input
+                v-model="newEndDate"
+                class="field"
+                type="date"
+                name="endDate"
+                :min="newStartDate"
+                required
+                data-testid="trip-create-end-date"
+              >
+            </label>
+          </div>
+          <p v-if="createDayCount" class="trip-create-duration" aria-live="polite">
+            <span class="material-symbols-rounded" aria-hidden="true">calendar_month</span>
+            {{ createNightCount }}박 {{ createDayCount }}일 일정으로 만들어요.
+          </p>
+
+          <section class="trip-create-companions" aria-labelledby="trip-create-companions-title">
+            <div class="trip-create-section-head">
+              <div>
+                <strong id="trip-create-companions-title">누구와 함께 가나요?</strong>
+                <span>사용자를 선택하면 여행 생성과 동시에 초대를 보냅니다. 혼자라면 비워 두세요.</span>
+              </div>
+              <span v-if="selectedCompanions.length" class="companion-count">{{ selectedCompanions.length }}명 선택</span>
+            </div>
+
+            <div v-if="selectedCompanions.length" class="selected-companions" aria-label="선택한 동행자">
+              <button
+                v-for="user in selectedCompanions"
+                :key="user.id"
+                type="button"
+                class="selected-companion-chip"
+                :aria-label="`${user.displayName} 선택 해제`"
+                @click="removeCompanion(user.id)"
+              >
+                <span class="companion-avatar" aria-hidden="true">
+                  <img v-if="user.profileImageUrl" :src="user.profileImageUrl" alt="">
+                  <template v-else>{{ user.displayName.charAt(0) }}</template>
+                </span>
+                <span>{{ user.displayName }}</span>
+                <span class="material-symbols-rounded" aria-hidden="true">close</span>
+              </button>
+            </div>
+
+            <div class="companion-search-row">
+              <input
+                v-model="companionQuery"
+                class="field"
+                type="search"
+                name="companionSearch"
+                placeholder="동행자 이름 검색"
+                autocomplete="off"
+                @keydown.enter.prevent="searchCompanions"
+              >
+              <button class="btn ghost companion-search-button" type="button" :disabled="searchingCompanions" @click="searchCompanions">
+                {{ searchingCompanions ? '검색 중' : '검색' }}
+              </button>
+            </div>
+
+            <div v-if="companionResults.length" class="companion-results" role="listbox" aria-label="동행자 검색 결과">
+              <button
+                v-for="user in companionResults"
+                :key="user.id"
+                class="companion-result"
+                type="button"
+                role="option"
+                @click="addCompanion(user)"
+              >
+                <span class="companion-avatar" aria-hidden="true">
+                  <img v-if="user.profileImageUrl" :src="user.profileImageUrl" alt="">
+                  <template v-else>{{ user.displayName.charAt(0) }}</template>
+                </span>
+                <span>{{ user.displayName }}</span>
+                <span class="material-symbols-rounded" aria-hidden="true">add_circle</span>
+              </button>
+            </div>
+            <p v-if="companionSearchError" class="companion-search-error" aria-live="polite">{{ companionSearchError }}</p>
+          </section>
+
+          <div class="trip-create-next-step">
+            <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+            <div>
+              <strong>다음 단계는 장소 투표예요</strong>
+              <span>여행을 만들면 방장용 투표 설정 화면으로 바로 이동합니다.</span>
+            </div>
+          </div>
+
           <p v-if="createError" class="trip-create-error" aria-live="polite">{{ createError }}</p>
 
           <div class="trip-create-actions">
             <button class="btn ghost" type="button" @click="closeCreateModal">취소</button>
             <button class="btn primary" type="submit" :disabled="tripStore.creating || !selectedRegion">
-              {{ tripStore.creating ? '만드는 중...' : '여행 만들기' }}
+              {{ tripStore.creating ? '여행 준비 중...' : '여행 만들고 투표 시작' }}
             </button>
           </div>
         </form>
@@ -607,6 +836,115 @@ watch(filteredTrips, () => {
 .trip-intent-guide { display: flex; align-items: center; gap: 8px; margin: -12px 0 24px; padding: 12px 16px; border: 1px solid rgba(124, 58, 237, .18); border-radius: 14px; background: rgba(124, 58, 237, .05); color: var(--violet); font-size: 13px; font-weight: 750; }
 .trip-intent-guide .material-symbols-rounded { font-size: 18px; }
 .trip-create-hint { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 6px 0 0; }
+.trip-create-card { max-width: 720px; width: min(100%, 720px); }
+.trip-create-intro { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 6px 0 0; }
+.trip-create-date-grid { align-items: end; }
+.trip-create-duration {
+  align-items: center;
+  background: rgba(124, 58, 237, 0.07);
+  border: 1px solid rgba(124, 58, 237, 0.14);
+  border-radius: 12px;
+  color: var(--violet);
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 7px;
+  margin: -4px 0 0;
+  padding: 10px 12px;
+}
+.trip-create-duration .material-symbols-rounded { font-size: 18px; }
+.trip-create-companions {
+  background: #fbfdff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.trip-create-section-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.trip-create-section-head > div { display: grid; gap: 4px; }
+.trip-create-section-head strong { color: var(--ink); font-size: 14px; }
+.trip-create-section-head span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.trip-create-section-head .companion-count { color: var(--violet); flex: 0 0 auto; font-weight: 800; }
+.selected-companions { display: flex; flex-wrap: wrap; gap: 8px; }
+.selected-companion-chip,
+.companion-result {
+  align-items: center;
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+}
+.selected-companion-chip {
+  background: rgba(124, 58, 237, 0.07);
+  border-radius: 999px;
+  padding: 5px 9px 5px 5px;
+}
+.selected-companion-chip > .material-symbols-rounded { color: var(--muted); font-size: 15px; }
+.companion-avatar {
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  border-radius: 50%;
+  color: #fff;
+  display: grid;
+  flex: 0 0 auto;
+  font-size: 11px;
+  height: 28px;
+  overflow: hidden;
+  place-items: center;
+  width: 28px;
+}
+.companion-avatar img { height: 100%; object-fit: cover; width: 100%; }
+.companion-search-row { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; }
+.companion-search-button { min-width: 72px; }
+.companion-results {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  max-height: 176px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.companion-result {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 10px;
+  justify-content: flex-start;
+  padding: 7px;
+  text-align: left;
+  width: 100%;
+}
+.companion-result:hover { background: rgba(124, 58, 237, 0.06); border-color: rgba(124, 58, 237, 0.12); }
+.companion-result > .material-symbols-rounded { color: var(--violet); font-size: 19px; margin-left: auto; }
+.companion-search-error { color: var(--muted); font-size: 12px; margin: 0; }
+.trip-create-next-step {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(0, 102, 255, 0.07), rgba(0, 209, 255, 0.05));
+  border: 1px solid rgba(0, 102, 255, 0.14);
+  border-radius: 16px;
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+}
+.trip-create-next-step > .material-symbols-rounded { color: var(--violet); font-size: 25px; }
+.trip-create-next-step > div { display: grid; gap: 3px; }
+.trip-create-next-step strong { color: var(--ink); font-size: 13px; }
+.trip-create-next-step span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+@media (max-width: 640px) {
+  .trip-create-date-grid { grid-template-columns: 1fr; }
+  .trip-create-section-head { flex-direction: column; }
+  .companion-search-row { grid-template-columns: 1fr; }
+}
 
 .trip-toolbar {
   align-items: center;
