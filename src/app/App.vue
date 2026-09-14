@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { watch } from 'vue'
 import { RouterView } from 'vue-router'
+import VoteResultMapOverlay from '@/components/voting/VoteResultMapOverlay.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useSwipeStore } from '@/stores/swipe.store'
 import { useUiLocalizer } from '@/i18n/ui-localizer'
@@ -21,4 +22,5 @@ watch(
 
 <template>
   <RouterView />
+  <VoteResultMapOverlay />
 </template>

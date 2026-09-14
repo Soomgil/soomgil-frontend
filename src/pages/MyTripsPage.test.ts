@@ -75,7 +75,18 @@ describe('MyTripsPage', () => {
     await archivedFilter!.trigger('click')
     await wrapper.get('button.btn.primary').trigger('click')
     await wrapper.get('input[name="title"]').setValue('새 부산 여행')
+    vi.useFakeTimers()
+    geo.searchLegalRegions.mockResolvedValue({
+      items: [{
+        code: '2600000000', name: '부산광역시', fullName: '부산광역시',
+        level: 'SIDO', parentCode: null, isActive: true,
+      }],
+      page: { page: 0, size: 10, totalElements: 1, totalPages: 1, sort: [] },
+    })
     await wrapper.get('input[name="displayDestination"]').setValue('부산광역시')
+    await vi.advanceTimersByTimeAsync(300)
+    await wrapper.get('[role="option"]').trigger('click')
+    vi.useRealTimers()
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
@@ -83,6 +94,7 @@ describe('MyTripsPage', () => {
     expect(store.createTrip).toHaveBeenCalledWith({
       title: '새 부산 여행',
       displayDestination: '부산광역시',
+      legalRegionCodes: ['2600000000'],
     })
     expect(activeFilter?.attributes('aria-pressed')).toBe('true')
   })
@@ -241,5 +253,45 @@ describe('MyTripsPage', () => {
     expect(navigation.element.parentElement).toBe(panel.element)
     expect(navigation.findAll('.carousel-dot')).toHaveLength(2)
     expect(navigation.findAll('button')).toHaveLength(2)
+  })
+
+  it('방장 카드에는 투표 버튼이 있고 누르면 투표 화면으로 이동한다', async () => {
+    store.trips = [trip]
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await flushPromises()
+
+    const card = wrapper.get('.timeline-card')
+    const voteButton = card.findAll('button').find((button) => button.text().includes('투표'))
+    expect(voteButton, '방장 카드에 투표 버튼이 없다').toBeTruthy()
+
+    await voteButton!.trigger('click')
+
+    expect(routing.push).toHaveBeenCalledWith({ name: 'TripVote', params: { tripId: 'trip-1' } })
+  })
+
+  it('멤버 카드에는 투표 버튼을 보여주지 않는다', async () => {
+    store.trips = [{ ...trip, id: 'trip-member', myRole: 'MEMBER' }]
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await flushPromises()
+
+    const card = wrapper.get('.timeline-card')
+    expect(card.findAll('button').some((button) => button.text().includes('투표'))).toBe(false)
+  })
+  it('지역을 고르지 않으면 여행을 만들 수 없다', async () => {
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await wrapper.get('button.btn.primary').trigger('click')
+    await wrapper.get('input[name="title"]').setValue('지역 없는 여행')
+    await wrapper.get('input[name="displayDestination"]').setValue('어딘가')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(store.createTrip).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('지역을 검색해서 선택해 주세요')
   })
 })

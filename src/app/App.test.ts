@@ -44,7 +44,7 @@ describe('App swipe queue bootstrap', () => {
     mount(App, {
       global: {
         plugins: [pinia],
-        stubs: { RouterView: true },
+        stubs: { RouterView: true, VoteResultMapOverlay: true },
       },
     })
     await flushPromises()

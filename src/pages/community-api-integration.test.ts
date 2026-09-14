@@ -110,6 +110,15 @@ describe('커뮤니티 API 화면 연동', () => {
     expect(likeButton!.text()).toContain('4')
   })
 
+  it('publicUrl이 없는 미디어도 실제 servingUrl로 목록과 상세 사진을 보여준다', async () => {
+    const wrapper = mount(CommunityPage, { global: { stubs } })
+    await flushPromises()
+    expect(wrapper.findAll('.story-tile img').some((img) => img.attributes('src') === 'https://cdn.example/story.jpg')).toBe(true)
+    await wrapper.get('.story-tile').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.story-overlay img').some((img) => img.attributes('src') === 'https://cdn.example/story.jpg')).toBe(true)
+  })
+
   it('대댓글을 부모 댓글과 구분해 들여쓰기와 대상 이름으로 표시한다', async () => {
     mocks.communityApi.getComments.mockResolvedValueOnce({
       items: [
