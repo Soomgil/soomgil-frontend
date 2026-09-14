@@ -635,7 +635,7 @@ watch(activeFilter, loadTrips)
   display: flex;
   gap: 20px;
   justify-content: space-between;
-  margin: 36px 0 24px;
+  margin: 0;
 }
 .trip-intent-guide { display: flex; align-items: center; gap: 8px; margin: -12px 0 24px; padding: 12px 16px; border: 1px solid rgba(124, 58, 237, .18); border-radius: 14px; background: rgba(124, 58, 237, .05); color: var(--violet); font-size: 13px; font-weight: 750; }
 .trip-intent-guide .material-symbols-rounded { font-size: 18px; }
@@ -765,14 +765,6 @@ watch(activeFilter, loadTrips)
 .trip-list-section {
   display: grid;
   gap: 24px;
-}
-
-.trip-dashboard-layout {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0;
 }
 
 .trip-dashboard-main { gap: 0; }
