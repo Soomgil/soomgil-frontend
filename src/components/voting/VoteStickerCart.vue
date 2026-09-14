@@ -9,12 +9,10 @@ import type { TripVoteCandidate } from '@/types/voting'
  */
 const props = defineProps<{
   candidates: TripVoteCandidate[]
-  isOwner?: boolean
 }>()
 
 const emit = defineEmits<{
   submit: []
-  'close-request': []
 }>()
 
 const voting = useVotingStore()
@@ -117,20 +115,9 @@ const dots = computed(() => {
       @click="emit('submit')"
     >
       <span class="material-symbols-rounded" aria-hidden="true">check_circle</span>
-      {{ voting.usedStickerCount > 0 ? `스티커 ${voting.usedStickerCount}개로 제출하기` : '스티커를 붙여주세요' }}
+      {{ voting.usedStickerCount > 0 ? '제출하기' : '스티커를 붙여주세요' }}
     </button>
     <p class="vote-cart__hint">제출하면 다시 바꿀 수 없어요.</p>
-
-    <button
-      v-if="isOwner"
-      type="button"
-      class="vote-cart__close"
-      data-testid="vote-close-open"
-      @click="emit('close-request')"
-    >
-      <span class="material-symbols-rounded" aria-hidden="true">timer_off</span>
-      투표 마감하기
-    </button>
   </aside>
 </template>
 

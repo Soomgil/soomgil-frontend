@@ -44,6 +44,12 @@ export interface MyVoteParticipation {
   submittedAt: string | null
 }
 
+/** 투표 후보를 뽑은 지역. 시작 시점에 이름까지 고정한 snapshot이다. */
+export interface TripVoteRegion {
+  code: string
+  name: string
+}
+
 export interface TripVoteSessionDetail {
   id: string
   tripId: string
@@ -56,6 +62,7 @@ export interface TripVoteSessionDetail {
   completionReason: VoteCompletionReason | null
   participantSummary: TripVoteParticipantSummary | null
   candidates: TripVoteCandidate[]
+  regions?: TripVoteRegion[]
 }
 
 /** 라우터 가드가 쓰는 단일 응답. */
@@ -100,4 +107,6 @@ export interface OpenVoteSessionRequest {
   stickerAllowance: number
   selectionCount: number
   candidateCount?: number
+  /** 이번 투표에서 후보를 뽑을 법정동 코드. 비우면 여행방에 등록된 지역을 쓴다. */
+  legalRegionCodes?: string[]
 }

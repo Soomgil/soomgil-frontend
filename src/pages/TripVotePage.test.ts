@@ -306,21 +306,29 @@ describe('여행 방 투표 화면', () => {
       .mockResolvedValueOnce({ hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null })
       .mockResolvedValue(state())
     mocks.votingApi.openSession.mockResolvedValue(session())
+    // 여행방 지역이 있어야 투표를 시작할 수 있다. 시작 요청에는 그 지역과 후보 수가 함께 실린다.
+    mocks.tripApi.getTrip.mockResolvedValue({
+      ...tripDetail(), displayDestination: '제주', startDate: '2026-10-01', endDate: '2026-10-03',
+      regions: [{ code: '5011000000', name: '제주시', fullName: '제주특별자치도 제주시', level: 'SIGUNGU', parentCode: '5000000000', isActive: true }],
+    })
     const wrapper = mount(TripVotePage, { global: { stubs } })
     await flushPromises()
 
-    // 스티커 5 → 4, 선정 3 → 4
-    await wrapper.find('[data-testid="setup-sticker-minus"]').trigger('click')
-    await wrapper.find('[data-testid="setup-selection-plus"]').trigger('click')
-    expect(wrapper.find('[data-testid="setup-sticker-count"]').text()).toBe('4')
-    expect(wrapper.find('[data-testid="setup-selection-count"]').text()).toBe('4')
+    // 하루 3곳 → 4곳. 2박 3일이므로 선정 12 · 후보 24 · 스티커 6을 제안한다.
+    await wrapper.find('[data-testid="setup-per-day-plus"]').trigger('click')
+    expect(wrapper.find('[data-testid="setup-per-day-count"]').text()).toBe('4')
+    expect(wrapper.find('[data-testid="setup-selection-count"]').text()).toBe('12')
+    expect(wrapper.find('[data-testid="setup-candidate-count"]').text()).toBe('24')
+    expect(wrapper.find('[data-testid="setup-sticker-count"]').text()).toBe('6')
 
     await wrapper.find('[data-testid="setup-open"]').trigger('click')
     await flushPromises()
 
     expect(mocks.votingApi.openSession).toHaveBeenCalledWith('trip-1', {
-      stickerAllowance: 4,
-      selectionCount: 4,
+      stickerAllowance: 6,
+      selectionCount: 12,
+      candidateCount: 24,
+      legalRegionCodes: ['5011000000'],
     })
     // 시작 후 투표 화면으로 전환된다.
     expect(wrapper.find('[data-testid="vote-deck"]').exists()).toBe(true)
@@ -333,6 +341,8 @@ describe('여행 방 투표 화면', () => {
     mocks.votingApi.openSession.mockRejectedValue({
       response: { data: { code: 'VOTE_CANDIDATE_POOL_INSUFFICIENT' } },
     })
+    // 지역은 없지만 목적지가 있어 시작 자체는 허용되는 여행방.
+    mocks.tripApi.getTrip.mockResolvedValue({ ...tripDetail(), displayDestination: '제주' })
     const wrapper = mount(TripVotePage, { global: { stubs } })
     await flushPromises()
 
@@ -407,5 +417,99 @@ describe('여행 방 투표 화면', () => {
     await flushPromises()
 
     expect(mocks.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { voteCompleted: '1' } })
+  })
+  it('설정 패널에 여행방 지역과 목적지를 넘긴다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue(
+      state({ hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null }),
+    )
+    mocks.tripApi.getTrip.mockResolvedValue({
+      ...tripDetail(),
+      displayDestination: '제주',
+      regions: [{
+        code: '5011000000', name: '제주시', fullName: '제주특별자치도 제주시',
+        level: 'SIGUNGU', parentCode: '5000000000', isActive: true,
+      }],
+    })
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="setup-region-chip"]').text()).toContain('제주시')
+  })
+
+  it('스티커를 붙이면 제출 버튼 문구는 개수 없이 제출하기다', async () => {
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="vote-submit"]').text()).toContain('스티커를 붙여주세요')
+
+    await wrapper.findAll('[data-testid="candidate-place"]')[0].trigger('click')
+
+    const label = wrapper.get('[data-testid="vote-submit"]').text()
+    expect(label).toContain('제출하기')
+    expect(label).not.toContain('개로')
+  })
+
+  it('투표 마감 버튼은 스티커 보드가 아니라 상단 진행 현황 옆에 있다', async () => {
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('.vote-cart [data-testid="vote-close-open"]').exists()).toBe(false)
+    expect(wrapper.find('.trip-vote__hero [data-testid="vote-close-open"]').exists()).toBe(true)
+  })
+  it('결과 화면에서 AI에게 일정 배치를 맡기면 AI 패널과 프롬프트가 준비된 지도로 이동한다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue(state({
+      nextScreen: 'MAP',
+      session: session({ status: 'COMPLETED', completionReason: 'ALL_SUBMITTED' }),
+      myParticipation: participation({ status: 'SUBMITTED' }),
+    }))
+    mocks.votingApi.getResult.mockResolvedValue({
+      sessionId: 'session-1', tripId: 'trip-1', status: 'COMPLETED',
+      completionReason: 'ALL_SUBMITTED', completedAt: null, selectionCount: 2,
+      results: [
+        {
+          candidateId: 'c1', provider: 'KTO', externalPlaceId: '126508', name: '성산일출봉',
+          thumbnailUrl: null, stickerCount: 5, selected: true, selectedRank: 1,
+          itineraryOutcome: 'ADDED', itineraryItemId: 'item-1',
+        },
+        {
+          candidateId: 'c2', provider: 'KTO', externalPlaceId: '126509', name: '만장굴',
+          thumbnailUrl: null, stickerCount: 3, selected: true, selectedRank: 2,
+          itineraryOutcome: 'ADDED', itineraryItemId: 'item-2',
+        },
+        {
+          candidateId: 'c3', provider: 'KTO', externalPlaceId: '126510', name: '우도',
+          thumbnailUrl: null, stickerCount: 1, selected: false, selectedRank: null,
+          itineraryOutcome: null, itineraryItemId: null,
+        },
+      ],
+      unscheduledDayId: null, itineraryVersion: null,
+    })
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="vote-ai-arrange"]').trigger('click')
+
+    expect(mocks.push).toHaveBeenCalledWith({
+      name: 'Route',
+      params: { tripId: 'trip-1' },
+      query: expect.objectContaining({ panel: 'ai', aiPrompt: expect.stringContaining('성산일출봉') }),
+    })
+    const call = mocks.push.mock.calls.at(-1)?.[0] as { query: { aiPrompt: string } }
+    expect(call.query.aiPrompt).toContain('만장굴')
+    expect(call.query.aiPrompt).not.toContain('우도')
+  })
+
+  it('설정 패널에 여행 일수를 넘긴다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue(
+      state({ hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null }),
+    )
+    mocks.tripApi.getTrip.mockResolvedValue({
+      ...tripDetail(), displayDestination: '제주', startDate: '2026-10-01', endDate: '2026-10-03',
+    })
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="vote-setup"]').text()).toContain('3일')
+    expect(wrapper.get('[data-testid="setup-selection-count"]').text()).toBe('9')
   })
 })

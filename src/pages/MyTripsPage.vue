@@ -102,6 +102,11 @@ function goTripDetail(tripId: string) {
   router.push({ name: 'Route', params: { tripId } })
 }
 
+/** 방장 전용. 투표 화면은 세션 유무에 따라 시작 설정·진행·결과를 스스로 보여준다. */
+function goTripVote(tripId: string) {
+  router.push({ name: 'TripVote', params: { tripId } })
+}
+
 /* ── Carousel (다음 여행) ───────────────────────────── */
 const featuredTrips = computed(() => filteredTrips.value)
 const carouselIndex = ref(0)
@@ -201,12 +206,18 @@ async function handleCreateTrip() {
     return
   }
 
+  // 지역이 없으면 추천도 투표도 동작하지 않으므로 검색 결과에서 고른 지역을 필수로 받는다.
+  if (!selectedRegion.value) {
+    createError.value = '지역을 검색해서 선택해 주세요. 여행 지역이 있어야 추천과 투표가 동작합니다.'
+    return
+  }
+
   createError.value = ''
   try {
     const created = await tripStore.createTrip({
       title,
       displayDestination: newDestination.value.trim() || undefined,
-      ...(selectedRegion.value ? { legalRegionCodes: [selectedRegion.value.code] } : {}),
+      legalRegionCodes: [selectedRegion.value.code],
     })
     resetForm()
     createModal.close()
@@ -486,6 +497,15 @@ watch(filteredTrips, () => {
                         </div>
                       </div>
                       <div class="timeline-card-actions" @click.stop>
+                        <button
+                          v-if="trip.myRole === 'OWNER'"
+                          class="timeline-card-vote"
+                          type="button"
+                          @click="goTripVote(trip.id)"
+                        >
+                          <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+                          <span>투표</span>
+                        </button>
                         <button class="timeline-card-open" type="button" @click="goTripDetail(trip.id)">
                           <span>계획 보기</span>
                           <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
@@ -541,21 +561,22 @@ watch(filteredTrips, () => {
             <input v-model="newTitle" class="field" type="text" name="title" maxlength="160" required>
           </label>
           <div class="form-label">
-            <label class="form-label-text" for="trip-create-destination">표시 목적지</label>
+            <label class="form-label-text" for="trip-create-destination">여행 지역</label>
             <LegalRegionCombobox
               id="trip-create-destination"
               v-model="newDestination"
               name="displayDestination"
-              placeholder="예: 부산광역시"
+              placeholder="예: 부산광역시, 제주시"
               @select="selectedRegion = $event"
             />
+            <p class="trip-create-hint">검색 결과에서 지역을 고르면 그 지역으로 장소를 추천하고 투표 후보를 뽑습니다.</p>
           </div>
 
           <p v-if="createError" class="trip-create-error" aria-live="polite">{{ createError }}</p>
 
           <div class="trip-create-actions">
             <button class="btn ghost" type="button" @click="closeCreateModal">취소</button>
-            <button class="btn primary" type="submit" :disabled="tripStore.creating">
+            <button class="btn primary" type="submit" :disabled="tripStore.creating || !selectedRegion">
               {{ tripStore.creating ? '만드는 중...' : '여행 만들기' }}
             </button>
           </div>
@@ -585,6 +606,7 @@ watch(filteredTrips, () => {
 }
 .trip-intent-guide { display: flex; align-items: center; gap: 8px; margin: -12px 0 24px; padding: 12px 16px; border: 1px solid rgba(124, 58, 237, .18); border-radius: 14px; background: rgba(124, 58, 237, .05); color: var(--violet); font-size: 13px; font-weight: 750; }
 .trip-intent-guide .material-symbols-rounded { font-size: 18px; }
+.trip-create-hint { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 6px 0 0; }
 
 .trip-toolbar {
   align-items: center;
@@ -791,6 +813,33 @@ watch(filteredTrips, () => {
   font-size: 17px;
 }
 
+.timeline-card-vote {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 850;
+  gap: 4px;
+  height: 32px;
+  justify-content: center;
+  padding: 0 12px;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.timeline-card-vote:hover {
+  border-color: rgba(0, 102, 255, 0.28);
+  color: var(--violet);
+}
+
+.timeline-card-vote .material-symbols-rounded {
+  font-size: 16px;
+}
+
 .timeline-card-open {
   align-items: center;
   background: var(--ink);
@@ -835,15 +884,46 @@ watch(filteredTrips, () => {
   margin: 0 0 8px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1024px) {
+  /* original.css가 1024px 이하에서 .travel-page-head를 세로 배치로 바꾸지만, main.css의
+     .page-hero 규칙(align-items: flex-end, copy의 flex-basis 480px)이 더 높은 우선순위로 남아
+     세로 축에서 480px 빈 공간과 우측 정렬을 만든다. 세로 배치에서는 폭 기준 basis를 해제한다. */
+  .travel-page-head.page-hero.page-hero.page-hero {
+    align-items: stretch;
+  }
+
+  .travel-page-head .page-hero__copy {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .travel-page-head .page-hero__actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  /* 여행 목록 헤드는 original.css와 같은 1024px에서 세로로 전환한다. 640px까지 미루면
+     641~1024px 구간에서 flex-end만 남아 제목과 툴바가 오른쪽으로 쏠린다. */
   .trip-list-head {
     align-items: stretch;
     flex-direction: column;
   }
 
   .trip-toolbar {
-    flex-direction: column;
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .trip-search {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* original.css가 같은 구간에서 래퍼 좌우 패딩을 0으로 만들어 절대 배치된 스크롤 버튼이
+     첫 카드와 마지막 카드를 덮는다. 버튼 자리를 다시 확보한다. */
+  .my-trips-timeline-wrapper {
+    padding-left: 48px;
+    padding-right: 48px;
   }
 }
 

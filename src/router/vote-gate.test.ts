@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/stores/auth.store', () => ({
   useAuthStore: () => ({
+    // 가드는 진입 전 세션 복원을 위해 initialize()를 먼저 기다린다.
+    initialize: vi.fn().mockResolvedValue(undefined),
     get isAuthenticated() {
       return mocks.isAuthenticated
     },
@@ -43,24 +45,20 @@ describe('여행 방 투표 진입 가드', () => {
     mocks.isAuthenticated = true
   })
 
-  it('아직 제출하지 않은 참여자는 지도 대신 투표 화면으로 간다', async () => {
+  it('투표가 열려 있어도 지도로 들어간다. 투표는 지도 위 모달로 열리고 상태만 미리 읽어 둔다', async () => {
     mocks.ensureGate.mockResolvedValue('VOTE')
     const router = buildRouter()
-
     await router.push('/trips/trip-1/route')
-
-    expect(router.currentRoute.value.name).toBe('TripVote')
+    expect(router.currentRoute.value.name).toBe('Route')
     expect(router.currentRoute.value.params.tripId).toBe('trip-1')
     expect(mocks.ensureGate).toHaveBeenCalledWith('trip-1')
   })
 
-  it('제출을 마친 참여자도 투표가 끝날 때까지 대기 화면에 머문다', async () => {
+  it('제출을 마친 참여자도 지도로 들어간다', async () => {
     mocks.ensureGate.mockResolvedValue('WAITING')
     const router = buildRouter()
-
     await router.push('/trips/trip-1/route')
-
-    expect(router.currentRoute.value.name).toBe('TripVote')
+    expect(router.currentRoute.value.name).toBe('Route')
   })
 
   it('참여할 투표가 없으면 지도로 그대로 진입한다', async () => {

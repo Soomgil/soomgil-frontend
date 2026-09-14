@@ -30,8 +30,11 @@ import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
 import { getCollaborationSessionId } from '@/realtime/collaborationSession'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
+import { useVotingStore } from '@/stores/voting.store'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
+import TripVoteFlow from '@/components/voting/TripVoteFlow.vue'
+import { buildVoteArrangePrompt } from '@/components/voting/voteArrangePrompt'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, ChecklistItem, ChecklistMemberStatus, Note, PlanningScope } from '@/types/planning'
@@ -189,6 +192,59 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
+
+/* ── 여행 방 투표 진입 ──
+ * 투표 세션 상태는 라우터 가드(ensureGate)가 이 여행에 진입할 때 이미 voting store에 채워 둔다.
+ * 여기서는 그 상태만 읽어 버튼 문구를 정하고, 화면 이동만 담당한다. 세션이 없으면 방장만 시작할 수 있다.
+ */
+const votingStore = useVotingStore()
+const isTripOwner = computed(() => {
+  // 방장도 trip_members에는 MEMBER로 저장되고, API가 accessRole/myRole에서 OWNER를 파생한다.
+  // 멤버 목록의 role로는 방장을 알 수 없으므로 TripDetail.myRole을 우선 본다.
+  const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
+  return (detail?.myRole ?? trip.value.myRole) === 'OWNER'
+})
+const voteSessionStatus = computed(() => votingStore.session?.status ?? null)
+/** 내가 참여자인데 아직 제출하지 않은 진행 중 투표가 있는지. 빨간 경고의 기준이다. */
+const votePending = computed(
+  () => voteSessionStatus.value === 'OPEN' && votingStore.myParticipation != null && !votingStore.isSubmitted,
+)
+const voteModalOpen = ref(false)
+const showVoteAction = computed(() => isTripOwner.value || voteSessionStatus.value !== null)
+const voteActionLabel = computed(() => {
+  if (votePending.value) return '투표 중 · 미제출'
+  if (voteSessionStatus.value === 'OPEN') return '투표 현황'
+  if (voteSessionStatus.value === 'COMPLETED') return '투표 결과'
+  return '투표 시작'
+})
+function openVoteModal() {
+	voteModalOpen.value = true
+}
+function closeVoteModal() {
+	voteModalOpen.value = false
+}
+/** 카드의 투표 버튼. 세션 유무와 상관없이 같은 모달을 열고, 흐름 컴포넌트가 상태별 화면을 그린다. */
+function goTripVote() {
+	openVoteModal()
+}
+/** 결과 화면에서 넘어온 선정 장소로 AI 배치 프롬프트를 채우고 AI 패널을 연다. */
+function arrangeSelectedPlacesWithAi(names: string[]) {
+	closeVoteModal()
+	aiMessage.value = buildVoteArrangePrompt(names)
+	togglePanel('ai')
+}
+// 진입 시 제출하지 않은 투표가 있으면 모달을 한 번 자동으로 띄운다. 닫으면 강제로 다시 열지 않고 경고만 남긴다.
+let autoOpenedVote = false
+watch(
+	votePending,
+	(pending) => {
+		if (pending && !autoOpenedVote) {
+			autoOpenedVote = true
+			voteModalOpen.value = true
+		}
+	},
+	{ immediate: true },
+)
 const routeSettingsTrip = computed(() => {
   const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
   if (!detail) return null
@@ -2003,6 +2059,12 @@ function closeResponsivePanels() {
 
 /* ── AI / trip chat ── */
 const aiMessage = ref('')
+// 다른 화면에서 ?panel=ai(&aiPrompt=...)로 들어오면 AI 패널을 열고 프롬프트를 채워 둔다.
+if (route.query?.panel === 'ai') {
+  const prompt = typeof route.query.aiPrompt === 'string' ? route.query.aiPrompt : ''
+  if (prompt) aiMessage.value = prompt
+  void nextTick(() => togglePanel('ai'))
+}
 const aiMessages = ref<RouteAiChatMessage[]>([])
 const chatMessages = ref<TripChatMessage[]>([])
 const conversationLoading = ref(false)
@@ -4316,6 +4378,15 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <span class="members-count">{{ trip.members.length }}명</span>
                   </div>
+                  <button
+                    v-if="showVoteAction"
+                    type="button"
+                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
+                    @click="goTripVote"
+                  >
+                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+                    <span>{{ voteActionLabel }}</span>
+                  </button>
                   <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
                 </div>
               </div>
@@ -4637,6 +4708,18 @@ function textAvatarStyle(index: unknown) {
               </button>
             </div>
 
+            <!-- 닫아 둔 미제출 투표는 지도 상단에 빨갛게 남겨 눈에 띄게 한다. -->
+            <button
+              v-if="votePending && !voteModalOpen"
+              type="button"
+              class="vote-pending-banner"
+              data-testid="vote-pending-banner"
+              @click="openVoteModal"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+              <span>투표가 진행 중이에요 · 아직 제출하지 않았어요</span>
+              <strong>이어서 투표하기</strong>
+            </button>
             <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
               지도 범위를 동기화하는 중
             </div>
@@ -5176,10 +5259,124 @@ function textAvatarStyle(index: unknown) {
         <span>{{ toastMessage }}</span>
       </div>
     </Transition>
+    <!-- 여행 방 투표 모달. 흐름 전체(시작 설정·스티커·대기·결과)를 지도 위에서 처리한다. -->
+    <div
+      v-if="voteModalOpen"
+      class="modal-overlay vote-modal-overlay show is-open"
+      data-testid="vote-modal"
+      @click.self="closeVoteModal"
+    >
+      <div class="modal-card vote-modal-card" role="dialog" aria-modal="true" aria-label="여행 방 투표">
+        <button type="button" class="icon-btn vote-modal-close" aria-label="투표 창 닫기" @click="closeVoteModal">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+        <TripVoteFlow :trip-id="tripId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
+      </div>
+    </div>
   </AppShell>
 </template>
 
 <style scoped>
+/* ── 미제출 투표 경고: 카드 버튼은 빨갛게, 지도 상단에는 띠로 남긴다. ── */
+.trip-vote-button--alert {
+  animation: vote-alert-pulse 1.6s ease-in-out infinite;
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.55);
+  color: #be123c;
+}
+
+.trip-vote-button--alert:hover {
+  border-color: #be123c;
+  color: #9f1239;
+}
+
+@keyframes vote-alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(244, 63, 94, 0); }
+}
+
+.vote-pending-banner {
+  align-items: center;
+  background: #e11d48;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba(225, 29, 72, 0.35);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  position: absolute;
+  top: 16px;
+  transform: translateX(-50%);
+  z-index: 30;
+}
+
+.vote-pending-banner strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.vote-modal-overlay {
+  align-items: center;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  /* 지도 화면의 고정 패널·툴바(우측 탭바 포함) 위에 떠야 한다. */
+  z-index: 10000;
+}
+
+.vote-modal-card {
+  max-height: min(92vh, 1040px);
+  max-width: 1120px;
+  overflow: auto;
+  padding: 8px 16px 20px;
+  position: relative;
+  width: 100%;
+}
+
+.vote-modal-close {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 2;
+}
+
+/* ── 여행 카드의 투표 버튼. TripSettingsButton ghost 변형과 같은 크기·톤으로 맞춘다. ── */
+.trip-vote-button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 5px;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  transition: border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.trip-vote-button .material-symbols-rounded {
+  font-size: 16px;
+}
+
+.trip-vote-button:hover {
+  border-color: rgba(0, 102, 255, 0.28);
+  color: var(--violet);
+  transform: translateY(-1px);
+}
+
 /* ── Route page full-screen layout ── */
 /* position:fixed ensures exact viewport fill below the 72px header — zero scroll */
 .route-page-section {
