@@ -1,1631 +1,188 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
-import StoryDetailOverlay from '@/components/community/StoryDetailOverlay.vue'
-import { tripApi, type NearestTripDto } from '@/api/trip.api'
-import { communityApi } from '@/api/community.api'
-import { placeApi } from '@/api/place.api'
 import { awardApi } from '@/api/award.api'
-import { useAuthStore } from '@/stores/auth.store'
-import { useToast } from '@/composables/useToast'
-import { communityPostToStory } from '@/utils/community'
-import type { TripSummary, TripDetailMember } from '@/types/trip'
-import type { CommunityPostSummary } from '@/types/community'
-import type { Place } from '@/types/place'
-import { useLocale } from '@/i18n'
 import type { AwardPhoto } from '@/types/award'
 
 const router = useRouter()
-const authStore = useAuthStore()
-const toast = useToast()
-const { locale } = useLocale()
-const creatingInvite = ref(false)
-const inviteTargetTrip = ref<TripSummary | null>(null)
-
-async function createAndCopyInviteLink() {
-  if (creatingInvite.value) return
-  if (!inviteTargetTrip.value) {
-    toast.info('초대하려면 내가 방장인 여행이 필요해요.')
-    router.push({ path: '/my-trips', query: { intent: 'invite' } })
-    return
-  }
-  creatingInvite.value = true
-  try {
-    const invite = await tripApi.createInvite(inviteTargetTrip.value.id)
-    const url = new URL(`/trip-invites/${encodeURIComponent(invite.inviteCode)}`, window.location.origin)
-    try {
-      await navigator.clipboard.writeText(url.toString())
-      toast.success('초대 링크를 복사했어요. 바로 공유해 보세요.')
-    } catch {
-      toast.success(`초대 링크: ${url.toString()}`)
-    }
-  } catch {
-    toast.error('초대 링크를 만들지 못했어요.')
-  } finally {
-    creatingInvite.value = false
-  }
-}
-
-function openAiRecommendation() {
-  if (nearestTrip.value) {
-    router.push({ name: 'Route', params: { tripId: nearestTrip.value.id } })
-    toast.info('추천 장소는 해당 여행의 "발견" 패널에서 만나볼 수 있어요.')
-  } else {
-    toast.info('추천을 받으려면 먼저 여행을 만들어주세요.')
-    router.push({ name: 'Route' })
-  }
-}
-
-const nearestTripDday = computed(() => {
-  if (!nearestTrip.value?.startDate) return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const start = new Date(nearestTrip.value.startDate)
-  if (Number.isNaN(start.getTime())) return null
-  start.setHours(0, 0, 0, 0)
-  const diff = Math.round((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  if (diff > 0) return `D-${diff}`
-  if (diff === 0) return 'D-DAY'
-  return `D+${Math.abs(diff)}`
-})
-
-const nearestTripDateLabel = computed(() => {
-  if (!nearestTrip.value?.startDate) return '여행 기간 미정'
-  try {
-    return new Intl.DateTimeFormat(locale.value === 'en' ? 'en-US' : 'ko-KR', {
-      month: 'long',
-      day: 'numeric',
-      weekday: 'short',
-    }).format(new Date(nearestTrip.value.startDate))
-  } catch {
-    return nearestTrip.value.startDate
-  }
-})
-
-const userName = computed(() => authStore.user?.displayName?.trim() || '회원')
-const nearestTripWaitingLabel = computed(() => locale.value === 'en'
-  ? `An upcoming trip for ${userName.value}`
-  : `${userName.value}님을 기다리는 일정`)
-
-/* ── Search ────────────────────────────────────────────── */
-const searchCategories: { key: string; icon: string; isNew?: boolean }[] = [
-  { key: '전체', icon: 'search' },
-  { key: '계획', icon: 'event_note' },
-  { key: '여행지', icon: 'place' },
-  { key: '커뮤니티', icon: 'forum' },
-  { key: '유저', icon: 'group' },
-]
+const categories = ['전체', '계획', '여행지', '커뮤니티', '유저']
 const activeSearchTab = ref('전체')
-const homeSearchQuery = ref('')
+const query = ref('')
+const searchFocused = ref(false)
+const recentSearches = ref<string[]>([])
+const historyKey = 'soomgil.home.recent-searches'
+const photos = ref<AwardPhoto[]>([])
+const currentIndex = ref(0)
+const loading = ref(false)
+const failed = ref(false)
+const currentPhoto = computed(() => photos.value[currentIndex.value])
+const photoTitle = computed(() => currentPhoto.value?.placeName || currentPhoto.value?.title || '대한민국의 풍경')
+const photoCredit = computed(() => [currentPhoto.value?.photographer, currentPhoto.value?.awardDivision, '한국관광공사 관광사진 공모전'].filter(Boolean).join(' · '))
 
-function submitSearch() {
-  const q = homeSearchQuery.value.trim()
+function submitSearch(value = query.value) {
+  const q = value.trim()
   if (!q) return
-  router.push({ path: '/search', query: { q, tab: activeSearchTab.value } })
+  recentSearches.value = [q, ...recentSearches.value.filter((item) => item !== q)].slice(0, 5)
+  try { localStorage.setItem(historyKey, JSON.stringify(recentSearches.value)) } catch { /* 저장이 제한되어도 검색은 계속한다. */ }
+  void router.push({ path: '/search', query: { q, tab: activeSearchTab.value } })
 }
-
-function openTripCreation(intent: 'route' | 'ai' = 'route') {
-  void router.push({ path: '/my-trips', query: { create: '1', intent } })
+function clearHistory() {
+  recentSearches.value = []
+  try { localStorage.removeItem(historyKey) } catch { /* 메모리의 검색 기록은 즉시 지운다. */ }
 }
-
-function openTripSelection(intent: 'invite' | 'share') {
-  void router.push({ path: '/my-trips', query: { intent } })
+function handleFocusOut(event: FocusEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) searchFocused.value = false
 }
-
-/* ── Hero Carousel — 관광사진 공모전 수상작 ───────────── */
-const awardPhotos = ref<AwardPhoto[]>([])
-const awardPhotosLoading = ref(true)
-
-/** 저작권 Type1 수상작은 출처 표시가 필요하다. 촬영자와 수상 부문을 함께 노출한다. */
-function awardCredit(photo: AwardPhoto): string {
-  return [photo.photographer, photo.awardDivision, '한국관광공사 관광사진 공모전']
-    .filter(Boolean)
-    .join(' · ')
+function changePhoto(direction: number) {
+  if (photos.value.length > 1) currentIndex.value = (currentIndex.value + direction + photos.value.length) % photos.value.length
 }
-
-const slides = computed(() => awardPhotos.value.map((photo) => ({
-  image: photo.imageUrl,
-  title: photo.placeName ?? photo.title ?? '이름 없는 여행지',
-  subtitle: photo.regionName ?? photo.filmLocation ?? '대한민국의 어딘가',
-  caption: photo.title,
-  credit: awardCredit(photo),
-  tag: 'award',
-  tagLabel: '수상작',
-})))
-
-const currentSlide = ref(0)
-let carouselTimer: ReturnType<typeof setInterval> | null = null
-
-function nextSlide() {
-  if (slides.value.length > 1) currentSlide.value = (currentSlide.value + 1) % slides.value.length
+function handleImageError(event: Event) {
+  const imageUrl = (event.target as HTMLImageElement).getAttribute('src')
+  const photo = photos.value.find((item) => item.imageUrl === imageUrl)
+  if (!photo) return
+  const active = currentPhoto.value
+  photos.value = photos.value.filter((item) => item !== photo)
+  currentIndex.value = Math.max(0, active && active !== photo ? photos.value.indexOf(active) : currentIndex.value % (photos.value.length || 1))
+  if (!photos.value.length) failed.value = true
 }
-
-function goToSlide(index: number) {
-  currentSlide.value = index
-  resetCarouselTimer()
-}
-
-function resetCarouselTimer() {
-  if (carouselTimer) clearInterval(carouselTimer)
-  if (slides.value.length > 1) carouselTimer = setInterval(nextSlide, 4500)
-}
-
-onMounted(() => {
-  resetCarouselTimer()
-  fetchHomeData()
-})
-
-onUnmounted(() => {
-  if (carouselTimer) clearInterval(carouselTimer)
-})
-
-/* ── Super-like Top 3 ────────────────────────────────── */
-const topPlaces = ref<Place[]>([])
-const topPlacesLoading = ref(true)
-
-/* ── Nearest Trip ────────────────────────────────────── */
-const nearestTrip = ref<NearestTripDto | null>(null)
-const nearestTripLoading = ref(true)
-
-/* ── Community Stories (Top 3) ───────────────────────── */
-const featuredStories = ref<CommunityPostSummary[]>([])
-const featuredStoriesLoading = ref(true)
-const selectedStoryId = ref<string | null>(null)
-const featuredStoryViews = computed(() => featuredStories.value.map(communityPostToStory))
-
-function openFeaturedStory(story: CommunityPostSummary) {
-  selectedStoryId.value = story.id
-}
-
-async function fetchHomeData() {
+async function loadPhotos() {
+  if (loading.value) return
+  loading.value = true
+  failed.value = false
   try {
-    const [placesRes, storiesRes, awardRes] = await Promise.allSettled([
-      placeApi.getPopularPlaces(3),
-      communityApi.getPosts({ size: 20, sort: ['likes,desc'] }),
-      awardApi.getAwardPhotos({ limit: 5 }),
-    ])
-
-    if (placesRes.status === 'fulfilled') {
-      topPlaces.value = placesRes.value
-    } else {
-      console.error('Failed to load top places', placesRes.reason)
-    }
-
-    if (awardRes.status === 'fulfilled') {
-      awardPhotos.value = awardRes.value
-    } else {
-      awardPhotos.value = []
-      console.error('Failed to load award photos', awardRes.reason)
-    }
-
-    if (authStore.isAuthenticated) {
-      if (!authStore.user) {
-        try { await authStore.fetchUser() } catch { /* user 조회 실패해도 홈은 노출 */ }
-      }
-      try {
-        const [nearest, ownerTrips] = await Promise.allSettled([
-          tripApi.getNearestTrip(),
-          tripApi.getTrips({ page: 0, size: 10, status: 'ACTIVE', role: 'OWNER' }),
-        ])
-        if (nearest.status === 'fulfilled') {
-          nearestTrip.value = nearest.value
-        }
-        if (ownerTrips.status === 'fulfilled') {
-          inviteTargetTrip.value = ownerTrips.value.items[0] ?? null
-        }
-      } catch (e) {
-        console.error('Failed to load nearest trip', e)
-      }
-    } else {
-      nearestTrip.value = null
-      inviteTargetTrip.value = null
-    }
-
-    if (storiesRes.status === 'fulfilled') {
-      const sorted = [...storiesRes.value.items].sort((a, b) => {
-        const likeDiff = (b.likeCount ?? 0) - (a.likeCount ?? 0)
-        if (likeDiff !== 0) return likeDiff
-        const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
-        const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
-        return bTime - aTime
-      })
-      featuredStories.value = sorted.slice(0, 3)
-    } else {
-      console.error('Failed to load stories', storiesRes.reason)
-    }
-    currentSlide.value = 0
-    resetCarouselTimer()
-  } catch (error) {
-    console.error('Failed to fetch home data', error)
-  } finally {
-    topPlacesLoading.value = false
-    nearestTripLoading.value = false
-    featuredStoriesLoading.value = false
-    awardPhotosLoading.value = false
-  }
+    photos.value = (await awardApi.getAwardPhotos({ limit: 5 })).filter((photo) => Boolean(photo.imageUrl))
+    currentIndex.value = 0
+  } catch { failed.value = true } finally { loading.value = false }
 }
+onMounted(() => {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(historyKey) || '[]')
+    if (Array.isArray(stored)) recentSearches.value = stored.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).slice(0, 5)
+  } catch { /* 손상되거나 접근할 수 없는 검색 기록은 무시한다. */ }
+  void loadPhotos()
+})
 </script>
 
 <template>
-  <AppShell>
-    <main>
-      <!-- Search Hero Section (outside content-container) -->
-      <section class="home-search-hero">
-        <div class="home-search-hero-inner">
-          <h2 class="home-search-hero-title">어떤 여행을 찾고 계신가요?</h2>
-
-          <div class="home-search-categories" role="tablist" style="margin-bottom: 16px; margin-top: 24px;">
-            <button
-              v-for="cat in searchCategories"
-              :key="cat.key"
-              type="button"
-              role="tab"
-              class="home-search-cat"
-              :class="{ active: activeSearchTab === cat.key }"
-              @click="activeSearchTab = cat.key"
-            >
-              <span class="material-symbols-rounded">{{ cat.icon }}</span>
-              <span>{{ cat.key }}</span>
-              <span v-if="cat.isNew" class="home-search-cat-new">NEW</span>
-            </button>
-          </div>
-
-          <div class="home-search-capsule">
-            <span class="material-symbols-rounded home-search-capsule-icon">search</span>
-            <input
-              v-model="homeSearchQuery"
-              type="search"
-              class="home-search-capsule-input"
-              :placeholder="{
-                '전체': '여행지, 계획, 커뮤니티 글, 유저를 검색하세요',
-                '계획': '여행 계획 이름, 목적지로 검색',
-                '여행지': '여행지 이름, 지역, 태그로 검색',
-                '커뮤니티': '여행기 제목, 내용, 태그로 검색',
-                '유저': '사용자 이름으로 검색',
-              }[activeSearchTab]"
-              aria-label="검색"
-              @keydown.enter.prevent="submitSearch"
-            />
-            <button type="button" class="home-search-capsule-btn" @click="submitSearch">
-              <span class="material-symbols-rounded">search</span> 검색
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <div class="content-container">
-      <section class="section service-home-page">
-
-        <!-- 2. Hero Section -->
-        <div class="home-hero">
-          <div class="home-hero-copy">
-            <p class="eyebrow">
-              <span class="material-symbols-rounded" style="font-size:16px; vertical-align:middle">flight_takeoff</span>
-              Welcome Back
-            </p>
-            <h1><span>여행의 시작은</span><br>설렘에서부터</h1>
-            <p class="lead">새로운 루트를 만들고, 우리만의 여행을 기록해보세요.</p>
-            <div style="display:flex; gap:12px;">
-              <button class="btn primary" type="button" @click="openTripCreation('route')">
-                <span class="material-symbols-rounded">add</span>새 여행 만들기
-              </button>
-              <a class="btn ghost" href="#" @click.prevent="router.push('/community')">둘러보기</a>
-            </div>
-          </div>
-          <div class="home-hero-content">
-            <div v-if="awardPhotosLoading" class="home-section-state home-section-state--loading home-section-state--wide">
-              <div class="home-section-spinner"></div>
-              <p>수상작 사진을 불러오는 중…</p>
-            </div>
-            <div v-else-if="slides.length === 0" class="home-section-state home-section-state--wide">
-              <span class="material-symbols-rounded home-section-state-icon">landscape</span>
-              <p>추천 콘텐츠를 준비하고 있어요.</p>
-            </div>
-            <div
-              v-for="(slide, i) in slides"
-              :key="i"
-              class="home-hero-slide"
-              :class="{ 'is-active': currentSlide === i }"
-            >
-              <img :src="slide.image" :alt="slide.caption ?? slide.title" />
-              <div class="home-hero-card-overlay">
-                <span class="card-tag" :class="'tag-' + slide.tag">{{ slide.tagLabel }}</span>
-                <h3>{{ slide.title }}</h3>
-                <p>{{ slide.subtitle }}</p>
-                <p v-if="slide.credit" class="home-hero-credit">
-                  <span class="material-symbols-rounded" aria-hidden="true">photo_camera</span>
-                  <span v-if="slide.caption" class="home-hero-credit-title">{{ slide.caption }}</span>
-                  {{ slide.credit }}
-                </p>
-              </div>
-            </div>
-
-            <!-- Carousel dots -->
-            <div v-if="slides.length > 1" class="home-hero-dots" style="position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2;">
-              <button
-                v-for="(_, i) in slides"
-                :key="i"
-                type="button"
-                style="width: 8px; height: 8px; border-radius: 50%; border: none; cursor: pointer; transition: all 0.3s;"
-                :style="{
-                  background: currentSlide === i ? '#fff' : 'rgba(255,255,255,0.4)',
-                  width: currentSlide === i ? '24px' : '8px',
-                }"
-                @click="goToSlide(i)"
-                :aria-label="locale === 'en' ? `Slide ${i + 1}` : `슬라이드 ${i + 1}`"
-              />
-            </div>
-          </div>
-        </div>
-
-        <hr class="home-section-divider">
-
-        <!-- 3. Quick Actions -->
-        <div class="home-action-row">
-          <a class="home-action-card" href="#" @click.prevent="router.push({ name: 'Swipe' })">
-            <div class="home-action-icon icon-violet">
-              <span class="material-symbols-rounded">swipe</span>
-            </div>
-            <div class="home-action-text">
-              <h3>내 취향 수집</h3>
-              <p>취향 카드 넘기기</p>
-            </div>
-          </a>
-          <a class="home-action-card" href="#" @click.prevent="openTripCreation('route')">
-            <div class="home-action-icon icon-blue">
-              <span class="material-symbols-rounded">map</span>
-            </div>
-            <div class="home-action-text">
-              <h3>지도에서 루트 만들기</h3>
-              <p>일정 설계하기</p>
-            </div>
-          </a>
-          <a class="home-action-card" href="#" @click.prevent="createAndCopyInviteLink">
-            <div class="home-action-icon icon-rose">
-              <span class="material-symbols-rounded">group_add</span>
-            </div>
-            <div class="home-action-text">
-              <h3>친구 초대하기</h3>
-              <p>함께하면 더 즐거워요</p>
-            </div>
-          </a>
-          <a class="home-action-card" href="#" @click.prevent="openTripCreation('ai')">
-            <div class="home-action-icon icon-cyan">
-              <span class="material-symbols-rounded">auto_awesome</span>
-            </div>
-            <div class="home-action-text">
-              <h3>AI 추천 받기</h3>
-              <p>맞춤 장소 추천</p>
-            </div>
-          </a>
-        </div>
-
-        <!-- 4. Two-Column Spotlight -->
-        <div class="home-spotlight-row">
-          <!-- Left: Super-like TOP 3 -->
-          <div class="home-toplikes-card">
-            <div class="home-toplikes-header">
-              <h3>Super-like TOP 3</h3>
-              <a href="#" @click.prevent="router.push({ path: '/search', query: { tab: '여행지' } })">더보기 <span class="material-symbols-rounded" style="font-size:16px;">arrow_forward</span></a>
-            </div>
-            <div class="home-toplikes-list">
-              <div v-if="topPlacesLoading" class="home-section-state home-section-state--loading">
-                <div class="home-section-spinner"></div>
-                <p>인기 장소를 불러오는 중…</p>
-              </div>
-              <div v-else-if="topPlaces.length === 0" class="home-section-state">
-                <span class="material-symbols-rounded home-section-state-icon">place</span>
-                <p>아직 인기 장소가 없어요.</p>
-              </div>
-              <div v-else v-for="(place, idx) in topPlaces" :key="place.externalPlaceId" class="home-toplikes-item" role="link" tabindex="0" @click="router.push({ path: '/search', query: { q: place.placeName, tab: '전체' } })" @keydown.enter="router.push({ path: '/search', query: { q: place.placeName, tab: '전체' } })">
-                <span class="home-toplikes-rank">{{ idx + 1 }}</span>
-                <img v-if="place.thumbnailUrl" class="home-toplikes-img" :src="place.thumbnailUrl" :alt="place.placeName" />
-                <div v-else class="home-toplikes-img" style="background: var(--bg); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-rounded">image</span></div>
-                <div class="home-toplikes-info">
-                  <h4>{{ place.placeName }}</h4>
-                  <p>{{ place.summary ?? place.address }}</p>
-                </div>
-                <span class="home-toplikes-badge">
-                  <span class="material-symbols-rounded" style="font-size:14px;">favorite</span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right: Nearest Trip -->
-          <div v-if="nearestTripLoading" class="home-nearest-card" style="display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted);">
-            로딩 중...
-          </div>
-          <div v-else-if="!nearestTrip" class="home-nearest-card home-nearest-card--empty" @click="openTripCreation('route')">
-            <div class="home-nearest-empty">
-              <span class="material-symbols-rounded home-nearest-empty-icon">add_circle</span>
-              <p class="home-nearest-empty-title">새로운 여행을 계획해보세요</p>
-              <p class="home-nearest-empty-sub">첫 여행을 만들면 이곳에 표시돼요.</p>
-            </div>
-          </div>
-          <a v-else-if="nearestTrip" class="home-nearest-card home-nearest-card--plain" href="#" @click.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })" style="text-decoration:none;">
-            <div class="home-nearest-plain" style="padding-top: 14px;">
-              <div class="home-nearest-visual">
-                <img
-                  v-if="nearestTrip.coverImageUrl"
-                  :src="nearestTrip.coverImageUrl"
-                  :alt="nearestTrip.title"
-                />
-                <div v-else class="home-nearest-visual-fallback">
-                  <span class="material-symbols-rounded">travel_explore</span>
-                  <strong>{{ nearestTrip.displayDestination || '여행' }}</strong>
-                </div>
-                <span class="home-nearest-status">
-                  <span class="material-symbols-rounded">flight_takeoff</span>
-                  다가오는 여행
-                </span>
-              </div>
-
-              <div class="home-nearest-info">
-                <div class="home-nearest-tools" aria-label="여행 카드 도구">
-                  <button type="button" class="home-nearest-tool-btn" aria-label="여행 공유" @click.stop.prevent="createAndCopyInviteLink">
-                    <span class="material-symbols-rounded">ios_share</span>
-                  </button>
-                  <button type="button" class="home-nearest-tool-btn" aria-label="더보기" @click.stop.prevent="router.push({ name: 'Route', params: { tripId: nearestTrip.id } })">
-                    <span class="material-symbols-rounded">more_horiz</span>
-                  </button>
-                </div>
-
-                <div class="home-nearest-copy">
-                  <span class="home-nearest-dday-text">{{ nearestTripDday ?? '날짜 미정' }}</span>
-                  <p class="home-nearest-waiting">{{ nearestTripWaitingLabel }}</p>
-                  <h3 class="home-nearest-trip-title">{{ nearestTrip.title }}</h3>
-                </div>
-
-                <div class="home-nearest-meta-row">
-                  <span class="home-nearest-info-block">
-                    <span class="material-symbols-rounded">calendar_month</span>
-                    <span>{{ nearestTripDateLabel }}</span>
-                  </span>
-                  <span class="home-nearest-info-block">
-                    <span class="material-symbols-rounded">place</span>
-                    <span>{{ nearestTrip.displayDestination || '목적지 미정' }}</span>
-                  </span>
-                </div>
-
-                <div class="home-nearest-plain-foot">
-                  <div class="home-nearest-members">
-                    <span class="home-nearest-member-icon">
-                      <span class="material-symbols-rounded">group</span>
-                    </span>
-                    <div class="avatars">
-                      <span
-                        v-for="(thumb, idx) in nearestTrip.memberThumbnails.slice(0, 3)"
-                        :key="idx"
-                        class="avatar"
-                      >
-                        <img v-if="thumb" :src="thumb" alt="member avatar" />
-                        <span v-else>{{ '?' }}</span>
-                      </span>
-                      <span v-if="nearestTrip.memberThumbnails.length === 0" class="avatar">
-                        <span>{{ userName.charAt(0) }}</span>
-                      </span>
-                    </div>
-                  </div>
-                  <span class="home-nearest-link">
-                    여행 계획 보기 <span class="material-symbols-rounded">arrow_forward</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </a>
-        </div>
-
-        <!-- 5. Community Popular Reviews -->
-        <div class="home-section-title">
-          <div>
-            <p class="eyebrow" style="color:var(--violet)">Community</p>
-            <h2>커뮤니티 인기 여행 후기</h2>
-          </div>
-          <a class="section-link" href="#" @click.prevent="router.push('/community')">더보기 <span class="material-symbols-rounded" style="font-size:18px">arrow_forward</span></a>
-        </div>
-        <div v-if="featuredStoriesLoading" class="home-section-state home-section-state--loading home-section-state--wide">
-          <div class="home-section-spinner"></div>
-          <p>인기 여행기를 불러오는 중…</p>
-        </div>
-        <div v-else-if="featuredStories.length === 0" class="home-section-state home-section-state--wide">
-          <span class="material-symbols-rounded home-section-state-icon">auto_stories</span>
-          <p>아직 공개된 여행기가 없어요.</p>
-          <a class="btn primary home-section-state-cta" href="#" @click.prevent="router.push('/community')">커뮤니티 둘러보기</a>
-        </div>
-        <div v-else class="home-community-grid">
-          <div
-            v-for="story in featuredStories"
-            :key="story.id"
-            class="home-community-card"
-            role="button"
-            tabindex="0"
-            @click="openFeaturedStory(story)"
-            @keydown.enter.prevent="openFeaturedStory(story)"
-          >
-            <div class="home-community-card-img">
-              <img v-if="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl" :src="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl ?? ''" :alt="story.title" />
-              <div v-else class="home-community-placeholder">
-                <span class="material-symbols-rounded">auto_stories</span>
-                <span>여행 사진 준비 중</span>
-              </div>
-            </div>
-            <div class="home-community-card-body">
-              <span class="cmn-tag">{{ (story.hashtags && story.hashtags.length > 0) ? story.hashtags[0] : '커뮤니티' }}</span>
-              <h3>{{ story.title }}</h3>
-              <div class="home-community-card-meta">
-                <div class="home-community-author">
-                  <span class="avatar" :style="{ background: story.publishedBy?.profileImageUrl ? 'transparent' : 'var(--violet)', width: '26px', height: '26px', fontSize: '10px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, overflow: 'hidden' }">
-                    <img v-if="story.publishedBy?.profileImageUrl" :src="story.publishedBy.profileImageUrl" :alt="story.publishedBy.displayName ?? ''" style="width: 100%; height: 100%; object-fit: cover;" />
-                    <template v-else>{{ (story.publishedBy?.displayName ?? '?').charAt(0) }}</template>
-                  </span>
-                  <span>{{ story.publishedBy?.displayName ?? '알 수 없음' }}</span>
-                </div>
-                <div class="home-community-stats">
-                  <span class="material-symbols-rounded" style="font-size:14px;">favorite</span> {{ story.likeCount ?? 0 }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 6. Invite Friends CTA Banner -->
-        <aside class="home-invite-cta" aria-labelledby="home-invite-title">
-          <div class="home-invite-cta-left">
-            <div class="home-invite-cta-illust">
-              <span class="material-symbols-rounded" aria-hidden="true">diversity_3</span>
-            </div>
-            <div class="home-invite-cta-copy">
-              <p class="eyebrow">Plan Together</p>
-              <h3 id="home-invite-title">함께 고르면 여행 계획이 더 빨라져요</h3>
-              <p>초대 링크를 보내고 친구들과 장소, 일정, 취향을 한곳에서 맞춰보세요.</p>
-              <ul class="home-invite-benefits" aria-label="친구 초대 장점">
-                <li><span class="material-symbols-rounded" aria-hidden="true">favorite</span>취향 모으기</li>
-                <li><span class="material-symbols-rounded" aria-hidden="true">route</span>동선 함께 짜기</li>
-                <li><span class="material-symbols-rounded" aria-hidden="true">event</span>일정 공유하기</li>
-              </ul>
-            </div>
-          </div>
-          <div class="home-invite-cta-actions">
-            <button class="btn primary home-invite-primary-action" type="button" :disabled="creatingInvite" @click="createAndCopyInviteLink">
-              <span class="material-symbols-rounded" aria-hidden="true">person_add</span>
-              {{ creatingInvite ? '링크 생성 중…' : '초대 링크 만들기' }}
-            </button>
-            <div class="home-invite-share-row">
-              <div class="home-invite-cta-social" role="group" aria-label="초대 링크 공유 채널">
-                <button type="button" class="home-invite-social-btn btn-kakao" aria-label="카카오톡으로 초대" @click="openTripSelection('share')">
-                  <svg viewBox="0 0 24 24" fill="#3c1e1e" aria-hidden="true"><path d="M12 3C6.48 3 2 6.69 2 11.24c0 2.93 1.9 5.51 4.73 6.99-.15.55-.97 3.36-.99 3.58 0 0-.02.15.08.21.1.06.22.01.22.01.29-.04 3.37-2.2 3.9-2.59.64.09 1.31.14 2.06.14 5.52 0 10-3.69 10-8.24S17.52 3 12 3z"/></svg>
-                </button>
-                <button type="button" class="home-invite-social-btn btn-google" aria-label="구글로 초대" @click="openTripSelection('share')">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-      </section>
+  <AppShell immersive>
+    <section class="home-canvas" aria-label="여행 검색과 수상작 감상">
+      <div class="home-backdrop">
+        <Transition name="home-photo">
+          <img v-if="currentPhoto" :key="currentPhoto.imageUrl" :src="currentPhoto.imageUrl"
+            :alt="currentPhoto.title || photoTitle" fetchpriority="high" decoding="async"
+            @error="handleImageError" />
+        </Transition>
       </div>
-    </main>
-    <StoryDetailOverlay
-      v-if="selectedStoryId"
-      :stories="featuredStoryViews"
-      :initial-story-id="selectedStoryId"
-      @close="selectedStoryId = null"
-      @changed="fetchHomeData"
-    />
+      <div class="home-shade" aria-hidden="true"></div>
+      <div class="home-search-position">
+        <h1 class="home-sr-only">어디로 떠나고 싶으세요?</h1>
+        <form class="home-search" role="search" aria-label="통합 검색" @submit.prevent="submitSearch()"
+          @focusin="searchFocused = true" @focusout="handleFocusOut" @keydown.esc="searchFocused = false">
+          <div class="home-search-bar">
+            <label class="home-search-scope">
+              <span class="home-sr-only">검색 범위</span>
+              <select v-model="activeSearchTab"><option v-for="category in categories" :key="category" :value="category">{{ category }}</option></select>
+              <span class="material-symbols-rounded" aria-hidden="true">expand_more</span>
+            </label>
+            <input v-model="query" type="search" aria-label="검색어" placeholder="어디로 떠나고 싶으세요?"
+              autocomplete="off" enterkeyhint="search" maxlength="200" />
+            <button class="home-search-submit" type="submit" aria-label="검색">
+              <span class="material-symbols-rounded" aria-hidden="true">search</span><span class="home-search-submit-text">검색</span>
+            </button>
+          </div>
+          <div v-if="searchFocused && !query.trim() && recentSearches.length" class="home-search-history">
+            <div class="home-search-history-heading"><span>최근 검색</span><button type="button" @click="clearHistory">전체 삭제</button></div>
+            <ul aria-label="최근 검색어"><li v-for="recent in recentSearches" :key="recent"><button type="button" @click="submitSearch(recent)"><span class="material-symbols-rounded" aria-hidden="true">history</span>{{ recent }}</button></li></ul>
+          </div>
+        </form>
+      </div>
+      <div class="home-artwork-footer">
+        <div v-if="currentPhoto" class="home-artwork-info" aria-live="polite" aria-atomic="true">
+          <p class="home-artwork-label"><span class="material-symbols-rounded" aria-hidden="true">location_on</span>{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
+          <h2 class="home-artwork-title">{{ photoTitle }}</h2>
+          <p v-if="currentPhoto.title && currentPhoto.title !== photoTitle" class="home-artwork-caption">{{ currentPhoto.title }}</p>
+          <p class="home-artwork-credit">{{ photoCredit }}</p>
+        </div>
+        <div v-else class="home-photo-status" role="status">
+          <p>{{ loading ? '대한민국의 풍경을 불러오는 중…' : failed ? '사진을 불러오지 못했어요. 검색은 바로 이용할 수 있어요.' : '새로운 풍경을 준비하고 있어요. 여행지를 검색해 보세요.' }}</p>
+          <button v-if="failed && !loading" type="button" @click="loadPhotos">다시 불러오기</button>
+        </div>
+        <div v-if="photos.length > 1" class="home-photo-controls" role="group" aria-label="수상작 사진 전환">
+          <span class="home-photo-count"><strong>{{ String(currentIndex + 1).padStart(2, '0') }}</strong><span aria-hidden="true"> / </span><span class="home-sr-only">전체</span>{{ String(photos.length).padStart(2, '0') }}</span>
+          <button type="button" aria-label="이전 사진" @click="changePhoto(-1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span></button>
+          <button type="button" aria-label="다음 사진" @click="changePhoto(1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></button>
+        </div>
+      </div>
+    </section>
   </AppShell>
 </template>
 
 <style scoped>
-/* === Home Section Empty/Loading States === */
-.home-section-state {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 28px 16px;
-  text-align: center;
-}
-.home-section-state--wide {
-  padding: 48px 16px;
-}
-.home-section-state--loading {
-  gap: 14px;
-}
-.home-section-state p {
-  font-size: 13px;
-  font-weight: 600;
-  margin: 0;
-}
-.home-section-state-icon {
-  color: var(--line);
-  font-size: 40px;
-  font-variation-settings: 'FILL' 0, 'wght' 200, 'GRAD' 0, 'opsz' 48;
-  line-height: 1;
-}
-.home-section-spinner {
-  animation: home-spin 0.9s linear infinite;
-  border: 3px solid var(--line);
-  border-radius: 50%;
-  border-top-color: var(--violet);
-  height: 28px;
-  width: 28px;
-}
-.home-section-state-cta {
-  margin-top: 6px;
-  min-height: 38px;
-  padding: 8px 18px;
-}
-@keyframes home-spin {
-  to { transform: rotate(360deg); }
-}
-
-/* === Search Hero Section === */
-.home-search-hero {
-  padding: 104px 24px 40px;
-  background: linear-gradient(180deg, rgba(0, 102, 255, 0.03) 0%, transparent 100%);
-  text-align: center;
-}
-.home-search-hero-inner {
-  max-width: 760px;
-  margin: 0 auto;
-}
-.home-search-hero-title {
-  font-size: clamp(28px, 3.5vw, 42px);
-  font-weight: 900;
-  letter-spacing: -0.03em;
-  line-height: 1.3;
-  color: var(--ink);
-  margin: 8px 0;
-}
-.home-search-hero-sub {
-  font-size: 16px;
-  color: var(--muted);
-  margin: 0 0 40px;
-  line-height: 1.6;
-}
-
-/* Category pills */
-.home-search-categories {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 36px;
-}
-.home-search-cat {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 22px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.25s ease;
-  position: relative;
-  white-space: nowrap;
-}
-.home-search-cat .material-symbols-rounded {
-  font-size: 20px;
-}
-.home-search-cat:hover {
-  border-color: rgba(0, 102, 255, 0.3);
-  color: var(--violet);
-  background: rgba(0, 102, 255, 0.02);
-}
-.home-search-cat.active {
-  border-color: var(--violet);
-  background: var(--violet);
-  color: #fff;
-  box-shadow: 0 6px 20px rgba(0, 102, 255, 0.2);
-}
-.home-search-cat.active .material-symbols-rounded {
-  color: #fff;
-}
-.home-search-cat-new {
-  position: absolute;
-  top: -6px;
-  right: -4px;
-  background: var(--rose);
-  color: #fff;
-  font-size: 9px;
-  font-weight: 900;
-  padding: 2px 6px;
-  border-radius: 999px;
-  letter-spacing: 0.5px;
-  line-height: 1;
-}
-
-/* Capsule search bar */
-.home-search-capsule {
-  display: flex;
-  align-items: center;
-  background: #fff;
-  border: 2px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 6px 6px 24px;
-  box-shadow: 0 12px 40px rgba(0, 50, 150, 0.08);
-  transition: border-color 0.25s, box-shadow 0.25s;
-  max-width: 680px;
-  margin: 0 auto;
-}
-.home-search-capsule:focus-within {
-  border-color: var(--violet);
-  box-shadow: 0 12px 40px rgba(0, 102, 255, 0.12), 0 0 0 4px rgba(0, 102, 255, 0.06);
-}
-.home-search-capsule-icon {
-  color: var(--muted);
-  font-size: 24px;
-  flex-shrink: 0;
-  transition: color 0.2s;
-}
-.home-search-capsule:focus-within .home-search-capsule-icon {
-  color: var(--violet);
-}
-.home-search-capsule-input {
-  flex: 1;
-  border: none;
-  outline: none;
-  font-size: 16px;
-  padding: 12px 12px;
-  background: transparent;
-  color: var(--ink);
-  min-width: 0;
-}
-.home-search-capsule-input::placeholder {
-  color: var(--muted);
-}
-.home-search-capsule-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 32px;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(135deg, var(--violet), var(--blue));
-  color: #fff;
-  font-size: 15px;
-  font-weight: 800;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: box-shadow 0.25s, transform 0.25s;
-  flex-shrink: 0;
-}
-.home-search-capsule-btn .material-symbols-rounded {
-  font-size: 20px;
-}
-.home-search-capsule-btn:hover {
-  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.35);
-  transform: translateY(-1px);
-}
-
-@media (max-width: 768px) {
-  .home-search-hero { padding: 56px 16px 48px; }
-  .home-search-categories { gap: 6px; flex-wrap: wrap; }
-  .home-search-cat { padding: 8px 16px; font-size: 13px; }
-  .home-search-cat .material-symbols-rounded { font-size: 18px; }
-  .home-search-capsule { padding: 4px 4px 4px 16px; }
-  .home-search-capsule-btn { padding: 12px 20px; font-size: 14px; }
-  .home-search-capsule-btn span:last-child { display: none; }
-}
-@media (max-width: 480px) {
-  .home-search-categories { gap: 4px; }
-  .home-search-cat { padding: 7px 12px; font-size: 12px; }
-}
-
-/* === Hero Section === */
-.home-hero {
-  display: flex;
-  align-items: center;
-  gap: 48px;
-  margin-bottom: 24px;
-  min-height: 400px;
-}
-.home-hero-copy { flex: 0 0 340px; }
-.home-hero-copy h1 {
-  font-size: clamp(32px, 3.5vw, 48px);
-  margin: 0 0 16px;
-  line-height: 1.3;
-}
-.home-hero-copy h1 span {
-  background: linear-gradient(135deg, var(--violet), var(--blue));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.home-hero-copy .lead { margin-bottom: 32px; }
-
-/* Hero content carousel */
-.home-hero-content {
-  flex: 1;
-  min-width: 0;
-  position: relative;
-  height: 360px;
-  border-radius: 28px;
-  overflow: hidden;
-  box-shadow: 0 24px 48px rgba(0, 50, 150, 0.12);
-}
-.home-hero-slide {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  transition: opacity 0.8s ease;
-}
-.home-hero-slide.is-active {
-  opacity: 1;
-  z-index: 1;
-}
-.home-hero-slide img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.home-hero-card-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 24px 28px;
-  background: linear-gradient(transparent, rgba(0,0,0,0.6));
-  color: #fff;
-}
-.home-hero-card-overlay .card-tag {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 4px 10px;
-  border-radius: 8px;
-  margin-bottom: 10px;
-}
-.home-hero-card-overlay .card-tag.tag-story { background: var(--rose); }
-.home-hero-card-overlay .card-tag.tag-column { background: var(--violet); }
-.home-hero-card-overlay .card-tag.tag-place { background: var(--blue); }
-.home-hero-card-overlay .card-tag.tag-award {
-  background: linear-gradient(135deg, #b8860b, #d4a017);
-}
-.home-hero-credit {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 10px !important;
-  font-size: 11px;
-  line-height: 1.5;
-  opacity: 0.72 !important;
-}
-.home-hero-credit .material-symbols-rounded {
-  font-size: 14px;
-}
-.home-hero-credit-title {
-  font-weight: 800;
-}
-.home-hero-credit-title::after {
-  content: ' ·';
-}
-.home-hero-card-overlay h3 {
-  font-size: 20px;
-  font-weight: 800;
-  margin: 0 0 6px;
-  line-height: 1.35;
-}
-.home-hero-card-overlay p {
-  font-size: 13px;
-  margin: 0;
-  opacity: 0.85;
-}
-
-/* === Section shared === */
-.home-section-title {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-.home-section-title h2 { font-size: 24px; font-weight: 800; margin: 0; }
-.home-section-title .section-link {
-  font-size: 14px; font-weight: 700; color: var(--violet);
-  text-decoration: none; display: flex; align-items: center; gap: 4px;
-}
-.home-section-title .section-link:hover { text-decoration: underline; }
-
-.home-section-divider {
-  border: 0;
-  height: 1px;
-  margin: 0 0 40px;
-  background: linear-gradient(90deg, transparent, var(--line) 12%, var(--line) 88%, transparent);
-}
-
-/* === Quick Action Cards === */
-.home-action-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 56px;
-}
-.home-action-card {
-  display: flex; align-items: center; gap: 14px;
-  min-height: 94px;
-  padding: 22px 20px; border-radius: 20px;
-  background: #fff; box-shadow: var(--soft-shadow);
-  cursor: pointer;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  text-decoration: none; color: inherit;
-}
-.home-action-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
-.home-action-icon {
-  width: 44px; height: 44px; border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.home-action-icon .material-symbols-rounded { font-size: 24px; color: #fff; }
-.home-action-icon.icon-violet { background: linear-gradient(135deg, var(--violet), #4d8eff); }
-.home-action-icon.icon-blue   { background: linear-gradient(135deg, var(--blue), var(--cyan)); }
-.home-action-icon.icon-rose   { background: linear-gradient(135deg, var(--rose), #ff8fab); }
-.home-action-icon.icon-cyan   { background: linear-gradient(135deg, var(--cyan), #34d8d0); }
-.home-action-text {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  justify-content: center;
-}
-.home-action-text h3 { font-size: 14px; font-weight: 800; margin: 0 0 4px; }
-.home-action-text p  { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.4; }
-
-/* === Two-Column Spotlight === */
-.home-spotlight-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 64px;
-}
-
-/* Left: Super-like TOP 3 */
-.home-toplikes-card {
-  border-radius: 24px;
-  background: #fff;
-  box-shadow: var(--soft-shadow);
-  padding: 28px;
-}
-.home-toplikes-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 24px;
-}
-.home-toplikes-header h3 { font-size: 18px; font-weight: 800; margin: 0; }
-.home-toplikes-header a {
-  font-size: 13px; font-weight: 700; color: var(--violet);
-  text-decoration: none; display: flex; align-items: center; gap: 3px;
-}
-.home-toplikes-header a:hover { text-decoration: underline; }
-.home-toplikes-list { display: flex; flex-direction: column; gap: 16px; }
-.home-toplikes-item {
-  display: flex; align-items: center; gap: 14px;
-  padding: 12px; border-radius: 16px;
-  background: var(--bg);
-  cursor: pointer;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-.home-toplikes-item:hover { transform: translateX(4px); box-shadow: var(--soft-shadow); }
-.home-toplikes-rank {
-  width: 28px; height: 28px; border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0;
-}
-.home-toplikes-item:nth-child(1) .home-toplikes-rank { background: linear-gradient(135deg, #ffd700, #ffb800); }
-.home-toplikes-item:nth-child(2) .home-toplikes-rank { background: linear-gradient(135deg, #c0c0c0, #a8a8a8); }
-.home-toplikes-item:nth-child(3) .home-toplikes-rank { background: linear-gradient(135deg, #cd7f32, #b87333); }
-.home-toplikes-img {
-  width: 56px; height: 56px; border-radius: 14px;
-  object-fit: cover; flex-shrink: 0;
-}
-.home-toplikes-info { flex: 1; min-width: 0; }
-.home-toplikes-info h4 { font-size: 14px; font-weight: 700; margin: 0 0 3px; }
-.home-toplikes-info p  { font-size: 12px; color: var(--muted); margin: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-.home-toplikes-badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 700; color: var(--rose);
-  background: rgba(255,92,141,0.08);
-  padding: 3px 8px; border-radius: 8px;
-}
-
-/* Right: Nearest Trip */
-.home-nearest-card {
-  border-radius: 24px;
-  overflow: hidden;
-  position: relative;
-  min-height: 320px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  box-shadow: var(--soft-shadow);
-  cursor: pointer;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-.home-nearest-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
-
-.home-nearest-card--plain {
-  border: 1px solid rgba(214, 224, 241, 0.9);
-  background: linear-gradient(135deg, #ffffff, #f7fbff);
-  color: var(--ink);
-  justify-content: stretch;
-  padding: 0;
-  box-shadow: 0 22px 50px rgba(27, 45, 78, 0.1);
-}
-.home-nearest-plain {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(180px, 34%) minmax(0, 1fr);
-  gap: 0;
-  width: 100%;
-  flex: 1 1 auto;
-  min-height: 320px;
-  padding: 0 14px 14px;
-  box-sizing: border-box;
-  background:
-    radial-gradient(circle at 96% 10%, rgba(0, 102, 255, 0.1), transparent 28%),
-    linear-gradient(135deg, rgba(241, 247, 255, 0.82), rgba(255, 255, 255, 0.96));
-}
-.home-nearest-visual {
-  position: relative;
-  min-height: 292px;
-  overflow: hidden;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #dbeafe, #eff6ff);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-}
-.home-nearest-visual img,
-.home-nearest-visual-fallback {
-  width: 100%;
-  height: 100%;
-  min-height: 292px;
-}
-.home-nearest-visual img {
-  display: block;
-  object-fit: cover;
-}
-.home-nearest-visual::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(180deg, rgba(8, 15, 31, 0.08), rgba(8, 15, 31, 0.74)),
-    linear-gradient(135deg, rgba(0, 102, 255, 0.18), transparent 55%);
-}
-.home-nearest-visual-fallback {
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 10px;
-  color: #1d4ed8;
-  text-align: center;
-  background:
-    linear-gradient(135deg, rgba(219, 234, 254, 0.92), rgba(224, 242, 254, 0.86)),
-    #eff6ff;
-}
-.home-nearest-visual-fallback .material-symbols-rounded {
-  font-size: 44px;
-}
-.home-nearest-visual-fallback strong {
-  max-width: 80%;
-  font-size: 15px;
-  font-weight: 900;
-  line-height: 1.35;
-}
-.home-nearest-status {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  color: #fff;
-  backdrop-filter: blur(12px);
-  font-size: 12px;
-  font-weight: 900;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
-}
-.home-nearest-status .material-symbols-rounded {
-  font-size: 16px;
-  color: #fff;
-}
-.home-nearest-dday-text {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  margin-bottom: 8px;
-  color: var(--blue);
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 0;
-  line-height: 1;
-}
-.home-nearest-info {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  padding: 0 10px 8px 24px;
-}
-.home-nearest-tools {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-bottom: 18px;
-}
-.home-nearest-tool-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid rgba(214, 224, 241, 0.92);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.82);
-  color: #64748b;
-  cursor: pointer;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
-}
-.home-nearest-tool-btn:hover {
-  color: var(--blue);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(0, 102, 255, 0.12);
-}
-.home-nearest-tool-btn .material-symbols-rounded {
-  font-size: 19px;
-}
-.home-nearest-copy {
-  min-width: 0;
-  margin-bottom: 20px;
-}
-.home-nearest-waiting {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 800;
-  color: #667085;
-}
-.home-nearest-trip-title {
-  font-size: clamp(28px, 3.2vw, 38px);
-  font-weight: 950;
-  margin: 0;
-  line-height: 1.14;
-  letter-spacing: 0;
-  color: var(--ink);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.home-nearest-meta-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
-}
-.home-nearest-info-block {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  min-height: 58px;
-  padding: 0 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(222, 231, 244, 0.95);
-  color: #334155;
-  font-size: 13px;
-  font-weight: 850;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.045);
-}
-.home-nearest-info-block > span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.home-nearest-info-block .material-symbols-rounded {
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  border-radius: 12px;
-  background: rgba(0, 102, 255, 0.09);
-  color: var(--blue);
-  font-size: 18px;
-}
-.home-nearest-plain-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  flex-wrap: wrap;
-  margin-top: auto;
-  padding-top: 18px;
-  border-top: 1px solid rgba(226, 232, 240, 0.9);
-}
-.home-nearest-bg {
-  position: absolute; inset: 0;
-}
-.home-nearest-bg img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
-}
-.home-nearest-bg::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.55) 100%);
-}
-.home-nearest-content {
-  position: relative; z-index: 1;
-  padding: 28px;
-  color: #fff;
-}
-.home-nearest-dday {
-  display: inline-block;
-  padding: 5px 14px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.2);
-  backdrop-filter: blur(8px);
-  font-size: 13px; font-weight: 800;
-}
-.home-nearest-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.home-nearest-destination {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 12px;
-  font-weight: 700;
-  opacity: 0.9;
-}
-.home-nearest-card--empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-  color: var(--muted);
-  cursor: pointer;
-}
-.home-nearest-empty {
-  text-align: center;
-  padding: 24px;
-}
-.home-nearest-empty-icon {
-  font-size: 36px;
-  color: var(--violet);
-  margin-bottom: 8px;
-}
-.home-nearest-empty-title {
-  margin: 0 0 4px;
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--ink);
-}
-.home-nearest-empty-sub {
-  margin: 0;
-  font-size: 12px;
-}
-.home-nearest-content h3 {
-  font-size: 22px; font-weight: 800;
-  margin: 0 0 8px;
-}
-.home-nearest-members {
-  display: flex; align-items: center; gap: 9px;
-  margin-bottom: 0;
-}
-.home-nearest-member-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(0, 102, 255, 0.09);
-  color: var(--blue);
-}
-.home-nearest-member-icon .material-symbols-rounded {
-  font-size: 18px;
-}
-.home-nearest-members .avatars { display: flex; margin-left: 2px; }
-.home-nearest-members .avatar {
-  width: 30px; height: 30px; font-size: 11px;
-  margin-left: -9px; border: 2px solid #fff;
-  border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--violet); font-weight: 800;
-  background: #eef4ff;
-  box-shadow: 0 7px 14px rgba(15, 23, 42, 0.1);
-  overflow: hidden;
-}
-.home-nearest-members .avatar:first-child { margin-left: 0; }
-.home-nearest-members .avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.home-nearest-members .member-count {
-  font-size: 12px;
-  color: #475569;
-  font-weight: 850;
-}
-.home-nearest-link {
-  display: inline-flex; align-items: center; gap: 6px;
-  min-height: 38px;
-  padding: 0 16px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 900;
-  color: #fff;
-  background: linear-gradient(135deg, #2563eb, #00a6ff);
-  border: 0;
-  text-decoration: none;
-  box-shadow: 0 16px 30px rgba(0, 102, 255, 0.22);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.home-nearest-link .material-symbols-rounded {
-  font-size: 18px;
-}
-.home-nearest-card--plain:hover .home-nearest-link {
-  transform: translateX(2px);
-  box-shadow: 0 16px 28px rgba(0, 102, 255, 0.24);
-}
-
-/* === Community Reviews === */
-.home-community-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-  margin-bottom: 64px;
-}
-.home-community-card {
-  border-radius: 22px; overflow: hidden;
-  background: #fff;
-  box-shadow: var(--soft-shadow);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-}
-.home-community-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
-.home-community-card-img {
-  position: relative;
-  overflow: hidden;
-  min-height: 180px;
-  height: 180px;
-}
-.home-community-placeholder { width: 100%; height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; background: linear-gradient(135deg, #eef2ff, #f8fafc); color: var(--muted); font-size: 12px; font-weight: 750; }
-.home-community-placeholder .material-symbols-rounded { font-size: 34px; color: var(--violet); }
-.home-community-card-img img {
-  width: 100%; height: 180px; object-fit: cover; display: block;
-  transition: transform 0.4s ease;
-}
-.home-community-card:hover .home-community-card-img img { transform: scale(1.05); }
-.home-community-card-placeholder {
-  width: 100%;
-  height: 180px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--muted);
-  background:
-    radial-gradient(circle at 30% 20%, rgba(0, 102, 255, 0.08), transparent 60%),
-    radial-gradient(circle at 70% 80%, rgba(140, 100, 255, 0.08), transparent 60%),
-    linear-gradient(135deg, var(--bg), #fff);
-}
-.home-community-card-placeholder .material-symbols-rounded {
-  font-size: 40px;
-  color: var(--violet);
-  opacity: 0.7;
-}
-.home-community-card-placeholder p {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.home-community-card-body {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  padding: 20px;
-}
-.home-community-card-body .cmn-tag {
-  display: inline-block; font-size: 11px; font-weight: 800;
-  color: var(--violet); background: rgba(0,102,255,0.08);
-  padding: 4px 10px; border-radius: 8px; margin-bottom: 10px;
-}
-.home-community-card-body h3 {
-  font-size: 15px; font-weight: 800; margin: 0 0 8px;
-  line-height: 1.4;
-  display: -webkit-box; -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical; overflow: hidden;
-}
-.home-community-card-meta {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px;
-  margin-top: auto;
-  padding-top: 14px;
-}
-.home-community-author {
-  display: flex; align-items: center; gap: 8px;
-}
-.home-community-author span {
-  font-size: 13px; font-weight: 600;
-}
-.home-community-stats {
-  display: flex; align-items: center; gap: 4px;
-  font-size: 12px; color: var(--muted); font-weight: 600;
-}
-
-/* === Invite CTA Banner === */
-.home-invite-cta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
-  padding: 32px 36px;
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at 10% 20%, rgba(0, 209, 255, 0.12), transparent 34%),
-    linear-gradient(135deg, rgba(0, 102, 255, 0.08), rgba(140, 100, 255, 0.12));
-  border: 1px solid rgba(0, 102, 255, 0.1);
-  margin-bottom: 24px;
-}
-.home-invite-cta-left {
-  display: flex; align-items: center; gap: 20px;
-  min-width: 0;
-}
-.home-invite-cta-illust {
-  width: 72px; height: 72px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(0,102,255,0.12), rgba(140,100,255,0.15));
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.home-invite-cta-illust .material-symbols-rounded {
-  font-size: 36px;
-  background: linear-gradient(135deg, var(--violet), #8b5cf6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.home-invite-cta-copy h3 {
-  font-size: 19px; font-weight: 800; margin: 0 0 6px;
-  line-height: 1.35;
-}
-.home-invite-cta-copy .eyebrow {
-  margin-bottom: 6px;
-}
-.home-invite-cta-copy p {
-  font-size: 13px; color: var(--muted); margin: 0;
-  line-height: 1.5;
-}
-.home-invite-benefits {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 14px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.home-invite-benefits li {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--violet);
-  font-size: 11px;
-  font-weight: 800;
-}
-.home-invite-benefits .material-symbols-rounded {
-  font-size: 15px;
-}
-.home-invite-cta-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.home-invite-cta-actions .btn {
-  justify-content: center;
-}
-.home-invite-primary-action {
-  min-height: 44px;
-  padding-inline: 16px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-.home-invite-share-row {
-  display: flex;
-  align-items: center;
-}
-.home-invite-cta-social {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.home-invite-social-btn {
-  display: flex;
-  width: 44px;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: none;
-  border-radius: 999px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 800;
-  padding: 0;
-  white-space: nowrap;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-.home-invite-social-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-}
-.home-invite-social-btn.btn-kakao {
-  background: #fee500;
-}
-.home-invite-social-btn.btn-kakao svg { width: 18px; height: 18px; }
-.home-invite-social-btn.btn-google {
-  background: #fff;
-  border: 1px solid var(--line);
-}
-.home-invite-social-btn.btn-google svg { width: 16px; height: 16px; }
-
-/* === Responsive === */
-@media (max-width: 1024px) {
-  .home-hero { flex-direction: column; min-height: auto; }
-  .home-hero-copy { flex: unset; width: 100%; }
-  .home-hero-content { width: 100%; height: 300px; }
-  .home-action-row { grid-template-columns: repeat(2, 1fr); }
-  .home-spotlight-row { grid-template-columns: 1fr; }
-  .home-community-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 768px) {
-  .home-hero-content { grid-template-columns: 1fr 1fr; height: auto; }
-  .home-community-grid { grid-template-columns: 1fr; }
-  .home-nearest-plain { grid-template-columns: 1fr; padding: 0 12px 12px; }
-  .home-nearest-visual,
-  .home-nearest-visual img,
-  .home-nearest-visual-fallback { min-height: 220px; }
-  .home-nearest-info { padding: 22px 8px 8px; }
-  .home-nearest-tools { margin-bottom: 16px; }
-  .home-nearest-meta-row { grid-template-columns: 1fr; }
-  .home-nearest-trip-title { font-size: 22px; }
-  .home-nearest-plain-foot { align-items: flex-start; flex-direction: column; }
-  .home-nearest-link { width: 100%; justify-content: center; }
-  .home-invite-cta { flex-direction: column; text-align: center; padding: 28px 24px; }
-  .home-invite-cta-left { flex-direction: column; }
-  .home-invite-benefits { justify-content: center; }
-  .home-invite-cta-actions {
-    width: 100%;
-    flex-basis: auto;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-}
-@media (max-width: 480px) {
-  .home-hero-content { grid-template-columns: 1fr; }
-  .home-action-row { grid-template-columns: 1fr 1fr; }
+.home-canvas { position: relative; isolation: isolate; min-height: 100svh; min-height: 100dvh; display: flex; flex-direction: column; color: #fff; background: #203e44; }
+.home-backdrop, .home-shade { position: absolute; inset: 0; pointer-events: none; z-index: -1; }
+.home-backdrop { overflow: hidden; background: radial-gradient(ellipse at 65% 25%, #6e9290, transparent 65%), linear-gradient(145deg, #24434d, #172f35); }
+.home-backdrop img { position: absolute; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.home-shade { background: linear-gradient(180deg, rgb(5 18 22 / 65%), transparent 25%, transparent 55%, rgb(5 18 22 / 78%)); }
+.home-search-position { width: min(720px, calc(100% - 80px)); margin: max(180px, calc(40svh - 36px)) auto 72px; position: relative; z-index: 2; }
+.home-search { width: 100%; position: relative; }
+.home-search-bar { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 8px; border: 1px solid rgb(255 255 255 / 75%); border-radius: 22px; background: #fff; box-shadow: 0 12px 48px rgb(0 0 0 / 18%); color: #24333c; }
+.home-search-bar:focus-within { outline: 3px solid #b9d8ff; outline-offset: 4px; }
+.home-search-scope { display: flex; position: relative; align-items: center; padding-right: 16px; margin-left: 12px; border-right: 1px solid #e3e7eb; }
+.home-search-scope select { appearance: none; border: 0; background: transparent; color: #384652; font: inherit; font-size: 14px; font-weight: 650; padding: 12px 24px 12px 0; max-width: 120px; cursor: pointer; }
+.home-search-scope > .material-symbols-rounded { position: absolute; right: 14px; pointer-events: none; font-size: 20px; }
+.home-search-bar input { min-width: 0; flex: 1; width: 100%; border: 0; outline: none; box-shadow: none; background: transparent; padding: 12px 0; font: inherit; font-size: 17px; color: #1e2a35; }
+.home-search-bar input::placeholder { color: #717b85; }
+.home-search-submit { display: flex; justify-content: center; align-items: center; gap: 7px; flex-shrink: 0; border: 0; border-radius: 16px; background: var(--violet, #06f); color: #fff; min-height: 54px; padding: 0 22px; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.home-search-submit:hover { filter: brightness(.92); }
+.home-search-history { position: absolute; top: calc(100% + 12px); left: 0; right: 0; padding: 18px; border-radius: 20px; background: #fff; box-shadow: 0 16px 40px rgb(0 0 0 / 18%); color: #24333c; }
+.home-search-history-heading { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 8px; font-size: 13px; color: #62707b; }
+.home-search-history button { border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }
+.home-search-history-heading button { min-height: 32px; }
+.home-search-history ul { list-style: none; margin: 0; padding: 0; }
+.home-search-history li button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px; text-align: left; border-radius: 10px; overflow-wrap: anywhere; }
+.home-search-history li button:hover { background: #f1f5f8; }
+.home-search-history .material-symbols-rounded { color: #7a8791; font-size: 20px; }
+.home-artwork-footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; margin-top: auto; padding: 32px 56px max(40px, env(safe-area-inset-bottom)); }
+.home-artwork-info { max-width: 700px; min-width: 0; text-shadow: 0 2px 16px rgb(0 0 0 / 30%); }
+.home-artwork-label { display: flex; align-items: center; gap: 5px; margin: 0 0 10px; font-size: 13px; font-weight: 500; letter-spacing: .04em; }
+.home-artwork-label .material-symbols-rounded { font-size: 17px; }
+.home-artwork-title { margin: 0 0 12px; font-size: clamp(28px, 3vw, 44px); font-weight: 550; line-height: 1.2; letter-spacing: -.035em; color: #fff; overflow-wrap: anywhere; }
+.home-artwork-caption { font-size: 13px; margin: 0 0 6px; }
+.home-artwork-credit { margin: 0; font-size: 12px; line-height: 1.7; color: #e2e8e9; overflow-wrap: anywhere; }
+.home-photo-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.home-photo-count { font-size: 12px; font-variant-numeric: tabular-nums; letter-spacing: .12em; margin-right: 16px; color: #d6e0e2; }
+.home-photo-count strong { color: #fff; font-weight: 650; }
+.home-photo-controls button { display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border: 1px solid rgb(255 255 255 / 45%); border-radius: 50%; background: rgb(10 25 30 / 20%); color: #fff; cursor: pointer; transition: background .2s; }
+.home-photo-controls button:hover { background: rgb(255 255 255 / 20%); }
+.home-photo-controls .material-symbols-rounded { font-size: 21px; }
+.home-photo-status { font-size: 13px; line-height: 1.7; }
+.home-photo-status p { margin: 0; }
+.home-photo-status button { margin-top: 8px; padding: 8px 0; border: 0; background: transparent; color: #fff; font: inherit; text-decoration: underline; cursor: pointer; }
+button:focus-visible, select:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
+.home-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.home-photo-enter-active, .home-photo-leave-active { transition: opacity .65s ease; }
+.home-photo-enter-from, .home-photo-leave-to { opacity: 0; }
+@media (max-width: 767px) {
+  .home-search-position { width: calc(100% - 40px); margin-top: max(190px, calc(38svh - 32px)); margin-bottom: 60px; }
+  .home-search-bar { min-height: 64px; border-radius: 19px; gap: 8px; }
+  .home-search-bar input { font-size: 16px; padding-left: 12px; }
+  .home-search-scope { display: none; margin-left: 6px; padding-right: 8px; }
+  .home-search:focus-within .home-search-scope { display: flex; }
+  .home-search-scope select { font-size: 12px; max-width: 90px; }
+  .home-search-scope > .material-symbols-rounded { right: 6px; }
+  .home-search-submit { width: 46px; min-height: 46px; padding: 0; border-radius: 13px; }
+  .home-search-submit-text { display: none; }
+  .home-artwork-footer { padding: 24px 24px max(28px, env(safe-area-inset-bottom)); flex-wrap: wrap; gap: 24px; }
+  .home-artwork-info { flex-basis: 100%; }
+  .home-artwork-title { font-size: 30px; }
+  .home-artwork-credit { font-size: 11px; }
+  .home-photo-controls { margin-left: auto; }
+  .home-photo-controls button { width: 44px; height: 44px; }
+  .home-search-history { max-height: 240px; overflow-y: auto; }
+  .home-canvas:has(.home-search:focus-within) .home-search-position { margin-top: 160px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-photo-enter-active, .home-photo-leave-active, .home-photo-controls button { transition: none; }
 }
 </style>

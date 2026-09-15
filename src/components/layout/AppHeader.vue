@@ -12,6 +12,7 @@ import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 import { useLocale } from '@/i18n'
 
 const route = useRoute()
+defineProps<{ immersive?: boolean }>()
 const router = useRouter()
 const auth = useAuthStore()
 const { isDarkMode, toggleTheme } = useTheme()
@@ -210,7 +211,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <header :class="['topbar', { 'route-workspace-header': isRouteWorkspace }]">
+  <header :class="['topbar', { 'route-workspace-header': isRouteWorkspace, 'immersive-header': immersive }]">
     <!-- Left: Brand -->
     <div style="min-width:220px">
       <a
@@ -370,6 +371,22 @@ async function handleLogout() {
 </template>
 
 <style scoped>
+.topbar.immersive-header { background: transparent; border-bottom: 0; backdrop-filter: none; padding-inline: 40px; }
+.immersive-header .brand > span { color: #fff !important; }
+.immersive-header .nav a { color: #f1f4f5; text-shadow: 0 1px 8px rgb(0 0 0 / 30%); }
+.immersive-header .nav a.active { color: #fff; background: rgb(255 255 255 / 17%); border-color: rgb(255 255 255 / 25%); }
+.immersive-header .nav-indicator { display: none; }
+.immersive-header .header-actions > .btn.ghost,
+.immersive-header .header-actions .icon-btn { color: #fff; background: rgb(0 0 0 / 12%); }
+.immersive-header .header-dropdown-panel { text-shadow: none; }
+@media (max-width: 767px) {
+  .topbar.immersive-header { height: auto; min-height: 72px; padding: 12px 20px; gap: 10px; flex-wrap: wrap; }
+  .immersive-header .brand img { width: 38px !important; height: 38px !important; }
+  .immersive-header .brand > span { font-size: 19px !important; }
+  .immersive-header .nav { order: 3; flex-basis: 100%; width: 100%; justify-content: flex-start; overflow-x: auto; }
+  .immersive-header .nav a { font-size: 13px; padding: 8px 12px; }
+  .immersive-header .header-actions { width: auto; }
+}
 .profile-item-link:hover {
   background: var(--bg);
 }
