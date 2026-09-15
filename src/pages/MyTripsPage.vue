@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { itineraryApi } from '@/api/itinerary.api'
 import { tripApi } from '@/api/trip.api'
 import { userApi } from '@/api/user.api'
-import type { TripDetailMember, TripFilter, TripSummary } from '@/types/trip'
+import type { TripDetailMember, TripSummary } from '@/types/trip'
 import type { LegalRegion } from '@/types/geo'
 import type { UserSummary } from '@/types/auth'
 
@@ -22,6 +22,7 @@ const route = useRoute()
 const tripStore = useTripStore()
 const authStore = useAuthStore()
 const createModal = useModal()
+type TripFilter = 'all' | 'upcoming' | 'past' | 'undecided'
 const activeFilter = ref<TripFilter>('all')
 const searchQuery = ref('')
 const currentPage = ref(1)
@@ -82,7 +83,8 @@ function addDays(date: Date, days: number) {
 const filters: { label: string; value: TripFilter }[] = [
   { label: '전체', value: 'all' },
   { label: '진행 중', value: 'upcoming' },
-  { label: '보관됨', value: 'past' },
+  { label: '지난 여행', value: 'past' },
+  { label: '미정', value: 'undecided' },
 ]
 
 function isAutoArchived(trip: TripSummary): boolean {
@@ -106,7 +108,8 @@ const filteredTrips = computed(() => {
     const status = effectiveStatus(trip)
     const matchesStatus =
       activeFilter.value === 'all' ||
-      (activeFilter.value === 'upcoming' && status === 'ACTIVE') ||
+      (activeFilter.value === 'upcoming' && status === 'ACTIVE' && Boolean(trip.startDate && trip.endDate)) ||
+      (activeFilter.value === 'undecided' && status === 'ACTIVE' && (!trip.startDate || !trip.endDate)) ||
       (activeFilter.value === 'past' && status === 'ARCHIVED')
     const matchesQuery =
       !query ||
@@ -142,14 +145,17 @@ watch(() => paginatedTrips.value.map(trip => trip.id), async (ids) => {
 const emptyMessage = computed(() => {
   if (searchQuery.value.trim()) return '검색 조건에 맞는 여행이 없습니다.'
   if (activeFilter.value === 'upcoming') return '진행 중인 여행이 없습니다.'
-  if (activeFilter.value === 'past') return '보관한 여행이 없습니다.'
+  if (activeFilter.value === 'past') return '지난 여행이 없습니다.'
+  if (activeFilter.value === 'undecided') return '일정이 미정인 여행이 없습니다.'
   return '아직 만든 여행이 없습니다.'
 })
 
 function statusLabel(trip: TripSummary) {
   const status = effectiveStatus(trip)
-  if (status === 'ARCHIVED') return '보관됨'
+  if (status === 'ARCHIVED') return '지난 여행'
+  if (!trip.startDate || !trip.endDate) return '미정'
   if (status === 'DELETED') return '삭제됨'
+  if (!trip.startDate || !trip.endDate) return '미정'
   return '진행 중'
 }
 
@@ -166,6 +172,7 @@ function getTripStatus(trip: TripSummary): string {
   const status = effectiveStatus(trip)
   if (status === 'ARCHIVED') return '지난 여행'
   if (status === 'DELETED') return '삭제됨'
+  if (!trip.startDate || !trip.endDate) return '미정'
   return '진행 중'
 }
 
@@ -203,11 +210,8 @@ async function loadTrips() {
   const sequence = ++tripLoadSequence
   currentPage.value = 1
   collectingTrips.value = true
-  const status = activeFilter.value === 'upcoming'
-    ? 'ACTIVE'
-    : activeFilter.value === 'past'
-      ? 'ARCHIVED'
-      : undefined
+  const status = undefined
+
   try {
     await tripStore.fetchTrips({ page: 0, size: 20, status, sort: ['createdAt,desc'] })
     // 서버 검색이 없는 목록 API이므로 모든 페이지를 모아 검색한 뒤 9개씩 표시한다.
@@ -329,9 +333,9 @@ async function handleCreateTrip() {
       tripApi.createInvite(created.id, { inviteeUserId: user.id })
     )))
 
+    if (activeFilter.value === 'past' || activeFilter.value === 'undecided') activeFilter.value = 'upcoming'
     resetForm()
     createModal.close()
-    if (activeFilter.value === 'past') activeFilter.value = 'upcoming'
     if (requestedIntent.value === 'route' || requestedIntent.value === 'ai') {
       await router.replace({ name: 'Route', params: { tripId: created.id }, query: requestedIntent.value === 'ai' ? { panel: 'ai' } : {} })
     } else {
@@ -476,7 +480,7 @@ watch(activeFilter, loadTrips)
                           </p>
                         </div>
                       </div>
-                      <div class="timeline-card-actions" @click.stop @keydown.stop>
+                      <div class="timeline-card-actions">
                         <div class="trip-members" :aria-label="membersByTrip[trip.id] ? `동행자 ${membersByTrip[trip.id]!.length}명` : '동행자 정보를 불러오지 못했거나 불러오는 중'">
                           <span v-for="member in (membersByTrip[trip.id] || []).slice(0, 3)" :key="member.id" class="trip-member-avatar" :title="member.user.displayName">
                             <img v-if="member.user.profileImageUrl && !failedMemberImages.has(member.id)" :src="member.user.profileImageUrl" :alt="member.user.displayName" @error="failedMemberImages.add(member.id)">
@@ -489,16 +493,12 @@ watch(activeFilter, loadTrips)
                           v-if="trip.myRole === 'OWNER'"
                           class="timeline-card-vote"
                           type="button"
-                          @click="goTripVote(trip.id)"
+                          @click.stop="goTripVote(trip.id)"
                         >
                           <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
                           <span>투표</span>
                         </button>
-                        <button class="timeline-card-open" type="button" @click="goTripDetail(trip.id)">
-                          <span>계획 보기</span>
-                          <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-                        </button>
-                        <button class="trip-options" type="button" :aria-label="`${trip.title} 옵션`" title="여행 설정 · 멤버 관리" @click="openTripSettings(trip)"><span class="material-symbols-rounded" aria-hidden="true">settings</span></button>
+                        <button class="trip-options" type="button" :aria-label="`${trip.title} 옵션`" title="여행 설정 · 멤버 관리" @click.stop="openTripSettings(trip)"><span class="material-symbols-rounded" aria-hidden="true">settings</span></button>
                       </div>
                     </article>
                   </div>
