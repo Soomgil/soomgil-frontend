@@ -12,7 +12,7 @@ import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 import { useLocale } from '@/i18n'
 
 const route = useRoute()
-defineProps<{ immersive?: boolean }>()
+defineProps<{ immersive?: boolean; paper?: boolean }>()
 const router = useRouter()
 const auth = useAuthStore()
 const { isDarkMode, toggleTheme } = useTheme()
@@ -211,7 +211,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <header :class="['topbar', { 'route-workspace-header': isRouteWorkspace, 'immersive-header': immersive }]">
+  <header :class="['topbar', { 'route-workspace-header': isRouteWorkspace, 'immersive-header': immersive, 'paper-header': paper }]">
     <!-- Left: Brand -->
     <div style="min-width:220px">
       <a
@@ -379,6 +379,12 @@ async function handleLogout() {
 .immersive-header .header-actions > .btn.ghost,
 .immersive-header .header-actions .icon-btn { color: #fff; background: rgb(0 0 0 / 12%); }
 .immersive-header .header-dropdown-panel { text-shadow: none; }
+.topbar.paper-header { background: rgb(250 250 247 / 94%); }
+.paper-header .brand > span { color: #22302f !important; }
+.paper-header .nav a { color: #63706a; text-shadow: none; }
+.paper-header .nav a.active { color: var(--violet); background: #edf3ff; border-color: #dfe9fb; }
+.paper-header .header-actions > .btn.ghost,
+.paper-header .header-actions .icon-btn { color: #52625a; background: #f0f3ee; }
 @media (max-width: 767px) {
   .topbar.immersive-header { height: auto; min-height: 72px; padding: 12px 20px; gap: 10px; flex-wrap: wrap; }
   .immersive-header .brand img { width: 38px !important; height: 38px !important; }
