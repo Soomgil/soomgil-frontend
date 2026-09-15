@@ -6,7 +6,7 @@ import type { TripSummary } from '@/types/trip'
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
 const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: {} as Record<string, string> }))
 const itinerary = vi.hoisted(() => ({ createDay: vi.fn() }))
-const tripApiMock = vi.hoisted(() => ({ createInvite: vi.fn() }))
+const tripApiMock = vi.hoisted(() => ({ createInvite: vi.fn(), getMembers: vi.fn().mockResolvedValue([]) }))
 const users = vi.hoisted(() => ({ searchUsers: vi.fn() }))
 
 const trip = {
@@ -71,6 +71,18 @@ describe('MyTripsPage', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('동행자는 3명과 초과 인원으로 표시하고 옵션에서 설정을 연다', async () => {
+    store.trips = [trip]
+    tripApiMock.getMembers.mockResolvedValueOnce(Array.from({ length: 5 }, (_, i) => ({ id: String(i), status: 'ACTIVE', user: { id: String(i), displayName: `동행${i}`, profileImageUrl: `https://example.com/${i}.png` } })))
+    const wrapper = mount(MyTripsPage, { global: { stubs: { AppHeader: true, TripSettingsModal: true } } })
+    await flushPromises()
+    expect(wrapper.findAll('.trip-member-avatar')).toHaveLength(3)
+    expect(wrapper.get('.trip-member-overflow').text()).toBe('+2')
+    await wrapper.get('button[aria-label="새 부산 여행 옵션"]').trigger('click')
+    expect(routing.push).not.toHaveBeenCalled()
+    expect(wrapper.findComponent({ name: 'TripSettingsModal' }).exists()).toBe(true)
+  })
 
   it('보관됨 필터에서 여행 생성 후 진행 중 필터로 전환한다', async () => {
     const wrapper = mount(MyTripsPage, {
@@ -269,17 +281,16 @@ describe('MyTripsPage', () => {
     expect(wrapper.find('.animate-spin').exists()).toBe(true)
   })
 
-  it('다음 페이지가 있으면 여행 더 보기를 요청한다', async () => {
-    store.trips = [trip]
-    store.hasMoreTrips = true
-    const wrapper = mount(MyTripsPage, {
-      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
-    })
-
-    const loadMoreButton = wrapper.findAll('button').find((button) => button.text() === '여행 더 보기')
-    await loadMoreButton!.trigger('click')
-
-    expect(store.fetchNextPage).toHaveBeenCalledOnce()
+  it('9개씩 페이지를 나누고 검색 시 첫 페이지로 돌아간다', async () => {
+    store.trips = Array.from({ length: 12 }, (_, index) => ({ ...trip, id: String(index), title: `여행 ${index}` }))
+    const wrapper = mount(MyTripsPage, { global: { stubs: { AppHeader: true, TripSettingsModal: true } } })
+    await flushPromises()
+    expect(wrapper.findAll('.timeline-card')).toHaveLength(9)
+    await wrapper.get('button[aria-label="2페이지"]').trigger('click')
+    expect(wrapper.findAll('.timeline-card')).toHaveLength(3)
+    await wrapper.get('#trip-search-input').setValue('여행 0')
+    expect(wrapper.findAll('.timeline-card')).toHaveLength(1)
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('1')
   })
 
   it('필터에 맞는 빈 상태 문구를 표시한다', async () => {
