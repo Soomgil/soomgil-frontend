@@ -29,15 +29,14 @@ describe('홈 검색과 수상작 배경', () => {
     vi.mocked(awardApi.getAwardPhotos).mockResolvedValue([photo('성산일출봉'), photo('우도')])
   })
 
-  it('선택한 범위와 공백을 정리한 검색어로 이동하며 빈 검색은 무시한다', async () => {
+  it('카테고리 버튼 없이 전체 검색으로 이동하며 빈 검색은 무시한다', async () => {
     const wrapper = render()
     await wrapper.get('form[role="search"]').trigger('submit')
     expect(push).not.toHaveBeenCalled()
-    await wrapper.get('button[aria-label="여행지 검색"]').trigger('click')
-    expect(wrapper.get('button[aria-label="여행지 검색"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find('.home-search-categories').exists()).toBe(false)
     await wrapper.get('input[type="search"]').setValue('  제주  ')
     await wrapper.get('form[role="search"]').trigger('submit')
-    expect(push).toHaveBeenCalledWith({ path: '/search', query: { q: '제주', tab: '장소' } })
+    expect(push).toHaveBeenCalledWith({ path: '/search', query: { q: '제주', tab: '전체' } })
     wrapper.unmount()
   })
 

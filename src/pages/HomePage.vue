@@ -9,16 +9,6 @@ import { fitAwardPhoto } from '@/utils/awardPhotoLayout'
 import inkMask from '@/assets/textures/ink-reveal-mask.png'
 
 const router = useRouter()
-const categories = [
-  { key: '전체', icon: 'search', placeholder: '여행지, 계획, 커뮤니티 글, 유저를 검색하세요' },
-  { key: '계획', icon: 'event_note', placeholder: '여행 계획 이름, 목적지로 검색' },
-  { key: '여행지', icon: 'place', placeholder: '여행지 이름, 지역, 태그로 검색' },
-  { key: '커뮤니티', icon: 'forum', placeholder: '여행기 제목, 내용, 태그로 검색' },
-  { key: '유저', icon: 'group', placeholder: '사용자 이름으로 검색' },
-]
-const activeSearchTab = ref('전체')
-const searchResultTabs: Record<string, string> = { 전체: '전체', 계획: '여행', 여행지: '장소', 커뮤니티: '여행기', 유저: '사용자' }
-const placeholder = computed(() => categories.find((item) => item.key === activeSearchTab.value)?.placeholder)
 const query = ref('')
 const searchFocused = ref(false)
 const recentSearches = ref<string[]>([])
@@ -43,7 +33,6 @@ const photoSize = computed(() => {
   return natural ? fitAwardPhoto(natural.width, natural.height, stageSize.value.width, stageSize.value.height) : null
 })
 const photoStyle = computed(() => photoSize.value?.width ? { width: `${photoSize.value.width}px`, height: `${photoSize.value.height}px` } : undefined)
-const captionStyle = computed(() => photoSize.value?.width ? { width: `${photoSize.value.width}px` } : undefined)
 
 function measureStage() {
   if (galleryStage.value) stageSize.value = { width: galleryStage.value.clientWidth, height: galleryStage.value.clientHeight }
@@ -60,7 +49,7 @@ function submitSearch(value = query.value) {
   if (!q) return
   recentSearches.value = [q, ...recentSearches.value.filter((item) => item !== q)].slice(0, 5)
   try { localStorage.setItem(historyKey, JSON.stringify(recentSearches.value)) } catch { /* 저장이 제한되어도 검색은 계속한다. */ }
-  void router.push({ path: '/search', query: { q, tab: searchResultTabs[activeSearchTab.value] || '전체' } })
+  void router.push({ path: '/search', query: { q, tab: '전체' } })
 }
 function clearHistory() {
   recentSearches.value = []
@@ -112,20 +101,13 @@ onUnmounted(() => resizeObserver?.disconnect())
       <InkWashBackdrop />
       <div class="home-search-position">
         <h1 class="home-sr-only">어디로 떠나고 싶으세요?</h1>
-        <div class="home-search-categories" role="group" aria-label="검색 범위">
-          <button v-for="category in categories" :key="category.key" type="button" class="home-search-cat"
-            :class="{ active: activeSearchTab === category.key }" :aria-label="category.key + ' 검색'"
-            :aria-pressed="activeSearchTab === category.key" @click="activeSearchTab = category.key">
-            <span class="material-symbols-rounded" aria-hidden="true">{{ category.icon }}</span>{{ category.key }}
-          </button>
-        </div>
-        <form class="home-search" role="search" aria-label="통합 검색" @submit.prevent="submitSearch()"
+        <form class="home-search paper-search" role="search" aria-label="통합 검색" @submit.prevent="submitSearch()"
           @focusin="searchFocused = true" @focusout="handleFocusOut" @keydown.esc="searchFocused = false">
-          <div class="home-search-capsule">
-            <span class="material-symbols-rounded home-search-capsule-icon" aria-hidden="true">search</span>
-            <input v-model="query" class="home-search-capsule-input" type="search" aria-label="검색어" :placeholder="placeholder"
+          <div class="paper-search-field">
+            <span class="material-symbols-rounded paper-search-icon" aria-hidden="true">search</span>
+            <input v-model="query" class="paper-search-input" type="search" aria-label="검색어" placeholder="여행지, 계획, 커뮤니티 글, 유저를 검색하세요"
               autocomplete="off" enterkeyhint="search" maxlength="200" />
-            <button class="home-search-capsule-btn" type="submit" aria-label="검색">
+            <button class="paper-search-submit" type="submit" aria-label="검색">
               <span class="material-symbols-rounded" aria-hidden="true">search</span> 검색
             </button>
           </div>
@@ -149,7 +131,7 @@ onUnmounted(() => resizeObserver?.disconnect())
             <button v-if="failed && !loading" type="button" @click="loadPhotos">다시 불러오기</button>
           </div>
         </div>
-        <div v-if="currentPhoto" class="home-artwork-footer" :style="captionStyle">
+        <div v-if="currentPhoto" class="home-artwork-footer">
           <div class="home-artwork-info" aria-live="polite" aria-atomic="true">
             <p class="home-artwork-label">{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
             <h2 class="home-artwork-title">{{ photoTitle }}</h2>
@@ -178,141 +160,6 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-canvas::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 48% 44%, rgb(219 224 207 / 20%), transparent 68%); }
 .home-search-position { width: min(760px, calc(100% - 48px)); margin: 108px auto 32px; position: relative; z-index: 2; }
 .home-search { width: min(680px, 100%); position: relative; margin: 0 auto; }
-/* Category pills */
-.home-search-categories {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 36px;
-}
-.home-search-cat {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 22px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.25s ease;
-  position: relative;
-  white-space: nowrap;
-}
-.home-search-cat .material-symbols-rounded {
-  font-size: 20px;
-}
-.home-search-cat:hover {
-  border-color: rgba(0, 102, 255, 0.3);
-  color: var(--violet);
-  background: rgba(0, 102, 255, 0.02);
-}
-.home-search-cat.active {
-  border-color: var(--violet);
-  background: var(--violet);
-  color: #fff;
-  box-shadow: 0 6px 20px rgba(0, 102, 255, 0.2);
-}
-.home-search-cat.active .material-symbols-rounded {
-  color: #fff;
-}
-.home-search-cat-new {
-  position: absolute;
-  top: -6px;
-  right: -4px;
-  background: var(--rose);
-  color: #fff;
-  font-size: 9px;
-  font-weight: 900;
-  padding: 2px 6px;
-  border-radius: 999px;
-  letter-spacing: 0.5px;
-  line-height: 1;
-}
-
-/* Capsule search bar */
-.home-search-capsule {
-  display: flex;
-  align-items: center;
-  background: #fff;
-  border: 2px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 6px 6px 24px;
-  box-shadow: 0 12px 40px rgba(0, 50, 150, 0.08);
-  transition: border-color 0.25s, box-shadow 0.25s;
-  max-width: 680px;
-  margin: 0 auto;
-}
-.home-search-capsule:focus-within {
-  border-color: var(--violet);
-  box-shadow: 0 12px 40px rgba(0, 102, 255, 0.12), 0 0 0 4px rgba(0, 102, 255, 0.06);
-}
-.home-search-capsule-icon {
-  color: var(--muted);
-  font-size: 24px;
-  flex-shrink: 0;
-  transition: color 0.2s;
-}
-.home-search-capsule:focus-within .home-search-capsule-icon {
-  color: var(--violet);
-}
-.home-search-capsule-input {
-  flex: 1;
-  border: none;
-  outline: none;
-  font-size: 16px;
-  padding: 12px 12px;
-  background: transparent;
-  color: var(--ink);
-  min-width: 0;
-}
-.home-search-capsule-input::placeholder {
-  color: var(--muted);
-}
-.home-search-capsule-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 32px;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(135deg, var(--violet), var(--blue));
-  color: #fff;
-  font-size: 15px;
-  font-weight: 800;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: box-shadow 0.25s, transform 0.25s;
-  flex-shrink: 0;
-}
-.home-search-capsule-btn .material-symbols-rounded {
-  font-size: 20px;
-}
-.home-search-capsule-btn:hover {
-  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.35);
-  transform: translateY(-1px);
-}
-
-@media (max-width: 768px) {
-  .home-search-hero { padding: 56px 16px 48px; }
-  .home-search-categories { gap: 6px; flex-wrap: wrap; }
-  .home-search-cat { padding: 8px 16px; font-size: 13px; }
-  .home-search-cat .material-symbols-rounded { font-size: 18px; }
-  .home-search-capsule { padding: 4px 4px 4px 16px; }
-  .home-search-capsule-btn { padding: 12px 20px; font-size: 14px; }
-  .home-search-capsule-btn span:last-child { display: none; }
-}
-@media (max-width: 480px) {
-  .home-search-categories { gap: 4px; }
-  .home-search-cat { padding: 7px 12px; font-size: 12px; }
-}
-
-
-.home-search-categories { margin-bottom: 16px; }
-.home-search-cat:hover:not(.active) { background: #f3f7ff; }
-.home-search-capsule { --ink: #17263b; --muted: #687586; --line: #e2e7ee; }
 .home-gallery { width: min(1120px, calc(100% - 96px)); margin: 0 auto; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
 /* 전시 공간이 최소 목표 크기를 수용하고, 좁은 화면에서는 화면 경계를 우선한다. */
 .home-backdrop { position: relative; display: grid; place-items: center; height: clamp(540px, calc(100svh - 340px), 680px); }
@@ -352,7 +199,6 @@ button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
 .home-photo-enter-from, .home-photo-leave-to { opacity: 0; }
 @media (max-width: 767px) {
   .home-search-position { width: calc(100% - 32px); margin-top: 140px; margin-bottom: 24px; }
-  .home-search-cat { min-height: 44px; }
   .home-gallery { width: calc(100% - 40px); padding-bottom: max(28px, env(safe-area-inset-bottom)); }
   .home-backdrop { height: clamp(300px, calc(100svh - 480px), 520px); }
   .home-artwork-footer { flex-wrap: wrap; gap: 20px; margin-top: 20px; }
@@ -361,7 +207,8 @@ button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
   .home-search-history { max-height: 240px; overflow-y: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .home-photo-enter-active, .home-photo-leave-active, .home-photo-controls button,
-  .home-search-cat, .home-search-capsule, .home-search-capsule-btn { transition: none; }
+  .home-photo-enter-active, .home-photo-leave-active, .home-photo-controls button { transition: none; }
 }
 </style>
+
+<style scoped src="../styles/paper-search.css"></style>
