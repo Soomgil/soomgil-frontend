@@ -211,7 +211,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <header :class="['topbar', { 'route-workspace-header': isRouteWorkspace, 'immersive-header': immersive, 'paper-header': paper }]">
+  <header :class="['topbar paper-header', { 'route-workspace-header': isRouteWorkspace }]">
     <!-- Left: Brand -->
     <div style="min-width:220px">
       <a
@@ -371,27 +371,21 @@ async function handleLogout() {
 </template>
 
 <style scoped>
-.topbar.immersive-header { background: transparent; border-bottom: 0; backdrop-filter: none; padding-inline: 40px; }
-.immersive-header .brand > span { color: #fff !important; }
-.immersive-header .nav a { color: #f1f4f5; text-shadow: 0 1px 8px rgb(0 0 0 / 30%); }
-.immersive-header .nav a.active { color: #fff; background: rgb(255 255 255 / 17%); border-color: rgb(255 255 255 / 25%); }
-.immersive-header .nav-indicator { display: none; }
-.immersive-header .header-actions > .btn.ghost,
-.immersive-header .header-actions .icon-btn { color: #fff; background: rgb(0 0 0 / 12%); }
-.immersive-header .header-dropdown-panel { text-shadow: none; }
-.topbar.paper-header { background: rgb(250 250 247 / 94%); }
+/* 모든 서비스 탭은 동일한 헤더 색상과 간격을 공유한다. */
+.topbar.paper-header { --ink: #22302f; --muted: #67736e; --bg: #fafaf7; --line: #e4e7e2; --surface-2: #f1f4f0; background: rgb(250 250 247 / 94%); border-bottom: 0; backdrop-filter: none; padding-inline: 40px; }
 .paper-header .brand > span { color: #22302f !important; }
 .paper-header .nav a { color: #63706a; text-shadow: none; }
-.paper-header .nav a.active { color: var(--violet); background: #edf3ff; border-color: #dfe9fb; }
+.paper-header .nav a.active { color: #365640; background: #eaf0e5; border-color: #d9e3d3; }
+.paper-header .nav-indicator { display: none; }
 .paper-header .header-actions > .btn.ghost,
 .paper-header .header-actions .icon-btn { color: #52625a; background: #f0f3ee; }
-@media (max-width: 767px) {
-  .topbar.immersive-header { height: auto; min-height: 72px; padding: 12px 20px; gap: 10px; flex-wrap: wrap; }
-  .immersive-header .brand img { width: 38px !important; height: 38px !important; }
-  .immersive-header .brand > span { font-size: 19px !important; }
-  .immersive-header .nav { order: 3; flex-basis: 100%; width: 100%; justify-content: flex-start; overflow-x: auto; }
-  .immersive-header .nav a { font-size: 13px; padding: 8px 12px; }
-  .immersive-header .header-actions { width: auto; }
+@media (max-width: 480px) {
+  .topbar.paper-header { height: auto; min-height: 72px; padding: 12px 20px; gap: 10px; flex-wrap: wrap; }
+  .paper-header .brand img { width: 38px !important; height: 38px !important; }
+  .paper-header .brand > span { font-size: 19px !important; }
+  .paper-header .nav { order: 3; flex-basis: 100%; width: 100%; justify-content: flex-start; overflow-x: auto; }
+  .paper-header .nav a { font-size: 13px; padding: 8px 12px; }
+  .paper-header .header-actions { width: auto; }
 }
 .profile-item-link:hover {
   background: var(--bg);
