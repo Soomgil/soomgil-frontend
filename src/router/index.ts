@@ -82,6 +82,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/trips/:tripId/vote',
+      name: 'TripVote',
+      component: () => import('@/pages/TripVotePage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/community',
       name: 'Community',
       component: () => import('@/pages/CommunityPage.vue'),

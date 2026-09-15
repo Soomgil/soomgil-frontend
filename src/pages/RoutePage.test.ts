@@ -6,7 +6,8 @@ import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
 import { clearCollaborationSessionIds, registerCollaborationSessionId } from '@/realtime/collaborationSession'
 import RoutePage from './RoutePage.vue'
 
-const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any }))
+const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any, votingStore: null as any }))
+const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
 const geo = vi.hoisted(() => ({ simplifyCoordinates: vi.fn() }))
 const realtime = vi.hoisted(() => ({ instances: [] as any[] }))
 const connectedApis = vi.hoisted(() => ({
@@ -128,6 +129,7 @@ vi.mock('@/realtime/stompTransport', () => ({
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { tripId: 'trip-1' } }),
+  useRouter: () => ({ push: routing.push, replace: routing.replace }),
 }))
 
 vi.mock('@/composables/useItinerary', async () => {
@@ -163,6 +165,9 @@ vi.mock('@/composables/useItinerary', async () => {
 
 vi.mock('@/stores/trip.store', () => ({
   useTripStore: () => holder.tripStore,
+}))
+vi.mock('@/stores/voting.store', () => ({
+  useVotingStore: () => holder.votingStore,
 }))
 
 vi.mock('@/api/geo.api', () => ({ geoApi: geo }))
@@ -256,6 +261,7 @@ describe('RoutePage itinerary integration', () => {
       items: [],
     })
 		holder.state.createDrawing.mockResolvedValue({ id: 'drawing-1' })
+    holder.votingStore = reactive({ session: null, nextScreen: 'MAP', myParticipation: null, isSubmitted: false })
     holder.tripStore = reactive({
       currentTrip: null,
       fetchTrip: vi.fn(async () => {
@@ -364,7 +370,7 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('일부 대화 내역을 불러오지 못했습니다.')
-    const retry = wrapper.findAll('button').find((button) => button.text().includes('다시 시도'))
+    const retry = wrapper.findAll('#ai-chat-panel button').find((button) => button.text().trim() === '다시 시도')
     await retry!.trigger('click')
     await flushPromises()
 
@@ -1429,7 +1435,7 @@ describe('RoutePage itinerary integration', () => {
     ])
   })
 
-  it('경로 펜에서 지도 마커의 일정 item id로 두 장소를 연결한다', async () => {
+  it.each(['WALKING', 'CYCLING', 'DRIVING'] as const)('경로 펜에서 선택한 %s 이동수단으로 두 장소를 연결한다', async (mode) => {
     holder.state.fetchItinerary.mockImplementationOnce(async () => {
       holder.state.days.value = [{
         id: 'day-1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1,
@@ -1476,6 +1482,13 @@ describe('RoutePage itinerary integration', () => {
     const map = wrapper.getComponent(MapboxItineraryMap)
 
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    await nextTick()
+    const modeLabels = {
+      WALKING: '도보',
+      CYCLING: '자전거',
+      DRIVING: '자동차',
+    } as const
+    await wrapper.get(`#route-mode-popover button[aria-label="${modeLabels[mode]}"]`).trigger('click')
     map.vm.$emit('selectPlace', undefined, undefined, 'item-1')
     await nextTick()
     map.vm.$emit('selectPlace', undefined, undefined, 'item-2')
@@ -1484,7 +1497,7 @@ describe('RoutePage itinerary integration', () => {
     expect(holder.state.mapMatchRoute).toHaveBeenCalledWith({
       originItineraryItemId: 'item-1',
       destinationItineraryItemId: 'item-2',
-      mode: 'WALKING',
+      mode,
       coordinates: [{ lng: 127.38, lat: 36.35 }, { lng: 127.39, lat: 36.36 }],
     })
     expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
@@ -3110,5 +3123,135 @@ describe('RoutePage itinerary integration', () => {
     await nextTick()
     expect(wrapper.get('#sticker-popover').attributes('style')).toContain('left: 228px')
     expect(wrapper.get('#sticker-popover').attributes('style')).toContain('bottom: 110px')
+  })
+  it('방장에게는 투표가 없을 때 여행 카드에 투표 시작 버튼을 보여준다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+          TripVoteFlow: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('투표 시작'))
+    expect(button, '방장 여행 카드에 투표 시작 버튼이 없다').toBeTruthy()
+    // 누르면 페이지 이동이 아니라 모달이 열린다. 모달 동작은 별도 테스트에서 검증한다.
+    await button!.trigger('click')
+    expect(routing.push).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'TripVote' }))
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
+  })
+
+  it('멤버에게는 투표가 없으면 버튼을 숨기고, 끝난 투표는 결과 버튼으로 보여준다', async () => {
+    const previousToken = localStorage.getItem('accessToken')
+    localStorage.setItem('accessToken', `header.${btoa(JSON.stringify({ sub: 'user-2' }))}.signature`)
+    try {
+      const wrapper = mount(RoutePage, {
+        global: {
+          stubs: {
+            AppShell: { template: '<div><slot /></div>' },
+            LoadingState: true,
+            ErrorState: true,
+            EmptyState: true,
+          },
+        },
+      })
+      await flushPromises()
+      holder.tripStore.currentTrip.myRole = 'MEMBER'
+      await flushPromises()
+
+      expect(wrapper.findAll('button').some((candidate) => candidate.text().includes('투표'))).toBe(false)
+
+      holder.votingStore.session = { status: 'COMPLETED' }
+      await flushPromises()
+
+      expect(wrapper.findAll('button').some((candidate) => candidate.text().includes('투표 결과'))).toBe(true)
+    } finally {
+      if (previousToken === null) localStorage.removeItem('accessToken')
+      else localStorage.setItem('accessToken', previousToken)
+    }
+  })
+  const voteFlowStub = {
+    name: 'TripVoteFlow',
+    props: ['tripId', 'embedded'],
+    emits: ['close', 'ai-arrange'],
+    template: `
+      <div data-testid="vote-flow-stub">
+        <button type="button" data-testid="vote-flow-close" @click="$emit('close', false)">close</button>
+        <button type="button" data-testid="vote-flow-ai" @click="$emit('ai-arrange', ['성산일출봉', '만장굴'])">ai</button>
+      </div>`,
+  }
+  const voteStubs = {
+    AppShell: { template: '<div><slot /></div>' },
+    LoadingState: true,
+    ErrorState: true,
+    EmptyState: true,
+    TripVoteFlow: voteFlowStub,
+  }
+
+  it('제출하지 않은 투표가 열려 있으면 지도 위에 투표 모달을 자동으로 띄운다', async () => {
+    holder.votingStore.session = { status: 'OPEN' }
+    holder.votingStore.myParticipation = { status: 'NOT_STARTED' }
+    holder.votingStore.isSubmitted = false
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="vote-flow-stub"]').exists()).toBe(true)
+    expect(routing.push).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'TripVote' }))
+  })
+
+  it('모달을 닫으면 미제출 경고가 카드 버튼과 지도 상단 배너에 빨갛게 남고, 배너로 다시 열 수 있다', async () => {
+    holder.votingStore.session = { status: 'OPEN' }
+    holder.votingStore.myParticipation = { status: 'NOT_STARTED' }
+    holder.votingStore.isSubmitted = false
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="vote-flow-close"]').trigger('click')
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
+
+    const voteButton = wrapper.get('.trip-vote-button')
+    expect(voteButton.classes()).toContain('trip-vote-button--alert')
+    expect(voteButton.text()).toContain('미제출')
+    const banner = wrapper.get('[data-testid="vote-pending-banner"]')
+    expect(banner.text()).toContain('투표')
+
+    await banner.trigger('click')
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
+  })
+
+  it('방장이 투표 시작을 누르면 페이지 이동 없이 모달이 열린다', async () => {
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
+
+    const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('투표 시작'))
+    expect(button, '투표 시작 버튼이 없다').toBeTruthy()
+    await button!.trigger('click')
+
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
+    expect(routing.push).not.toHaveBeenCalled()
+  })
+
+  it('결과에서 AI 배치를 맡기면 모달을 닫고 AI 패널에 프롬프트를 채운다', async () => {
+    holder.votingStore.session = { status: 'OPEN' }
+    holder.votingStore.myParticipation = { status: 'NOT_STARTED' }
+    holder.votingStore.isSubmitted = false
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="vote-flow-ai"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
+    const input = wrapper.get('#ai-chat-input').element as HTMLInputElement
+    expect(input.value).toContain('성산일출봉')
+    expect(input.value).toContain('만장굴')
+    expect(input.value).toContain('배치')
   })
 })

@@ -11,6 +11,7 @@ import type {
   CreateMapDrawingInput,
   ReorderItineraryInput,
   TripRoute,
+  RouteMode,
   UpdateItineraryDayInput,
   UpdateItineraryItemInput,
   UpdateMapDrawingInput,
@@ -230,8 +231,8 @@ export function useItinerary(tripId: string) {
       baseVersion: itineraryVersion.value,
     })
     if (!response.route) throw new Error('Matched route is missing.')
-    routes.value = [...routes.value.filter((route) => route.id !== response.route!.id), response.route]
     applyMutation(response)
+    routes.value = [...routes.value.filter((route) => route.id !== response.route!.id), response.route]
     return response.route
   }
 
@@ -244,6 +245,16 @@ export function useItinerary(tripId: string) {
         await fetchItinerary()
         return submitMapMatchRoute(input)
       }
+    })
+  }
+
+  async function updateRouteMode(routeId: string, mode: RouteMode) {
+    return runMutation(async () => {
+      const response = await itineraryApi.updateRouteMode(tripId, routeId, itineraryVersion.value, mode)
+      if (!response.route) throw new Error('Updated route is missing.')
+      applyMutation(response)
+      routes.value = [...routes.value.filter((route) => route.id !== routeId), response.route]
+      return response.route
     })
   }
 
@@ -338,6 +349,7 @@ export function useItinerary(tripId: string) {
     deleteItem,
     reorder,
     mapMatchRoute,
+    updateRouteMode,
     deleteRoute,
     createDrawing,
     updateDrawing,

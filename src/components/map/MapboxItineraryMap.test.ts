@@ -121,11 +121,14 @@ describe('MapboxItineraryMap', () => {
 
     expect(mapbox.Map).toHaveBeenCalledOnce()
     expect(mapbox.map.addControl).toHaveBeenCalledWith(expect.any(Object), 'top-right')
-    expect(mapbox.Marker).toHaveBeenCalledTimes(2)
+    expect(mapbox.Marker).toHaveBeenCalledTimes(3)
     expect(mapbox.Marker).toHaveBeenNthCalledWith(1, expect.objectContaining({
       anchor: 'bottom',
       offset: [0, -10],
     }))
+	expect(mapbox.Marker).toHaveBeenNthCalledWith(3, expect.objectContaining({
+	  anchor: 'center',
+	}))
 	expect(mapbox.map.addSource).toHaveBeenCalledWith('itinerary-route-route-1', expect.objectContaining({ type: 'geojson' }))
     expect(mapbox.map.addLayer).toHaveBeenCalledWith(expect.objectContaining({
       id: 'itinerary-route-route-1',
@@ -141,8 +144,8 @@ describe('MapboxItineraryMap', () => {
     expect(wrapper.emitted('viewportChange')).toHaveLength(1)
 
     await wrapper.setProps({ stops: [stops[0]] })
-    expect(mapbox.marker.remove).toHaveBeenCalledTimes(2)
-    expect(mapbox.Marker).toHaveBeenCalledTimes(3)
+    expect(mapbox.marker.remove).toHaveBeenCalledTimes(3)
+    expect(mapbox.Marker).toHaveBeenCalledTimes(5)
     expect(mapbox.map.easeTo).toHaveBeenCalledWith({ center: [127.38, 36.35], zoom: 11 })
 
     const markerCall = mapbox.Marker.mock.calls[0]

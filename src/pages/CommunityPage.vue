@@ -93,13 +93,17 @@ const PER_PAGE = 8;
 function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryView {
   const detail = "snapshot" in post ? post : null;
   const firstPlace = detail?.snapshot?.days?.flatMap((day) => day.items ?? [])[0];
+  const photos =
+    detail?.media?.flatMap((media) => {
+      const url = media.servingUrl ?? media.publicUrl;
+      return url ? [url] : [];
+    }) ?? [];
   const image =
+    post.coverMedia?.servingUrl ??
     post.coverMedia?.publicUrl ??
-    detail?.media?.find((media) => media.publicUrl)?.publicUrl ??
+    photos[0] ??
     firstPlace?.thumbnailUrl ??
     FALLBACK_IMAGE;
-  const photos =
-    detail?.media?.flatMap((media) => (media.publicUrl ? [media.publicUrl] : [])) ?? [];
   return {
     id: post.id,
     author: post.publishedBy?.displayName ?? "숨길 여행자",

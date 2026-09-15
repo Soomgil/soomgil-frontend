@@ -15,6 +15,12 @@ vi.mock('./http', () => ({
 describe('itinerary API', () => {
   beforeEach(() => vi.resetAllMocks())
 
+  it('기존 경로는 geometry를 보내지 않고 이동수단 재계산을 요청한다', async () => {
+    vi.mocked(http.patch).mockResolvedValue({ data: { itineraryVersion: 4 } })
+    await itineraryApi.updateRouteMode('trip-1', 'route-1', 3, 'CYCLING')
+    expect(http.patch).toHaveBeenCalledWith('/trips/trip-1/itinerary/routes/route-1', { baseVersion: 3, mode: 'CYCLING' })
+  })
+
   it('일정 전체를 실제 여행 endpoint에서 조회한다', async () => {
     const itinerary = { tripId: 'trip-1', itineraryVersion: 3, days: [], routes: [], mapDrawings: [] }
     vi.mocked(http.get).mockResolvedValue({ data: itinerary })
