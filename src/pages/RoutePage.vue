@@ -17,6 +17,7 @@ import { swipeApi } from '@/api/swipe.api'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
 import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
+import type { RouteMode } from '@/types/itinerary'
 import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/components/map/MapDrawingOverlay.vue'
 import type { MapCursorView, MapObjectLockView } from '@/components/map/MapObjectOverlay.vue'
@@ -30,8 +31,11 @@ import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
 import { getCollaborationSessionId } from '@/realtime/collaborationSession'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
+import { useVotingStore } from '@/stores/voting.store'
 import TripSettingsModal from '@/components/trip/TripSettingsModal.vue'
 import TripSettingsButton from '@/components/trip/TripSettingsButton.vue'
+import TripVoteFlow from '@/components/voting/TripVoteFlow.vue'
+import { buildVoteArrangePrompt } from '@/components/voting/voteArrangePrompt'
 import type { AiChatMessage } from '@/types/ai'
 import type { TripChatMessage } from '@/types/chat'
 import type { Checklist, ChecklistItem, ChecklistMemberStatus, Note, PlanningScope } from '@/types/planning'
@@ -189,6 +193,59 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
+
+/* ── 여행 방 투표 진입 ──
+ * 투표 세션 상태는 라우터 가드(ensureGate)가 이 여행에 진입할 때 이미 voting store에 채워 둔다.
+ * 여기서는 그 상태만 읽어 버튼 문구를 정하고, 화면 이동만 담당한다. 세션이 없으면 방장만 시작할 수 있다.
+ */
+const votingStore = useVotingStore()
+const isTripOwner = computed(() => {
+  // 방장도 trip_members에는 MEMBER로 저장되고, API가 accessRole/myRole에서 OWNER를 파생한다.
+  // 멤버 목록의 role로는 방장을 알 수 없으므로 TripDetail.myRole을 우선 본다.
+  const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
+  return (detail?.myRole ?? trip.value.myRole) === 'OWNER'
+})
+const voteSessionStatus = computed(() => votingStore.session?.status ?? null)
+/** 내가 참여자인데 아직 제출하지 않은 진행 중 투표가 있는지. 빨간 경고의 기준이다. */
+const votePending = computed(
+  () => voteSessionStatus.value === 'OPEN' && votingStore.myParticipation != null && !votingStore.isSubmitted,
+)
+const voteModalOpen = ref(false)
+const showVoteAction = computed(() => isTripOwner.value || voteSessionStatus.value !== null)
+const voteActionLabel = computed(() => {
+  if (votePending.value) return '투표 중 · 미제출'
+  if (voteSessionStatus.value === 'OPEN') return '투표 현황'
+  if (voteSessionStatus.value === 'COMPLETED') return '투표 결과'
+  return '투표 시작'
+})
+function openVoteModal() {
+	voteModalOpen.value = true
+}
+function closeVoteModal() {
+	voteModalOpen.value = false
+}
+/** 카드의 투표 버튼. 세션 유무와 상관없이 같은 모달을 열고, 흐름 컴포넌트가 상태별 화면을 그린다. */
+function goTripVote() {
+	openVoteModal()
+}
+/** 결과 화면에서 넘어온 선정 장소로 AI 배치 프롬프트를 채우고 AI 패널을 연다. */
+function arrangeSelectedPlacesWithAi(names: string[]) {
+	closeVoteModal()
+	aiMessage.value = buildVoteArrangePrompt(names)
+	togglePanel('ai')
+}
+// 진입 시 제출하지 않은 투표가 있으면 모달을 한 번 자동으로 띄운다. 닫으면 강제로 다시 열지 않고 경고만 남긴다.
+let autoOpenedVote = false
+watch(
+	votePending,
+	(pending) => {
+		if (pending && !autoOpenedVote) {
+			autoOpenedVote = true
+			voteModalOpen.value = true
+		}
+	},
+	{ immediate: true },
+)
 const routeSettingsTrip = computed(() => {
   const detail = tripStore.currentTrip?.id === tripId ? tripStore.currentTrip : null
   if (!detail) return null
@@ -301,16 +358,23 @@ function routeStopImage(item: RouteStop) {
 }
 
 const activeDay = ref(0)
+const activeTool = ref<MapDrawingTool>('cursor')
 const activePlan = computed(() => dayPlans.value.find((day) => day.day === activeDay.value) ?? null)
 const visibleMapDayPlans = computed(() => {
   if (activeDay.value === 0) return dayPlans.value
   return activePlan.value ? [activePlan.value] : []
 })
+function routePenVisibleStop(item: RouteStop) {
+  if (activeTool.value !== 'route-pen') return true
+  return canSelectRouteStopForCurrentStep(item)
+}
+
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return visibleMapDayPlans.value.flatMap((day) => day.items.flatMap((item) => {
     const currentIndex = index++
     if (item.lat == null || item.lng == null) return []
+    if (!routePenVisibleStop(item)) return []
     return [{
       id: item.id,
       placeProvider: item.placeProvider,
@@ -327,10 +391,10 @@ const mapStops = computed<ItineraryMapStop[]>(() => {
     }]
   }))
 })
-const visibleMapStopIds = computed(() => new Set(visibleMapDayPlans.value.flatMap((day) => day.items.map((item) => item.id))))
+const visibleMapStopIds = computed(() => new Set(mapStops.value.map((stop) => stop.id)))
 const visibleMapRoutes = computed(() => {
-  if (activeDay.value === 0) return itinerary.routes.value
   const stopIds = visibleMapStopIds.value
+  if (activeDay.value === 0 && activeTool.value !== 'route-pen') return itinerary.routes.value
   return itinerary.routes.value.filter((route) => (
     stopIds.has(route.originItineraryItemId)
     && stopIds.has(route.destinationItineraryItemId)
@@ -390,8 +454,8 @@ const placeDiscoveryBbox = computed(() => viewportBbox.value || (isJejuTrip.valu
 
 const itineraryLoadError = ref(false)
 const itineraryActionsDisabled = computed(() => itinerary.loading.value || itinerary.mutating.value || itineraryLoadError.value)
-const dayColors = ['day-color-1', 'day-color-2', 'day-color-3', 'day-color-4', 'day-color-5']
-function getDayColorClass(day: number) { return day <= 0 ? dayColors[4] : dayColors[(day - 1) % dayColors.length] }
+const dayColors = ['day-color-1', 'day-color-2', 'day-color-3', 'day-color-4', 'day-color-5', 'day-color-6', 'day-color-7', 'day-color-8', 'day-color-9', 'day-color-10']
+function getDayColorClass(day: number) { return day <= 0 ? dayColors[dayColors.length - 1] : dayColors[(day - 1) % dayColors.length] }
 
 async function loadItinerary() {
   if (!tripId) {
@@ -619,6 +683,18 @@ const ROUTE_MATCHING_MAX_COORDINATES = 25
 const ROUTE_MATCHING_MAX_INTERMEDIATE_POINTS = ROUTE_MATCHING_MAX_COORDINATES - 2
 const ROUTE_MATCHING_RADIUS_METERS = 50
 const ROUTE_NEARBY_CORRIDOR_METERS = 700
+const selectedRouteMode = ref<RouteMode>('WALKING')
+const defaultRouteModeOption = { value: 'WALKING', label: '도보', icon: 'directions_walk', shortLabel: '도보' } as const
+const routeModeOptions: { value: RouteMode; label: string; icon: string; shortLabel: string }[] = [
+  defaultRouteModeOption,
+  { value: 'CYCLING', label: '자전거', icon: 'directions_bike', shortLabel: '자전거' },
+  { value: 'DRIVING', label: '자동차', icon: 'directions_car', shortLabel: '자동차' },
+]
+
+function routeModeMeta(mode: RouteMode | undefined) {
+  return routeModeOptions.find((option) => option.value === mode) ?? defaultRouteModeOption
+}
+
 const JEJU_DISCOVERY_BBOX = '126.1,33.0,127.1,33.7'
 
 function clearPendingRouteSelection() {
@@ -641,8 +717,8 @@ function getLinkedPartner(itemId: string): string | null {
 }
 
 function routeGroupClass(itemId: string, previousItemId?: string, nextItemId?: string) {
-  const linkedPrevious = hasRouteLinkBetween(previousItemId, itemId)
-  const linkedNext = hasRouteLinkBetween(itemId, nextItemId)
+  const linkedPrevious = hasVisibleRouteConnectorBetween(previousItemId, itemId)
+  const linkedNext = hasVisibleRouteConnectorBetween(itemId, nextItemId)
   return {
     'route-grouped': linkedPrevious || linkedNext,
     'route-group-start': linkedNext && !linkedPrevious,
@@ -659,10 +735,90 @@ function hasRouteLinkBetween(id1: string | undefined, id2: string | undefined): 
   )
 }
 
+function hasVisibleRouteConnectorBetween(id1: string | undefined, id2: string | undefined): boolean {
+  if (hasRouteLinkBetween(id1, id2)) return true
+  if (!id1 || !id2) return false
+  return getLinkedChain(id1).includes(id2)
+}
+
+function routeBetween(id1: string | undefined, id2: string | undefined) {
+  if (!id1 || !id2) return null
+  return itinerary.routes.value.find(route =>
+    (route.originItineraryItemId === id1 && route.destinationItineraryItemId === id2) ||
+    (route.originItineraryItemId === id2 && route.destinationItineraryItemId === id1)
+  ) ?? null
+}
+
+function routeForDisplayBetween(id1: string | undefined, id2: string | undefined) {
+  const direct = routeBetween(id1, id2)
+  if (direct || !id1 || !id2) return direct
+  if (!getLinkedChain(id1).includes(id2)) return null
+  return itinerary.routes.value.find((route) => (
+    route.originItineraryItemId === id1
+    || route.destinationItineraryItemId === id1
+    || route.originItineraryItemId === id2
+    || route.destinationItineraryItemId === id2
+  )) ?? null
+}
+
+function routeLinkStats(itemId: string) {
+  const incoming = routeLinks.value.filter((link) => link.toItemId === itemId).length
+  const outgoing = routeLinks.value.filter((link) => link.fromItemId === itemId).length
+  return {
+    incoming,
+    outgoing,
+    isWaypoint: incoming > 0 && outgoing > 0,
+  }
+}
+
+function canUseAsRouteOrigin(itemId: string) {
+  const stats = routeLinkStats(itemId)
+  return !stats.isWaypoint && stats.outgoing === 0
+}
+
+function canUseAsRouteDestination(itemId: string) {
+  const stats = routeLinkStats(itemId)
+  return !stats.isWaypoint && stats.incoming === 0
+}
+
+function itemDayIndex(itemId: string | undefined) {
+  if (!itemId) return null
+  return dayPlans.value.find((day) => day.items.some((item) => item.id === itemId))?.day ?? null
+}
+
+function isRouteDestinationDayAllowed(originItemId: string, destinationItemId: string) {
+  const originDay = itemDayIndex(originItemId)
+  const destinationDay = itemDayIndex(destinationItemId)
+  if (destinationDay == null) return false
+  if (originDay == null || originDay <= 0) return destinationDay <= 0
+  return destinationDay <= 0 || destinationDay === originDay
+}
+
+function canUseAsRouteDestinationFrom(originItemId: string, destinationItemId: string) {
+  if (originItemId === destinationItemId) return false
+  if (!canUseAsRouteDestination(destinationItemId)) return false
+  if (!isRouteDestinationDayAllowed(originItemId, destinationItemId)) return false
+  if (hasRouteLinkBetween(originItemId, destinationItemId)) return false
+  return !getLinkedChain(originItemId).includes(destinationItemId)
+}
+
+function canSelectRouteStopForCurrentStep(item: RouteStop) {
+  if (item.lat == null || item.lng == null) return false
+  if (!pendingRouteFrom.value) return canUseAsRouteOrigin(item.id)
+  if (item.id === pendingRouteFrom.value) return true
+  return canUseAsRouteDestinationFrom(pendingRouteFrom.value, item.id)
+}
+
 async function removeRouteLinkBetween(id1: string, id2: string) {
-	const link = routeLinks.value.find(l =>
+	const directLink = routeLinks.value.find(l =>
 		(l.fromItemId === id1 && l.toItemId === id2) || (l.fromItemId === id2 && l.toItemId === id1)
 	)
+  const displayRoute = directLink ? null : routeForDisplayBetween(id1, id2)
+  const link = directLink ?? (
+    displayRoute
+      ? { id: displayRoute.id, fromItemId: displayRoute.originItineraryItemId, toItemId: displayRoute.destinationItineraryItemId }
+      : null
+  )
 	if (!link || itinerary.mutating.value) return
 	pushUndoState('route-links')
 	try {
@@ -834,6 +990,10 @@ async function loadRouteNearbyPlaces() {
 
 async function handleRoutePenClick(item: RouteStop) {
   if (!pendingRouteFrom.value) {
+    if (!canUseAsRouteOrigin(item.id)) {
+      showToast('이미 출발지나 경유지로 쓰인 장소는 새 출발지로 선택할 수 없습니다')
+      return
+    }
     pendingRouteFrom.value = item.id
     routeWaypoints.value = []
     showToast('지도 위 중간 지점을 찍고 도착 관광지를 선택하세요')
@@ -841,6 +1001,10 @@ async function handleRoutePenClick(item: RouteStop) {
   }
   if (pendingRouteFrom.value === item.id) {
     clearPendingRouteSelection()
+    return
+  }
+  if (!canUseAsRouteDestinationFrom(pendingRouteFrom.value, item.id)) {
+    showToast('같은 일차의 연결 가능한 도착지만 선택할 수 있습니다')
     return
   }
   if (hasRouteLinkBetween(pendingRouteFrom.value, item.id)) {
@@ -860,7 +1024,7 @@ async function handleRoutePenClick(item: RouteStop) {
     const destinationCoordinate = { lng: item.lng, lat: item.lat }
     const waypointCoordinates = limitRouteWaypoints(routeWaypoints.value)
     const routeStops = dedupeRouteCoordinates([originCoordinate, ...waypointCoordinates, destinationCoordinate])
-    const destinationChainIds = linkedChainIdsInCurrentOrder(item.id)
+    const destinationChainIds = orderedLinkedChainIdsFrom(item.id)
     const routeCoordinates = routeStops.length > ROUTE_MATCHING_MAX_COORDINATES
       ? sampleRouteCoordinateCount(routeStops, ROUTE_MATCHING_MAX_COORDINATES)
       : routeStops
@@ -871,7 +1035,7 @@ async function handleRoutePenClick(item: RouteStop) {
     const newRoute = await itinerary.mapMatchRoute({
       originItineraryItemId: origin.id,
       destinationItineraryItemId: item.id,
-      mode: 'WALKING',
+      mode: selectedRouteMode.value,
       coordinates: routeCoordinates,
     })
     if (newRoute) {
@@ -938,9 +1102,12 @@ function distanceMeters(left: { lng: number; lat: number }, right: { lng: number
   return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-function nearestRouteStop(coordinate: { lng: number; lat: number }) {
+function nearestRouteStop(
+  coordinate: { lng: number; lat: number },
+  predicate: (item: RouteStop) => boolean = () => true,
+) {
   const candidates = dayPlans.value.flatMap((day) => day.items.flatMap((item) => (
-    item.lat == null || item.lng == null ? [] : [{
+    item.lat == null || item.lng == null || !predicate(item) ? [] : [{
       item,
       distance: distanceMeters(coordinate, { lng: item.lng, lat: item.lat }),
     }]
@@ -951,6 +1118,7 @@ function nearestRouteStop(coordinate: { lng: number; lat: number }) {
 function nearestRouteStopInStrokeSection(
   coordinates: Array<{ lng: number; lat: number }>,
   section: 'start' | 'end',
+  predicate: (item: RouteStop) => boolean = () => true,
 ) {
   const minimumSamples = coordinates.length >= 16 ? 12 : 1
   const sampleCount = Math.min(
@@ -962,7 +1130,7 @@ function nearestRouteStopInStrokeSection(
     : coordinates.slice(-sampleCount)
   return samples
     .flatMap((coordinate) => {
-      const candidate = nearestRouteStop(coordinate)
+      const candidate = nearestRouteStop(coordinate, predicate)
       return candidate ? [candidate] : []
     })
     .sort((left, right) => left.distance - right.distance)[0] ?? null
@@ -1072,10 +1240,20 @@ async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
   if (draft.coordinates.length < 2 || itinerary.mutating.value) return
   const routeCoordinates = sampleRouteCoordinates(draft.coordinates)
   if (routeCoordinates.length < 2) return
-  const originCandidate = nearestRouteStopInStrokeSection(routeCoordinates, 'start')
-  const destinationCandidate = nearestRouteStopInStrokeSection(routeCoordinates, 'end')
+  const originCandidate = nearestRouteStopInStrokeSection(
+    routeCoordinates,
+    'start',
+    (item) => canUseAsRouteOrigin(item.id),
+  )
+  const destinationCandidate = originCandidate
+    ? nearestRouteStopInStrokeSection(
+      routeCoordinates,
+      'end',
+      (item) => canUseAsRouteDestinationFrom(originCandidate.item.id, item.id),
+    )
+    : null
   if (!originCandidate || !destinationCandidate) {
-    showToast('좌표가 있는 두 일정 장소 근처에서 경로를 그려주세요', 'error')
+    showToast('연결 가능한 같은 일차의 두 일정 장소 근처에서 경로를 그려주세요', 'error')
     return
   }
   if (
@@ -1095,16 +1273,20 @@ async function createRouteFromDrawnCurve(draft: MapDrawingDraft) {
     showToast('이미 연결된 경로입니다')
     return
   }
+  if (!canUseAsRouteDestinationFrom(origin.id, destination.id)) {
+    showToast('같은 일차의 연결 가능한 도착지만 선택할 수 있습니다')
+    return
+  }
   const requestCoordinates = buildRouteRequestCoordinates(routeCoordinates, origin, destination)
   if (requestCoordinates.length < 2) return
 
   pushUndoState('route-links')
   try {
-    const destinationChainIds = linkedChainIdsInCurrentOrder(destination.id)
+    const destinationChainIds = orderedLinkedChainIdsFrom(destination.id)
     const newRoute = await itinerary.mapMatchRoute({
       originItineraryItemId: origin.id,
       destinationItineraryItemId: destination.id,
-      mode: 'WALKING',
+      mode: selectedRouteMode.value,
       coordinates: requestCoordinates,
     })
     if (newRoute) {
@@ -1241,6 +1423,40 @@ function linkedChainIdsInCurrentOrder(itemId: string, plans: DayPlan[] = dayPlan
   return plans.flatMap((day) => day.items.flatMap((item) => linkedIds.has(item.id) ? [item.id] : []))
 }
 
+function orderedLinkedChainIdsFrom(itemId: string, plans: DayPlan[] = dayPlans.value) {
+  const linkedIds = new Set(getLinkedChain(itemId))
+  const order = new Map<string, number>()
+  plans.flatMap((day) => day.items).forEach((item, index) => {
+    order.set(item.id, index)
+  })
+  const neighbors = new Map<string, string[]>()
+  for (const link of routeLinks.value) {
+    if (!linkedIds.has(link.fromItemId) || !linkedIds.has(link.toItemId)) continue
+    neighbors.set(link.fromItemId, [...(neighbors.get(link.fromItemId) ?? []), link.toItemId])
+    neighbors.set(link.toItemId, [...(neighbors.get(link.toItemId) ?? []), link.fromItemId])
+  }
+
+  const result: string[] = []
+  const visited = new Set<string>()
+  let current: string | undefined = itemId
+  let previous: string | null = null
+
+  while (current && linkedIds.has(current) && !visited.has(current)) {
+    result.push(current)
+    visited.add(current)
+    const nextId: string | undefined = (neighbors.get(current) ?? [])
+      .filter((candidate) => candidate !== previous && !visited.has(candidate))
+      .sort((left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0))[0]
+    previous = current
+    current = nextId
+  }
+
+  const leftovers = Array.from(linkedIds)
+    .filter((id) => !visited.has(id))
+    .sort((left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0))
+  return [...result, ...leftovers]
+}
+
 function movingFlatNodes(source: DragSource, flatNodes: FlatItineraryNode[], plans: DayPlan[]) {
   const sourceDay = plans[source.dayIdx]
   const sourceItem = source.type === 'stop' ? sourceDay?.items[source.itemIdx] : null
@@ -1327,9 +1543,13 @@ function moveItemGroupAfter(anchorItemId: string, movingItemIds: string[]) {
   const movingIdSet = new Set(movingItemIds)
   if (movingIdSet.size === 0 || movingIdSet.has(anchorItemId)) return false
 
-  const movingItems = dayPlans.value.flatMap((day) => (
-    day.items.filter((item) => movingIdSet.has(item.id)).map((item) => ({ ...item }))
-  ))
+  const itemById = new Map(dayPlans.value.flatMap((day) => (
+    day.items.map((item) => [item.id, item] as const)
+  )))
+  const movingItems = movingItemIds.flatMap((id) => {
+    const item = itemById.get(id)
+    return item ? [{ ...item }] : []
+  })
   if (movingItems.length === 0) return false
 
   const strippedPlans = dayPlans.value.map((day) => ({
@@ -2003,6 +2223,12 @@ function closeResponsivePanels() {
 
 /* ── AI / trip chat ── */
 const aiMessage = ref('')
+// 다른 화면에서 ?panel=ai(&aiPrompt=...)로 들어오면 AI 패널을 열고 프롬프트를 채워 둔다.
+if (route.query?.panel === 'ai') {
+  const prompt = typeof route.query.aiPrompt === 'string' ? route.query.aiPrompt : ''
+  if (prompt) aiMessage.value = prompt
+  void nextTick(() => togglePanel('ai'))
+}
 const aiMessages = ref<RouteAiChatMessage[]>([])
 const chatMessages = ref<TripChatMessage[]>([])
 const conversationLoading = ref(false)
@@ -2460,7 +2686,6 @@ const drawingOn = ref(true)
 const isPenPopoverOpen = ref(false)
 const penSize = ref(6)
 const penColor = ref('#1f2937')
-const activeTool = ref<MapDrawingTool>('cursor')
 const navigationGuideMode = computed(() => activeTool.value === 'route-pen')
 const localDrawings = ref<MapDrawingStroke[]>([])
 const selectedStickerCode = ref<MapStickerCode>('HEART')
@@ -2492,10 +2717,13 @@ type ToolPopoverStyle = Record<string, string>
 
 const mapCanvasRef = ref<HTMLElement | null>(null)
 const penToolButtonRef = ref<HTMLButtonElement | null>(null)
+const routeToolButtonRef = ref<HTMLButtonElement | null>(null)
 const stickerToolButtonRef = ref<HTMLButtonElement | null>(null)
 const penPopoverRef = ref<HTMLElement | null>(null)
+const routeModePopoverRef = ref<HTMLElement | null>(null)
 const stickerPopoverRef = ref<HTMLElement | null>(null)
 const penPopoverStyle = ref<ToolPopoverStyle>({})
+const routeModePopoverStyle = ref<ToolPopoverStyle>({})
 const stickerPopoverStyle = ref<ToolPopoverStyle>({})
 
 function anchoredToolPopoverStyle(
@@ -2532,6 +2760,9 @@ function updateToolPopoverPositions() {
   if (activeTool.value === 'sticker') {
     stickerPopoverStyle.value = anchoredToolPopoverStyle(stickerToolButtonRef.value, stickerPopoverRef.value)
   }
+  if (activeTool.value === 'route-pen') {
+    routeModePopoverStyle.value = anchoredToolPopoverStyle(routeToolButtonRef.value, routeModePopoverRef.value)
+  }
 }
 
 watch(isPenPopoverOpen, (isOpen) => {
@@ -2549,6 +2780,7 @@ watch(activeTool, (newTool) => {
   }
   if (newTool !== 'image') pendingImageMediaId.value = null
   if (newTool === 'sticker') nextTick(updateToolPopoverPositions)
+  if (newTool === 'route-pen') nextTick(updateToolPopoverPositions)
 })
 
 function selectMapTool(tool: MapDrawingTool) {
@@ -2563,6 +2795,7 @@ function selectMapTool(tool: MapDrawingTool) {
   activeTool.value = tool
   if (tool === 'route-pen') {
     standardMapView.value = false
+    nextTick(updateToolPopoverPositions)
   }
   if (tool === 'pen' || tool === 'eraser') {
     drawingOn.value = true
@@ -4316,6 +4549,15 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <span class="members-count">{{ trip.members.length }}명</span>
                   </div>
+                  <button
+                    v-if="showVoteAction"
+                    type="button"
+                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
+                    @click="goTripVote"
+                  >
+                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+                    <span>{{ voteActionLabel }}</span>
+                  </button>
                   <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
                 </div>
               </div>
@@ -4397,12 +4639,16 @@ function textAvatarStyle(index: unknown) {
                         <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                       </div>
                       <!-- Route connector between linked adjacent stops -->
-                      <div v-if="idx < day.items.length - 1 && hasRouteLinkBetween(item.id, day.items[idx + 1].id)"
+                      <div v-if="idx < day.items.length - 1 && hasVisibleRouteConnectorBetween(item.id, day.items[idx + 1].id)"
                         :class="['route-connector', getDayColorClass(day.day)]"
                         :data-from-id="item.id"
                         :data-to-id="day.items[idx + 1].id"
                         @click.stop="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
                         :title="'경로 연결 해제: ' + item.title + ' → ' + day.items[idx + 1].title">
+                        <span class="route-mode-badge" :data-mode="routeForDisplayBetween(item.id, day.items[idx + 1].id)?.mode ?? 'WALKING'">
+                          <span class="material-symbols-rounded" aria-hidden="true">{{ routeModeMeta(routeForDisplayBetween(item.id, day.items[idx + 1].id)?.mode).icon }}</span>
+                          {{ routeModeMeta(routeForDisplayBetween(item.id, day.items[idx + 1].id)?.mode).shortLabel }}
+                        </span>
                         <span class="material-symbols-rounded route-unlink-icon">link_off</span>
                         <div class="route-connector-line"></div>
                       </div>
@@ -4436,12 +4682,16 @@ function textAvatarStyle(index: unknown) {
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
                     <!-- Route connector between linked adjacent stops -->
-                    <div v-if="idx < activePlan.items.length - 1 && hasRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
+                    <div v-if="idx < activePlan.items.length - 1 && hasVisibleRouteConnectorBetween(item.id, activePlan.items[idx + 1].id)"
                       :class="['route-connector', getDayColorClass(activeDay)]"
                       :data-from-id="item.id"
                       :data-to-id="activePlan.items[idx + 1].id"
                       @click.stop="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       :title="'경로 연결 해제'">
+                      <span class="route-mode-badge" :data-mode="routeForDisplayBetween(item.id, activePlan.items[idx + 1].id)?.mode ?? 'WALKING'">
+                        <span class="material-symbols-rounded" aria-hidden="true">{{ routeModeMeta(routeForDisplayBetween(item.id, activePlan.items[idx + 1].id)?.mode).icon }}</span>
+                        {{ routeModeMeta(routeForDisplayBetween(item.id, activePlan.items[idx + 1].id)?.mode).shortLabel }}
+                      </span>
                       <span class="material-symbols-rounded route-unlink-icon">link_off</span>
                       <div class="route-connector-line"></div>
                     </div>
@@ -4637,6 +4887,18 @@ function textAvatarStyle(index: unknown) {
               </button>
             </div>
 
+            <!-- 닫아 둔 미제출 투표는 지도 상단에 빨갛게 남겨 눈에 띄게 한다. -->
+            <button
+              v-if="votePending && !voteModalOpen"
+              type="button"
+              class="vote-pending-banner"
+              data-testid="vote-pending-banner"
+              @click="openVoteModal"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+              <span>투표가 진행 중이에요 · 아직 제출하지 않았어요</span>
+              <strong>이어서 투표하기</strong>
+            </button>
             <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
               지도 범위를 동기화하는 중
             </div>
@@ -4695,6 +4957,35 @@ function textAvatarStyle(index: unknown) {
               </div>
             </div>
 
+            <!-- ===== Route mode popover ===== -->
+            <div
+              v-if="activeTool === 'route-pen'"
+              ref="routeModePopoverRef"
+              id="route-mode-popover"
+              class="tool-popover route-mode-popover is-open"
+              role="dialog"
+              aria-label="경로 이동수단 선택"
+              :style="routeModePopoverStyle"
+            >
+              <div class="popover-section">
+                <div class="route-mode-options" role="group" aria-label="새 경로 이동수단">
+                  <button
+                    v-for="option in routeModeOptions"
+                    :key="option.value"
+                    type="button"
+                    :class="{ active: selectedRouteMode === option.value }"
+                    :aria-pressed="selectedRouteMode === option.value"
+                    :aria-label="option.label"
+                    :title="option.label"
+                    :disabled="itinerary.mutating.value"
+                    @click="selectedRouteMode = option.value"
+                  >
+                    <span class="material-symbols-rounded" aria-hidden="true">{{ option.icon }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- ===== Toolbox ===== -->
             <div class="map-tools-viewport" @scroll.passive="updateToolPopoverPositions">
               <div class="map-tools">
@@ -4703,7 +4994,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded">arrow_selector_tool</span>
                 <span class="tool-tip">기본 선택</span>
               </button>
-              <button :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" data-tool="route-pen" :aria-pressed="activeTool === 'route-pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('route-pen')">
+              <button ref="routeToolButtonRef" :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" data-tool="route-pen" :aria-controls="activeTool === 'route-pen' ? 'route-mode-popover' : undefined" :aria-expanded="activeTool === 'route-pen'" :aria-pressed="activeTool === 'route-pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('route-pen')">
                 <span class="material-symbols-rounded">polyline</span>
                 <span class="tool-tip">경로 연결 펜</span>
               </button>
@@ -5176,10 +5467,124 @@ function textAvatarStyle(index: unknown) {
         <span>{{ toastMessage }}</span>
       </div>
     </Transition>
+    <!-- 여행 방 투표 모달. 흐름 전체(시작 설정·스티커·대기·결과)를 지도 위에서 처리한다. -->
+    <div
+      v-if="voteModalOpen"
+      class="modal-overlay vote-modal-overlay show is-open"
+      data-testid="vote-modal"
+      @click.self="closeVoteModal"
+    >
+      <div class="modal-card vote-modal-card" role="dialog" aria-modal="true" aria-label="여행 방 투표">
+        <button type="button" class="icon-btn vote-modal-close" aria-label="투표 창 닫기" @click="closeVoteModal">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+        <TripVoteFlow :trip-id="tripId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
+      </div>
+    </div>
   </AppShell>
 </template>
 
 <style scoped>
+/* ── 미제출 투표 경고: 카드 버튼은 빨갛게, 지도 상단에는 띠로 남긴다. ── */
+.trip-vote-button--alert {
+  animation: vote-alert-pulse 1.6s ease-in-out infinite;
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.55);
+  color: #be123c;
+}
+
+.trip-vote-button--alert:hover {
+  border-color: #be123c;
+  color: #9f1239;
+}
+
+@keyframes vote-alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(244, 63, 94, 0); }
+}
+
+.vote-pending-banner {
+  align-items: center;
+  background: #e11d48;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba(225, 29, 72, 0.35);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  position: absolute;
+  top: 16px;
+  transform: translateX(-50%);
+  z-index: 30;
+}
+
+.vote-pending-banner strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.vote-modal-overlay {
+  align-items: center;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  /* 지도 화면의 고정 패널·툴바(우측 탭바 포함) 위에 떠야 한다. */
+  z-index: 10000;
+}
+
+.vote-modal-card {
+  max-height: min(92vh, 1040px);
+  max-width: 1120px;
+  overflow: auto;
+  padding: 8px 16px 20px;
+  position: relative;
+  width: 100%;
+}
+
+.vote-modal-close {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 2;
+}
+
+/* ── 여행 카드의 투표 버튼. TripSettingsButton ghost 변형과 같은 크기·톤으로 맞춘다. ── */
+.trip-vote-button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 5px;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  transition: border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.trip-vote-button .material-symbols-rounded {
+  font-size: 16px;
+}
+
+.trip-vote-button:hover {
+  border-color: rgba(0, 102, 255, 0.28);
+  color: var(--violet);
+  transform: translateY(-1px);
+}
+
 /* ── Route page full-screen layout ── */
 /* position:fixed ensures exact viewport fill below the 72px header — zero scroll */
 .route-page-section {
@@ -6560,6 +6965,32 @@ function textAvatarStyle(index: unknown) {
 }
 
 /* ── Route pen pending highlight ── */
+.day-color-6 {
+  --day-color: #8b5cf6;
+  --day-color-bg: rgba(139, 92, 246, 0.08);
+  --day-color-border: rgba(139, 92, 246, 0.22);
+}
+.day-color-7 {
+  --day-color: #06b6d4;
+  --day-color-bg: rgba(6, 182, 212, 0.08);
+  --day-color-border: rgba(6, 182, 212, 0.22);
+}
+.day-color-8 {
+  --day-color: #84cc16;
+  --day-color-bg: rgba(132, 204, 22, 0.08);
+  --day-color-border: rgba(132, 204, 22, 0.22);
+}
+.day-color-9 {
+  --day-color: #f59e0b;
+  --day-color-bg: rgba(245, 158, 11, 0.08);
+  --day-color-border: rgba(245, 158, 11, 0.22);
+}
+.day-color-10 {
+  --day-color: #64748b;
+  --day-color-bg: rgba(100, 116, 139, 0.08);
+  --day-color-border: rgba(100, 116, 139, 0.22);
+}
+
 .stop.route-pen-pending {
   border-color: var(--violet) !important;
   box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.25) !important;
@@ -6633,6 +7064,43 @@ function textAvatarStyle(index: unknown) {
 .route-connector:hover .route-connector-line {
   background: var(--rose);
 }
+.route-mode-badge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 52px;
+  justify-content: center;
+  padding: 3px 6px;
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+.route-mode-badge[data-mode="CYCLING"] {
+  border-color: rgba(5, 150, 105, 0.28);
+  background: #ecfdf5;
+  color: #059669;
+}
+.route-mode-badge[data-mode="DRIVING"] {
+  border-color: rgba(234, 88, 12, 0.3);
+  background: #fff7ed;
+  color: #ea580c;
+}
+.route-mode-badge .material-symbols-rounded {
+  font-size: 13px;
+}
 .route-unlink-icon {
   position: absolute;
   left: 50%;
@@ -6647,10 +7115,52 @@ function textAvatarStyle(index: unknown) {
   transition: opacity 0.2s, color 0.2s;
   padding: 2px;
   margin: 0;
-  z-index: 1;
+  z-index: 3;
 }
 .route-connector:hover .route-unlink-icon {
   opacity: 1;
+}
+.route-connector:hover .route-mode-badge {
+  opacity: 0;
+}
+
+.route-mode-popover {
+  width: auto;
+  min-width: 154px;
+}
+.route-mode-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.route-mode-options button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.route-mode-options button.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.route-mode-options button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.route-mode-options .material-symbols-rounded {
+  font-size: 20px;
 }
 
 /* Prevent native drag and selection during custom pointer drag */

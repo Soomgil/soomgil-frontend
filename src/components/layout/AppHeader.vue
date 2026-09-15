@@ -522,4 +522,33 @@ async function handleLogout() {
 .header-actions .material-symbols-rounded {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
 }
+
+@media (max-width: 1024px) {
+  /* 481~1024px 구간: original.css는 .nav에 overflow-x: auto만 주고 줄바꿈은 480px 이하에서만
+     한다. 인라인 min-width 220px가 내비 폭을 빼앗아 메뉴가 잘리고 가로 스크롤바가 드러난다.
+     액션 영역의 최소 폭을 풀고, 내비는 스크롤바 없이 넘치도록 한다. */
+  .header-actions,
+  .topbar > div:first-child {
+    min-width: 0 !important;
+  }
+
+  .nav {
+    scrollbar-width: none;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav a {
+    padding: 10px 14px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .nav a {
+    padding: 10px 10px;
+  }
+}
 </style>

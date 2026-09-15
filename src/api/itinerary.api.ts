@@ -6,6 +6,7 @@ import type {
   Itinerary,
   ItineraryMutationResponse,
   MapMatchRouteRequest,
+  RouteMode,
   ReorderItineraryRequest,
   UpdateItineraryDayRequest,
   UpdateItineraryItemRequest,
@@ -59,6 +60,11 @@ export const itineraryApi = {
 
   mapMatchRoute: async (tripId: string, request: MapMatchRouteRequest): Promise<ItineraryMutationResponse> => {
     const response = await http.post<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/routes/map-match`, request)
+    return response.data
+  },
+
+  updateRouteMode: async (tripId: string, routeId: string, baseVersion: number, mode: RouteMode): Promise<ItineraryMutationResponse> => {
+    const response = await http.patch<ItineraryMutationResponse>(`/trips/${tripId}/itinerary/routes/${routeId}`, { baseVersion, mode })
     return response.data
   },
 

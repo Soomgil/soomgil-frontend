@@ -1,7 +1,7 @@
 export type DayGroupType = 'DAY' | 'UNSCHEDULED'
 export type ItemType = 'PLACE' | 'CUSTOM_PLACE'
 export type SourceStatus = 'AVAILABLE' | 'DELETED' | 'UNKNOWN'
-export type RouteMode = 'DRIVING' | 'WALKING'
+export type RouteMode = 'DRIVING' | 'WALKING' | 'CYCLING'
 export type DrawingType = 'FREEHAND' | 'LINE' | 'POLYGON' | 'MARKER' | 'TEXT' | 'STICKER' | 'IMAGE'
 export type GeometryFormat = 'GEOJSON'
 export type MapStickerCode = 'HEART' | 'STAR' | 'CHECK' | 'CAMERA' | 'FOOD' | 'CAFE' | 'SHOPPING' | 'HOTEL' | 'NATURE' | 'BEACH' | 'MUSEUM' | 'TRANSPORT'
