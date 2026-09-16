@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from './MapboxItineraryMap.vue'
 import type { ItineraryMapStop } from './MapboxItineraryMap.vue'
 import MapDrawingOverlay from './MapDrawingOverlay.vue'
+import { loadMapStyle } from '@/utils/mapStyleCache'
 import { useTheme } from '@/composables/useTheme'
 
 const mapbox = vi.hoisted(() => {
@@ -109,6 +110,21 @@ describe('MapboxItineraryMap', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('Mapbox access token')
     expect(wrapper.find('button').exists()).toBe(false)
     expect(mapbox.Map).not.toHaveBeenCalled()
+  })
+
+  it('미리 받은 테마 JSON을 setStyle에 직접 전달한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'cached-theme-token')
+    const style = { version: 8, sources: {}, layers: [] }
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => style })
+    vi.stubGlobal('fetch', fetcher)
+    await loadMapStyle('mapbox://styles/mapbox/dark-v11', 'cached-theme-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await wrapper.setProps({ mapTheme: 'dark' })
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith(style)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
   })
 
   it('일정 좌표로 마커와 경로선을 그리고 변경된 좌표도 즉시 반영한다', async () => {

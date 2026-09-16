@@ -9,6 +9,7 @@ import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { LngLat, Viewport } from '@/types/geo'
 import type { MapDrawing, MapObjectTransform, RouteMode } from '@/types/itinerary'
 import type { AccessibilityFlag, PlaceAccessibility } from '@/types/place'
+import { cachedMapStyle } from '@/utils/mapStyleCache'
 import { MAP_THEMES, type MapTheme } from '@/types/map-theme'
 
 export interface ItineraryMapNearbyPlace {
@@ -146,7 +147,7 @@ function applyMapStyle(style: string) {
   if (!map || appliedMapStyle === style) return
   styleReady = false
   appliedMapStyle = style
-  map.setStyle(style)
+  map.setStyle(cachedMapStyle(style, import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ?? '') ?? style)
 }
 
 watch(mapStyle, applyMapStyle)

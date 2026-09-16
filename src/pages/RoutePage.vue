@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { prefetchMapStyles } from '@/utils/mapStyleCache'
 import { MAP_THEMES, type MapTheme } from '@/types/map-theme'
 import AppShell from '@/components/layout/AppShell.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -223,6 +224,9 @@ watch(() => route.query?.vote, value => {
 
 const mapTheme = ref<MapTheme>(readMapTheme())
 const mapThemeOpen = ref(false)
+watch(mapThemeOpen, open => {
+  if (open) void prefetchMapStyles(import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ?? '')
+})
 const mapThemeButton = ref<HTMLButtonElement | null>(null)
 function readMapTheme(): MapTheme {
   try {

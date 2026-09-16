@@ -169,7 +169,7 @@ onUnmounted(() => {
 
 <template>
     <section class="section page-with-hero trip-vote" :class="{ 'trip-vote--embedded': embedded }">
-      <button type="button" class="trip-vote__back" data-testid="vote-back" @click="goToMap()">
+      <button v-if="!embedded" type="button" class="trip-vote__back" data-testid="vote-back" @click="goToMap()">
         <span class="material-symbols-rounded" aria-hidden="true">{{ embedded ? 'close' : 'arrow_back' }}</span>
         {{ embedded ? '닫기' : '지도로 가기' }}
       </button>
@@ -208,6 +208,16 @@ onUnmounted(() => {
           :result="voting.result"
           data-testid="vote-result"
         />
+          <button
+            v-if="isOwner"
+            type="button"
+            class="trip-vote__ghost trip-vote__restart"
+            data-testid="vote-restart"
+            @click="restartRequested = true"
+          >
+            <span class="material-symbols-rounded" aria-hidden="true">restart_alt</span>
+            새 투표 시작하기
+          </button>
         <div class="trip-vote__result-actions">
           <button type="button" class="trip-vote__cta" data-testid="vote-result-map" @click="goToMap(true)">
             <span class="material-symbols-rounded" aria-hidden="true">map</span>
@@ -224,16 +234,7 @@ onUnmounted(() => {
             <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
             AI에게 일정 배치 맡기기
           </button>
-          <button
-            v-if="isOwner"
-            type="button"
-            class="trip-vote__ghost"
-            data-testid="vote-restart"
-            @click="restartRequested = true"
-          >
-            <span class="material-symbols-rounded" aria-hidden="true">restart_alt</span>
-            새 투표 시작하기
-          </button>
+
         </div>
       </div>
 
@@ -623,5 +624,30 @@ onUnmounted(() => {
 
 .trip-vote__cta--ai {
   background: linear-gradient(135deg, #7c3aed, #2563eb);
+}
+
+/* Shared white and sky palette for every stage of the vote dialog. */
+.trip-vote--embedded { --ink:#35465a; --muted:#647c92; --surface:#fff; --surface-2:#eaf4ff; --line:#dfeaf5; --violet:#328be0; --blue:#328be0; }
+.trip-vote--embedded .trip-vote__back { align-self:flex-end; min-height:36px; padding:6px 10px; border-radius:10px; margin:0 0 8px; background:#f1f8ff; }
+.trip-vote--embedded .trip-vote__hero { padding:20px; margin-bottom:20px; border-radius:16px; background:#f1f8ff; border:1px solid #dfeaf5; box-shadow:none; }
+.trip-vote--embedded :deep(.page-hero__title) { font-size:28px; line-height:1.4; }
+.trip-vote--embedded :deep(.page-hero__gradient) { background:none; -webkit-text-fill-color:#35465a; color:#35465a; }
+.trip-vote--embedded :deep(.page-hero__lead) { font-size:13px; line-height:1.7; }
+.trip-vote--embedded .trip-vote__layout { gap:20px; grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr); }
+.trip-vote--embedded .trip-vote__result-actions { position:sticky; bottom:-20px; padding:16px 0; background:#fff; border-top:1px solid #dfeaf5; z-index:4; gap:10px; }
+.trip-vote--embedded .trip-vote__cta { background:#328be0; border-radius:12px; box-shadow:none; font-size:14px; }
+.trip-vote--embedded .trip-vote__cta--ai { background:#eaf4ff; color:#287cbd; border:1px solid #c6dff4; }
+.trip-vote--embedded :deep(.vote-cart) { border-radius:16px; box-shadow:none; }
+@media(max-width:760px) {
+ .trip-vote--embedded .trip-vote__layout { grid-template-columns:minmax(0,1fr); }
+ .trip-vote--embedded .trip-vote__result-actions { bottom:-16px; }
+}
+
+.trip-vote--embedded { padding-top:34px; }
+.trip-vote__restart { display:flex; margin:14px 0 0 auto; padding:6px 8px; min-height:36px; border:0; background:transparent; font-size:12px; }
+@media(max-width:520px) {
+ .trip-vote--embedded .trip-vote__result-actions { display:grid; grid-template-columns:1fr; padding:10px 0; gap:6px; }
+ .trip-vote--embedded .trip-vote__result-actions .trip-vote__cta { min-height:42px; padding:10px 12px; }
+ .trip-vote--embedded .trip-vote__result-actions .trip-vote__cta--ai { min-height:34px; background:transparent; border:0; padding:6px; font-size:12px; }
 }
 </style>
