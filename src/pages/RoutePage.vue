@@ -4521,7 +4521,7 @@ function textAvatarStyle(index: unknown) {
                   </button>
             <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
           </div>
-          <a href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
+          <a v-if="!isLeftSidebarOpen" href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
           <!-- ═══ SIDEBAR ═══ -->
           <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
             <span class="sidebar-sheet-handle" aria-hidden="true"></span>
@@ -4538,6 +4538,7 @@ function textAvatarStyle(index: unknown) {
             </button>
             <div class="sidebar-content">
               <div class="trip-sidebar-summary">
+                <a v-show="!isSearchPanelOpen" href="/my-trips" class="trip-sidebar-back"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
                 <h1 class="trip-sidebar-title" :title="trip.title">{{ trip.title }}</h1>
                 <p class="trip-sidebar-meta"><span v-if="trip.destinationName">{{ trip.destinationName }} · </span>{{ trip.dateRangeText }} · {{ trip.durationText }}</p>
               </div>
@@ -4709,8 +4710,8 @@ function textAvatarStyle(index: unknown) {
             <!-- 장소 검색 사이드 패널 -->
             <div :class="['sidebar-search-panel', { show: isSearchPanelOpen }]" id="sidebar-search-panel">
               <div class="search-panel-header">
-                <button class="icon-btn" id="search-panel-back" type="button" aria-label="뒤로가기" @click="closeSearchPanel">
-                  <span class="material-symbols-rounded">arrow_back</span>
+                <button class="icon-btn" id="search-panel-back" type="button" aria-label="일정으로 돌아가기" @click="closeSearchPanel">
+                  <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span><span>일정으로</span>
                 </button>
                 <h4>일정 추가</h4>
                 <button :class="['category-chip', 'search-panel-custom-trigger']" type="button" @click="showCustomForm = !showCustomForm">
@@ -7735,6 +7736,16 @@ function textAvatarStyle(index: unknown) {
 .trip-map-actions .avatar-tooltip { top: calc(100% + 8px); bottom: auto; }
 .trip-map-actions .members-count { font-size: 11px; color: var(--muted); }
 @media(max-width:767px) { .trip-map-actions { top: 58px; right: 12px; } .map-shell.is-route-utility-collapsed .trip-map-actions { right: 12px; } }
+
+.trip-sidebar-back { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; margin-bottom: 8px; color: var(--muted); font-size: 12px; text-decoration: none; }
+.trip-sidebar-back .material-symbols-rounded { font-size: 18px; }
+.route-page-section .sidebar-content { padding-top: 16px; }
+#search-panel-back { display: inline-flex; align-items: center; gap: 6px; width: auto; min-height: 40px; padding: 6px 8px; font-size: 12px; white-space: nowrap; }
+.trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { min-height: 40px; padding: 0 14px; font-size: 13px; }
+.trip-map-actions .avatar { width: 34px; height: 34px; }
+.trip-map-actions .members-count { font-size: 12px; }
+.trip-map-actions .avatars-group { padding: 4px 10px; }
+@media(max-width:767px) { .route-page-section .sidebar-content { padding-top: 24px; } }
 </style>
 
 <style scoped src="../styles/route-sky-theme.css"></style>
