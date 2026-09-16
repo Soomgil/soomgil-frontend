@@ -7,6 +7,7 @@ import VoteCandidateDeck from '@/components/voting/VoteCandidateDeck.vue'
 import VoteResultPanel from '@/components/voting/VoteResultPanel.vue'
 import VoteStickerCart from '@/components/voting/VoteStickerCart.vue'
 import { tripApi } from '@/api/trip.api'
+import { itineraryApi } from '@/api/itinerary.api'
 import { useVotingStore } from '@/stores/voting.store'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToast } from '@/composables/useToast'
@@ -97,6 +98,16 @@ function countTripDays(startDate: string | null, endDate: string | null) {
   return Math.max(1, diff + 1)
 }
 
+/** 일정의 DAY 그룹 수(또는 날짜 범위)로 여행 일수를 센다. 일정이 없거나 조회에 실패하면 null. */
+async function countItineraryDays(id: string) {
+  const itinerary = await itineraryApi.getItinerary(id).catch(() => null)
+  const days = itinerary?.days?.filter((day) => day.groupType === 'DAY') ?? []
+  if (days.length === 0) return null
+  const dates = days.map((day) => day.date).filter((date): date is string => Boolean(date)).sort()
+  if (dates.length >= 2) return countTripDays(dates[0], dates[dates.length - 1])
+  return days.length
+}
+
 /** 결과에서 선정된 장소 이름. AI 배치 프롬프트에 쓴다. */
 const selectedResultNames = computed(() =>
   (voting.result?.results ?? [])
@@ -153,6 +164,10 @@ onMounted(async () => {
     tripRegions.value = trip.regions ?? []
     tripDestination.value = trip.displayDestination ?? null
     tripDays.value = countTripDays(trip.startDate ?? null, trip.endDate ?? null)
+    if (tripDays.value == null) {
+      // 새 여행 만들기는 기간을 여행 엔티티가 아니라 일정의 DAY 그룹으로 저장한다. 그 수를 여행 일수로 쓴다.
+      tripDays.value = await countItineraryDays(tripId.value)
+    }
   }
   if (voting.session?.status === 'OPEN') {
     sawOpenSession = true

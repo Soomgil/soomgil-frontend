@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   tripApi: {
     getTrip: vi.fn(),
   },
+  itineraryApi: {
+    getItinerary: vi.fn(),
+  },
 }))
 
 vi.mock('vue-router', () => ({
@@ -26,6 +29,7 @@ vi.mock('vue-router', () => ({
 }))
 vi.mock('@/api/voting.api', () => ({ votingApi: mocks.votingApi }))
 vi.mock('@/api/trip.api', () => ({ tripApi: mocks.tripApi }))
+vi.mock('@/api/itinerary.api', () => ({ itineraryApi: mocks.itineraryApi }))
 vi.mock('@/composables/useToast', () => ({ useToast: () => mocks.toast }))
 vi.mock('@/stores/auth.store', () => ({
   useAuthStore: () => ({
@@ -103,6 +107,7 @@ describe('여행 방 투표 화면', () => {
     mocks.user = { id: 'owner-1' }
     mocks.votingApi.getCurrentSession.mockResolvedValue(state())
     mocks.tripApi.getTrip.mockResolvedValue(tripDetail())
+    mocks.itineraryApi.getItinerary.mockResolvedValue({ tripId: 'trip-1', itineraryVersion: 0, days: [], routes: [], mapDrawings: [] })
   })
 
   it('후보 목록과 남은 스티커를 보여준다', async () => {
@@ -528,5 +533,28 @@ describe('여행 방 투표 화면', () => {
     expect(marks).toHaveLength(2)
     expect(marks[0].attributes('src')).toContain('/vote-stickers/heart-stamp.svg')
     expect(wrapper.findAll('[data-testid="tray-sticker-mark"]:not(.vote-sticker-mark--muted)')).toHaveLength(2)
+  })
+
+  it('여행 상세에 날짜가 없으면 일정의 일차(DAY) 수로 여행 일수를 계산한다', async () => {
+    mocks.votingApi.getCurrentSession
+      .mockResolvedValueOnce({ hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null })
+      .mockResolvedValue(state())
+    // 새 여행 만들기는 기간을 여행 엔티티가 아니라 일정의 DAY 그룹(날짜)으로 저장한다.
+    mocks.tripApi.getTrip.mockResolvedValue({ ...tripDetail(), displayDestination: '제주', startDate: null, endDate: null })
+    mocks.itineraryApi.getItinerary.mockResolvedValue({
+      tripId: 'trip-1', itineraryVersion: 4, routes: [], mapDrawings: [],
+      days: [
+        { id: 'd1', tripId: 'trip-1', groupType: 'DAY', dayNumber: 1, date: '2026-10-01', title: null, sortOrder: 1, items: [] },
+        { id: 'd2', tripId: 'trip-1', groupType: 'DAY', dayNumber: 2, date: '2026-10-02', title: null, sortOrder: 2, items: [] },
+        { id: 'd3', tripId: 'trip-1', groupType: 'DAY', dayNumber: 3, date: '2026-10-03', title: null, sortOrder: 3, items: [] },
+        { id: 'u', tripId: 'trip-1', groupType: 'UNSCHEDULED', dayNumber: null, date: null, title: null, sortOrder: 4, items: [] },
+      ],
+    })
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    // 3일 × 하루 3곳 = 선정 9. "2일로 가정" 안내가 나오면 안 된다.
+    expect(wrapper.find('[data-testid="setup-selection-count"]').text()).toBe('9')
+    expect(wrapper.text()).not.toContain('2일로 가정')
   })
 })
