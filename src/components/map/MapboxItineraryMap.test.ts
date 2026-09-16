@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from './MapboxItineraryMap.vue'
 import type { ItineraryMapStop } from './MapboxItineraryMap.vue'
 import MapDrawingOverlay from './MapDrawingOverlay.vue'
+import { loadMapStyle } from '@/utils/mapStyleCache'
 import { useTheme } from '@/composables/useTheme'
 
 const mapbox = vi.hoisted(() => {
@@ -111,6 +112,21 @@ describe('MapboxItineraryMap', () => {
     expect(mapbox.Map).not.toHaveBeenCalled()
   })
 
+  it('미리 받은 테마 JSON을 setStyle에 직접 전달한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'cached-theme-token')
+    const style = { version: 8, sources: {}, layers: [] }
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => style })
+    vi.stubGlobal('fetch', fetcher)
+    await loadMapStyle('mapbox://styles/mapbox/dark-v11', 'cached-theme-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    await wrapper.setProps({ mapTheme: 'dark' })
+    expect(mapbox.map.setStyle).toHaveBeenCalledWith(style)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
   it('일정 좌표로 마커와 경로선을 그리고 변경된 좌표도 즉시 반영한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
 	const wrapper = mount(MapboxItineraryMap, { props: { stops, routes } })
@@ -157,6 +173,32 @@ describe('MapboxItineraryMap', () => {
     markerElement.click()
     await nextTick()
     expect(wrapper.emitted('selectPlace')).toEqual([[undefined, 'place-1', 'item-1']])
+  })
+
+  it('경로 연결 중 장소 필터와 순서가 바뀌어도 카메라를 유지한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops, routes: [] } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    mapbox.map.easeTo.mockClear()
+    mapbox.map.cameraForBounds.mockClear()
+    await wrapper.setProps({ navigationMode: true, stops: [stops[0]] })
+    await wrapper.setProps({ stops: [...stops].reverse(), routes })
+    await wrapper.setProps({ navigationMode: false, stops })
+    expect(mapbox.map.easeTo).not.toHaveBeenCalled()
+    expect(mapbox.map.cameraForBounds).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('카드 순서만 바뀌면 카메라를 유지한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    mapbox.map.easeTo.mockClear()
+    await wrapper.setProps({ stops: [...stops].reverse() })
+    expect(mapbox.map.easeTo).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 
   it('경로 표시 변경만으로 지도 viewport를 다시 맞추지 않는다', async () => {
@@ -276,84 +318,44 @@ describe('MapboxItineraryMap', () => {
     expect(markerElement.classList.contains('map-pin-card--min')).toBe(true)
   })
 
-  it('navigation mode를 켜면 Mapbox navigation day 스타일로 전환한다', async () => {
+  it('드로잉, 경로 그리기, 3D 전환은 선택한 테마를 유지한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
-    const wrapper = mount(MapboxItineraryMap, { props: { stops, navigationMode: false } })
+    const wrapper = mount(MapboxItineraryMap, { props: { stops, mapTheme: 'dark' } })
     await flushPromises()
     mapbox.handlers.get('style.load')?.()
-    await nextTick()
     mapbox.map.setStyle = vi.fn()
-
-    await wrapper.setProps({ navigationMode: true })
-    await nextTick()
-
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-day-v1')
+    await wrapper.setProps({ navigationMode: true, drawingTool: 'pen', standardView: true })
+    expect(mapbox.map.setStyle).not.toHaveBeenCalled()
+    expect(mapbox.map.easeTo).toHaveBeenCalledWith({ pitch: 60, bearing: -20, duration: 500 })
+    await wrapper.setProps({ navigationMode: false, standardView: false })
+    expect(mapbox.map.setStyle).not.toHaveBeenCalled()
   })
 
-  it('일반 모드에서 헤더 다크모드 토글이 지도 스타일을 Mapbox dark 스타일로 전환한다', async () => {
+  it.each([
+    ['light', 'light-v11'], ['dark', 'dark-v11'],
+    ['navigation-day', 'navigation-day-v1'], ['navigation-night', 'navigation-night-v1'],
+    ['standard', 'standard'],
+  ] as const)('사용자가 %s 테마를 선택하면 스타일을 적용한다', async (mapTheme, style) => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
-    mount(MapboxItineraryMap, { props: { stops, navigationMode: false } })
+    const wrapper = mount(MapboxItineraryMap, { props: { stops, mapTheme: 'standard' } })
     await flushPromises()
+    await wrapper.setProps({ mapTheme })
     mapbox.handlers.get('style.load')?.()
-    await nextTick()
-    expect(mapbox.Map).toHaveBeenCalledWith(expect.objectContaining({
-      style: 'mapbox://styles/mapbox/light-v11',
-    }))
-    mapbox.map.setStyle = vi.fn()
-
-    const { toggleTheme } = useTheme()
-    toggleTheme()
-    await nextTick()
-
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/dark-v11')
+    if (mapTheme === 'standard') {
+      expect(mapbox.Map).toHaveBeenCalledWith(expect.objectContaining({ style: `mapbox://styles/mapbox/${style}` }))
+    } else {
+      expect(mapbox.map.setStyle).toHaveBeenCalledWith(`mapbox://styles/mapbox/${style}`)
+    }
   })
 
-  it('경로 그리기 모드에서 헤더 다크모드 토글이 지도 스타일을 Mapbox navigation night 스타일로 전환한다', async () => {
+  it('앱의 다크 모드 변경도 지도 테마를 변경하지 않는다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
-    mount(MapboxItineraryMap, { props: { stops, navigationMode: true } })
+    mount(MapboxItineraryMap, { props: { stops } })
     await flushPromises()
-    mapbox.handlers.get('style.load')?.()
-    await nextTick()
     mapbox.map.setStyle = vi.fn()
-
-    const { toggleTheme } = useTheme()
-    toggleTheme()
+    useTheme().toggleTheme()
     await nextTick()
-
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
-  })
-
-  it('지도 스타일 로딩 중 다크모드로 바뀌어도 load 후 경로 그리기용 night 스타일로 보정한다', async () => {
-    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
-    mount(MapboxItineraryMap, { props: { stops, navigationMode: true } })
-    await flushPromises()
-
-    const { toggleTheme } = useTheme()
-    toggleTheme()
-    await nextTick()
-    mapbox.handlers.get('style.load')?.()
-
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/navigation-night-v1')
-  })
-
-  it('standard view를 켜면 Mapbox Standard 스타일과 3D 카메라로 전환한다', async () => {
-    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
-    const wrapper = mount(MapboxItineraryMap, { props: { stops, standardView: false } })
-    await flushPromises()
-    mapbox.handlers.get('style.load')?.()
-    await nextTick()
-    mapbox.map.setStyle = vi.fn()
-    mapbox.map.easeTo = vi.fn()
-
-    await wrapper.setProps({ standardView: true })
-    await nextTick()
-
-    expect(mapbox.map.setStyle).toHaveBeenCalledWith('mapbox://styles/mapbox/standard')
-    expect(mapbox.map.easeTo).toHaveBeenCalledWith({
-      pitch: 60,
-      bearing: -20,
-      duration: 500,
-    })
+    expect(mapbox.map.setStyle).not.toHaveBeenCalled()
   })
 
   it('경로선 색상을 출발 일정의 일차 색상으로 그린다', async () => {

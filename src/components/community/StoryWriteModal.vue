@@ -5,7 +5,7 @@ import { communityApi } from '@/api/community.api'
 import { mediaApi } from '@/api/media.api'
 import StoryPostPreview from '@/components/community/StoryPostPreview.vue'
 import type { CommunityPostDetail, PageMeta } from '@/types/community'
-import type { TripRecordPhoto } from '@/types/media'
+import type { MediaFile } from '@/types/media'
 import { useToast } from '@/composables/useToast'
 
 const emit = defineEmits<{ close: []; published: [post: CommunityPostDetail] }>()
@@ -28,19 +28,16 @@ const myTrips = ref<PublishableTrip[]>([])
 const loadingTrips = ref(true)
 const publishing = ref(false)
 const content = ref('')
-const recordPhotos = ref<TripRecordPhoto[]>([])
-const customPhotos = ref<TripRecordPhoto[]>([])
+const customPhotos = ref<MediaFile[]>([])
 const selectedMediaIds = ref<Set<string>>(new Set())
-const loadingRecordPhotos = ref(false)
 const previewImageIndex = ref(0)
 
 interface SelectablePhoto {
-  media: TripRecordPhoto['media']
+  media: MediaFile
   isCustom: boolean
 }
 const allPhotos = computed<SelectablePhoto[]>(() => [
-  ...customPhotos.value.map((photo) => ({ media: photo.media, isCustom: true })),
-  ...recordPhotos.value.map((photo) => ({ media: photo.media, isCustom: false })),
+  ...customPhotos.value.map((photo) => ({ media: photo, isCustom: true })),
 ])
 const selectedPhotos = computed(() => allPhotos.value.filter((photo) => selectedMediaIds.value.has(photo.media.id)))
 const addedPhotos = computed(() => selectedPhotos.value.flatMap((photo) => photo.media.servingUrl ?? photo.media.publicUrl ? [photo.media.servingUrl ?? photo.media.publicUrl ?? ''] : []))
@@ -104,18 +101,8 @@ async function onCustomPhotosSelected(event: Event) {
   try {
     for (const file of files) {
       const mediaFile = await mediaApi.uploadFile(file, 'COMMUNITY_POST')
-      customPhotos.value.push({
-        tripId: '',
-        tripTitle: null,
-        recordId: '',
-        itineraryDayId: null,
-        dayNumber: null,
-        itineraryItemId: null,
-        media: mediaFile,
-        uploadedBy: null,
-        takenAt: null,
-        createdAt: new Date().toISOString(),
-      })
+      customPhotos.value.push(mediaFile)
+      selectedMediaIds.value = new Set([...selectedMediaIds.value, mediaFile.id])
     }
     photoPage.value = 0
     toast.success(`${files.length}장의 사진을 추가했습니다.`)
@@ -159,26 +146,10 @@ async function loadTrips() {
   }
 }
 
-async function loadRecordPhotos(tripId: string) {
-  loadingRecordPhotos.value = true
-  recordPhotos.value = []
-  selectedMediaIds.value = new Set()
-  previewImageIndex.value = 0
-  photoPage.value = 0
-  try {
-    const response = await mediaApi.getRecordPhotos(tripId)
-    recordPhotos.value = response.items.filter((photo) => Boolean(photo.media.servingUrl ?? photo.media.publicUrl))
-  } catch {
-    toast.error('선택한 여행의 기록 사진을 불러오지 못했습니다.')
-  } finally {
-    loadingRecordPhotos.value = false
-  }
-}
-
 async function handlePublish() {
   const trip = myTrips.value.find((item) => item.id === selectedTripId.value)
   if (!trip || !title.value.trim() || selectedPhotos.value.length === 0) {
-    toast.info('여행계획, 제목, 기록 사진을 한 장 이상 선택해주세요.')
+    toast.info('여행계획, 제목, 사진을 한 장 이상 선택해주세요.')
     return
   }
   publishing.value = true
@@ -203,7 +174,7 @@ async function handlePublish() {
   }
 }
 
-function toggleRecordPhoto(photo: SelectablePhoto) {
+function togglePhoto(photo: SelectablePhoto) {
   const next = new Set(selectedMediaIds.value)
   if (next.has(photo.media.id)) next.delete(photo.media.id)
   else next.add(photo.media.id)
@@ -232,9 +203,6 @@ function carouselNext() {
 }
 
 onMounted(loadTrips)
-watch(selectedTripId, (tripId) => {
-  if (tripId) void loadRecordPhotos(tripId)
-})
 </script>
 
 <template>
@@ -342,9 +310,6 @@ watch(selectedTripId, (tripId) => {
                       <template v-if="!selectedTripId && customPhotos.length === 0">
                         <div class="photo-strip__empty">여행계획을 선택하거나 직접 사진을 추가하세요.</div>
                       </template>
-                      <template v-else-if="loadingRecordPhotos">
-                        <div class="photo-strip__empty">기록 사진을 불러오는 중...</div>
-                      </template>
                       <template v-else-if="allPhotos.length === 0">
                         <div class="photo-strip__empty">선택할 수 있는 사진이 없습니다. 직접 추가해보세요.</div>
                       </template>
@@ -356,7 +321,7 @@ watch(selectedTripId, (tripId) => {
                           :aria-pressed="selectedMediaIds.has(photo.media.id)"
                           class="photo-strip__item"
                           :class="{ 'is-selected': selectedMediaIds.has(photo.media.id) }"
-                          @click="toggleRecordPhoto(photo)"
+                          @click="togglePhoto(photo)"
                         >
                           <img :src="photo.media.servingUrl ?? photo.media.publicUrl ?? ''" :alt="`여행 사진 ${photoPage * PHOTOS_PER_PAGE + idx + 1}`" />
                           <span v-if="selectedMediaIds.has(photo.media.id)" class="photo-strip__check"><span class="material-symbols-rounded" style="font-size:18px;">check</span></span>

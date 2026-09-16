@@ -1,0 +1,71 @@
+/* 지도 작업공간의 라이트 테마. 일차·경로·분류 색상과 다크 모드는 유지한다. */
+:global(html:not(.dark)) .route-page-section,
+:global(html:not(.dark)) .vote-modal-overlay {
+  --bg: #f8fbff;
+  --surface: #ffffff;
+  --surface-2: #eaf4ff;
+  --ink: #35465a;
+  --muted: #647c92;
+  --line: #dfeaf5;
+  --violet: #328be0;
+  --blue: #328be0;
+  color: var(--ink);
+  background-color: var(--bg);
+}
+
+:global(html:not(.dark)) .route-page-section :deep(:is(.sidebar, .detailbar, .route-utility-sidebar, .search-panel, .floating-panel, .ai-chat-panel, .map-floating-actions, .map-toolbar, .mapboxgl-popup-content)) {
+  background: #ffffff;
+  color: #35465a;
+  border-color: #dfeaf5;
+  box-shadow: 0 8px 28px rgb(52 102 145 / 9%);
+}
+
+:global(html:not(.dark)) .route-page-section :deep(:is(.trip-header-card, .panel-header, .search-panel-header, .detailbar-header, .ai-chat-header, .memo-toolbar, .todo-progress-section)) {
+  background: #eaf4ff;
+  color: #35465a;
+  border-color: #dfeaf5;
+}
+
+:global(html:not(.dark)) .route-page-section :deep(:is(.trip-card-title, .stat-value, .panel-header h3, .panel-header h4, .search-panel-header h4)) {
+  color: #35465a;
+}
+
+:global(html:not(.dark)) .route-page-section :deep(:is(.day-tabs-container, .panel-footer, .invite-link-box, .detailbar-info-card)) {
+  background: #f8fbff;
+  border-color: #dfeaf5;
+}
+
+:global(html:not(.dark)) .route-page-section :deep(:is(.field, .discovery-search-input, .search-panel-input, .discovery-result, .email-invite-box)) {
+  background: #ffffff;
+  color: #35465a;
+  border-color: #dfeaf5;
+}
+
+:global(html:not(.dark)) .route-page-section :deep(:is(.day-tab.active, .panel-tab-tag.active-memo, .panel-tab-tag.active-todo, .discovery-mode.active, .discovery-retry, .trip-status-badge)) {
+  background: #eaf4ff;
+  color: #427ead;
+  border-color: #c6dff4;
+  box-shadow: none;
+}
+
+:global(html:not(.dark)) .route-page-section :deep(:is(.btn.primary, .discovery-search-button, .panel-progress-bar .progress-fill)) {
+  background: #328be0;
+  border-color: #328be0;
+  color: #ffffff;
+}
+
+:global(html:not(.dark)) .route-page-section :deep(:is(.sidebar-toggle, .day-scroll-btn, .toolbar-btn, .map-action-btn)) {
+  background: #ffffff;
+  color: #647c92;
+  border-color: #dfeaf5;
+}
+
+:global(html:not(.dark)) .vote-modal-overlay {
+  background: rgb(35 53 75 / 35%);
+}
+
+:global(html:not(.dark)) .vote-modal-card {
+  background: #ffffff;
+  border-color: #dfeaf5;
+  color: #35465a;
+}

@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
+import InkWashBackdrop from '@/components/layout/InkWashBackdrop.vue'
+import inkMask from '@/assets/textures/ink-reveal-mask.png'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -85,6 +87,9 @@ function clearRecentSearches() {
     // ignore
   }
 }
+
+const displayedCount = computed(() => visibleTrips.value.length + visiblePlaces.value.length + visiblePosts.value.length + visibleUsers.value.length)
+const searchHeading = computed(() => queryFromUrl().trim() ? '“' + queryFromUrl().trim() + '” 검색 결과' : '다음 여행을 찾아보세요')
 
 const hasQuery = computed(() => searchInput.value.trim().length > 0)
 
@@ -324,58 +329,34 @@ watch(
 </script>
 
 <template>
-  <AppShell>
-    <main class="search-page page-with-hero">
-      <!-- Search Header -->
-      <section class="search-head page-hero">
-        <div class="page-hero__copy">
-          <p class="page-hero__eyebrow">
-            <span class="material-symbols-rounded" aria-hidden="true">search</span>
-            Unified Search
-          </p>
-          <h1 class="page-hero__title">
-            <span class="page-hero__gradient">필요한 여행 정보</span>를<br />
-            한 번에 찾아보세요
-          </h1>
-          <p class="page-hero__lead">여행, 장소, 여행기, 사용자를 한 번에 검색하고 다음 여정을 빠르게 이어가세요.</p>
-        </div>
-
-        <form class="search-form search-form--capsule" role="search" @submit.prevent="submitSearch">
-          <div class="search-input-wrap search-input-wrap--capsule">
-            <span class="material-symbols-rounded search-input-icon">search</span>
-            <input
-              v-model="searchInput"
-              class="search-input"
-              type="text"
-              placeholder="예: 부산, 감성 카페, 서울 여행, 친구 닉네임"
-              aria-label="검색어 입력"
-              autocomplete="off"
-            />
-            <button v-if="searchInput" type="button" class="search-clear-btn" aria-label="검색어 지우기" @click="searchInput = ''">
-              <span class="material-symbols-rounded">close</span>
+  <AppShell immersive paper>
+    <div class="search-page" :style="{ '--ink-mask': `url(${inkMask})` }">
+      <InkWashBackdrop />
+      <div class="search-content">
+      <section class="search-head" aria-label="다시 검색">
+        <a href="/home" class="search-back-link" @click.prevent="router.push('/home')"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>풍경으로 돌아가기</a>
+        <form class="paper-search" role="search" aria-label="통합 검색" @submit.prevent="submitSearch">
+          <div class="paper-search-field">
+            <span class="material-symbols-rounded paper-search-icon" aria-hidden="true">search</span>
+            <input v-model="searchInput" class="paper-search-input" type="search" placeholder="여행지, 계획, 커뮤니티 글, 유저를 검색하세요"
+              aria-label="검색어 입력" autocomplete="off" enterkeyhint="search" maxlength="200" />
+            <button v-if="searchInput" type="button" class="paper-search-clear" aria-label="검색어 지우기" @click="searchInput = ''">
+              <span class="material-symbols-rounded" aria-hidden="true">close</span>
             </button>
-            <button type="submit" class="search-submit-btn">
-              <span class="material-symbols-rounded">search</span>
-              <span>검색</span>
-            </button>
+            <button type="submit" class="paper-search-submit" aria-label="검색"><span class="material-symbols-rounded" aria-hidden="true">search</span>검색</button>
           </div>
         </form>
       </section>
-
-      <div class="search-tabs" role="tablist" aria-label="검색 카테고리">
-        <button
-          v-for="tab in tabs"
-          :key="tab.key"
-          type="button"
-          role="tab"
-          class="search-tab"
-          :class="{ active: activeTab === tab.key }"
-          :aria-selected="activeTab === tab.key"
-          @click="selectTab(tab.key)"
-        >
-          <span class="material-symbols-rounded">{{ tab.icon }}</span>
-          {{ tab.key }}
-        </button>
+      <header class="search-summary">
+        <p class="search-kicker">새로운 여행의 발견</p>
+        <h1>{{ searchHeading }}</h1>
+        <p v-if="result && !loading && !error && hasQuery" class="search-result-caption" role="status">표시 중인 결과 {{ displayedCount }}개 · 마음에 드는 풍경에서 다음 여행을 시작해 보세요.</p>
+        <p v-else class="search-result-caption">가보고 싶은 곳, 함께 떠날 사람, 새로운 여행 이야기를 만나보세요.</p>
+      </header>
+      <div class="search-tabs" role="group" aria-label="검색 결과 필터">
+        <button v-for="tab in tabs" :key="tab.key" type="button" class="search-tab"
+          :class="{ active: activeTab === tab.key }" :aria-pressed="activeTab === tab.key"
+          :aria-label="tab.key + ' 결과 보기'" @click="selectTab(tab.key)">{{ tab.key }}</button>
       </div>
 
       <!-- Result Body -->
@@ -426,9 +407,9 @@ watch(
                 여행
                 <span class="search-section-count">{{ visibleTrips.length }}</span>
               </h2>
-              <button type="button" class="btn ghost search-more-btn" @click="exploreSection('trips')">
+              <button type="button" class="search-more-btn" @click="exploreSection('trips')">
                 자세히 보기
-                <span class="material-symbols-rounded">chevron_right</span>
+                <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
               </button>
             </header>
             <div class="search-grid">
@@ -440,7 +421,7 @@ watch(
                 @click="gotoTrip(trip)"
               >
                 <div class="search-card-thumb" :class="{ 'search-card-thumb--icon': !trip.coverImageUrl }">
-                  <img v-if="trip.coverImageUrl" :src="trip.coverImageUrl" :alt="trip.title" />
+                  <img loading="lazy" v-if="trip.coverImageUrl" :src="trip.coverImageUrl" :alt="trip.title" />
                   <span v-else class="material-symbols-rounded">luggage</span>
                 </div>
                 <div class="search-card-body">
@@ -464,9 +445,9 @@ watch(
                 장소
                 <span class="search-section-count">{{ visiblePlaces.length }}</span>
               </h2>
-              <button type="button" class="btn ghost search-more-btn" @click="exploreSection('places')">
+              <button type="button" class="search-more-btn" @click="exploreSection('places')">
                 자세히 보기
-                <span class="material-symbols-rounded">chevron_right</span>
+                <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
               </button>
             </header>
             <div class="search-grid">
@@ -478,7 +459,7 @@ watch(
                 @click="openPlaceDetail(place)"
               >
                 <div class="search-card-thumb">
-                  <img v-if="place.thumbnailUrl" :src="place.thumbnailUrl" :alt="place.name" />
+                  <img loading="lazy" v-if="place.thumbnailUrl" :src="place.thumbnailUrl" :alt="place.name" />
                   <span v-else class="material-symbols-rounded">image</span>
                 </div>
                 <div class="search-card-body">
@@ -498,9 +479,9 @@ watch(
                 여행기
                 <span class="search-section-count">{{ visiblePosts.length }}</span>
               </h2>
-              <button type="button" class="btn ghost search-more-btn" @click="exploreSection('posts')">
+              <button type="button" class="search-more-btn" @click="exploreSection('posts')">
                 자세히 보기
-                <span class="material-symbols-rounded">chevron_right</span>
+                <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
               </button>
             </header>
             <div class="search-grid">
@@ -540,12 +521,12 @@ watch(
                 사용자
                 <span class="search-section-count">{{ visibleUsers.length }}</span>
               </h2>
-              <button type="button" class="btn ghost search-more-btn" @click="exploreSection('users')">
+              <button type="button" class="search-more-btn" @click="exploreSection('users')">
                 자세히 보기
-                <span class="material-symbols-rounded">chevron_right</span>
+                <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
               </button>
             </header>
-            <div class="search-grid">
+            <div class="search-grid search-grid--users">
               <button
                 v-for="user in visibleUsers"
                 :key="user.id"
@@ -566,7 +547,8 @@ watch(
           </section>
         </template>
       </section>
-    </main>
+      </div>
+    </div>
 
     <Teleport to="body">
       <div
@@ -725,218 +707,21 @@ watch(
 </template>
 
 <style scoped>
-.search-page {
-  width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 28px 24px 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.search-head.search-head.search-head {
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-  margin-bottom: 20px;
-  text-align: center;
-}
-
-.search-head .page-hero__copy {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 0 1 auto;
-  width: 100%;
-  text-align: center;
-}
-
-.search-head .page-hero__eyebrow {
-  align-self: center;
-  justify-content: center;
-}
-
-.search-head .page-hero__title {
-  width: 100%;
-  margin-bottom: 14px;
-  text-align: center;
-}
-
-.search-head .page-hero__lead {
-  max-width: 620px;
-  margin: 0 auto;
-}
-
-.search-head .eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--violet);
-  margin: 0 0 8px;
-}
-
-.search-head-title {
-  font-size: 28px;
-  font-weight: 900;
-  color: var(--ink);
-  margin: 0 0 8px;
-  letter-spacing: -0.02em;
-}
-
-.search-head-title span {
-  background: linear-gradient(135deg, var(--violet), var(--blue));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.search-head-lead {
-  font-size: 14px;
-  color: var(--muted);
-  margin: 0 0 20px;
-}
-
-.search-form {
-  display: flex;
-  align-items: stretch;
-  max-width: 680px;
-  margin: 0 auto;
-}
-
-.search-form--capsule {
-  width: 100%;
-}
-
-.search-input-wrap {
-  flex: 1;
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-input-wrap--capsule {
-  padding: 0 0 0 18px;
-  border: 0;
-}
-
-.search-input-wrap.search-input-wrap.search-input-wrap--capsule,
-.search-input-wrap.search-input-wrap.search-input-wrap--capsule:focus-within {
-  border: 0;
-}
-
-.search-input-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 20px;
-  color: var(--muted);
-  pointer-events: none;
-}
-
-.search-input.search-input.search-input {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  height: 48px;
-  padding: 0 44px;
-  border: 0;
-  border-radius: 12px;
-  background: #fff;
-  font-size: 15px;
-  color: var(--ink);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.search-input:focus {
-  outline: none;
-  box-shadow: 0 0 0 4px rgba(123, 104, 238, 0.12);
-}
-
-.search-clear-btn {
-  position: absolute;
-  right: 102px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 32px;
-  height: 32px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-}
-
-.search-clear-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: var(--ink);
-}
-
-.search-submit-btn {
-  align-self: stretch;
-  min-width: 98px;
-  height: 48px;
-  padding: 0 24px;
-  border: 0;
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  font-weight: 800;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.search-submit-btn .material-symbols-rounded {
-  font-size: 20px;
-}
-
-.search-tabs {
-  display: flex;
-  gap: 8px;
-  margin: 16px auto 0;
-  flex-wrap: wrap;
-  max-width: 560px; /* align tabs with the narrow, centered search bar */
-}
-
-.search-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
-}
-
-.search-tab:hover {
-  border-color: rgba(123, 104, 238, 0.4);
-  color: var(--violet);
-}
-
-.search-tab.active {
-  background: var(--violet);
-  border-color: var(--violet);
-  color: #fff;
-}
-
-.search-tab .material-symbols-rounded {
-  font-size: 16px;
-}
+.search-page { --ink: #35465A; --muted: #647C92; --line: #EAF4FF; position: relative; isolation: isolate; min-height: 100svh; width: 100%; color: var(--ink); background: #F8FBFF; }
+.search-content { width: min(1160px, calc(100% - 80px)); margin: 0 auto; padding: 104px 0 56px; }
+.search-head { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 52px; }
+.search-back-link { display: inline-flex; align-items: center; align-self: flex-start; gap: 8px; color: #647C92; font-size: 12px; min-height: 36px; text-decoration: none; }
+.search-back-link:hover { color: #427EAD; text-decoration: underline; text-underline-offset: 4px; }
+.search-back-link .material-symbols-rounded { font-size: 17px; }
+.search-summary { margin-bottom: 24px; }
+.search-kicker { margin: 0 0 12px; font-size: 11px; letter-spacing: .14em; color: #647C92; font-weight: 500; }
+.search-summary h1 { font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-size: clamp(27px, 3vw, 38px); color: #35465A; font-weight: 500; line-height: 1.4; margin: 0 0 12px; overflow-wrap: anywhere; }
+.search-result-caption { margin: 0; color: #647C92; font-size: 13px; font-weight: 400; line-height: 1.7; }
+.search-tabs { display: flex; gap: 32px; border-bottom: 1px solid #EAF4FF; margin-bottom: 32px; overflow-x: auto; scrollbar-width: none; }
+.search-tab { position: relative; padding: 12px 2px 15px; min-height: 48px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #647C92; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.search-tab.active { color: #427EAD; border-bottom-color: #427EAD; font-weight: 750; }
+.search-tab:hover { color: #427EAD; }
+.search-tab:focus-visible, .search-back-link:focus-visible { outline: 2px solid #647C92; outline-offset: -2px; }
 
 .search-empty-panel {
   display: grid;
@@ -1100,8 +885,8 @@ watch(
 
 .search-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px;
 }
 
 .search-card {
@@ -1696,7 +1481,7 @@ watch(
 .place-detail-accessibility-pill.available {
   border-color: rgba(16, 185, 129, 0.24);
   background: rgba(16, 185, 129, 0.08);
-  color: #047857;
+  color: #35465A;
 }
 
 .place-detail-accessibility-pill.unavailable {
@@ -1737,7 +1522,7 @@ watch(
 
 @media (max-width: 720px) {
   .search-page {
-    padding: 20px 16px 16px;
+    padding: 0;
   }
 
   .search-head-title {
@@ -1823,4 +1608,69 @@ watch(
     grid-template-columns: 1fr;
   }
 }
+
+/* 홈에서 이어지는 종이와 먹빛 결과 카드 */
+.search-section { margin-bottom: 48px; }
+.search-section-head { border: 0; margin-bottom: 18px; }
+.search-section-head h2 { font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-size: 22px; font-weight: 500; color: #427EAD; }
+.search-section-icon { color: #8A9DAF; font-size: 19px; }
+.search-section-count { color: #647C92; background: transparent; font: 12px sans-serif; padding: 0; }
+.search-more-btn { color: #427EAD; border: 1px solid #DFEAF5; border-radius: 999px; padding: 10px 16px; min-height: 44px; gap: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .18s, border-color .18s; }
+.search-more-btn:hover { background: #EAF4FF; border-color: #8A9DAF; }
+.search-more-btn:focus-visible { outline: 2px solid #647C92; outline-offset: 3px; }
+.search-card { border: 1px solid transparent; border-radius: 10px; background: transparent; box-shadow: none; overflow: visible; }
+.search-card:hover { transform: translateY(-3px); background: rgb(234 244 255 / 32%); box-shadow: none; border-color: #EAF4FF; }
+.search-card:focus-visible { outline-color: #647C92; }
+.search-card-thumb { background: transparent; aspect-ratio: 3 / 2; }
+.search-card-thumb img { mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; }
+.search-card-thumb--icon { background: #EAF4FF; color: #8A9DAF; }
+.search-card--user .search-card-thumb { width: 56px; height: 56px; margin: 0; flex-shrink: 0; aspect-ratio: 1; border-radius: 50%; background: #EAF4FF; color: #647C92; }
+.search-card--user .search-card-thumb img { mask-image: none; }
+.search-card-avatar-fallback { color: #647C92; font-size: 25px; }
+.search-card-body { padding: 18px 16px 20px; gap: 8px; }
+.search-card-title { font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-weight: 500; font-size: 21px; color: #35465A; line-height: 1.5; }
+.search-card-eyebrow { font-weight: 400; font-size: 11px; color: #647C92; }
+.search-card-meta, .search-card-author { font-weight: 400; color: #647C92; line-height: 1.7; }
+.search-recent { background: rgb(255 255 255 / 55%); border-color: #EAF4FF; }
+.place-detail-modal { --ink: #35465A; --muted: #647C92; --bg: #F8FBFF; --line: #EAF4FF; }
+.place-detail-dialog { background: #F8FBFF; border-color: #EAF4FF; box-shadow: 0 24px 72px rgb(34 53 39 / 20%); }
+.place-detail-media-overlay h2 { font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-weight: 500; }
+.place-detail-section h3 { font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-weight: 500; color: #427EAD; }
+.place-detail-tags span { color: #647C92; background: #EAF4FF; }
+.place-detail-info-card { background: #EAF4FF; }
+@media (max-width: 767px) {
+  .search-content { width: calc(100% - 40px); padding-top: 132px; }
+  .search-head { margin-bottom: 36px; }
+  .search-tabs { gap: 24px; }
+  .search-summary h1 { font-size: 28px; }
+  .search-grid { gap: 20px; }
+}
+@media (max-width: 480px) {
+  .search-content { width: calc(100% - 32px); }
+  .search-tabs { justify-content: space-between; gap: 8px; }
+  .search-card-thumb { aspect-ratio: 3 / 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-card { transition: none; }
+}
+
+
+.search-grid--users { gap: 16px; }
+.search-card--user { flex-direction: row; align-items: center; gap: 16px; min-height: 104px; padding: 18px; border: 1px solid #EAF4FF; border-radius: 16px; background: rgb(255 255 255 / 60%); }
+.search-card--user .search-card-body { min-width: 0; flex: 1; padding: 0; gap: 4px; }
+.search-card--user .search-card-title { font-family: inherit; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.search-card--user .search-card-meta { margin: 0; font-size: 12px; }
+@media (max-width: 1024px) { .search-grid--users { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .search-grid--users { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .search-more-btn, .search-card { transition: none; } }
+</style>
+<style scoped src="../styles/paper-search.css">
+.search-grid--users { gap: 16px; }
+.search-card--user { flex-direction: row; align-items: center; gap: 16px; min-height: 104px; padding: 18px; border: 1px solid #EAF4FF; border-radius: 16px; background: rgb(255 255 255 / 60%); }
+.search-card--user .search-card-body { min-width: 0; flex: 1; padding: 0; gap: 4px; }
+.search-card--user .search-card-title { font-family: inherit; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.search-card--user .search-card-meta { margin: 0; font-size: 12px; }
+@media (max-width: 1024px) { .search-grid--users { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .search-grid--users { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .search-more-btn, .search-card { transition: none; } }
 </style>

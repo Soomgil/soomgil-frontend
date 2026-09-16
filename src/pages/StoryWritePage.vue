@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import StoryPostPreview from '@/components/community/StoryPostPreview.vue'
@@ -7,7 +7,6 @@ import { communityApi } from '@/api/community.api'
 import { mediaApi } from '@/api/media.api'
 import { tripApi } from '@/api/trip.api'
 import type { TripSummary } from '@/types/trip'
-import type { TripRecordPhoto } from '@/types/media'
 import type { MediaFile } from '@/types/media'
 import { useToast } from '@/composables/useToast'
 
@@ -23,15 +22,11 @@ type PublishableTrip = Pick<TripSummary, 'id' | 'title' | 'displayDestination' |
 const myTrips = ref<PublishableTrip[]>([])
 const publishing = ref(false)
 const content = ref('')
-const recordPhotos = ref<TripRecordPhoto[]>([])
-const selectedMediaIds = ref<Set<string>>(new Set())
 const localPhotos = ref<MediaFile[]>([])
 const localPhotoInput = ref<HTMLInputElement | null>(null)
 const uploadingLocalPhotos = ref(false)
-const loadingRecordPhotos = ref(false)
 const previewImageIndex = ref(0)
-const selectedPhotos = computed(() => recordPhotos.value.filter((photo) => selectedMediaIds.value.has(photo.media.id)))
-const selectedMedia = computed(() => [...selectedPhotos.value.map((photo) => photo.media), ...localPhotos.value])
+const selectedMedia = computed(() => localPhotos.value)
 const addedPhotos = computed(() => selectedMedia.value.flatMap((media) => {
   const url = media.servingUrl ?? media.publicUrl
   return url ? [url] : []
@@ -99,29 +94,6 @@ async function handlePublish() {
   }
 }
 
-async function loadRecordPhotos(tripId: string) {
-  loadingRecordPhotos.value = true
-  recordPhotos.value = []
-  selectedMediaIds.value = new Set()
-  previewImageIndex.value = 0
-  try {
-    const response = await mediaApi.getRecordPhotos(tripId)
-    recordPhotos.value = response.items.filter((photo) => Boolean(photo.media.servingUrl ?? photo.media.publicUrl))
-  } catch {
-    toast.error('선택한 여행의 기록 사진을 불러오지 못했습니다.')
-  } finally {
-    loadingRecordPhotos.value = false
-  }
-}
-
-function toggleRecordPhoto(photo: TripRecordPhoto) {
-  const next = new Set(selectedMediaIds.value)
-  if (next.has(photo.media.id)) next.delete(photo.media.id)
-  else next.add(photo.media.id)
-  selectedMediaIds.value = next
-  if (previewImageIndex.value >= addedPhotos.value.length) previewImageIndex.value = 0
-}
-
 function triggerLocalPhotoPicker() {
   localPhotoInput.value?.click()
 }
@@ -173,9 +145,6 @@ onMounted(async () => {
   } catch {
     toast.error('내 여행계획을 불러오지 못했습니다.')
   }
-})
-watch(selectedTripId, (tripId) => {
-  if (tripId) void loadRecordPhotos(tripId)
 })
 </script>
 
@@ -271,22 +240,7 @@ watch(selectedTripId, (tripId) => {
                     <span class="small muted">JPG·PNG, 파일당 최대 10MB</span>
                   </div>
                   <div class="upload-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
-                    <div v-if="!selectedTripId" style="grid-column:1/-1; padding:30px; border:2px dashed var(--line); border-radius:16px; text-align:center; color:var(--muted);">먼저 여행계획을 선택해주세요.</div>
-                    <div v-else-if="loadingRecordPhotos" style="grid-column:1/-1; padding:30px; text-align:center; color:var(--muted);">기록 사진을 불러오는 중...</div>
-                    <div v-else-if="recordPhotos.length === 0" style="grid-column:1/-1; padding:30px; border:2px dashed var(--line); border-radius:16px; text-align:center; color:var(--muted);">이 여행에는 선택할 수 있는 기록 사진이 없습니다.</div>
-                    <button
-                      v-for="(photo, idx) in recordPhotos"
-                      :key="photo.media.id"
-                      type="button"
-                      :aria-pressed="selectedMediaIds.has(photo.media.id)"
-                      style="position: relative; height: 120px; padding:0; border-radius: 16px; overflow: hidden; box-shadow: var(--soft-shadow); cursor: pointer;"
-                      :style="{ border: selectedMediaIds.has(photo.media.id) ? '3px solid var(--violet)' : '3px solid transparent' }"
-                      @click="toggleRecordPhoto(photo)"
-                    >
-                      <img :src="photo.media.servingUrl ?? photo.media.publicUrl ?? ''" :alt="`여행 기록 사진 ${idx + 1}`" style="width: 100%; height: 100%; object-fit: cover; display:block;" />
-                      <span v-if="selectedMediaIds.has(photo.media.id)" style="position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:50%; background:var(--violet); color:#fff; display:grid; place-items:center;"><span class="material-symbols-rounded" style="font-size:18px;">check</span></span>
-                      <span v-if="selectedPhotos[0]?.media.id === photo.media.id" style="position:absolute; left:8px; bottom:8px; padding:4px 8px; border-radius:8px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; font-weight:900;">커버</span>
-                    </button>
+                    <div v-if="localPhotos.length === 0" style="grid-column:1/-1; padding:30px; border:2px dashed var(--line); border-radius:16px; text-align:center; color:var(--muted);">내 기기에서 여행 사진을 추가해주세요.</div>
                     <div
                       v-for="(media, idx) in localPhotos"
                       :key="media.id"

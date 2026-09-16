@@ -12,6 +12,7 @@ import logoUrl from '@/assets/images/soomgil_logo_none_text.png'
 import { useLocale } from '@/i18n'
 
 const route = useRoute()
+defineProps<{ immersive?: boolean; paper?: boolean }>()
 const router = useRouter()
 const auth = useAuthStore()
 const { isDarkMode, toggleTheme } = useTheme()
@@ -30,7 +31,6 @@ const serviceNavItems = computed(() => [
   { label: t('nav.trips'), key: 'my-trips', path: '/my-trips' },
   { label: t('nav.preferences'), key: 'swipe', path: '/swipe' },
   { label: t('nav.community'), key: 'community', path: '/community' },
-  { label: t('nav.records'), key: 'record', path: '/record' },
 ])
 
 const isLandingPage = computed(() => route.path === '/')
@@ -210,7 +210,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <header :class="['topbar', { 'route-workspace-header': isRouteWorkspace }]">
+  <header :class="['topbar paper-header', { 'route-workspace-header': isRouteWorkspace }]">
     <!-- Left: Brand -->
     <div style="min-width:220px">
       <a
@@ -370,6 +370,22 @@ async function handleLogout() {
 </template>
 
 <style scoped>
+/* 모든 서비스 탭은 동일한 헤더 색상과 간격을 공유한다. */
+.topbar.paper-header { --ink: #35465A; --muted: #647C92; --bg: #F8FBFF; --line: #EAF4FF; --surface-2: #EAF4FF; background: rgb(248 251 255 / 94%); border-bottom: 0; backdrop-filter: none; padding-inline: 40px; }
+.paper-header .brand > span { color: #35465A !important; }
+.paper-header .nav a { color: #647C92; text-shadow: none; }
+.paper-header .nav a.active { color: #427EAD; background: #EAF4FF; border-color: #DFEAF5; }
+.paper-header .nav-indicator { display: none; }
+.paper-header .header-actions > .btn.ghost,
+.paper-header .header-actions .icon-btn { color: #427EAD; background: #EAF4FF; }
+@media (max-width: 480px) {
+  .topbar.paper-header { height: auto; min-height: 72px; padding: 12px 20px; gap: 10px; flex-wrap: wrap; }
+  .paper-header .brand img { width: 38px !important; height: 38px !important; }
+  .paper-header .brand > span { font-size: 19px !important; }
+  .paper-header .nav { order: 3; flex-basis: 100%; width: 100%; justify-content: flex-start; overflow-x: auto; }
+  .paper-header .nav a { font-size: 13px; padding: 8px 12px; }
+  .paper-header .header-actions { width: auto; }
+}
 .profile-item-link:hover {
   background: var(--bg);
 }

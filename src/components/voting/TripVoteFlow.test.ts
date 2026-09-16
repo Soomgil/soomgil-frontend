@@ -39,7 +39,7 @@ vi.mock('@/stores/auth.store', () => ({
   }),
 }))
 
-import TripVotePage from './TripVotePage.vue'
+import TripVoteFlow from '@/components/voting/TripVoteFlow.vue'
 
 const stubs = { AppShell: { template: '<div><slot /></div>' } }
 
@@ -106,7 +106,7 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('후보 목록과 남은 스티커를 보여준다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="candidate-name"]').exists()).toBe(true)
@@ -115,7 +115,7 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('한 후보에 스티커를 몰아 붙일 수 있다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     const plus = wrapper.findAll('[data-testid="candidate-place"]')[0]
@@ -127,7 +127,7 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('스티커를 회수하면 남은 개수가 늘어난다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.findAll('[data-testid="candidate-place"]')[0].trigger('click')
@@ -138,7 +138,7 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('덱을 넘기면 다음 후보가 보이고, 붙인 곳은 장바구니에 쌓인다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     // 1번 후보에 1개
@@ -159,7 +159,7 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('모두 회수하면 장바구니가 비워진다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.find('[data-testid="candidate-place"]').trigger('click')
@@ -171,7 +171,7 @@ describe('여행 방 투표 화면', () => {
 
   it('polling 갱신이 제출 전 로컬 스티커 초안을 덮어쓰지 않는다', async () => {
     vi.useFakeTimers()
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await vi.runOnlyPendingTimersAsync()
 
     await wrapper.find('[data-testid="candidate-place"]').trigger('click')
@@ -188,7 +188,7 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('지급량을 다 쓰면 더 붙일 수 없다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     const plus = wrapper.findAll('[data-testid="candidate-place"]')[0]
@@ -203,7 +203,7 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('스티커를 하나도 안 붙이면 제출 버튼이 비활성이다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-submit"]').attributes('disabled')).toBeDefined()
@@ -216,7 +216,7 @@ describe('여행 방 투표 화면', () => {
     mocks.votingApi.submit.mockResolvedValue(
       state({ nextScreen: 'WAITING', myParticipation: participation({ status: 'SUBMITTED' }) }),
     )
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.findAll('[data-testid="candidate-place"]')[0].trigger('click')
@@ -231,14 +231,14 @@ describe('여행 방 투표 화면', () => {
     mocks.votingApi.getCurrentSession.mockResolvedValue(
       state({ nextScreen: 'WAITING', myParticipation: participation({ status: 'SUBMITTED' }) }),
     )
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-waiting"]').exists()).toBe(true)
   })
 
   it('미투표자가 있으면 확인 전에는 마감 버튼이 비활성이다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.find('[data-testid="vote-close-open"]').trigger('click')
@@ -252,7 +252,7 @@ describe('여행 방 투표 화면', () => {
 
   it('확인 후 마감하면 조기 종료를 요청한다', async () => {
     mocks.votingApi.closeSession.mockResolvedValue({ sessionId: 'session-1', results: [] })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.find('[data-testid="vote-close-open"]').trigger('click')
@@ -265,14 +265,14 @@ describe('여행 방 투표 화면', () => {
 
   it('마감 버튼은 방장에게만 보인다', async () => {
     mocks.user = { id: 'member-9' }
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-close-open"]').exists()).toBe(false)
   })
 
   it('참여 현황을 진행률로 보여준다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-progress"]').text()).toContain('1/3')
@@ -282,7 +282,7 @@ describe('여행 방 투표 화면', () => {
     mocks.votingApi.getCurrentSession.mockResolvedValue({
       hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null,
     })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(true)
@@ -294,7 +294,7 @@ describe('여행 방 투표 화면', () => {
     mocks.votingApi.getCurrentSession.mockResolvedValue({
       hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null,
     })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-idle"]').exists()).toBe(true)
@@ -311,7 +311,7 @@ describe('여행 방 투표 화면', () => {
       ...tripDetail(), displayDestination: '제주', startDate: '2026-10-01', endDate: '2026-10-03',
       regions: [{ code: '5011000000', name: '제주시', fullName: '제주특별자치도 제주시', level: 'SIGUNGU', parentCode: '5000000000', isActive: true }],
     })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     // 하루 3곳 → 4곳. 2박 3일이므로 선정 12 · 후보 24 · 스티커 6을 제안한다.
@@ -343,7 +343,7 @@ describe('여행 방 투표 화면', () => {
     })
     // 지역은 없지만 목적지가 있어 시작 자체는 허용되는 여행방.
     mocks.tripApi.getTrip.mockResolvedValue({ ...tripDetail(), displayDestination: '제주' })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.find('[data-testid="setup-open"]').trigger('click')
@@ -375,7 +375,7 @@ describe('여행 방 투표 화면', () => {
       ],
       unscheduledDayId: null, itineraryVersion: null,
     })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-result"]').exists()).toBe(true)
@@ -390,7 +390,7 @@ describe('여행 방 투표 화면', () => {
       session: session({ status: 'COMPLETED', completionReason: 'OWNER_EARLY_CLOSE' }),
     }))
     mocks.votingApi.getResult.mockResolvedValue(null)
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.find('[data-testid="vote-restart"]').trigger('click')
@@ -398,7 +398,7 @@ describe('여행 방 투표 화면', () => {
     expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(true)
   })
 
-  it('머무는 동안 투표가 끝나면 지도 화면으로 이동한다', async () => {
+  it('머무는 동안 투표가 끝나면 완료를 부모 모달에 알린다', async () => {
     mocks.votingApi.getCurrentSession
       .mockResolvedValueOnce(state({ nextScreen: 'WAITING', myParticipation: participation({ status: 'SUBMITTED' }) }))
       .mockResolvedValue(state({
@@ -407,7 +407,7 @@ describe('여행 방 투표 화면', () => {
         myParticipation: participation({ status: 'SUBMITTED' }),
       }))
     vi.useFakeTimers()
-    mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await vi.runOnlyPendingTimersAsync()
 
     // polling 1회 후 COMPLETED 전환 → 지도 이동
@@ -416,7 +416,7 @@ describe('여행 방 투표 화면', () => {
     vi.useRealTimers()
     await flushPromises()
 
-    expect(mocks.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { voteCompleted: '1' } })
+    expect(wrapper.emitted('close')).toEqual([[true]])
   })
   it('설정 패널에 여행방 지역과 목적지를 넘긴다', async () => {
     mocks.votingApi.getCurrentSession.mockResolvedValue(
@@ -430,7 +430,7 @@ describe('여행 방 투표 화면', () => {
         level: 'SIGUNGU', parentCode: '5000000000', isActive: true,
       }],
     })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(true)
@@ -438,7 +438,7 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('스티커를 붙이면 제출 버튼 문구는 개수 없이 제출하기다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
     expect(wrapper.get('[data-testid="vote-submit"]').text()).toContain('스티커를 붙여주세요')
 
@@ -450,13 +450,13 @@ describe('여행 방 투표 화면', () => {
   })
 
   it('투표 마감 버튼은 스티커 보드가 아니라 상단 진행 현황 옆에 있다', async () => {
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.find('.vote-cart [data-testid="vote-close-open"]').exists()).toBe(false)
     expect(wrapper.find('.trip-vote__hero [data-testid="vote-close-open"]').exists()).toBe(true)
   })
-  it('결과 화면에서 AI에게 일정 배치를 맡기면 AI 패널과 프롬프트가 준비된 지도로 이동한다', async () => {
+  it('결과 화면에서 AI에게 일정 배치를 맡기면 선택 장소를 지도 모달에 전달한다', async () => {
     mocks.votingApi.getCurrentSession.mockResolvedValue(state({
       nextScreen: 'MAP',
       session: session({ status: 'COMPLETED', completionReason: 'ALL_SUBMITTED' }),
@@ -484,19 +484,13 @@ describe('여행 방 투표 화면', () => {
       ],
       unscheduledDayId: null, itineraryVersion: null,
     })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.get('[data-testid="vote-ai-arrange"]').trigger('click')
 
-    expect(mocks.push).toHaveBeenCalledWith({
-      name: 'Route',
-      params: { tripId: 'trip-1' },
-      query: expect.objectContaining({ panel: 'ai', aiPrompt: expect.stringContaining('성산일출봉') }),
-    })
-    const call = mocks.push.mock.calls.at(-1)?.[0] as { query: { aiPrompt: string } }
-    expect(call.query.aiPrompt).toContain('만장굴')
-    expect(call.query.aiPrompt).not.toContain('우도')
+    expect(wrapper.emitted('ai-arrange')).toEqual([[['성산일출봉', '만장굴']]])
+
   })
 
   it('설정 패널에 여행 일수를 넘긴다', async () => {
@@ -506,7 +500,7 @@ describe('여행 방 투표 화면', () => {
     mocks.tripApi.getTrip.mockResolvedValue({
       ...tripDetail(), displayDestination: '제주', startDate: '2026-10-01', endDate: '2026-10-03',
     })
-    const wrapper = mount(TripVotePage, { global: { stubs } })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     expect(wrapper.get('[data-testid="vote-setup"]').text()).toContain('3일')

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import type { TripVoteSessionDetail, TripVoteSessionResult } from '@/types/voting'
 
 const props = defineProps<{
@@ -10,7 +10,7 @@ const props = defineProps<{
 /** 결과 API가 아직 없으면 세션 후보의 종료 후 집계로 그린다. */
 const rows = computed(() => {
   if (props.result) {
-    return props.result.results.map((item) => ({
+    return [...props.result.results].sort((a, b) => b.stickerCount - a.stickerCount || (a.selectedRank ?? Infinity) - (b.selectedRank ?? Infinity)).map((item) => ({
       id: item.candidateId,
       name: item.name,
       thumbnailUrl: item.thumbnailUrl,
@@ -35,6 +35,19 @@ const rows = computed(() => {
     }))
 })
 
+const showAll = ref(false)
+const heading = ref<HTMLElement | null>(null)
+const brokenImages = ref(new Set<string>())
+const displayedRows = computed(() => showAll.value ? rows.value : rows.value.slice(0, 5))
+const addedCount = computed(() => rows.value.filter(row => row.addedToItinerary).length)
+const duplicateCount = computed(() => rows.value.filter(row => row.alreadyInItinerary).length)
+watch(() => props.session.id, () => { showAll.value = false; brokenImages.value = new Set() })
+async function toggleResults() {
+  showAll.value = !showAll.value
+  await nextTick()
+  heading.value?.focus({ preventScroll: true })
+  heading.value?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+}
 const selectedCount = computed(() => rows.value.filter((row) => row.selected).length)
 
 const completionLabel = computed(() =>
@@ -45,202 +58,85 @@ const completionLabel = computed(() =>
 <template>
   <div class="vote-result">
     <header class="vote-result__header">
-      <p class="page-hero__eyebrow">
-        <span class="material-symbols-rounded" aria-hidden="true">celebration</span>
-        Vote Result
-      </p>
-      <h1 class="vote-result__title">
-        <span class="page-hero__gradient">투표가 끝났어요!</span>
-      </h1>
+      <p class="vote-result__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span> 함께 고른 여행</p>
+      <h1 ref="heading" tabindex="-1" class="vote-result__title">{{ showAll ? '전체 투표 결과' : '우리의 다음 여행지' }}</h1>
       <p class="vote-result__lead" data-testid="result-summary">
-        {{ completionLabel }}.
-        <template v-if="selectedCount > 0">
-          선정된 {{ selectedCount }}곳을 일정의 <strong>일차 미정</strong>에 담아뒀어요.
-        </template>
+        {{ completionLabel }}. <strong>{{ selectedCount }}곳 선정</strong>
+      </p>
+      <p v-if="addedCount || duplicateCount" class="vote-result__outcome">
+        일차 미정에 {{ addedCount }}곳 추가<span v-if="duplicateCount"> · 이미 일정에 {{ duplicateCount }}곳</span>
       </p>
     </header>
-
-    <ul class="vote-result__list" data-testid="result-list">
-      <li
-        v-for="(row, index) in rows"
-        :key="row.id"
-        class="vote-result__row"
-        :class="{ selected: row.selected }"
-        data-testid="result-row"
-      >
-        <span class="vote-result__rank" :class="{ top: row.selected }">
-          {{ row.selectedRank ?? index + 1 }}
-        </span>
+    <p v-if="!rows.length" class="vote-result__empty">아직 표시할 투표 결과가 없어요.</p>
+    <ul v-else class="vote-result__list" :class="{ 'is-overview': !showAll }" data-testid="result-list" aria-label="득표순 여행지">
+      <li v-for="(row, index) in displayedRows" :key="row.id" class="vote-result__row"
+        :class="{ selected: row.selected, 'is-winner': !showAll && index === 0, 'is-runner-up': !showAll && index > 0 && index < 3 }" data-testid="result-row">
+        <span class="vote-result__rank">{{ index + 1 }}<span class="sr-only">위</span></span>
         <div class="vote-result__media">
-          <img v-if="row.thumbnailUrl" :src="row.thumbnailUrl" :alt="row.name ?? ''" loading="lazy" />
-          <span v-else class="material-symbols-rounded">landscape</span>
+          <img v-if="row.thumbnailUrl && !brokenImages.has(row.id)" :src="row.thumbnailUrl" :alt="row.name ?? '여행지'" :loading="index === 0 ? 'eager' : 'lazy'" @error="brokenImages.add(row.id)" />
+          <span v-else class="material-symbols-rounded" aria-hidden="true">landscape</span>
         </div>
         <div class="vote-result__body">
-          <span class="vote-result__name">{{ row.name }}</span>
-          <span v-if="row.addedToItinerary" class="vote-result__badge added" data-testid="result-added">
-            <span class="material-symbols-rounded">event_available</span>
-            일차 미정에 추가됨
-          </span>
-          <span v-else-if="row.alreadyInItinerary" class="vote-result__badge dup" data-testid="result-dup">
-            <span class="material-symbols-rounded">event_repeat</span>
-            이미 일정에 있어요
-          </span>
+          <span v-if="!showAll && index === 0" class="vote-result__favorite">가장 많은 스티커를 받은 곳</span>
+          <strong class="vote-result__name">{{ row.name || '이름 없는 여행지' }}</strong>
+          <span v-if="row.selected" class="vote-result__selected">선정된 장소</span>
+          <span v-if="row.addedToItinerary" class="vote-result__badge" data-testid="result-added">일차 미정에 추가됨</span>
+          <span v-else-if="row.alreadyInItinerary" class="vote-result__badge" data-testid="result-dup">이미 일정에 있어요</span>
         </div>
-        <span class="vote-result__count" data-testid="result-sticker-count">
-          <span class="material-symbols-rounded" aria-hidden="true">favorite</span>
-          {{ row.stickerCount }}
-        </span>
+        <span class="vote-result__count" data-testid="result-sticker-count"><span class="material-symbols-rounded" aria-hidden="true">favorite</span>{{ row.stickerCount }}<small>개</small></span>
       </li>
     </ul>
+    <button v-if="rows.length" type="button" class="vote-result__all" data-testid="result-toggle-all" @click="toggleResults">
+      {{ showAll ? '주요 결과로 돌아가기' : `전체 투표 결과 보기 (${rows.length}곳)` }}
+      <span class="material-symbols-rounded" aria-hidden="true">{{ showAll ? 'arrow_back' : 'arrow_forward' }}</span>
+    </button>
   </div>
 </template>
 
 <style scoped>
-.vote-result {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.vote-result__header {
-  padding: 4px;
-}
-
-.vote-result__title {
-  color: var(--ink);
-  font-size: clamp(28px, 3.6vw, 40px);
-  font-weight: 900;
-  line-height: 1.2;
-  margin: 0 0 8px;
-}
-
-.vote-result__lead {
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.7;
-  margin: 0;
-}
-
-.vote-result__lead strong {
-  color: var(--ink);
-}
-
-.vote-result__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.vote-result__row {
-  align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  box-shadow: var(--soft-shadow);
-  display: flex;
-  gap: 12px;
-  padding: 12px 16px;
-}
-
-.vote-result__row.selected {
-  border-color: rgba(0, 102, 255, 0.45);
-  box-shadow: 0 10px 26px rgba(0, 102, 255, 0.14);
-}
-
-.vote-result__rank {
-  align-items: center;
-  background: var(--surface-2);
-  border-radius: 999px;
-  color: var(--muted);
-  display: flex;
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 900;
-  height: 30px;
-  justify-content: center;
-  width: 30px;
-}
-
-.vote-result__rank.top {
-  background: linear-gradient(135deg, var(--violet), var(--blue));
-  color: #fff;
-}
-
-.vote-result__media {
-  align-items: center;
-  background: var(--surface-2);
-  border-radius: 12px;
-  color: var(--lavender);
-  display: flex;
-  flex-shrink: 0;
-  height: 48px;
-  justify-content: center;
-  overflow: hidden;
-  width: 48px;
-}
-
-.vote-result__media img {
-  height: 100%;
-  object-fit: cover;
-  width: 100%;
-}
-
-.vote-result__body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.vote-result__name {
-  color: var(--ink);
-  font-size: 14.5px;
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vote-result__badge {
-  align-items: center;
-  border-radius: 999px;
-  display: inline-flex;
-  font-size: 11px;
-  font-weight: 700;
-  gap: 3px;
-  padding: 2px 8px;
-  width: fit-content;
-}
-
-.vote-result__badge .material-symbols-rounded {
-  font-size: 13px;
-}
-
-.vote-result__badge.added {
-  background: rgba(0, 224, 209, 0.14);
-  color: #009e93;
-}
-
-.vote-result__badge.dup {
-  background: var(--surface-2);
-  color: var(--muted);
-}
-
-.vote-result__count {
-  align-items: center;
-  color: var(--rose);
-  display: flex;
-  font-size: 15px;
-  font-weight: 900;
-  gap: 3px;
-}
-
-.vote-result__count .material-symbols-rounded {
-  font-size: 17px;
-  font-variation-settings: 'FILL' 1;
+.vote-result { display:flex; flex-direction:column; gap:16px; color:#35465a; }
+.vote-result__header { padding:20px 24px; background:#f1f8ff; border:1px solid #dfeaf5; border-radius:18px; }
+.vote-result__eyebrow { display:flex; align-items:center; gap:6px; margin:0 0 8px; color:#328be0; font-size:12px; font-weight:700; }
+.vote-result__eyebrow .material-symbols-rounded { font-size:18px; }
+.vote-result__title { margin:0 0 8px; font-size:clamp(23px,3vw,30px); line-height:1.3; outline:none; }
+.vote-result__lead,.vote-result__outcome { margin:4px 0 0; font-size:13px; line-height:1.6; color:#647c92; }
+.vote-result__list { display:flex; flex-direction:column; gap:10px; list-style:none; padding:0; margin:0; }
+.vote-result__row { position:relative; display:flex; align-items:center; gap:14px; padding:12px 16px; border:1px solid #e4edf5; border-radius:14px; background:#fff; }
+.vote-result__rank { flex:none; width:25px; text-align:center; color:#647c92; font-size:14px; font-weight:800; }
+.vote-result__media { flex:none; width:52px; height:52px; display:grid; place-items:center; overflow:hidden; border-radius:10px; background:#eaf4ff; color:#87accb; }
+.vote-result__media img { width:100%; height:100%; object-fit:cover; }
+.vote-result__body { flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.vote-result__name { font-size:15px; overflow-wrap:anywhere; }
+.vote-result__selected { display:inline-flex; padding:3px 7px; border-radius:6px; background:#eaf4ff; color:#287cbd; font-size:10px; font-weight:700; }
+.vote-result__badge { color:#647c92; font-size:11px; }
+.vote-result__count { flex:none; display:flex; align-items:center; gap:4px; color:#328be0; font-size:18px; font-weight:800; white-space:nowrap; }
+.vote-result__count .material-symbols-rounded { font-size:17px; font-variation-settings:'FILL' 1; }
+.vote-result__count small { font-size:11px; font-weight:500; }
+.is-winner { display:grid; grid-template-columns:minmax(0,1fr) auto; padding:0 0 20px; gap:18px; overflow:hidden; border-color:#c6dff4; }
+.is-winner .vote-result__media { grid-column:1 / -1; width:100%; height:clamp(190px,29vw,310px); border-radius:0; }
+.is-winner .vote-result__rank { position:absolute; top:16px; left:16px; display:grid; place-items:center; width:38px; height:38px; background:white; color:#287cbd; border-radius:12px; box-shadow:0 3px 12px #20344f20; font-size:20px; }
+.is-winner .vote-result__body { padding-left:22px; }
+.is-winner .vote-result__count { padding-right:22px; font-size:24px; }
+.is-winner .vote-result__name { font-size:23px; }
+.vote-result__favorite { font-size:11px; color:#647c92; }
+.is-runner-up { background:#f8fbff; padding:16px; }
+.is-runner-up .vote-result__media { width:88px; height:72px; }
+.is-runner-up .vote-result__name { font-size:17px; }
+.is-runner-up .vote-result__rank { color:#328be0; font-size:19px; }
+.vote-result__all { display:flex; align-items:center; justify-content:center; gap:8px; min-height:46px; border:1px solid #c6dff4; border-radius:12px; background:#fff; color:#287cbd; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+.vote-result__all:hover { background:#eaf4ff; }
+.vote-result__all:focus-visible { outline:3px solid #9bcdf6; outline-offset:2px; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+@media(max-width:520px) {
+ .vote-result__header { padding:18px; }
+ .vote-result__row { gap:8px; padding:10px; }
+ .vote-result__media { width:40px; height:40px; }
+ .is-winner { padding:0 0 16px; gap:14px; }
+ .is-winner .vote-result__body { padding-left:14px; }
+ .is-winner .vote-result__count { padding-right:14px; }
+ .is-runner-up .vote-result__media { width:64px; height:64px; }
+ .is-runner-up .vote-result__name { font-size:15px; }
+ .vote-result__rank { width:18px; }
+ .vote-result__count { font-size:16px; }
 }
 </style>

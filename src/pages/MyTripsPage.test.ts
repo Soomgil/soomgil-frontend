@@ -6,7 +6,7 @@ import type { TripSummary } from '@/types/trip'
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
 const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: {} as Record<string, string> }))
 const itinerary = vi.hoisted(() => ({ createDay: vi.fn() }))
-const tripApiMock = vi.hoisted(() => ({ createInvite: vi.fn() }))
+const tripApiMock = vi.hoisted(() => ({ createInvite: vi.fn(), getMembers: vi.fn().mockResolvedValue([]) }))
 const users = vi.hoisted(() => ({ searchUsers: vi.fn() }))
 
 const trip = {
@@ -72,7 +72,19 @@ describe('MyTripsPage', () => {
 
   afterEach(() => vi.useRealTimers())
 
-  it('보관됨 필터에서 여행 생성 후 진행 중 필터로 전환한다', async () => {
+  it('동행자는 3명과 초과 인원으로 표시하고 옵션에서 설정을 연다', async () => {
+    store.trips = [trip]
+    tripApiMock.getMembers.mockResolvedValueOnce(Array.from({ length: 5 }, (_, i) => ({ id: String(i), status: 'ACTIVE', user: { id: String(i), displayName: `동행${i}`, profileImageUrl: `https://example.com/${i}.png` } })))
+    const wrapper = mount(MyTripsPage, { global: { stubs: { AppHeader: true, TripSettingsModal: true } } })
+    await flushPromises()
+    expect(wrapper.findAll('.trip-member-avatar')).toHaveLength(3)
+    expect(wrapper.get('.trip-member-overflow').text()).toBe('+2')
+    await wrapper.get('button[aria-label="새 부산 여행 옵션"]').trigger('click')
+    expect(routing.push).not.toHaveBeenCalled()
+    expect(wrapper.findComponent({ name: 'TripSettingsModal' }).exists()).toBe(true)
+  })
+
+  it('지난 여행 필터에서 여행 생성 후 진행 중 필터로 전환한다', async () => {
     const wrapper = mount(MyTripsPage, {
       global: {
         stubs: {
@@ -84,7 +96,7 @@ describe('MyTripsPage', () => {
     })
     await flushPromises()
 
-    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '보관됨')
+    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '지난 여행')
     expect(archivedFilter).toBeDefined()
     await archivedFilter!.trigger('click')
     await wrapper.get('button.btn.primary').trigger('click')
@@ -224,7 +236,7 @@ describe('MyTripsPage', () => {
       sortOrder: 4,
     })
     expect(tripApiMock.createInvite).toHaveBeenCalledWith('trip-1', { inviteeUserId: 'friend-1' })
-    expect(routing.push).toHaveBeenCalledWith({ name: 'TripVote', params: { tripId: 'trip-1' } })
+    expect(routing.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { vote: '1' } })
   })
 
   it('첫 진입에서 실제 여행 목록의 첫 페이지를 요청한다', async () => {
@@ -269,28 +281,56 @@ describe('MyTripsPage', () => {
     expect(wrapper.find('.animate-spin').exists()).toBe(true)
   })
 
-  it('다음 페이지가 있으면 여행 더 보기를 요청한다', async () => {
+  it('카드 본문은 지도로 이동하고 투표와 설정 클릭은 전파하지 않는다', async () => {
     store.trips = [trip]
-    store.hasMoreTrips = true
-    const wrapper = mount(MyTripsPage, {
-      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
-    })
+    const wrapper = mount(MyTripsPage, { global: { stubs: { AppHeader: true, TripSettingsModal: true } } })
+    await flushPromises()
+    expect(wrapper.find('.timeline-card-open').exists()).toBe(false)
+    await wrapper.get('.timeline-card-info').trigger('click')
+    expect(routing.push).toHaveBeenLastCalledWith({ name: 'Route', params: { tripId: trip.id } })
+    routing.push.mockClear()
+    await wrapper.get('.timeline-card-vote').trigger('click')
+    expect(routing.push).toHaveBeenCalledTimes(1)
+    expect(routing.push).toHaveBeenLastCalledWith({ name: 'Route', params: { tripId: trip.id }, query: { vote: '1' } })
+    routing.push.mockClear()
+    await wrapper.get('.trip-options').trigger('click')
+    expect(routing.push).not.toHaveBeenCalled()
+  })
 
-    const loadMoreButton = wrapper.findAll('button').find((button) => button.text() === '여행 더 보기')
-    await loadMoreButton!.trigger('click')
+  it('지난 여행과 날짜 미정 여행을 분리한다', async () => {
+    store.trips = [{ ...trip, id: 'past', title: '지난 일정', startDate: '2020-01-01', endDate: '2020-01-02' }, { ...trip, id: 'unknown', title: '미정 일정' }]
+    const wrapper = mount(MyTripsPage, { global: { stubs: { AppHeader: true, TripSettingsModal: true } } })
+    await flushPromises()
+    await wrapper.findAll('.trip-tabs button').find(b => b.text() === '미정')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.timeline-card')).toHaveLength(1)
+    expect(wrapper.get('.timeline-card-title').text()).toBe('미정 일정')
+    await wrapper.findAll('.trip-tabs button').find(b => b.text() === '지난 여행')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.timeline-card-title').text()).toBe('지난 일정')
+  })
 
-    expect(store.fetchNextPage).toHaveBeenCalledOnce()
+  it('9개씩 페이지를 나누고 검색 시 첫 페이지로 돌아간다', async () => {
+    store.trips = Array.from({ length: 12 }, (_, index) => ({ ...trip, id: String(index), title: `여행 ${index}` }))
+    const wrapper = mount(MyTripsPage, { global: { stubs: { AppHeader: true, TripSettingsModal: true } } })
+    await flushPromises()
+    expect(wrapper.findAll('.timeline-card')).toHaveLength(9)
+    await wrapper.get('button[aria-label="2페이지"]').trigger('click')
+    expect(wrapper.findAll('.timeline-card')).toHaveLength(3)
+    await wrapper.get('#trip-search-input').setValue('여행 0')
+    expect(wrapper.findAll('.timeline-card')).toHaveLength(1)
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('1')
   })
 
   it('필터에 맞는 빈 상태 문구를 표시한다', async () => {
     const wrapper = mount(MyTripsPage, {
       global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
     })
-    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '보관됨')
+    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '지난 여행')
     await archivedFilter!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('보관한 여행이 없습니다.')
+    expect(wrapper.text()).toContain('지난 여행이 없습니다.')
   })
 
   it('보관된 여행 필터에서도 깔끔한 여행 카드를 유지한다', async () => {
@@ -306,7 +346,7 @@ describe('MyTripsPage', () => {
       global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
     })
     await flushPromises()
-    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '보관됨')!
+    const archivedFilter = wrapper.findAll('button').find((button) => button.text() === '지난 여행')!
     await archivedFilter.trigger('click')
     await flushPromises()
 
@@ -355,7 +395,7 @@ describe('MyTripsPage', () => {
 
     await voteButton!.trigger('click')
 
-    expect(routing.push).toHaveBeenCalledWith({ name: 'TripVote', params: { tripId: 'trip-1' } })
+    expect(routing.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { vote: '1' } })
   })
 
   it('멤버 카드에는 투표 버튼을 보여주지 않는다', async () => {

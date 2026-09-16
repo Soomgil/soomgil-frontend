@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TripSettingsModal from './TripSettingsModal.vue'
 import type { TripDetail, TripSummary } from '@/types/trip'
@@ -6,6 +6,7 @@ import type { TripDetail, TripSummary } from '@/types/trip'
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
 const tripApiMock = vi.hoisted(() => ({
   getInvites: vi.fn(),
+  getMembers: vi.fn().mockResolvedValue([]),
   createInvite: vi.fn(),
 }))
 
@@ -60,19 +61,29 @@ describe('TripSettingsModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
-  it('수정한 제목과 상태를 저장한다', async () => {
-    store.updateTrip.mockResolvedValue({ ...trip, title: '여름 부산 여행', status: 'ARCHIVED' })
+  it('목록에서 연 멤버 탭은 프로필을 조회하고 실패한 사진은 아이콘으로 대체한다', async () => {
+    tripApiMock.getMembers.mockResolvedValueOnce([{ id: 'member-1', status: 'ACTIVE', role: 'OWNER', user: { id: 'user-1', displayName: '여행자', profileImageUrl: '/avatar.jpg' } }])
+    const wrapper = mount(TripSettingsModal, { props: { open: true, trip, defaultTab: 'tab-members' } })
+    await flushPromises()
+    expect(tripApiMock.getMembers).toHaveBeenCalledWith(trip.id)
+    expect(wrapper.get('.member-avatar img').attributes('src')).toBe('/avatar.jpg')
+    await wrapper.get('.member-avatar img').trigger('error')
+    expect(wrapper.get('.member-avatar .material-symbols-rounded').text()).toBe('person')
+  })
+
+  it('상태 선택 없이 제목을 수정하고 기존 상태를 유지한다', async () => {
+    store.updateTrip.mockResolvedValue({ ...trip, title: '여름 부산 여행', status: 'ACTIVE' })
     const wrapper = mount(TripSettingsModal, { props: { open: true, trip } })
 
     await wrapper.get('input[name="title"]').setValue('여름 부산 여행')
-    await wrapper.get('button[data-status="ARCHIVED"]').trigger('click')
+    expect(wrapper.find('[aria-label="여행 상태"]').exists()).toBe(false)
     await wrapper.get('form').trigger('submit')
 
     expect(store.updateTrip).toHaveBeenCalledWith(trip.id, {
       title: '여름 부산 여행',
       displayDestination: '부산광역시',
       ...expectedBaseUpdate,
-      status: 'ARCHIVED',
+      status: 'ACTIVE',
     })
     expect(wrapper.emitted('close')).toHaveLength(1)
   })

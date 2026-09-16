@@ -7,7 +7,7 @@ import { clearCollaborationSessionIds, registerCollaborationSessionId } from '@/
 import RoutePage from './RoutePage.vue'
 
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any, votingStore: null as any }))
-const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
+const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: {} as Record<string, string> }))
 const geo = vi.hoisted(() => ({ simplifyCoordinates: vi.fn() }))
 const realtime = vi.hoisted(() => ({ instances: [] as any[] }))
 const connectedApis = vi.hoisted(() => ({
@@ -128,7 +128,7 @@ vi.mock('@/realtime/stompTransport', () => ({
 }))
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { tripId: 'trip-1' } }),
+  useRoute: () => ({ params: { tripId: 'trip-1' }, query: routing.query }),
   useRouter: () => ({ push: routing.push, replace: routing.replace }),
 }))
 
@@ -189,6 +189,7 @@ vi.mock('@/composables/useMapViewport', async () => {
 describe('RoutePage itinerary integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routing.query = {}
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
     localStorage.clear()
 		localStorage.setItem('accessToken', 'e30.eyJ1c2VySWQiOiJ1c2VyLTEifQ.')
@@ -757,6 +758,41 @@ describe('RoutePage itinerary integration', () => {
 				{ dayId: 'day-1', sortOrder: 1, itemOrders: [] },
 			],
 		})
+	})
+
+	it('드래그가 취소되면 이동 표시를 지우고 순서를 저장하지 않는다', async () => {
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separators = wrapper.findAll('.day-separator')
+		const stop = wrapper.get('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 320, width: 320, height: 320,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[0].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[1].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 72, top: 72, left: 0, right: 320, bottom: 104, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(stop.element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 112, top: 112, left: 12, right: 300, bottom: 152, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
+
+		stop.find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 122 }))
+		stop.element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 76 }))
+		stop.element.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true, clientX: 40, clientY: 76 }))
+		await flushPromises()
+
+		expect(holder.state.reorder).not.toHaveBeenCalled()
+		expect(stop.classes()).not.toContain('is-dragging')
+		expect(itineraryEl.classList.contains('dragging-stop')).toBe(false)
 	})
 
 	it('드래그 임계값 전의 클릭 움직임은 일차·여행 카드·연결 그룹의 스크롤과 재정렬을 발생시키지 않는다', async () => {
@@ -1481,7 +1517,9 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     const map = wrapper.getComponent(MapboxItineraryMap)
 
+    const visibleStopsBeforeConnecting = wrapper.getComponent(MapboxItineraryMap).props('stops')
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    expect(wrapper.getComponent(MapboxItineraryMap).props('stops')).toEqual(visibleStopsBeforeConnecting)
     await nextTick()
     const modeLabels = {
       WALKING: '도보',
@@ -2084,7 +2122,7 @@ describe('RoutePage itinerary integration', () => {
 
     expect((wrapper.get('[data-testid="trip-start-date"]').element as HTMLInputElement).value).toBe('2026-07-01')
     expect((wrapper.get('[data-testid="trip-end-date"]').element as HTMLInputElement).value).toBe('2026-07-01')
-    expect(wrapper.text()).toContain('여행 상태 설정')
+    expect(wrapper.text()).not.toContain('여행 상태 설정')
   })
 
   it('페이지 재진입 시 저장된 여행 기간을 기준으로 일차 탭을 생성한다', async () => {
@@ -3192,6 +3230,26 @@ describe('RoutePage itinerary integration', () => {
     EmptyState: true,
     TripVoteFlow: voteFlowStub,
   }
+
+  it('생성 또는 투표 링크로 진입하면 지도 모달을 연다', async () => {
+    routing.query = { vote: '1' }
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="vote-flow-close"]').trigger('click')
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
+  })
+
+  it('관리 오른쪽에서 지도 테마를 선택하고 저장한다', async () => {
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+    await wrapper.get('.map-theme-button').trigger('click')
+    await wrapper.get('input[value="navigation-night"]').element.closest('label')!.querySelectorAll('span')[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(wrapper.findComponent(MapboxItineraryMap).props('mapTheme')).toBe('navigation-night')
+    expect(localStorage.getItem('soomgil-map-theme')).toBe('navigation-night')
+    expect(wrapper.find('.map-theme-popover').exists()).toBe(false)
+  })
 
   it('제출하지 않은 투표가 열려 있으면 지도 위에 투표 모달을 자동으로 띄운다', async () => {
     holder.votingStore.session = { status: 'OPEN' }

@@ -9,7 +9,7 @@ const locale = ref<AppLocale>(initial)
 const messages = {
   ko: {
     'nav.home': '홈', 'nav.features': '기능', 'nav.flow': '사용 흐름', 'nav.templates': '템플릿',
-    'nav.trips': '내 여행', 'nav.preferences': '취향 수집', 'nav.community': '커뮤니티', 'nav.records': '기록',
+    'nav.trips': '내 여행', 'nav.preferences': '취향 수집', 'nav.community': '커뮤니티',
     'auth.login': '로그인', 'auth.register': '회원가입', 'auth.logout': '로그아웃',
     'common.loading': '불러오는 중…', 'common.save': '설정 저장', 'common.settings': '설정', 'common.myPage': '마이페이지',
     'settings.eyebrow': '환경 설정', 'settings.title': '서비스 환경을 관리하세요',
@@ -45,7 +45,7 @@ const messages = {
   },
   en: {
     'nav.home': 'Home', 'nav.features': 'Features', 'nav.flow': 'How it works', 'nav.templates': 'Templates',
-    'nav.trips': 'My trips', 'nav.preferences': 'Preferences', 'nav.community': 'Community', 'nav.records': 'Records',
+    'nav.trips': 'My trips', 'nav.preferences': 'Preferences', 'nav.community': 'Community',
     'auth.login': 'Log in', 'auth.register': 'Sign up', 'auth.logout': 'Log out',
     'common.loading': 'Loading…', 'common.save': 'Save settings', 'common.settings': 'Settings', 'common.myPage': 'My page',
     'settings.eyebrow': 'Preferences', 'settings.title': 'Manage your experience',

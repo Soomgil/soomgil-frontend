@@ -42,6 +42,7 @@ interface StoryView {
   tags: string[];
   summary: string;
   content: string;
+  publishedAt: string;
 }
 
 const FALLBACK_IMAGE = "/images/랜딩페이지/korea_hero.png";
@@ -88,7 +89,7 @@ function openUserProfile(userId: string | null) {
   if (userId) router.push(`/mypage/${userId}`);
 }
 
-const PER_PAGE = 8;
+const PER_PAGE = 9;
 
 function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryView {
   const detail = "snapshot" in post ? post : null;
@@ -106,6 +107,7 @@ function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryVie
     FALLBACK_IMAGE;
   return {
     id: post.id,
+    publishedAt: post.publishedAt,
     author: post.publishedBy?.displayName ?? "숨길 여행자",
     authorUserId: post.publishedBy?.id ?? null,
     authorProfileImageUrl: post.publishedBy?.profileImageUrl ?? null,
@@ -158,11 +160,6 @@ const filteredStories = computed(() => {
 
 const popularStories = computed(() =>
   [...stories.value].sort((a, b) => b.likes - a.likes).slice(0, 3),
-);
-
-const popularIndex = ref(0);
-const currentPopular = computed(
-  () => popularStories.value[popularIndex.value] ?? popularStories.value[0] ?? null,
 );
 
 const totalPages = computed(() => Math.ceil(filteredStories.value.length / PER_PAGE));
@@ -222,14 +219,7 @@ function goPage(page: number) {
   currentPage.value = page;
 }
 
-function prevPopular() {
-  popularIndex.value =
-    (popularIndex.value - 1 + popularStories.value.length) % popularStories.value.length;
-}
 
-function nextPopular() {
-  popularIndex.value = (popularIndex.value + 1) % popularStories.value.length;
-}
 
 const apiComments = ref<CommunityComment[]>([]);
 const comments = computed(() => {
@@ -552,8 +542,8 @@ watch(
 </script>
 
 <template>
-  <AppShell>
-    <main>
+  <AppShell paper>
+    <main class="community-paper">
       <section class="section community-page page-with-hero">
         <div class="community-hero-header">
           <div class="community-hero-text">
@@ -561,17 +551,8 @@ watch(
               <span class="material-symbols-rounded">explore</span>
               Trip Community
             </p>
-            <h1 v-if="locale === 'en'" class="community-hero-title">
-              Share your <span class="community-hero-gradient">travel stories</span>,<br />
-              discover new <span class="community-hero-gradient">routes</span>
-            </h1>
-            <h1 v-else class="community-hero-title">
-              <span class="community-hero-gradient">여행의 기록</span>을 나누고,<br />
-              새로운 <span class="community-hero-gradient">루트</span>를 발견하세요
-            </h1>
-            <p class="lead community-hero-lead">
-              전 세계 여행자들이 직접 다녀온 생생한 여행기와 검증된 루트를 탐색할 수 있습니다.
-            </p>
+            <h1 class="community-hero-title">{{ locale === 'en' ? 'Travel stories' : '여행 이야기' }}</h1>
+            <p class="lead community-hero-lead">다른 여행자의 발자취에서 다음 여행을 발견하세요.</p>
           </div>
         </div>
 
@@ -587,89 +568,16 @@ watch(
         />
 
         <div v-if="!loading && !loadError && stories.length" class="community-content-container">
-          <section v-if="currentPopular" class="today-pick-section">
-            <div class="today-pick-grid">
-              <div class="today-pick-visual">
-                <div class="polaroid-wrap">
-                  <button
-                    type="button"
-                    class="polaroid-card"
-                    @click="openStory(currentPopular)"
-                  >
-                    <span class="polaroid-tape" aria-hidden="true"></span>
-                    <div class="polaroid-image">
-                      <img :src="currentPopular.image" :alt="currentPopular.title" />
-                    </div>
-                    <div class="polaroid-caption">
-                      <h3 class="polaroid-title">{{ currentPopular.title }}</h3>
-                      <p class="polaroid-author">
-                        <span class="material-symbols-rounded">place</span>
-                        <span>{{ currentPopular.author }} · {{ currentPopular.location }}</span>
-                      </p>
-                      <div class="polaroid-stats">
-                        <span class="polaroid-stat">
-                          <span class="material-symbols-rounded">favorite</span>
-                          {{ currentPopular.likes }}
-                        </span>
-                        <span class="polaroid-stat">
-                          <span class="material-symbols-rounded">chat_bubble</span>
-                          {{ currentPopular.comments }}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
+          <section v-if="popularStories.length" class="today-pick-section" aria-labelledby="popular-stories-title">
+            <div class="popular-heading"><p class="eyebrow">POPULAR STORIES</p><h2 id="popular-stories-title">눈길이 머문 여행</h2><p>여행자들이 좋아한 이야기</p></div>
+            <div class="popular-gallery" aria-label="인기 여행기">
+              <button v-for="(story, index) in popularStories" :key="story.id" type="button" class="polaroid-card" :style="{ '--tilt': `${index === 1 ? 1.2 : -1}deg` }" @click="openStory(story)">
+                <div class="polaroid-image"><img v-if="story.image !== FALLBACK_IMAGE" :src="story.image" :alt="story.title" /><span v-else class="popular-no-photo material-symbols-rounded" aria-hidden="true">auto_stories</span></div>
+                <div class="polaroid-caption"><h3 class="polaroid-title">{{ story.title }}</h3>
+                  <p class="polaroid-author"><span class="story-tile-avatar"><img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" alt="" /><span v-else>{{ story.avatar }}</span></span>{{ story.author }}</p>
+                  <div class="polaroid-stats"><span class="polaroid-stat"><span class="material-symbols-rounded" aria-hidden="true">favorite</span>{{ story.likes }}</span><span class="polaroid-stat"><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ story.comments }}</span></div>
                 </div>
-                <div class="today-pick-nav" aria-label="인기 여행기 탐색">
-                  <button
-                    class="carousel-btn prev-btn"
-                    type="button"
-                    aria-label="이전 여행기"
-                    @click="prevPopular"
-                  >
-                    <span class="material-symbols-rounded">chevron_left</span>
-                  </button>
-                  <div class="today-pick-dots">
-                    <button
-                      v-for="(story, idx) in popularStories"
-                      :key="story.id"
-                      type="button"
-                      class="today-pick-dot"
-                      :class="{ active: idx === popularIndex }"
-                      :aria-label="locale === 'en' ? `Go to popular story ${idx + 1}` : `${idx + 1}번째 인기 여행기로 이동`"
-                      :aria-pressed="idx === popularIndex"
-                      @click="popularIndex = idx"
-                    ></button>
-                  </div>
-                  <button
-                    class="carousel-btn next-btn"
-                    type="button"
-                    aria-label="다음 여행기"
-                    @click="nextPopular"
-                  >
-                    <span class="material-symbols-rounded">chevron_right</span>
-                  </button>
-                </div>
-              </div>
-
-              <div class="today-pick-info">
-                <p class="today-pick-label">
-                  <span class="material-symbols-rounded">local_fire_department</span>
-                  Today Pick
-                </p>
-                <h2 class="today-pick-title">{{ currentPopular.title }}</h2>
-                <p class="today-pick-summary">
-                  {{ currentPopular.summary || currentPopular.content }}
-                </p>
-                <div v-if="currentPopular.tags.length" class="today-pick-tags">
-                  <span
-                    v-for="tag in currentPopular.tags.slice(0, 4)"
-                    :key="tag"
-                    class="tag tag-soft"
-                    >#{{ tag }}</span
-                  >
-                </div>
-
-              </div>
+              </button>
             </div>
           </section>
 
@@ -679,7 +587,7 @@ watch(
                 <span class="material-symbols-rounded latest-stories-icon">schedule</span>
                 <div>
                   <p class="eyebrow latest-stories-eyebrow">Latest</p>
-                  <h2>최신 여행기</h2>
+                  <h2>방금 도착한 여행 이야기</h2>
                 </div>
               </div>
               <div class="latest-stories-tools">
@@ -705,15 +613,20 @@ watch(
               </div>
             </div>
 
+            <p v-if="!filteredStories.length" class="community-empty" role="status">검색 조건에 맞는 여행기가 없습니다.</p>
             <div class="story-card-grid" data-stories-list>
               <article
                 v-for="story in pagedStories"
                 :key="story.id"
                 class="story-tile"
+                tabindex="0"
+                role="button"
+                @keydown.enter.self="openStory(story)"
+                @keydown.space.self.prevent="openStory(story)"
                 @click.prevent="openStory(story)"
               >
-                <div class="story-tile-image-wrap">
-                  <img class="story-tile-image" :src="story.image" :alt="story.title" />
+                <div class="story-tile-image-wrap" :class="{ 'story-tile-image-wrap--empty': story.image === FALLBACK_IMAGE }">
+                  <img v-if="story.image !== FALLBACK_IMAGE" class="story-tile-image" :src="story.image" :alt="story.title" />
                   <button
                     type="button"
                     class="story-tile-like"
@@ -768,7 +681,7 @@ watch(
                       class="story-tile-stat story-tile-stat-end"
                       aria-hidden="true"
                     >
-                      <span class="material-symbols-rounded">bookmark</span>
+                      {{ new Date(story.publishedAt).toLocaleDateString("ko-KR") }}
                     </span>
                   </div>
                 </div>
@@ -2731,4 +2644,55 @@ watch(
     display: none;
   }
 }
+
+/* 화이트 여행 매거진: 인기 폴라로이드와 최신 피드를 구분한다. */
+:global(body:has(.community-paper)) { background: #F8FBFF; }
+.community-paper { background: #F8FBFF; color: #35465A; }
+.community-paper .community-page { max-width: 1200px; padding: 48px 32px 64px; margin: auto; }
+.community-paper .community-hero-header { margin-bottom: 44px; padding: 0; }
+.community-paper .community-hero-eyebrow { padding: 0; background: none; color: #647C92; font-size: 11px; }
+.community-paper .community-hero-eyebrow .material-symbols-rounded { display: none; }
+.community-paper .community-hero-title { font-family: 'Noto Serif KR', Batang, serif; font-size: 40px; font-weight: 500; line-height: 1.4; color: #35465A; }
+.community-paper .community-hero-lead { color: #647C92; font-size: 14px; margin-top: 12px; }
+.community-paper .community-content-container { background: transparent; box-shadow: none; border: 0; padding: 0; border-radius: 0; }
+.community-paper .today-pick-section { background: transparent; border: 0; padding: 0 0 44px; margin: 0 0 36px; box-shadow: none; border-bottom: 1px solid #EAF4FF; border-radius: 0; }
+.popular-heading { margin-bottom: 24px; }
+.popular-heading .eyebrow { color: #647C92; font-size: 10px; letter-spacing: .12em; }
+.popular-heading h2, .community-paper .latest-stories-title h2 { font-family: 'Noto Serif KR', Batang, serif; color: #427EAD; font-size: 26px; font-weight: 500; margin: 6px 0; }
+.popular-heading > p:last-child { color: #647C92; font-size: 12px; margin: 8px 0; }
+.popular-gallery { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 28px; padding: 12px 8px 20px; }
+.community-paper .polaroid-card { width: 100%; min-width: 0; padding: 12px 12px 18px; background: #FFFFFF; border: 1px solid #EAF4FF; border-radius: 2px; box-shadow: 0 8px 20px rgb(51 89 125 / 8%); transform: rotate(var(--tilt)); text-align: left; transition: transform .2s, box-shadow .2s; }
+.community-paper .polaroid-card:hover { transform: translateY(-5px) rotate(0); box-shadow: 0 12px 26px rgb(51 89 125 / 12%); }
+.community-paper .polaroid-image { width: 100%; aspect-ratio: 4/3; height: auto; border-radius: 0; background: #EAF4FF; display: grid; place-items: center; }
+.popular-no-photo { font-size: 40px; color: #647C92; }
+.community-paper .polaroid-image img { width: 100%; height: 100%; object-fit: cover; }
+.community-paper .polaroid-caption { padding: 16px 6px 0; }
+.community-paper .polaroid-title { font-family: 'Noto Serif KR', Batang, serif; color: #35465A; font-size: 21px; font-weight: 500; line-height: 1.5; }
+.community-paper .polaroid-author { color: #647C92; font-size: 12px; gap: 8px; }
+.community-paper .polaroid-stats { justify-content: flex-end; gap: 14px; margin-top: 12px; }
+.community-paper .polaroid-stat, .community-paper .polaroid-stat .material-symbols-rounded { color: #647C92; font-size: 12px; }
+.community-paper .latest-stories-header { gap: 20px; margin-bottom: 28px; flex-wrap: wrap; }
+.community-paper .latest-stories-icon { display: none; }
+.community-paper .latest-stories-eyebrow { color: #647C92; }
+.community-paper .latest-stories-tools { gap: 12px; }
+.community-paper .community-story-search { order: 0; background: #fff; box-shadow: none; border: 1px solid #DFEAF5; }
+.community-paper .story-write-pill { order: 1; }
+.community-paper .story-card-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 36px 28px; }
+.community-paper .story-tile { align-self: start; background: transparent; border: 0; box-shadow: none; border-radius: 0; overflow: visible; transform: none; }
+.community-paper .story-tile:hover { background: #EAF4FF; box-shadow: none; transform: none; }
+.community-paper .story-tile:focus-visible, .community-paper .polaroid-card:focus-visible { outline: 2px solid #647C92; outline-offset: 5px; }
+.community-paper .story-tile-image-wrap { aspect-ratio: 4/3; height: auto; border-radius: 14px; overflow: hidden; }
+.community-paper .story-tile-image-wrap--empty { aspect-ratio: auto; height: 44px; background: #EAF4FF; }
+.community-paper .story-tile-body { padding: 18px 4px 0; }
+.community-paper .story-tile-title { color: #35465A; font-size: 19px; font-weight: 600; line-height: 1.5; }
+.community-paper .story-tile-summary { color: #647C92; font-size: 13px; line-height: 1.75; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.community-paper .story-tile-avatar { background: #EAF4FF; color: #647C92; }
+.community-paper .story-tile-footer { border-top: 1px solid #EAF4FF; color: #647C92; }
+.community-paper .tag-soft { background: #EAF4FF; border-color: transparent; color: #647C92; font-weight: 400; }
+.community-paper .pg-btn { background: transparent; border-color: transparent; color: #647C92; box-shadow: none; }
+.community-paper .pg-btn.active { background: #EAF4FF; color: #427EAD; }
+.community-empty { padding: 32px 0; color: #647C92; }
+@media(max-width:1000px) { .community-paper .story-card-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .popular-gallery { gap: 18px; } .community-paper .polaroid-title { font-size: 18px; } }
+@media(max-width:600px) { .community-paper .community-page { padding: 28px 20px 40px; } .community-paper .community-hero-title { font-size: 32px; } .popular-gallery { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 8px 24px; } .community-paper .polaroid-card { flex: 0 0 84%; scroll-snap-align: center; } .community-paper .story-card-grid { grid-template-columns: 1fr; } .community-paper .latest-stories-tools { width: 100%; } .community-paper .community-story-search { min-width: 0; flex: 1; width: auto; } .community-paper .story-write-pill { padding: 10px 14px; white-space: nowrap; } .community-paper .latest-stories-title h2 { font-size: 23px; } }
+@media(prefers-reduced-motion:reduce) { .community-paper .polaroid-card { transition: none; } }
 </style>

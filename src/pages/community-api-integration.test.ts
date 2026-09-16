@@ -137,7 +137,7 @@ describe('커뮤니티 API 화면 연동', () => {
     expect(reply.text()).toContain('저도 동의해요')
   })
 
-  it('작성 화면에 더미 본문을 채우지 않고 여행 기록 사진으로 게시물을 등록한다', async () => {
+  it('작성 화면에 더미 본문을 채우지 않고 직접 올린 사진으로 게시물을 등록한다', async () => {
     const wrapper = mount(StoryWritePage, { global: { stubs } })
     await flushPromises()
 
@@ -149,7 +149,14 @@ describe('커뮤니티 API 화면 연동', () => {
     await wrapper.get('#story-tags').setValue('#서울 #골목')
     await wrapper.get('#story-trip-select').setValue('trip-1')
     await flushPromises()
-    await wrapper.get('.upload-grid button').trigger('click')
+    expect(mocks.mediaApi.getRecordPhotos).not.toHaveBeenCalled()
+    const file = new File(['photo'], 'trip.jpg', { type: 'image/jpeg' })
+    mocks.mediaApi.uploadFile.mockResolvedValue({ id: 'media-1', servingUrl: 'https://cdn.example/photo.jpg' })
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { value: [file] })
+    await input.trigger('change')
+    await flushPromises()
+    expect(mocks.mediaApi.uploadFile).toHaveBeenCalledWith(file, 'COMMUNITY_POST')
     await wrapper.findAll('button').find((button) => button.text().includes('게시하기'))!.trigger('click')
     await flushPromises()
 

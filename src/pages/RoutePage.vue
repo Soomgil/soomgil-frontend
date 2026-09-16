@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { prefetchMapStyles } from '@/utils/mapStyleCache'
+import { MAP_THEMES, type MapTheme } from '@/types/map-theme'
 import AppShell from '@/components/layout/AppShell.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -112,6 +114,7 @@ type RouteAiChatMessage = AiChatMessage & { pending?: boolean; pendingForMessage
 
 /* ── Data ── */
 const route = useRoute()
+const router = useRouter()
 const tripIdParam = route.params.tripId
 const tripId = Array.isArray(tripIdParam) ? tripIdParam[0] ?? '' : tripIdParam ?? ''
 const itinerary = useItinerary(tripId)
@@ -211,6 +214,38 @@ const votePending = computed(
   () => voteSessionStatus.value === 'OPEN' && votingStore.myParticipation != null && !votingStore.isSubmitted,
 )
 const voteModalOpen = ref(false)
+watch(() => route.query?.vote, value => {
+  if (value === '1') {
+    voteModalOpen.value = true
+    const { vote: _vote, ...query } = route.query
+    void router.replace({ query })
+  }
+}, { immediate: true })
+
+const mapTheme = ref<MapTheme>(readMapTheme())
+const mapThemeOpen = ref(false)
+watch(mapThemeOpen, open => {
+  if (open) void prefetchMapStyles(import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ?? '')
+})
+const mapThemeButton = ref<HTMLButtonElement | null>(null)
+function readMapTheme(): MapTheme {
+  try {
+    const saved = localStorage.getItem('soomgil-map-theme')
+    return MAP_THEMES.find(theme => theme.value === saved)?.value ?? 'light'
+  } catch { return 'light' }
+}
+function selectMapTheme(value: MapTheme) {
+  mapTheme.value = value
+  try { localStorage.setItem('soomgil-map-theme', value) } catch { /* 저장 불가 시 현재 화면에만 적용한다. */ }
+  closeMapTheme()
+}
+function onMapThemeFocusOut(event: FocusEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) mapThemeOpen.value = false
+}
+function closeMapTheme() {
+  mapThemeOpen.value = false
+  mapThemeButton.value?.focus()
+}
 const showVoteAction = computed(() => isTripOwner.value || voteSessionStatus.value !== null)
 const voteActionLabel = computed(() => {
   if (votePending.value) return '투표 중 · 미제출'
@@ -364,17 +399,11 @@ const visibleMapDayPlans = computed(() => {
   if (activeDay.value === 0) return dayPlans.value
   return activePlan.value ? [activePlan.value] : []
 })
-function routePenVisibleStop(item: RouteStop) {
-  if (activeTool.value !== 'route-pen') return true
-  return canSelectRouteStopForCurrentStep(item)
-}
-
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return visibleMapDayPlans.value.flatMap((day) => day.items.flatMap((item) => {
     const currentIndex = index++
     if (item.lat == null || item.lng == null) return []
-    if (!routePenVisibleStop(item)) return []
     return [{
       id: item.id,
       placeProvider: item.placeProvider,
@@ -1579,7 +1608,7 @@ function moveItemGroupAfter(anchorItemId: string, movingItemIds: string[]) {
   return true
 }
 
-const DRAG_LAYER_Z_INDEX = '120'
+const DRAG_LAYER_Z_INDEX = '100001'
 
 function onPointerDown(e: PointerEvent) {
   if ((e.target as HTMLElement).closest('button')) return
@@ -1692,7 +1721,7 @@ function onPointerDown(e: PointerEvent) {
 
     dragElements.forEach((el) => {
       el.classList.add('is-chain-dragging')
-      el.style.setProperty('z-index', DRAG_LAYER_Z_INDEX, 'important')
+      el.style.setProperty('z-index', '100000', 'important')
       el.style.position = 'relative'
       el.style.top = '0px'
     })
@@ -1771,8 +1800,8 @@ function onPointerDown(e: PointerEvent) {
 
     const dx = ev.clientX - e.clientX
     const dy = ev.clientY - e.clientY
-    if (Math.abs(dx) <= 4 && Math.abs(dy) <= 4) return
-    if (Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 20) {
+    if (!dragStarted && Math.abs(dx) <= 4 && Math.abs(dy) <= 4) return
+    if (!dragStarted && Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 20) {
       return
     }
     startDragVisualState()
@@ -1821,9 +1850,8 @@ function onPointerDown(e: PointerEvent) {
       cancelAnimationFrame(autoScrollFrame)
       autoScrollFrame = null
     }
-    stop.removeEventListener('pointermove', onPointerMove)
-    stop.removeEventListener('pointerup', onPointerUp)
-    if (dragStarted && typeof stop.releasePointerCapture === 'function' && stop.hasPointerCapture?.(e.pointerId)) {
+    removeDragListeners()
+    if (typeof stop.releasePointerCapture === 'function' && stop.hasPointerCapture?.(e.pointerId)) {
       stop.releasePointerCapture(e.pointerId)
     }
     if (movedDuringDrag) {
@@ -1884,8 +1912,39 @@ function onPointerDown(e: PointerEvent) {
     })
   }
 
-  stop.addEventListener('pointermove', onPointerMove)
+  function removeDragListeners() {
+    stop.removeEventListener('pointermove', onPointerMove)
+    stop.removeEventListener('pointerup', onPointerUp)
+    stop.removeEventListener('pointercancel', cancelDrag)
+    window.removeEventListener('blur', cancelDrag)
+    window.removeEventListener('keydown', onDragKeyDown)
+  }
+
+  function cancelDrag() {
+    removeDragListeners()
+    if (autoScrollFrame !== null) cancelAnimationFrame(autoScrollFrame)
+    autoScrollFrame = null
+    if (stop.hasPointerCapture?.(e.pointerId)) stop.releasePointerCapture(e.pointerId)
+    document.getElementById('trash-drop-zone')?.classList.remove('is-drag-over-trash')
+    cleanupDragState()
+    restoreItineraryScroll(initialScrollTop)
+    releasePendingItineraryScroll(initialScrollTop)
+  }
+
+  function onDragKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelDrag()
+    }
+  }
+
+  // Capture before the threshold so fast movements cannot escape the card.
+  stop.setPointerCapture?.(e.pointerId)
+  stop.addEventListener('pointermove', onPointerMove, { passive: false })
   stop.addEventListener('pointerup', onPointerUp)
+  stop.addEventListener('pointercancel', cancelDrag)
+  window.addEventListener('blur', cancelDrag)
+  window.addEventListener('keydown', onDragKeyDown)
 }
 
 function isSameFlatNode(left: FlatItineraryNode, right: FlatItineraryNode) {
@@ -3941,7 +4000,6 @@ async function handleSettingsSaved(_tripId: string, settings?: TripDateSettings)
   }
 }
 
-const sidebarTheme = computed(() => getDayColorClass(activeDay.value > 0 ? activeDay.value : 1))
 
 function parseDateInput(value: string) {
   if (!value) return null
@@ -4489,6 +4547,57 @@ function textAvatarStyle(index: unknown) {
         'is-sidebar-hidden': !isLeftSidebarOpen,
       }]">
 
+          <div class="trip-map-actions" aria-label="여행방 관리">
+                  <div class="avatars-group">
+                    <div class="avatars">
+                      <span
+                        v-for="m in trip.members.slice(0, 3)"
+                        :key="m.userId"
+                        tabindex="0"
+                        :aria-label="`${m.displayName || '멤버'} · ${m.online ? '접속 중' : '오프라인'}`"
+                        :class="['avatar', 'avatar-with-tooltip', { 'is-online': m.online }]"
+                        :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}"
+                      >
+                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" />
+                        <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
+                        <span v-if="m.online" class="avatar-presence-badge" aria-label="접속 중"></span>
+                        <div class="avatar-tooltip">
+                          <span>{{ m.displayName }} ({{ m.role === 'OWNER' ? '방장' : '멤버' }})</span>
+                          <span class="avatar-tooltip-status">{{ m.online ? '접속 중' : '오프라인' }}</span>
+                        </div>
+                      </span>
+                    </div>
+                    <span v-if="trip.members.length > 3" class="members-count">+{{ trip.members.length - 3 }}</span>
+                  </div>
+            <div class="trip-map-buttons">
+                  <button
+                    v-if="showVoteAction"
+                    type="button"
+                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
+                    @click="goTripVote"
+                  >
+                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+                    <span>{{ voteActionLabel }}</span>
+                  </button>
+            <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
+            <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
+              <button ref="mapThemeButton" type="button" class="map-theme-button" :aria-expanded="mapThemeOpen" aria-controls="map-theme-options" @click="mapThemeOpen = !mapThemeOpen">
+                <span class="material-symbols-rounded" aria-hidden="true">palette</span><span>지도 테마</span>
+              </button>
+              <div v-if="mapThemeOpen" id="map-theme-options" class="map-theme-popover">
+                <fieldset>
+                  <legend>지도 테마</legend>
+                  <label v-for="theme in MAP_THEMES" :key="theme.value" :class="{ selected: mapTheme === theme.value }" @pointerdown.prevent @click.prevent="selectMapTheme(theme.value)">
+                    <span class="map-theme-swatch" :style="{ background: theme.color }" aria-hidden="true"></span>
+                    <span>{{ theme.label }}</span>
+                    <input type="radio" name="map-theme" :value="theme.value" :checked="mapTheme === theme.value" @change="selectMapTheme(theme.value)" />
+                  </label>
+                </fieldset>
+              </div>
+            </div>
+            </div>
+          </div>
+          <a v-if="!isLeftSidebarOpen" href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
           <!-- ═══ SIDEBAR ═══ -->
           <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
             <span class="sidebar-sheet-handle" aria-hidden="true"></span>
@@ -4504,64 +4613,11 @@ function textAvatarStyle(index: unknown) {
               <span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
             </button>
             <div class="sidebar-content">
-              <!-- Trip header card -->
-              <div :class="['trip-header-card', sidebarTheme]" id="trip-header-card-container">
-                <div class="trip-info-badge-row">
-                  <p v-if="trip.destinationName" class="trip-card-dates" style="margin: 0;">
-                    <span class="material-symbols-rounded" style="font-size:13px;vertical-align:middle;margin-right:2px;">location_on</span>
-                    <span style="vertical-align:middle;font-weight:600;">{{ trip.destinationName }}</span>
-                  </p>
-                  <span class="trip-status-badge">{{ trip.statusLabel }}</span>
-                </div>
-                <h3 class="trip-card-title">{{ trip.title }}</h3>
-                <div class="trip-card-period-row">
-                  <span class="material-symbols-rounded icon-calendar">calendar_today</span>
-                  <span class="period-text">{{ trip.dateRangeText }} ({{ trip.durationText }})</span>
-                </div>
-                <div class="trip-card-divider"></div>
-                <div class="trip-stats-grid">
-                  <div class="trip-stat-item">
-                    <span class="stat-label">여행 기간</span>
-                    <span class="stat-value">{{ trip.durationText }}</span>
-                  </div>
-                  <div class="trip-stat-item">
-                    <span class="stat-label">총 방문지</span>
-                    <span class="stat-value">{{ dayPlans.reduce((count, day) => count + day.items.length, 0) }}곳 코스</span>
-                  </div>
-                </div>
-                <div class="trip-card-footer">
-                  <div class="avatars-group">
-                    <div class="avatars">
-                      <span
-                        v-for="m in trip.members.slice(0, 5)"
-                        :key="m.userId"
-                        :class="['avatar', 'avatar-with-tooltip', { 'is-online': m.online }]"
-                        :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}"
-                      >
-                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" />
-                        <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
-                        <span v-if="m.online" class="avatar-presence-badge" aria-label="접속 중"></span>
-                        <div class="avatar-tooltip">
-                          <span>{{ m.displayName }} ({{ m.role === 'OWNER' ? '방장' : '멤버' }})</span>
-                          <span class="avatar-tooltip-status">{{ m.online ? '접속 중' : '오프라인' }}</span>
-                        </div>
-                      </span>
-                    </div>
-                    <span class="members-count">{{ trip.members.length }}명</span>
-                  </div>
-                  <button
-                    v-if="showVoteAction"
-                    type="button"
-                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
-                    @click="goTripVote"
-                  >
-                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-                    <span>{{ voteActionLabel }}</span>
-                  </button>
-                  <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
-                </div>
+              <div class="trip-sidebar-summary">
+                <a v-show="!isSearchPanelOpen" href="/my-trips" class="trip-sidebar-back"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
+                <h1 class="trip-sidebar-title" :title="trip.title">{{ trip.title }}</h1>
+                <p class="trip-sidebar-meta"><span v-if="trip.destinationName">{{ trip.destinationName }} · </span>{{ trip.dateRangeText }} · {{ trip.durationText }}</p>
               </div>
-
               <!-- Day tabs -->
               <div class="day-tabs-container">
                 <button class="day-scroll-btn prev" type="button" aria-label="이전 일차" @click="scrollDayTabs('prev')">
@@ -4616,6 +4672,7 @@ function textAvatarStyle(index: unknown) {
 					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day" :data-day-id="day.id"
 						@pointerdown="onPointerDown">
                       <span class="day-pill">{{ dayPlanLabel(day) }}</span>
+                      <span class="day-stop-count">{{ day.items.length }}곳</span>
                       <span class="line"></span>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
@@ -4628,6 +4685,7 @@ function textAvatarStyle(index: unknown) {
                         <img
                           v-if="routeStopImage(item)"
                           class="stop-thumb"
+                          draggable="false"
                           :src="routeStopImage(item)"
                           :alt="item.title"
                           loading="lazy"
@@ -4641,6 +4699,9 @@ function textAvatarStyle(index: unknown) {
                       <!-- Route connector between linked adjacent stops -->
                       <div v-if="idx < day.items.length - 1 && hasVisibleRouteConnectorBetween(item.id, day.items[idx + 1].id)"
                         :class="['route-connector', getDayColorClass(day.day)]"
+                        role="button" tabindex="0"
+                        @keydown.enter.prevent="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
+                        @keydown.space.prevent="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
                         :data-from-id="item.id"
                         :data-to-id="day.items[idx + 1].id"
                         @click.stop="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
@@ -4649,7 +4710,8 @@ function textAvatarStyle(index: unknown) {
                           <span class="material-symbols-rounded" aria-hidden="true">{{ routeModeMeta(routeForDisplayBetween(item.id, day.items[idx + 1].id)?.mode).icon }}</span>
                           {{ routeModeMeta(routeForDisplayBetween(item.id, day.items[idx + 1].id)?.mode).shortLabel }}
                         </span>
-                        <span class="material-symbols-rounded route-unlink-icon">link_off</span>
+                        <span class="route-unlink-label">연결 해제</span>
+                        <span class="material-symbols-rounded route-unlink-icon" aria-hidden="true">link_off</span>
                         <div class="route-connector-line"></div>
                       </div>
                     </template>
@@ -4660,6 +4722,7 @@ function textAvatarStyle(index: unknown) {
 				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay" :data-day-id="activePlan.id"
 					@pointerdown="onPointerDown">
                     <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
+                    <span class="day-stop-count">{{ activePlan.items.length }}곳</span>
                     <span class="line"></span>
                   </div>
                   <template v-for="(item, idx) in activePlan.items" :key="item.id">
@@ -4671,6 +4734,7 @@ function textAvatarStyle(index: unknown) {
                       <img
                         v-if="routeStopImage(item)"
                         class="stop-thumb"
+                          draggable="false"
                         :src="routeStopImage(item)"
                         :alt="item.title"
                         loading="lazy"
@@ -4684,6 +4748,9 @@ function textAvatarStyle(index: unknown) {
                     <!-- Route connector between linked adjacent stops -->
                     <div v-if="idx < activePlan.items.length - 1 && hasVisibleRouteConnectorBetween(item.id, activePlan.items[idx + 1].id)"
                       :class="['route-connector', getDayColorClass(activeDay)]"
+                      role="button" tabindex="0"
+                      @keydown.enter.prevent="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
+                      @keydown.space.prevent="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       :data-from-id="item.id"
                       :data-to-id="activePlan.items[idx + 1].id"
                       @click.stop="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
@@ -4692,7 +4759,8 @@ function textAvatarStyle(index: unknown) {
                         <span class="material-symbols-rounded" aria-hidden="true">{{ routeModeMeta(routeForDisplayBetween(item.id, activePlan.items[idx + 1].id)?.mode).icon }}</span>
                         {{ routeModeMeta(routeForDisplayBetween(item.id, activePlan.items[idx + 1].id)?.mode).shortLabel }}
                       </span>
-                      <span class="material-symbols-rounded route-unlink-icon">link_off</span>
+                      <span class="route-unlink-label">연결 해제</span>
+                        <span class="material-symbols-rounded route-unlink-icon" aria-hidden="true">link_off</span>
                       <div class="route-connector-line"></div>
                     </div>
                   </template>
@@ -4730,8 +4798,8 @@ function textAvatarStyle(index: unknown) {
             <!-- 장소 검색 사이드 패널 -->
             <div :class="['sidebar-search-panel', { show: isSearchPanelOpen }]" id="sidebar-search-panel">
               <div class="search-panel-header">
-                <button class="icon-btn" id="search-panel-back" type="button" aria-label="뒤로가기" @click="closeSearchPanel">
-                  <span class="material-symbols-rounded">arrow_back</span>
+                <button class="icon-btn" id="search-panel-back" type="button" aria-label="일정으로 돌아가기" @click="closeSearchPanel">
+                  <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span><span>일정으로</span>
                 </button>
                 <h4>일정 추가</h4>
                 <button :class="['category-chip', 'search-panel-custom-trigger']" type="button" @click="showCustomForm = !showCustomForm">
@@ -4831,6 +4899,7 @@ function textAvatarStyle(index: unknown) {
               :drawings-visible="drawingOn"
               :navigation-mode="navigationGuideMode"
               :standard-view="standardMapView"
+              :map-theme="mapTheme"
               @select-place="handleSelectPlace"
               @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
               @viewport-change="mapViewport.updateViewport"
@@ -7703,4 +7772,111 @@ function textAvatarStyle(index: unknown) {
     animation-duration: 0.01ms !important;
   }
 }
+
+.trip-workspace-bar { display: flex; align-items: center; gap: 20px; padding: 12px 24px; flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--line); background: var(--surface, #fff); color: var(--ink); z-index: 110; }
+.trip-workspace-identity { min-width: 0; max-width: 32%; }
+.trip-workspace-identity h1 { margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.trip-workspace-details { display: flex; gap: 14px; color: var(--muted); font-size: 12px; min-width: 0; flex-wrap: wrap; }
+.trip-workspace-actions { margin-left: auto; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.trip-workspace-actions .avatars-group { margin: 0; }
+.trip-workspace-settings { flex-shrink: 0; }
+.trip-info-toggle { display: none; }
+.itinerary-panel-heading { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding-bottom: 14px; color: var(--ink); }
+.itinerary-panel-heading h2 { font-size: 17px; margin: 0; }
+.itinerary-panel-heading > span { color: var(--muted); font-size: 12px; }
+.route-page-section .map-shell { height: 0; flex: 1 1 0; }
+.route-page-section .day-tabs-container { flex-shrink: 0; }
+.route-page-section .itinerary { min-height: 0; }
+@media(max-width: 767px) {
+ .trip-workspace-bar { padding: 10px 16px; gap: 10px; flex-wrap: wrap; }
+ .trip-workspace-identity { max-width: none; flex: 1; }
+ .trip-workspace-settings { margin-left: auto; }
+ .trip-workspace-details, .trip-workspace-actions { display: none; }
+ .trip-workspace-bar.is-expanded .trip-workspace-details { display: flex; order: 3; flex-basis: 100%; }
+ .trip-workspace-bar.is-expanded .trip-workspace-actions { display: flex; order: 4; margin-left: 0; }
+ .trip-info-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+ .trip-info-toggle .material-symbols-rounded { font-size: 16px; }
+}
+
+.trip-sidebar-summary { position: relative; flex-shrink: 0; margin-bottom: 16px; }
+.trip-title-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 0; min-height: 40px; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 16px; font-weight: 700; cursor: pointer; }
+.trip-title-toggle > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-title-toggle .material-symbols-rounded { color: var(--muted); font-size: 20px; }
+.trip-sidebar-details { position: absolute; top: 100%; left: 0; right: 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface, #fff); box-shadow: 0 12px 32px rgb(35 53 75 / 14%); z-index: 150; color: var(--muted); font-size: 12px; }
+.trip-sidebar-details p { margin: 0 0 10px; }
+.trip-map-actions { position: absolute; top: 12px; right: 400px; display: flex; align-items: center; gap: 8px; z-index: 60; }
+.map-shell.is-route-utility-collapsed .trip-map-actions { right: 76px; }
+@media(max-width:1023px) { .trip-map-actions { right: 76px; } }
+@media(max-width:767px) { .trip-map-actions { top: 10px; right: 16px; } .map-shell.is-route-utility-collapsed .trip-map-actions { right: 16px; } }
+
+/* 지도는 공통 헤더 없이 전체 화면을 사용하는 편집 작업공간이다. */
+.route-page-section { top: 0 !important; }
+:global(body:has(.route-page-section)) { padding-top: 0; overflow: hidden; }
+.route-back-link { position: absolute; top: 12px; left: 18px; z-index: 160; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); color: var(--ink); font-size: 12px; text-decoration: none; box-shadow: 0 3px 12px rgb(35 53 75 / 6%); }
+.route-back-link .material-symbols-rounded { font-size: 18px; }
+.route-page-section .sidebar-content { padding-top: 68px; }
+@media(max-width:767px) { .route-page-section .sidebar-content { padding-top: 40px; } .route-back-link { left: 12px; top: 10px; } }
+
+.trip-sidebar-title { margin: 0 0 6px; font-size: 16px; line-height: 1.5; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-sidebar-meta { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.trip-map-actions .avatars-group { display: flex; align-items: center; gap: 5px; margin: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface, #fff); }
+.trip-map-actions .avatar { width: 28px; height: 28px; }
+.trip-map-actions .avatar:focus .avatar-tooltip { opacity: 1; visibility: visible; }
+.trip-map-actions .avatar-tooltip { top: calc(100% + 8px); bottom: auto; }
+.trip-map-actions .members-count { font-size: 11px; color: var(--muted); }
+@media(max-width:767px) { .trip-map-actions { top: 58px; right: 12px; } .map-shell.is-route-utility-collapsed .trip-map-actions { right: 12px; } }
+
+.trip-sidebar-back { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; margin-bottom: 8px; color: var(--muted); font-size: 12px; text-decoration: none; }
+.trip-sidebar-back .material-symbols-rounded { font-size: 18px; }
+.route-page-section .sidebar-content { padding-top: 16px; }
+#search-panel-back { display: inline-flex; align-items: center; gap: 6px; width: auto; min-height: 40px; padding: 6px 8px; font-size: 12px; white-space: nowrap; }
+.trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { min-height: 40px; padding: 0 14px; font-size: 13px; }
+.trip-map-actions .avatar { width: 34px; height: 34px; }
+.trip-map-actions .members-count { font-size: 12px; }
+.trip-map-actions .avatars-group { padding: 4px 10px; }
+@media(max-width:767px) { .route-page-section .sidebar-content { padding-top: 24px; } }
+</style>
+
+<style scoped src="../styles/route-sky-theme.css"></style>
+
+<style scoped>
+.trip-map-buttons { display: flex; align-items: center; gap: 8px; }
+.map-theme-control { position: relative; }
+.map-theme-button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.map-theme-button .material-symbols-rounded { font-size: 19px; }
+.map-theme-button:hover, .map-theme-button[aria-expanded="true"] { background: var(--surface-2); border-color: var(--violet); }
+.map-theme-popover { position: absolute; top: calc(100% + 8px); right: 0; width: 206px; padding: 12px; background: var(--surface, #fff); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px #20344f26; }
+.map-theme-popover fieldset { padding: 0; margin: 0; border: 0; }
+.map-theme-popover legend { padding: 0 6px 10px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.map-theme-popover label { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+.map-theme-popover label:hover, .map-theme-popover label.selected { background: var(--surface-2); }
+.map-theme-popover input { margin-left: auto; accent-color: var(--violet); }
+.map-theme-swatch { width: 24px; height: 24px; border: 1px solid #a3b6c455; border-radius: 7px; }
+@media(max-width:767px) {
+  .trip-map-actions { max-width: calc(100% - 24px); gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .trip-map-buttons { gap: 5px; }
+  .map-theme-button, .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { padding: 0 9px; }
+}
+
+/* Keep the planning surface independent of the map tiles underneath it. */
+.route-page-section .sidebar { background: #fff; backdrop-filter: none; }
+.route-page-section .sidebar-content { background: #fff; }
+.route-page-section .day-separator { min-height: 42px; border-radius: 10px; gap: 8px; }
+.day-stop-count { color: #647c92; font-size: 11px; white-space: nowrap; }
+.route-page-section .stop { min-height: 66px; border-radius: 12px; background: #fff; border-color: #dfeaf5; box-shadow: 0 2px 6px rgb(52 102 145 / 4%); }
+.route-page-section .stop:hover { transform: none; box-shadow: 0 3px 10px rgb(52 102 145 / 10%); }
+.route-page-section .stop .grip-icon { color: #92a8bb; padding: 8px 3px; }
+.route-page-section .stop.is-dragging, .route-page-section .day-separator.is-dragging { transform: none; transition: none; box-shadow: 0 8px 24px rgb(50 139 224 / 20%) !important; }
+.route-page-section .is-chain-dragging { transition: none; }
+/* Indicators must not move the target geometry while hit testing. */
+.route-page-section .itinerary :is(.is-drag-over-top, .is-drag-over-bottom) { margin-top: 0 !important; margin-bottom: 0 !important; }
+.route-page-section .itinerary .is-drag-over-top::before { top: -4px; height: 3px; background: #328be0; }
+.route-page-section .itinerary .is-drag-over-bottom::after { bottom: -4px; height: 3px; background: #328be0; }
+.route-page-section .route-connector { min-height: 30px; border-radius: 8px; }
+.route-page-section .route-connector:hover, .route-page-section .route-connector:focus-visible { background: #eaf4ff; outline: 2px solid #c6dff4; }
+.route-page-section .route-connector:hover .route-mode-badge { opacity: 1; }
+.route-page-section .route-unlink-icon { left: auto; right: 8px; transform: translateY(-50%); opacity: 1; color: #647c92; }
+.route-unlink-label { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); color: #647c92; font-size: 10px; }
+.map-theme-popover label:focus-within { outline: 2px solid #328be0; outline-offset: 1px; }
+.route-page-section .day-separator { background: #fff !important; }
 </style>

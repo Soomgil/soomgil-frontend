@@ -118,75 +118,25 @@ async function open() {
   <div class="vote-setup" data-testid="vote-setup">
     <p class="page-hero__eyebrow">
       <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-      Trip Vote
+      함께 만드는 여행
     </p>
     <h1 class="vote-setup__title">
-      <span class="page-hero__gradient">스티커 투표</span>로<br />갈 곳을 함께 정해요
+      스티커 투표로 갈 곳을 함께 정해요
     </h1>
     <p class="vote-setup__lead">
-      하루에 몇 곳 갈지만 정해주세요. 여행 일수에 맞춰 후보 수와 스티커 개수는 알아서 정하고,
-      시작하면 지금 함께하는 멤버 전원이 참여자가 돼요.
+      지역과 여행 속도를 정하면 투표 준비가 끝나요. 마음에 드는 여행지에 스티커를 붙여 함께 골라요.
     </p>
 
+    <p v-if="tripTitle" class="vote-setup__trip">{{ tripTitle }} · {{ knowsDays ? `${days}일 여행` : '날짜 미정' }}</p>
     <div class="vote-setup__panel">
-      <div class="vote-setup__row vote-setup__row--question">
-        <span class="vote-setup__row-icon vote-setup__row-icon--count" aria-hidden="true">
-          <span class="material-symbols-rounded">today</span>
-        </span>
-        <div class="vote-setup__row-copy">
-          <strong>하루에 몇 곳 갈까요?</strong>
-          <span v-if="knowsDays" data-testid="setup-days-note">
-            {{ days }}일 여행이에요. 하루 {{ perDay }}곳이면 총 {{ selectionCount }}곳을 뽑아요.
-          </span>
-          <span v-else data-testid="setup-days-note">
-            여행 일정이 아직 없어 {{ days }}일로 가정했어요. 하루 {{ perDay }}곳이면 총 {{ selectionCount }}곳을 뽑아요.
-          </span>
-        </div>
-        <div class="vote-setup__stepper" data-testid="setup-per-day-stepper">
-          <button type="button" aria-label="하루 개수 줄이기" data-testid="setup-per-day-minus" @click="stepPerDay(-1)">
-            <span class="material-symbols-rounded">remove</span>
-          </button>
-          <strong data-testid="setup-per-day-count">{{ perDay }}</strong>
-          <button type="button" aria-label="하루 개수 늘리기" data-testid="setup-per-day-plus" @click="stepPerDay(1)">
-            <span class="material-symbols-rounded">add</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="vote-setup__suggest" aria-label="시스템 제안">
-        <p class="vote-setup__suggest-title">
-          <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
-          이렇게 진행할게요
-        </p>
-        <ul class="vote-setup__suggest-list">
-          <li>
-            <span class="vote-setup__suggest-icon vote-setup__row-icon--rank"><span class="material-symbols-rounded">emoji_events</span></span>
-            <span class="vote-setup__suggest-label">선정할 관광지</span>
-            <strong data-testid="setup-selection-count">{{ selectionCount }}</strong>
-            <span class="vote-setup__suggest-unit">곳 → 일차 미정에 담김</span>
-          </li>
-          <li>
-            <span class="vote-setup__suggest-icon vote-setup__row-icon--count"><span class="material-symbols-rounded">grid_view</span></span>
-            <span class="vote-setup__suggest-label">후보 관광지</span>
-            <strong data-testid="setup-candidate-count">{{ candidateCount }}</strong>
-            <span class="vote-setup__suggest-unit">곳 · 멤버 취향 점수 순</span>
-          </li>
-          <li>
-            <span class="vote-setup__suggest-icon"><span class="material-symbols-rounded">favorite</span></span>
-            <span class="vote-setup__suggest-label">1인당 스티커</span>
-            <strong data-testid="setup-sticker-count">{{ stickerAllowance }}</strong>
-            <span class="vote-setup__suggest-unit">개 · 한 곳에 몰아 붙여도 돼요</span>
-          </li>
-        </ul>
-      </div>
-
       <div class="vote-setup__row vote-setup__row--regions">
         <span class="vote-setup__row-icon vote-setup__row-icon--region" aria-hidden="true">
           <span class="material-symbols-rounded">location_on</span>
         </span>
         <div class="vote-setup__row-copy">
-          <strong>투표 지역</strong>
+          <strong><span class="vote-setup__step">01</span> 어디로 떠날까요?</strong>
           <span>여행방에 등록한 지역이 미리 들어가 있어요. 이번 투표만 다른 지역으로 바꿀 수 있어요.</span>
+          <p v-if="regions.length === 0 && hasDestination" class="vote-setup__destination">{{ tripDestination }} 지역에서 후보를 찾아요.</p>
           <ul v-if="regions.length > 0" class="vote-setup__chips" aria-label="선택한 지역">
             <li v-for="region in regions" :key="region.code" class="vote-setup__chip" data-testid="setup-region-chip">
               <span>{{ region.name }}</span>
@@ -215,16 +165,70 @@ async function open() {
         </div>
       </div>
 
+      <div class="vote-setup__row vote-setup__row--question">
+        <span class="vote-setup__row-icon vote-setup__row-icon--count" aria-hidden="true">
+          <span class="material-symbols-rounded">today</span>
+        </span>
+        <div class="vote-setup__row-copy">
+          <strong><span class="vote-setup__step">02</span> 하루에 몇 곳 갈까요?</strong>
+          <span v-if="knowsDays" data-testid="setup-days-note">
+            {{ days }}일 여행이에요. 하루 {{ perDay }}곳이면 총 {{ selectionCount }}곳을 뽑아요.
+          </span>
+          <span v-else data-testid="setup-days-note">
+            여행 일정이 아직 없어 {{ days }}일로 가정했어요. 하루 {{ perDay }}곳이면 총 {{ selectionCount }}곳을 뽑아요.
+          </span>
+        </div>
+        <div class="vote-setup__stepper" data-testid="setup-per-day-stepper">
+          <button type="button" aria-label="하루 개수 줄이기" :disabled="perDay <= MIN_PER_DAY" data-testid="setup-per-day-minus" @click="stepPerDay(-1)">
+            <span class="material-symbols-rounded">remove</span>
+          </button>
+          <strong data-testid="setup-per-day-count">{{ perDay }}</strong>
+          <button type="button" aria-label="하루 개수 늘리기" :disabled="perDay >= MAX_PER_DAY" data-testid="setup-per-day-plus" @click="stepPerDay(1)">
+            <span class="material-symbols-rounded">add</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="vote-setup__suggest" aria-label="시스템 제안" aria-live="polite">
+        <p class="vote-setup__suggest-title">
+          <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
+          우리의 투표 미리보기
+        </p>
+        <ul class="vote-setup__suggest-list">
+          <li>
+            <span class="vote-setup__suggest-icon vote-setup__row-icon--rank"><span class="material-symbols-rounded">emoji_events</span></span>
+            <span class="vote-setup__suggest-label">선정할 관광지</span>
+            <strong data-testid="setup-selection-count">{{ selectionCount }}</strong>
+            <span class="vote-setup__suggest-unit">곳 → 일차 미정에 담김</span>
+          </li>
+          <li>
+            <span class="vote-setup__suggest-icon vote-setup__row-icon--count"><span class="material-symbols-rounded">grid_view</span></span>
+            <span class="vote-setup__suggest-label">후보 관광지</span>
+            <strong data-testid="setup-candidate-count">{{ candidateCount }}</strong>
+            <span class="vote-setup__suggest-unit">곳 · 멤버 취향 점수 순</span>
+          </li>
+          <li>
+            <span class="vote-setup__suggest-icon"><span class="material-symbols-rounded">favorite</span></span>
+            <span class="vote-setup__suggest-label">1인당 스티커</span>
+            <strong data-testid="setup-sticker-count">{{ stickerAllowance }}</strong>
+            <span class="vote-setup__suggest-unit">개 · 한 곳에 몰아 붙여도 돼요</span>
+          </li>
+        </ul>
+      </div>
+
+
       <p class="vote-setup__note">
         <span class="material-symbols-rounded" aria-hidden="true">info</span>
         시작한 뒤에는 지역과 개수를 바꿀 수 없어요. 모두 제출하면 자동으로 마감되고, 뽑힌 곳은 일차 미정에 들어가요.
       </p>
 
-      <p v-if="errorMessage" class="vote-setup__error" data-testid="setup-error">
+      <p v-if="errorMessage" role="alert" class="vote-setup__error" data-testid="setup-error">
         <span class="material-symbols-rounded" aria-hidden="true">error</span>
         {{ errorMessage }}
       </p>
 
+      <div class="vote-setup__footer">
+      <p>현재 여행 멤버 모두가 참여해요</p>
       <button
         type="button"
         class="vote-setup__cta"
@@ -235,6 +239,7 @@ async function open() {
         <span class="material-symbols-rounded" aria-hidden="true">rocket_launch</span>
         {{ opening ? '후보를 고르는 중…' : '투표 시작하기' }}
       </button>
+      </div>
     </div>
   </div>
 </template>
@@ -558,4 +563,36 @@ async function open() {
     margin-left: 58px;
   }
 }
+
+.vote-setup { gap:10px; color:#35465a; }
+.vote-setup__title { font-size:clamp(23px,3vw,30px); line-height:1.4; font-weight:800; }
+.vote-setup__lead { font-size:14px; max-width:58ch; }
+.vote-setup__trip { margin:0 0 10px; color:#287cbd; font-size:12px; }
+.vote-setup__panel { padding:0; border:0; box-shadow:none; border-radius:0; gap:16px; }
+.vote-setup__row { border-radius:16px; padding:20px; background:#fff; border-color:#dfeaf5; }
+.vote-setup__row--question { background:#f8fbff; }
+.vote-setup__step { margin-right:6px; color:#328be0; font-size:12px; }
+.vote-setup__row-icon, .vote-setup__suggest-icon { background:#eaf4ff; color:#328be0; }
+.vote-setup__suggest { border:1px solid #dfeaf5; background:#f1f8ff; border-radius:16px; padding:20px; }
+.vote-setup__suggest-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.vote-setup__suggest-list li { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+.vote-setup__suggest-list strong { text-align:left; color:#287cbd; font-size:28px; }
+.vote-setup__suggest-label { min-width:0; font-size:13px; }
+.vote-setup__suggest-unit { font-size:11px; line-height:1.6; }
+.vote-setup__suggest-title { color:#287cbd; margin-bottom:16px; }
+.vote-setup__note { background:transparent; padding:0 4px; line-height:1.7; align-items:flex-start; font-size:12px; }
+.vote-setup__footer { position:sticky; bottom:-20px; z-index:3; display:flex; align-items:center; gap:16px; justify-content:space-between; background:#fff; border-top:1px solid #dfeaf5; padding:16px 0; }
+.vote-setup__footer p { font-size:12px; color:#647c92; margin:0; }
+.vote-setup__cta { width:auto; min-width:180px; border-radius:12px; background:#328be0; font-weight:700; }
+.vote-setup__stepper button:disabled { opacity:.35; cursor:not-allowed; }
+@media(max-width:520px) {
+ .vote-setup__row { padding:14px; gap:10px; }
+ .vote-setup__row-icon { width:32px; height:32px; border-radius:10px; }
+ .vote-setup__stepper { margin-left:42px; }
+ .vote-setup__suggest { padding:16px; }
+ .vote-setup__suggest-list { gap:8px; }
+ .vote-setup__footer { flex-direction:column; gap:8px; bottom:-16px; }
+ .vote-setup__cta { width:100%; }
+}
+.vote-setup__destination { color:#287cbd; font-size:13px; margin:4px 0; }
 </style>

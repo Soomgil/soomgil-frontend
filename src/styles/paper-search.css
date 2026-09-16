@@ -1,0 +1,23 @@
+/* 홈과 검색 결과에서 같은 캡슐형 검색창을 사용한다. */
+.paper-search { position: relative; width: min(680px, 100%); margin: 0 auto; }
+.paper-search-field { display: flex; align-items: center; background: #fff; border: 2px solid #e2e7ee; border-radius: 999px; padding: 6px 6px 6px 24px; box-shadow: 0 12px 40px rgb(0 50 150 / 8%); transition: border-color .25s, box-shadow .25s; }
+.paper-search-field:focus-within { border-color: var(--violet); box-shadow: 0 12px 40px rgb(0 102 255 / 12%), 0 0 0 4px rgb(0 102 255 / 6%); }
+.paper-search-icon { color: #687586; font-size: 24px; flex-shrink: 0; }
+.paper-search-input { flex: 1; width: 100%; min-width: 0; border: 0; outline: none; box-shadow: none; border-radius: 0; font: inherit; font-size: 16px; padding: 12px; background: transparent; color: #17263b; }
+.paper-search-input::placeholder { color: #687586; }
+.paper-search-submit { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 14px 32px; min-height: 48px; border-radius: 999px; border: 0; background: linear-gradient(135deg, var(--violet), var(--blue)); color: #fff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: box-shadow .25s, transform .25s; }
+.paper-search-submit .material-symbols-rounded { font-size: 20px; }
+.paper-search-submit:hover { box-shadow: 0 8px 24px rgb(0 102 255 / 25%); transform: translateY(-1px); }
+.paper-search-clear { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 44px; border: 0; padding: 0; border-radius: 50%; color: #687586; background: transparent; cursor: pointer; }
+.paper-search-clear:hover { color: #35465A; background: #EAF4FF; }
+.paper-search button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
+@media (max-width: 768px) {
+  .paper-search-field { padding: 4px 4px 4px 16px; }
+  .paper-search-submit { padding: 12px 20px; font-size: 14px; }
+  .paper-search-submit .material-symbols-rounded { display: none; }
+  .paper-search-input { padding-inline: 8px; }
+  .paper-search-clear { width: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .paper-search-field, .paper-search-submit { transition: none; }
+}

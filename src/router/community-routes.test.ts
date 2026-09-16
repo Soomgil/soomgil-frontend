@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest'
 import router from './index'
 
 describe('기존 여행기 커뮤니티 라우트', () => {
+  it('기록 페이지는 제공하지 않는다', () => {
+    expect(router.resolve('/record').name).toBe('NotFound')
+  })
+  it('이전 투표 링크는 지도 모달로 연결한다', () => {
+    const vote = router.getRoutes().find(route => route.name === 'TripVote')!
+    expect(typeof vote.redirect).toBe('function')
+    const redirect = vote.redirect as Function
+    expect(redirect({ params: { tripId: 'trip-1' }, query: {} })).toEqual({ name: 'Route', params: { tripId: 'trip-1' }, query: { vote: '1' } })
+  })
   it('커뮤니티 목록에 기존 여행기 화면을 연결한다', () => {
     const route = router.getRoutes().find((item) => item.path === '/community')
     expect(route?.components?.default?.toString()).toContain('CommunityPage.vue')

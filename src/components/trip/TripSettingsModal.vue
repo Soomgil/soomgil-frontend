@@ -268,9 +268,38 @@ function toDisplayMember(member: TripDetailMember | TripMember): DisplayMember |
   }
 }
 
+const fetchedMembers = ref<TripDetailMember[] | null>(null)
+const membersLoading = ref(false)
+const membersError = ref('')
+const failedProfileImages = ref(new Set<string>())
+let membersRequest = 0
+async function loadMembers() {
+  const id = props.trip?.id
+  if (!id) return
+  const request = ++membersRequest
+  membersLoading.value = true
+  membersError.value = ''
+  try {
+    const members = await tripApi.getMembers(id)
+    if (request === membersRequest) fetchedMembers.value = members
+  } catch {
+    if (request === membersRequest) membersError.value = '참여 중인 멤버를 불러오지 못했습니다.'
+  } finally {
+    if (request === membersRequest) membersLoading.value = false
+  }
+}
+watch(() => [props.open, props.trip?.id, activeTab.value] as const, ([open, , tab]) => {
+  membersRequest++
+  fetchedMembers.value = null
+  membersLoading.value = false
+  membersError.value = ''
+  failedProfileImages.value.clear()
+  if (open && tab === 'tab-members' && !(props.trip && 'members' in props.trip)) void loadMembers()
+}, { immediate: true })
+
 const membersList = computed<DisplayMember[]>(() => {
   if (!props.trip) return []
-  return (((props.trip as TripDetail | (TripSummary & { members?: TripMember[] })).members ?? []) as Array<TripDetailMember | TripMember>)
+  return ((fetchedMembers.value ?? (props.trip as TripDetail | (TripSummary & { members?: TripMember[] })).members ?? []) as Array<TripDetailMember | TripMember>)
     .filter((member) => member.status === 'ACTIVE')
     .map(toDisplayMember)
     .filter((member): member is DisplayMember => Boolean(member))
@@ -333,7 +362,7 @@ onUnmounted(() => {
 
             <label class="form-label">
               <span class="form-label-text">여행 기간 설정</span>
-              <div style="display:flex;align-items:center;gap:8px;">
+              <div class="settings-dates">
                 <input type="date" class="field" v-model="editStartDate" style="flex:1;" data-testid="trip-start-date">
                 <span>-</span>
                 <input type="date" class="field" v-model="editEndDate" :min="editStartDate" style="flex:1;" data-testid="trip-end-date">
@@ -343,49 +372,7 @@ onUnmounted(() => {
               </div>
             </label>
 
-            <section v-if="isOwner" class="management-section" aria-labelledby="trip-status-title">
-              <div class="management-section-head">
-                <span class="material-symbols-rounded management-section-icon" aria-hidden="true">toggle_on</span>
-                <div>
-                  <h4 id="trip-status-title">여행 상태 설정</h4>
-                  <p>목록과 대시보드에서 이 여행이 표시되는 방식을 선택합니다.</p>
-                </div>
-              </div>
-              <div class="status-option-grid" role="radiogroup" aria-label="여행 상태">
-                <button
-                  type="button"
-                  class="status-option"
-                  data-status="ACTIVE"
-                  :class="{ active: status === 'ACTIVE' }"
-                  role="radio"
-                  :aria-checked="status === 'ACTIVE'"
-                  @click="status = 'ACTIVE'"
-                >
-                  <span class="material-symbols-rounded status-option-icon" aria-hidden="true">directions_run</span>
-                  <span class="status-option-copy">
-                    <strong>진행 중</strong>
-                    <span>계획을 계속 편집하고 활성 여행으로 표시합니다.</span>
-                  </span>
-                  <span class="material-symbols-rounded status-option-check" aria-hidden="true">check_circle</span>
-                </button>
-                <button
-                  type="button"
-                  class="status-option"
-                  data-status="ARCHIVED"
-                  :class="{ active: status === 'ARCHIVED' }"
-                  role="radio"
-                  :aria-checked="status === 'ARCHIVED'"
-                  @click="status = 'ARCHIVED'"
-                >
-                  <span class="material-symbols-rounded status-option-icon" aria-hidden="true">inventory_2</span>
-                  <span class="status-option-copy">
-                    <strong>보관됨</strong>
-                    <span>끝난 여행으로 정리합니다. 언제든 다시 되돌릴 수 있습니다.</span>
-                  </span>
-                  <span class="material-symbols-rounded status-option-check" aria-hidden="true">check_circle</span>
-                </button>
-              </div>
-            </section>
+
 
             <p v-if="error" class="trip-create-error" aria-live="polite" style="color:var(--rose);">{{ error }}</p>
 
@@ -394,7 +381,7 @@ onUnmounted(() => {
                 <span class="material-symbols-rounded management-section-icon management-section-icon--danger" aria-hidden="true">delete</span>
                 <div>
                   <h4 id="delete-trip-title">여행 삭제</h4>
-                  <p>삭제하면 여행의 일정과 협업 데이터에 더 이상 접근할 수 없습니다.</p>
+                  <p>영구적으로 여행 데이터를 삭제합니다.</p>
                 </div>
               </div>
               <button
@@ -460,13 +447,16 @@ onUnmounted(() => {
           <div class="modal-members-section management-section">
             <div class="members-header">
               <h4>참여 중인 멤버</h4>
-              <span class="member-count">{{ membersList.length }}명</span>
+              <span v-if="!membersLoading && !membersError" class="member-count">{{ membersList.length }}명</span>
             </div>
-            <ul class="member-list">
+            <p v-if="membersLoading" role="status">멤버를 불러오는 중…</p>
+            <p v-else-if="membersError" role="alert">{{ membersError }} <button type="button" @click="loadMembers">다시 시도</button></p>
+            <p v-else-if="!membersList.length">참여 중인 멤버가 없습니다.</p>
+            <ul v-else class="member-list">
               <li v-for="member in membersList" :key="member.id" class="member-item">
                 <div class="member-avatar">
-                  <img v-if="member.profileImageUrl" :src="member.profileImageUrl" :alt="`${member.displayName} 프로필 사진`" />
-                  <template v-else>{{ member.displayName.charAt(0) }}</template>
+                  <img v-if="member.profileImageUrl && !failedProfileImages.has(member.id)" @error="failedProfileImages.add(member.id)" :src="member.profileImageUrl" :alt="`${member.displayName} 프로필 사진`" />
+                  <span v-else class="material-symbols-rounded" aria-hidden="true">person</span>
                 </div>
                 <div class="member-info">
                   <span class="member-name">{{ member.displayName }}</span>
@@ -977,4 +967,49 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 24px;
 }
+
+.trip-settings-overlay { --ink: #35465A; --muted: #647C92; --line: #EAF4FF; --violet: #427EAD; --surface-2: #EAF4FF; background: rgb(35 53 75 / 35%); backdrop-filter: blur(5px); padding: 24px; }
+.trip-settings-overlay .trip-settings-card { width: min(100%, 680px); max-width: 680px; max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; background: #F8FBFF; border: 1px solid #EAF4FF; border-radius: 24px; box-shadow: 0 24px 80px rgb(35 67 98 / 16%); }
+.trip-settings-card .modal-header { padding: 28px 30px 20px; border: 0; background: transparent; flex-shrink: 0; }
+.trip-settings-card .eyebrow { color: #647C92; letter-spacing: .12em; font-size: 10px; }
+.trip-settings-card h3 { font-family: 'Noto Serif KR', Batang, serif; font-size: 28px; font-weight: 500; color: #35465A; margin: 6px 0; }
+.trip-settings-card .icon-btn { border: 1px solid #DFEAF5; background: #EAF4FF; color: #427EAD; border-radius: 50%; width: 40px; height: 40px; }
+.trip-settings-card .modal-tabs { margin: 0; padding: 0 30px; gap: 24px; flex-shrink: 0; }
+.trip-settings-card .modal-tab-btn { border-radius: 0; padding: 14px 0; border-bottom: 2px solid transparent; font-size: 14px; font-weight: 500; }
+.trip-settings-card .modal-tab-btn.active { background: transparent; color: #427EAD; border-bottom-color: #427EAD; }
+.trip-settings-card .modal-body { padding: 24px 30px; overflow-y: auto; min-height: 0; }
+.trip-settings-card .trip-create-form { display: grid; gap: 20px; }
+.trip-settings-card .field { background: #fff; border: 1px solid #DFEAF5; border-radius: 10px; box-shadow: none; color: #35465A; min-width: 0; }
+.settings-dates { display: flex; align-items: center; gap: 8px; }
+.trip-settings-card .management-section { background: #fff; border-color: #EAF4FF; border-radius: 14px; box-shadow: none; padding: 16px; }
+.trip-settings-card .management-section h4 { color: #35465A; font-weight: 600; }
+.trip-settings-card .management-section-icon { background: #EAF4FF; color: #647C92; }
+.trip-settings-card .status-option-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.trip-settings-card .status-option { background: #F8FBFF; padding: 12px; gap: 8px; }
+.trip-settings-card .status-option.active { background: #EAF4FF; border-color: #8A9DAF; box-shadow: none; }
+.trip-settings-card .danger-zone { background: #fffafa; border-color: #efdddd; }
+.trip-settings-card .management-section-icon--danger { color: #a45252; background: #f9eaea; }
+.trip-settings-card .trip-create-actions { position: sticky; bottom: -24px; padding: 16px 0 4px; background: #F8FBFF; border-top: 1px solid #EAF4FF; z-index: 3; }
+.trip-settings-card .btn.primary, .trip-settings-card .invite-action-btn--primary { background: #427EAD; color: white; border-color: #427EAD; box-shadow: none; }
+.trip-settings-card .invite-link-box { background: #EAF4FF; border-color: #DFEAF5; }
+.trip-settings-card .member-item { background: #fff; border-color: #EAF4FF; }
+.trip-settings-card .member-avatar { background: #EAF4FF; color: #427EAD; }
+@media(max-width:600px) {
+ .trip-settings-overlay { padding: 12px; }
+ .trip-settings-overlay .trip-settings-card { max-height: calc(100dvh - 24px); border-radius: 18px; }
+ .trip-settings-card .modal-header { padding: 20px 18px 16px; }
+ .trip-settings-card .modal-tabs { padding: 0 18px; gap: 20px; }
+ .trip-settings-card .modal-body { padding: 20px 18px; }
+ .trip-settings-card .status-option-grid { grid-template-columns: 1fr; }
+ .settings-dates { flex-wrap: wrap; }
+ .settings-dates .field { width: 100%; flex-basis: 100% !important; }
+ .settings-dates > span { display: none; }
+}
+
+/* 헤더와 탭을 하나의 옅은 회녹색 영역으로 묶는다. */
+.trip-settings-card .modal-header { background: #EAF4FF; padding-bottom: 18px; margin-bottom: 0; }
+.trip-settings-card .modal-tabs { background: #EAF4FF; border-bottom: 1px solid #DFEAF5; }
+.trip-settings-card .modal-body { background: #fff; padding-top: 24px; }
+.trip-settings-card .trip-create-actions { background: #fff; }
+.trip-settings-card .modal-header .icon-btn { background: transparent; border-color: transparent; }
 </style>
