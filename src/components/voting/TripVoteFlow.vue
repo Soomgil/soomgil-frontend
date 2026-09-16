@@ -191,6 +191,7 @@ onUnmounted(() => {
         :trip-destination="tripDestination"
         :trip-days="tripDays"
         @opened="handleSessionOpened"
+        @later="goToMap()"
       />
 
       <!-- 세션 없음 + 멤버 -->

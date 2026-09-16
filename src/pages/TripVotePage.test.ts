@@ -512,4 +512,21 @@ describe('여행 방 투표 화면', () => {
     expect(wrapper.get('[data-testid="vote-setup"]').text()).toContain('3일')
     expect(wrapper.get('[data-testid="setup-selection-count"]').text()).toBe('9')
   })
+  it('붙인 스티커는 사진 위에 스티커 이미지로 쌓이고, 보드에는 지급량만큼 스티커 자리가 보인다', async () => {
+    const wrapper = mount(TripVotePage, { global: { stubs } })
+    await flushPromises()
+
+    // 지급 3개: 보드에 자리 3개, 아직 아무것도 사용하지 않음
+    expect(wrapper.findAll('[data-testid="tray-sticker-mark"]')).toHaveLength(3)
+    expect(wrapper.findAll('[data-testid="tray-sticker-mark"]:not(.vote-sticker-mark--muted)')).toHaveLength(0)
+    expect(wrapper.findAll('[data-testid="vote-sticker-mark"]')).toHaveLength(0)
+
+    await wrapper.findAll('[data-testid="candidate-place"]')[0].trigger('click')
+    await wrapper.findAll('[data-testid="candidate-place"]')[0].trigger('click')
+
+    const marks = wrapper.findAll('[data-testid="vote-sticker-mark"]')
+    expect(marks).toHaveLength(2)
+    expect(marks[0].attributes('src')).toContain('/vote-stickers/heart-stamp.svg')
+    expect(wrapper.findAll('[data-testid="tray-sticker-mark"]:not(.vote-sticker-mark--muted)')).toHaveLength(2)
+  })
 })

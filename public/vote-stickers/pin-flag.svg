@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="깃발 핀">
+<path d="M32 60 C22 46 14 38 14 26 A18 18 0 0 1 50 26 C50 38 42 46 32 60Z" fill="#2563eb" stroke="#1d4ed8" stroke-width="1.5"/>
+<circle cx="32" cy="26" r="11" fill="#fff"/>
+<path d="M28 19.5 V33" stroke="#1d4ed8" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M28 19.5 H38.5 L35.5 23 L38.5 26.5 H28Z" fill="#f43f5e"/>
+</svg>

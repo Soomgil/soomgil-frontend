@@ -135,4 +135,12 @@ describe('OwnerVoteSetupPanel', () => {
     expect(wrapper.get('[data-testid="setup-open"]').attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('지역을 하나 이상 골라주세요')
   })
+  it('지금은 나중에 할게요를 누르면 later를 알린다', async () => {
+    const wrapper = mountPanel()
+
+    await wrapper.get('[data-testid="setup-later"]').trigger('click')
+
+    expect(wrapper.emitted('later')).toHaveLength(1)
+    expect(mocks.votingApi.openSession).not.toHaveBeenCalled()
+  })
 })

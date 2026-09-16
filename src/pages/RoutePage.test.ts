@@ -7,7 +7,7 @@ import { clearCollaborationSessionIds, registerCollaborationSessionId } from '@/
 import RoutePage from './RoutePage.vue'
 
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any, votingStore: null as any }))
-const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
+const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: {} as Record<string, string> }))
 const geo = vi.hoisted(() => ({ simplifyCoordinates: vi.fn() }))
 const realtime = vi.hoisted(() => ({ instances: [] as any[] }))
 const connectedApis = vi.hoisted(() => ({
@@ -128,7 +128,7 @@ vi.mock('@/realtime/stompTransport', () => ({
 }))
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { tripId: 'trip-1' } }),
+  useRoute: () => ({ params: { tripId: 'trip-1' }, query: routing.query }),
   useRouter: () => ({ push: routing.push, replace: routing.replace }),
 }))
 
@@ -262,6 +262,7 @@ describe('RoutePage itinerary integration', () => {
     })
 		holder.state.createDrawing.mockResolvedValue({ id: 'drawing-1' })
     holder.votingStore = reactive({ session: null, nextScreen: 'MAP', myParticipation: null, isSubmitted: false })
+    routing.query = {}
     holder.tripStore = reactive({
       currentTrip: null,
       fetchTrip: vi.fn(async () => {
@@ -3253,5 +3254,21 @@ describe('RoutePage itinerary integration', () => {
     expect(input.value).toContain('성산일출봉')
     expect(input.value).toContain('만장굴')
     expect(input.value).toContain('배치')
+  })
+  it('여행을 만들고 ?voteSetup=1로 들어온 방장에게 투표 설정 모달을 바로 띄운다', async () => {
+    routing.query = { voteSetup: '1' }
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
+  })
+
+  it('이미 투표 세션이 있으면 ?voteSetup=1이어도 설정 모달을 강제로 띄우지 않는다', async () => {
+    routing.query = { voteSetup: '1' }
+    holder.votingStore.session = { status: 'COMPLETED' }
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
   })
 })

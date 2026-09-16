@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useVotingStore } from '@/stores/voting.store'
+import VoteStickerMark from './VoteStickerMark.vue'
 import type { TripVoteCandidate } from '@/types/voting'
 
 /**
@@ -105,6 +106,18 @@ function imageUrl(candidate: TripVoteCandidate | null) {
           <span class="vote-deck__counter" data-testid="deck-index">
             {{ index + 1 }} / {{ candidates.length }}
           </span>
+
+          <!-- 붙인 스티커는 실제 스티커 이미지로 사진 왼쪽 위에 겹쳐 쌓인다. 8장 넘으면 배지 숫자로만 본다. -->
+          <div v-if="currentCount > 0" class="vote-deck__stickers" aria-hidden="true">
+            <VoteStickerMark
+              v-for="n in Math.min(currentCount, 8)"
+              :key="n"
+              :size="46"
+              :rotate="((n * 37) % 30) - 15"
+              class="vote-deck__sticker"
+              data-testid="vote-sticker-mark"
+            />
+          </div>
 
           <span
             v-if="currentCount > 0"
@@ -274,6 +287,18 @@ function imageUrl(candidate: TripVoteCandidate | null) {
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+.vote-deck__stickers {
+  display: flex;
+  left: 14px;
+  position: absolute;
+  top: 14px;
+  z-index: 2;
+}
+
+.vote-deck__sticker + .vote-deck__sticker {
+  margin-left: -16px;
 }
 
 .vote-deck__badge {

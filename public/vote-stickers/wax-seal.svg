@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="왁스 실링">
+<path d="M32 4 C40 2 46 6 50 10 C56 14 60 20 59 28 C60 36 56 44 50 50 C45 56 38 61 32 60 C25 61 18 56 13 50 C7 44 4 36 5 28 C4 20 9 14 14 10 C18 6 24 2 32 4Z" fill="#9f1239"/>
+<circle cx="32" cy="32" r="21" fill="none" stroke="#fda4af" stroke-width="1.6" opacity="0.8"/>
+<circle cx="32" cy="32" r="18" fill="#be123c"/>
+<text x="32" y="41" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="24" fill="#fff1f2">S</text>
+<ellipse cx="22" cy="20" rx="5" ry="2.4" fill="#fff" opacity="0.18" transform="rotate(-35 22 20)"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="스마일">
+<circle cx="32" cy="32" r="28" fill="#fdba74" stroke="#f97316" stroke-width="2.5"/>
+<circle cx="32" cy="32" r="22" fill="#ffedd5"/>
+<circle cx="24.5" cy="28" r="2.8" fill="#7c2d12"/><circle cx="39.5" cy="28" r="2.8" fill="#7c2d12"/>
+<path d="M22 37 C26 43.5 38 43.5 42 37" fill="none" stroke="#7c2d12" stroke-width="3" stroke-linecap="round"/>
+<circle cx="19" cy="34" r="2.6" fill="#fb7185" opacity="0.6"/><circle cx="45" cy="34" r="2.6" fill="#fb7185" opacity="0.6"/>
+</svg>

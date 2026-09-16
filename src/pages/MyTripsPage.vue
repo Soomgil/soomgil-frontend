@@ -292,11 +292,12 @@ async function handleCreateTrip() {
     resetForm()
     createModal.close()
     if (activeFilter.value === 'past') activeFilter.value = 'upcoming'
-    if (requestedIntent.value === 'route' || requestedIntent.value === 'ai') {
-      await router.replace({ name: 'Route', params: { tripId: created.id }, query: requestedIntent.value === 'ai' ? { panel: 'ai' } : {} })
-    } else {
-      await router.push({ name: 'TripVote', params: { tripId: created.id } })
-    }
+    // 여행방을 만들면 지도로 바로 간다. 경로/AI를 고르지 않았으면 지도 위에 투표 설정 모달을 띄우고,
+    // 지금 투표를 안 만들면 닫으면 된다(TripVote 페이지로 강제 이동하지 않는다).
+    const query = requestedIntent.value === 'ai'
+      ? { panel: 'ai' }
+      : requestedIntent.value === 'route' ? {} : { voteSetup: '1' }
+    await router.replace({ name: 'Route', params: { tripId: created.id }, query })
   } catch {
     createError.value = '여행의 초기 설정을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.'
   }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useVotingStore } from '@/stores/voting.store'
+import VoteStickerMark from './VoteStickerMark.vue'
 import type { TripVoteCandidate } from '@/types/voting'
 
 /**
@@ -47,13 +48,15 @@ const dots = computed(() => {
       </span>
     </header>
 
+    <!-- 지급받은 스티커를 실제 스티커로 늘어놓는다. 쓴 것은 선명하게, 남은 것은 흐리게. -->
     <div v-if="dots.length" class="vote-cart__dots" aria-hidden="true">
-      <span
+      <VoteStickerMark
         v-for="(used, dotIndex) in dots"
         :key="dotIndex"
-        class="vote-cart__dot"
-        :class="{ 'vote-cart__dot--used': used }"
-      ></span>
+        :size="24"
+        :muted="!used"
+        data-testid="tray-sticker-mark"
+      />
     </div>
 
     <p v-if="rows.length === 0" class="vote-cart__empty" data-testid="cart-empty">

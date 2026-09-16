@@ -24,7 +24,11 @@ const props = withDefaults(
   { tripTitle: '', tripRegions: () => [], tripDestination: null, tripDays: null },
 )
 
-const emit = defineEmits<{ opened: [] }>()
+const emit = defineEmits<{
+  opened: []
+  /** 지금은 투표를 만들지 않고 지도로 돌아간다. 카드의 투표 시작 버튼으로 언제든 다시 열 수 있다. */
+  later: []
+}>()
 
 const voting = useVotingStore()
 
@@ -234,6 +238,9 @@ async function open() {
       >
         <span class="material-symbols-rounded" aria-hidden="true">rocket_launch</span>
         {{ opening ? '후보를 고르는 중…' : '투표 시작하기' }}
+      </button>
+      <button type="button" class="vote-setup__later" data-testid="setup-later" @click="emit('later')">
+        지금은 나중에 할게요
       </button>
     </div>
   </div>
@@ -546,6 +553,22 @@ async function open() {
 .vote-setup__cta:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.vote-setup__later {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+  padding: 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.vote-setup__later:hover {
+  color: var(--ink);
 }
 
 @media (max-width: 720px) {

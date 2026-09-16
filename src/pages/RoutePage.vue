@@ -236,6 +236,20 @@ function arrangeSelectedPlacesWithAi(names: string[]) {
 }
 // 진입 시 제출하지 않은 투표가 있으면 모달을 한 번 자동으로 띄운다. 닫으면 강제로 다시 열지 않고 경고만 남긴다.
 let autoOpenedVote = false
+// 여행방을 막 만들고 ?voteSetup=1로 들어온 방장에게는 투표 설정 모달을 바로 띄운다.
+// 세션이 이미 있으면(진행 중·완료) 설정 화면이 아니므로 열지 않는다. 닫으면 지도만 남고 카드 버튼으로 다시 열 수 있다.
+const wantsVoteSetup = route.query?.voteSetup === '1'
+let openedVoteSetup = false
+watch(
+  [isTripOwner, voteSessionStatus],
+  ([owner, status]) => {
+    if (wantsVoteSetup && owner && status === null && !openedVoteSetup) {
+      openedVoteSetup = true
+      voteModalOpen.value = true
+    }
+  },
+  { immediate: true },
+)
 watch(
 	votePending,
 	(pending) => {

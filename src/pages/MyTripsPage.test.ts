@@ -224,7 +224,7 @@ describe('MyTripsPage', () => {
       sortOrder: 4,
     })
     expect(tripApiMock.createInvite).toHaveBeenCalledWith('trip-1', { inviteeUserId: 'friend-1' })
-    expect(routing.push).toHaveBeenCalledWith({ name: 'TripVote', params: { tripId: 'trip-1' } })
+    expect(routing.replace).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { voteSetup: '1' } })
   })
 
   it('첫 진입에서 실제 여행 목록의 첫 페이지를 요청한다', async () => {
@@ -380,5 +380,29 @@ describe('MyTripsPage', () => {
 
     expect(store.createTrip).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('지역을 검색해서 선택해 주세요')
+  })
+  it('여행을 만들면 지도로 이동하며 투표 설정 모달을 열도록 요청한다', async () => {
+    vi.useFakeTimers()
+    geo.searchLegalRegions.mockResolvedValue({
+      items: [{ code: '5011000000', name: '제주시', fullName: '제주특별자치도 제주시', level: 'SIGUNGU', parentCode: '5000000000', isActive: true }],
+      page: { page: 0, size: 10, totalElements: 1, totalPages: 1, sort: [] },
+    })
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
+    })
+    await wrapper.get('button.btn.primary').trigger('click')
+    await wrapper.get('input[name="title"]').setValue('제주 여행')
+    await wrapper.get('input[name="displayDestination"]').setValue('제주시')
+    await vi.advanceTimersByTimeAsync(300)
+    await wrapper.get('[role="option"]').trigger('click')
+    vi.useRealTimers()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(routing.replace).toHaveBeenCalledWith({
+      name: 'Route',
+      params: { tripId: 'trip-1' },
+      query: { voteSetup: '1' },
+    })
   })
 })
