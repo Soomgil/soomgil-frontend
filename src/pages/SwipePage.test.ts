@@ -69,6 +69,7 @@ describe('SwipePage', () => {
     expect(wrapper.find('button[aria-label="LIKE"]').exists()).toBe(false)
     expect(wrapper.find('.swipe-xp-bar').exists()).toBe(false)
 
+    expect(wrapper.find('.place-description-text').exists()).toBe(false)
     const descriptionToggle = wrapper.get('.place-description-toggle')
     expect(descriptionToggle.attributes('aria-expanded')).toBe('false')
     await descriptionToggle.trigger('click')
@@ -90,24 +91,13 @@ describe('SwipePage', () => {
     vi.useRealTimers()
   })
 
-  it('reloads the swipe queue with the selected province area code', async () => {
+  it('removes region selection and followee reactions', async () => {
     getFeed.mockResolvedValue({ items: [feedItem], nextSeed: null })
-    const wrapper = mount(SwipePage, {
-      global: { stubs: { AppHeader: true } },
-    })
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true } } })
     await flushPromises()
-
-    const regionSelect = wrapper.get('select[aria-label="지역 필터"]')
-    expect(regionSelect.findAll('option').map((option) => option.text())).toContain('제주특별자치도')
-
-    await regionSelect.setValue('39')
-    await flushPromises()
-
-    expect(getFeed).toHaveBeenLastCalledWith({
-      legalRegionCode: '39',
-      limit: 10,
-      excludeRecent: true,
-    })
+    expect(wrapper.find('select[aria-label="지역 필터"]').exists()).toBe(false)
+    expect(wrapper.find('.detail-reaction-card').exists()).toBe(false)
+    expect(getFeed).toHaveBeenLastCalledWith({ limit: 10, excludeRecent: true })
   })
 
   it('keeps description and guidance placeholders visible when KTO omits optional fields', async () => {
@@ -134,6 +124,8 @@ describe('SwipePage', () => {
 
     await flushPromises()
 
+    expect(wrapper.find('.place-description-text').exists()).toBe(false)
+    await wrapper.get('.place-description-toggle').trigger('click')
     expect(wrapper.get('.place-description-card').text()).toContain('상세 설명이 제공되지 않았습니다.')
     expect(wrapper.get('[data-guide="opening-hours"]').text()).toContain('-')
     expect(wrapper.get('[data-guide="closed-days"]').text()).toContain('-')
@@ -174,6 +166,25 @@ describe('SwipePage', () => {
     expect(wrapper.get('[data-place-image]').attributes('src')).toBe('https://cdn.example.com/haeundae-2.jpg')
   })
 
+  it('closes the description when advancing to another place', async () => {
+    vi.useFakeTimers()
+    getFeed.mockResolvedValue({ items: [feedItem, { ...feedItem, place: { ...feedItem.place, externalPlaceId: 'next', description: '짧은 설명' } }], nextSeed: null })
+    react.mockResolvedValue({ reaction: 'LIKE', savedPlaceEligible: true })
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true } } })
+    await flushPromises()
+    await wrapper.get('.place-description-toggle').trigger('click')
+    const card = wrapper.get('.swipe-card')
+    card.element.dispatchEvent(new MouseEvent('pointerdown', { clientX: 0, clientY: 0, button: 0, bubbles: true }))
+    card.element.dispatchEvent(new MouseEvent('pointerup', { clientX: 120, clientY: 0, bubbles: true }))
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(700)
+    expect(wrapper.find('.place-description-text').exists()).toBe(false)
+    await wrapper.get('.place-description-toggle').trigger('click')
+    expect(wrapper.get('.place-description-text').text()).toBe('짧은 설명')
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
   it('shows a retry action when feed loading fails', async () => {
     getFeed.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ items: [], nextSeed: null })
     const wrapper = mount(SwipePage, {
@@ -204,7 +215,7 @@ describe('SwipePage', () => {
     await flushPromises()
 
     expect(wrapper.get('.swipe-place-placeholder').text()).toContain('해운대해수욕장')
-    expect(wrapper.get('.liked-by-avatar-fallback').text()).toBe('지')
+    expect(wrapper.find('.liked-by-avatar-fallback').exists()).toBe(false)
     expect(wrapper.find('img[src=""]').exists()).toBe(false)
   })
 })

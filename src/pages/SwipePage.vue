@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -24,27 +24,6 @@ const {
   advance,
 } = useSwipeFeed()
 
-const regionOptions = [
-  { code: '', label: '전체 지역' },
-  { code: '1', label: '서울특별시' },
-  { code: '2', label: '인천광역시' },
-  { code: '3', label: '대전광역시' },
-  { code: '4', label: '대구광역시' },
-  { code: '5', label: '광주광역시' },
-  { code: '6', label: '부산광역시' },
-  { code: '7', label: '울산광역시' },
-  { code: '8', label: '세종특별자치시' },
-  { code: '31', label: '경기도' },
-  { code: '32', label: '강원특별자치도' },
-  { code: '33', label: '충청북도' },
-  { code: '34', label: '충청남도' },
-  { code: '35', label: '경상북도' },
-  { code: '36', label: '경상남도' },
-  { code: '37', label: '전북특별자치도' },
-  { code: '38', label: '전라남도' },
-  { code: '39', label: '제주특별자치도' },
-] as const
-const selectedRegionCode = ref(lastParams.value.legalRegionCode ?? '')
 const currentPlace = computed(() => currentItem.value?.place ?? null)
 const currentDescription = computed(() => (
   currentPlace.value?.description?.trim()
@@ -55,19 +34,8 @@ const displayedDescription = computed(() => (
   currentDescription.value || '상세 설명이 제공되지 않았습니다.'
 ))
 const descriptionExpanded = ref(false)
-const canExpandDescription = computed(() => currentDescription.value.length > 180)
 const currentAccessibility = computed(() => currentPlace.value?.accessibility)
 const stageRef = ref<HTMLElement | null>(null)
-
-async function changeRegion() {
-  resetCard()
-  activePhotoIdx.value = 0
-  await load({
-    ...(selectedRegionCode.value ? { legalRegionCode: selectedRegionCode.value } : {}),
-    limit: 10,
-    excludeRecent: true,
-  })
-}
 
 type AccessibilityState = 'supported' | 'unavailable' | 'unknown'
 
@@ -294,13 +262,19 @@ function onPointerCancel() {
   resetCard()
 }
 
-onMounted(() => {
-  void ensureLoaded()
+watch(() => currentPlace.value?.externalPlaceId, () => {
+  descriptionExpanded.value = false
+  activePhotoIdx.value = 0
+})
+
+onMounted(async () => {
+  await ensureLoaded()
+  if (lastParams.value.legalRegionCode) await load({ limit: 10, excludeRecent: true })
 })
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell swipe-discovery">
     <AppHeader />
 
     <main>
@@ -309,26 +283,16 @@ onMounted(() => {
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">
               <span class="material-symbols-rounded" aria-hidden="true">bolt</span>
-              Swipe Preference
+              나의 여행 취향
             </p>
             <h1 class="page-hero__title">
-              <span class="page-hero__gradient">우리만의 여행 취향</span>을<br />모아보세요
+              취향 수집
             </h1>
             <p class="page-hero__lead">
-              마음에 드는 장소는 오른쪽으로, 아쉬운 장소는 왼쪽으로 밀어보세요. 슈퍼라이크는 멤버들에게 강력하게 추천하고 싶은 장소입니다.
+              오른쪽은 좋아요, 왼쪽은 다음에. 꼭 가고 싶은 곳은 위로 밀어주세요.
             </p>
           </div>
-          <div class="page-hero__actions swipe-filter-actions">
-            <label class="swipe-region-filter">
-              <span class="material-symbols-rounded" aria-hidden="true">map</span>
-              <span>지역</span>
-              <select v-model="selectedRegionCode" aria-label="지역 필터" :disabled="loading || submitting" @change="changeRegion">
-                <option v-for="region in regionOptions" :key="region.code" :value="region.code">
-                  {{ region.label }}
-                </option>
-              </select>
-            </label>
-          </div>
+
         </div>
 
         <div class="swipe-workspace-card">
@@ -360,32 +324,9 @@ onMounted(() => {
                 />
 
                 <template v-else>
-                  <!-- Swipe Guides -->
-                  <div style="position: absolute; left: 50%; top: 0px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; opacity: 0.9; z-index: 2;">
-                    <span style="font-weight: 900; font-size: 15px; letter-spacing: 0.5px; background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">SUPER LIKE</span>
-                    <svg width="24" height="40" viewBox="0 0 24 40" fill="none" stroke="url(#superlike-grad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                      <defs>
-                        <linearGradient id="superlike-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-                          <stop offset="0%" stop-color="#833ab4" />
-                          <stop offset="50%" stop-color="#fd1d1d" />
-                          <stop offset="100%" stop-color="#fcb045" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M12 36 Q 14 20 12 4 M 6 12 Q 12 6 12 4 Q 14 8 18 12" />
-                    </svg>
-                  </div>
-                  <div style="position: absolute; left: 30px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); pointer-events: none; opacity: 0.9; z-index: 2;">
-                    <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M36 12 Q 20 10 4 12 M 12 6 Q 6 12 4 12 Q 8 14 12 18" />
-                    </svg>
-                    <span style="transform: rotate(-8deg); font-weight: 900; font-size: 15px;">NOPE</span>
-                  </div>
-                  <div style="position: absolute; right: 30px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--rose); pointer-events: none; opacity: 1; z-index: 2;">
-                    <span style="transform: rotate(8deg); font-weight: 900; font-size: 15px;">LIKE</span>
-                    <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M4 12 Q 20 14 36 12 M 28 6 Q 34 12 36 12 Q 32 14 28 18" />
-                    </svg>
-                  </div>
+                  <div class="swipe-guide swipe-guide--top" aria-hidden="true"><span class="material-symbols-rounded">north</span>꼭 가고 싶어요</div>
+                  <div class="swipe-guide swipe-guide--left" aria-hidden="true"><span class="material-symbols-rounded">west</span>다음에</div>
+                  <div class="swipe-guide swipe-guide--right" aria-hidden="true">좋아요<span class="material-symbols-rounded">east</span></div>
 
                   <!-- Swipe Card -->
                   <article
@@ -427,7 +368,7 @@ onMounted(() => {
               </div>
 
               <!-- Photo Strip -->
-              <section v-if="currentPlace" class="photo-strip-section" aria-label="관광지 추가 사진">
+              <section v-if="currentPlace && galleryPhotos.length > 1" class="photo-strip-section" aria-label="관광지 추가 사진">
                 <div class="photo-strip-wrap">
                   <button class="photo-nav prev" type="button" aria-label="이전 사진" @click="scrollPhotos(-1)">
                     <span class="material-symbols-rounded">chevron_left</span>
@@ -456,51 +397,13 @@ onMounted(() => {
               <h3>{{ currentPlace.placeName }}</h3>
 
               <section class="place-description-card" :class="{ 'is-empty': !currentDescription }" aria-label="장소 상세 설명">
-                <div class="place-description-heading">
-                  <span class="material-symbols-rounded">auto_stories</span>
-                  <strong>장소 이야기</strong>
-                </div>
-                <p
-                  class="place-description-text"
-                  :class="{ 'is-expanded': descriptionExpanded }"
-                >{{ displayedDescription }}</p>
-                <button
-                  v-if="canExpandDescription"
-                  type="button"
-                  class="place-description-toggle"
-                  :aria-expanded="descriptionExpanded"
-                  @click="descriptionExpanded = !descriptionExpanded"
-                >
-                  {{ descriptionExpanded ? '접기' : '더보기' }}
-                  <span class="material-symbols-rounded">
-                    {{ descriptionExpanded ? 'expand_less' : 'expand_more' }}
-                  </span>
+                <button type="button" class="place-description-toggle" :aria-expanded="descriptionExpanded" aria-controls="swipe-place-description" @click="descriptionExpanded = !descriptionExpanded">
+                  <span class="material-symbols-rounded" aria-hidden="true">auto_stories</span>
+                  <strong>{{ descriptionExpanded ? '장소 이야기 접기' : '장소 이야기 보기' }}</strong>
+                  <span class="material-symbols-rounded" aria-hidden="true">{{ descriptionExpanded ? 'expand_less' : 'expand_more' }}</span>
                 </button>
+                <p v-if="descriptionExpanded" id="swipe-place-description" class="place-description-text is-expanded">{{ displayedDescription }}</p>
               </section>
-
-              <div class="detail-reaction-card">
-                <div class="detail-reaction-header">
-                  <span class="detail-reaction-title">팔로우한 친구들의 반응</span>
-                  <div class="liked-by-avatars">
-                    <template v-for="item in (currentItem?.likedByFollowees ?? [])" :key="item.id">
-                      <span class="liked-by-avatar-wrapper" :data-tooltip="`${item.displayName} · 긍정 반응`">
-                        <img v-if="item.profileImageUrl" class="liked-by-avatar" :src="item.profileImageUrl" :alt="item.displayName" />
-                        <span v-else class="liked-by-avatar-fallback" aria-hidden="true">{{ item.displayName.slice(0, 1) }}</span>
-                      </span>
-                    </template>
-                  </div>
-                </div>
-                <div class="detail-reaction-body">
-                  <div class="detail-reaction-item">
-                    <span class="material-symbols-rounded icon-rose">favorite</span>
-                    <span class="detail-reaction-value">{{ currentItem?.likedByFollowees.length ?? 0 }}<span class="detail-reaction-unit">친구 반응</span></span>
-                  </div>
-                  <div class="detail-reaction-item">
-                    <span class="material-symbols-rounded icon-yellow">touch_app</span>
-                    <span class="detail-reaction-value">{{ currentItem?.myReaction ?? '미선택' }}</span>
-                  </div>
-                </div>
-              </div>
 
               <div v-if="currentPlace.travelStories?.length">
                 <p class="detail-section-title">이 장소가 포함된 여행기</p>
@@ -555,42 +458,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.swipe-filter-actions {
-  align-self: flex-end;
-}
-.swipe-region-filter {
-  display: grid;
-  grid-template-columns: 20px auto minmax(180px, 1fr);
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 10px 0 14px;
-  border: 1px solid rgba(214, 224, 238, 0.95);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 800;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
-}
-.swipe-region-filter .material-symbols-rounded {
-  color: var(--violet);
-  font-size: 20px;
-}
-.swipe-region-filter select {
-  min-width: 0;
-  height: 34px;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  outline: none;
-  cursor: pointer;
-}
-.swipe-region-filter select:disabled {
-  cursor: wait;
-  opacity: 0.6;
-}
 .swipe-card { display: grid; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
 .swipe-card > img { min-height: 0; object-fit: cover; }
 .swipe-body { min-width: 0; max-height: 230px; overflow-y: auto; overscroll-behavior: contain; }
@@ -703,49 +570,6 @@ onMounted(() => {
 }
 .place-description-toggle .material-symbols-rounded {
   font-size: 17px;
-}
-.detail-reaction-card {
-  margin-top: 16px;
-  padding: 18px 20px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.03), rgba(255, 92, 141, 0.03));
-  border: 1px solid rgba(139, 92, 246, 0.08);
-}
-.detail-reaction-header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-.detail-reaction-title {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--violet);
-  letter-spacing: -0.01em;
-}
-.detail-reaction-body {
-  display: flex;
-  gap: 20px;
-}
-.detail-reaction-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.detail-reaction-item .material-symbols-rounded {
-  font-size: 20px;
-}
-.detail-reaction-value {
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--ink);
-}
-.detail-reaction-unit {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-left: 2px;
 }
 .detail-section-title {
   font-size: 12px;
@@ -887,53 +711,6 @@ onMounted(() => {
 .accessibility-status .material-symbols-rounded {
   font-size: 15px;
 }
-.liked-by-avatar-wrapper {
-  position: relative;
-  display: inline-block;
-  margin-left: -10px;
-  z-index: 1;
-}
-.liked-by-avatar-wrapper:first-child {
-  margin-left: 0;
-}
-.liked-by-avatar-fallback {
-  width: 26px;
-  height: 26px;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--violet);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 800;
-}
-.liked-by-avatar-wrapper::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 130%;
-  left: 50%;
-  transform: translate(-50%, 6px) scale(0.9);
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.92);
-  backdrop-filter: blur(8px);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 1000;
-}
-.liked-by-avatar-wrapper:hover::after {
-  opacity: 1;
-  transform: translate(-50%, 0) scale(1);
-}
-.icon-rose { color: var(--rose) !important; }
-.icon-yellow { color: var(--yellow) !important; }
-
 /* Particle */
 .swipe-particle {
   position: absolute;
@@ -963,4 +740,65 @@ onMounted(() => {
     opacity: 0;
   }
 }
+
+
+/* Match My Trips: paper background, serif headings and white album cards. */
+.swipe-discovery { --ink:#35465a; --muted:#647c92; --violet:#328be0; --blue:#328be0; --line:#dfeaf5; --surface:#fff; --surface-2:#eaf4ff; background:#f8fbff; min-height:100svh; }
+.swipe-discovery main { background:transparent; }
+.swipe-discovery .section { max-width:1200px; margin:0 auto; padding:48px 32px; }
+.swipe-discovery .page-hero { background:transparent; border:0; box-shadow:none; margin-bottom:36px; padding:0; }
+.swipe-discovery .page-hero__eyebrow { background:none; border:0; padding:0; color:#647c92; font-weight:400; letter-spacing:.13em; font-size:11px; }
+.swipe-discovery .page-hero__title { font-family:'Noto Serif KR','Batang','바탕',serif; font-size:40px; font-weight:500; line-height:1.5; letter-spacing:-.02em; }
+.swipe-discovery .page-hero__gradient { background:none; -webkit-text-fill-color:#35465a; color:#35465a; }
+.swipe-discovery .page-hero__lead { max-width:65ch; font-size:14px; font-weight:400; line-height:1.8; }
+.swipe-workspace-card { background:transparent; border:0; border-radius:0; padding:0; box-shadow:none; overflow:visible; }
+.swipe-layout { grid-template-columns:minmax(0,1fr) 280px; gap:40px; align-items:start; }
+.swipe-main-column { min-height:0; grid-template-rows:auto auto; gap:12px; }
+.swipe-stage { min-height:0; padding:32px 0 0; }
+.swipe-discovery .swipe-card { width:100%; aspect-ratio:auto; grid-template-rows:420px auto; border:1px solid #eaf4ff; border-radius:16px; background:#fff; box-shadow:none; }
+.swipe-card:not(.is-dragging):not(.swiped-like):not(.swiped-dislike):not(.swiped-superlike) { transform:none; }
+.swipe-card img[data-place-image] { position:relative; inset:auto; grid-row:1; width:100%; height:100%; object-fit:cover; }
+.swipe-body { position:relative; inset:auto; grid-row:2; max-height:none; overflow:visible; padding:18px; background:none; color:#35465a; }
+.swipe-body h2 { font-family:'Noto Serif KR','Batang','바탕',serif; font-size:23px !important; font-weight:500; }
+.swipe-body .meta-row { color:#647c92; font-size:11px; font-weight:400; }
+.swipe-body .tag { color:#647c92; background:transparent; border:1px solid #dfeaf5; font-size:11px; font-weight:400; backdrop-filter:none; }
+.swipe-place-placeholder { position:relative; grid-row:1; background:#eaf4ff; }
+.place-detail-panel { align-self:start; height:auto; max-height:none; padding:24px !important; background:#fff !important; border:1px solid #eaf4ff !important; border-radius:16px; box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; overflow:visible; gap:20px; }
+.place-detail-panel h3 { font-family:'Noto Serif KR','Batang','바탕',serif; font-weight:500 !important; font-size:22px !important; margin:0 !important; }
+.place-description-card, .place-description-card.is-empty { margin:0; padding:0; background:transparent; border:0; border-radius:0; box-shadow:none; }
+.place-description-toggle { display:flex; width:100%; margin:0; padding:8px 0; min-height:44px; gap:8px; border-radius:0; background:transparent; text-align:left; color:#427ead; font-size:13px; }
+.place-description-toggle strong { flex:1; font-weight:600; }
+.place-description-toggle:hover { background:transparent; color:#35465a; transform:none; }
+.place-description-toggle:focus-visible { outline:3px solid #a9d2ff; outline-offset:3px; }
+.place-description-text { padding:12px 0 0; color:#647c92; font-size:13px; line-height:1.9; }
+.detail-info-card { margin:0; padding:20px 0 0; background:transparent; border:0; border-top:1px solid #dfeaf5; border-radius:0; box-shadow:none; }
+.detail-info-label,.detail-info-value,.accessibility-status { font-weight:400; }
+.accessibility-status { background:transparent; }
+.photo-strip-section { padding:0 16px; }
+.photo-strip { grid-auto-columns:90px; }
+.photo-thumb { height:64px; border-radius:8px; box-shadow:none; }
+.photo-nav { background:transparent; box-shadow:none; }
+.photo-nav:hover { background:#eaf4ff; }
+.swipe-guide { position:absolute; z-index:2; display:flex; align-items:center; gap:6px; pointer-events:none; color:#647c92; font-size:11px; font-weight:400; }
+.swipe-guide--top { top:0; left:50%; transform:translateX(-50%); color:#427ead; }
+.swipe-guide--left { left:12px; top:4px; }
+.swipe-guide--right { right:12px; top:4px; color:#427ead; }
+@media(max-width:900px) {
+ .swipe-layout { grid-template-columns:minmax(0,1fr); gap:28px; }
+ .place-detail-panel { padding:20px !important; }
+}
+@media(max-width:640px) {
+ .swipe-discovery .section { padding:28px 20px; }
+ .swipe-discovery .page-hero { margin-bottom:36px; }
+ .swipe-discovery .page-hero__title { font-size:32px; }
+ .swipe-discovery .swipe-card { grid-template-rows:280px auto; }
+ .swipe-card img[data-place-image] { max-height:280px; }
+ .swipe-body { padding:18px; }
+ .swipe-body h2 { font-size:23px !important; }
+ .swipe-guide--left { left:0; }
+ .swipe-guide--right { right:0; }
+ .swipe-guide { gap:2px; font-size:10px; }
+ .photo-strip-section { padding:0; }
+}
+.swipe-discovery .page-hero__eyebrow .material-symbols-rounded { display:none; }
 </style>
