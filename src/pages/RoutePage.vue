@@ -4482,10 +4482,45 @@ function textAvatarStyle(index: unknown) {
 <template>
   <AppShell>
     <section class="section full-screen route-page-section">
-      <header class="trip-workspace-bar" :class="{ 'is-expanded': tripInfoExpanded }" aria-label="여행방 정보">
-        <div class="trip-workspace-identity"><h1 :title="trip.title">{{ trip.title }}</h1><button class="trip-info-toggle" type="button" :aria-expanded="tripInfoExpanded" aria-controls="trip-workspace-details" @click="tripInfoExpanded = !tripInfoExpanded">여행 정보 <span class="material-symbols-rounded" aria-hidden="true">expand_more</span></button></div>
-        <div id="trip-workspace-details" class="trip-workspace-details"><span v-if="trip.destinationName">{{ trip.destinationName }}</span><span>{{ trip.dateRangeText }} · {{ trip.durationText }}</span><span v-if="trip.statusLabel === '보관된 여행'" class="trip-status-badge">지난 여행</span></div>
-        <div class="trip-workspace-actions">                  <div class="avatars-group">
+      <div :class="['map-shell', `route-layout--${routeLayoutMode}`, {
+        'has-detailbar-open': isDetailbarOpen,
+        'is-route-utility-collapsed': isRouteUtilityCollapsed,
+        'is-sidebar-open': isLeftSidebarOpen,
+        'is-sidebar-hidden': !isLeftSidebarOpen,
+      }]">
+
+          <div class="trip-map-actions" aria-label="여행방 관리">
+                  <button
+                    v-if="showVoteAction"
+                    type="button"
+                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
+                    @click="goTripVote"
+                  >
+                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+                    <span>{{ voteActionLabel }}</span>
+                  </button>
+            <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
+          </div>
+          <!-- ═══ SIDEBAR ═══ -->
+          <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
+            <span class="sidebar-sheet-handle" aria-hidden="true"></span>
+            <button
+              class="sidebar-toggle"
+              type="button"
+              aria-label="일정 패널 닫기"
+              aria-controls="route-itinerary-sidebar"
+              aria-expanded="true"
+              title="일정 패널 닫기"
+              @click="toggleLeftSidebar"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
+            </button>
+            <div class="sidebar-content">
+              <div class="trip-sidebar-summary">
+                <button class="trip-title-toggle" type="button" :aria-expanded="tripInfoExpanded" aria-controls="trip-sidebar-details" @click="tripInfoExpanded = !tripInfoExpanded"><span>{{ trip.title }}</span><span class="material-symbols-rounded" aria-hidden="true">{{ tripInfoExpanded ? 'expand_less' : 'expand_more' }}</span></button>
+                <div v-show="tripInfoExpanded" id="trip-sidebar-details" class="trip-sidebar-details">
+                  <p v-if="trip.destinationName">{{ trip.destinationName }}</p><p>{{ trip.dateRangeText }} · {{ trip.durationText }}</p>
+                  <div class="avatars-group">
                     <div class="avatars">
                       <span
                         v-for="m in trip.members.slice(0, 3)"
@@ -4504,42 +4539,8 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <span v-if="trip.members.length > 3" class="members-count">+{{ trip.members.length - 3 }}</span>
                   </div>
-                  <button
-                    v-if="showVoteAction"
-                    type="button"
-                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
-                    @click="goTripVote"
-                  >
-                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-                    <span>{{ voteActionLabel }}</span>
-                  </button>
-</div>
-        <TripSettingsButton class="trip-workspace-settings" label="관리" variant="ghost" @click="() => openTripManagement()" />
-      </header>
-
-      <div :class="['map-shell', `route-layout--${routeLayoutMode}`, {
-        'has-detailbar-open': isDetailbarOpen,
-        'is-route-utility-collapsed': isRouteUtilityCollapsed,
-        'is-sidebar-open': isLeftSidebarOpen,
-        'is-sidebar-hidden': !isLeftSidebarOpen,
-      }]">
-
-          <!-- ═══ SIDEBAR ═══ -->
-          <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
-            <span class="sidebar-sheet-handle" aria-hidden="true"></span>
-            <button
-              class="sidebar-toggle"
-              type="button"
-              aria-label="일정 패널 닫기"
-              aria-controls="route-itinerary-sidebar"
-              aria-expanded="true"
-              title="일정 패널 닫기"
-              @click="toggleLeftSidebar"
-            >
-              <span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
-            </button>
-            <div class="sidebar-content">
-              <div class="itinerary-panel-heading"><h2>일정</h2><span>{{ dayPlans.reduce((count, day) => count + day.items.length, 0) }}곳</span></div>
+                </div>
+              </div>
               <!-- Day tabs -->
               <div class="day-tabs-container">
                 <button class="day-scroll-btn prev" type="button" aria-label="이전 일차" @click="scrollDayTabs('prev')">
@@ -7706,6 +7707,17 @@ function textAvatarStyle(index: unknown) {
  .trip-info-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
  .trip-info-toggle .material-symbols-rounded { font-size: 16px; }
 }
+
+.trip-sidebar-summary { position: relative; flex-shrink: 0; margin-bottom: 16px; }
+.trip-title-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 0; min-height: 40px; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 16px; font-weight: 700; cursor: pointer; }
+.trip-title-toggle > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-title-toggle .material-symbols-rounded { color: var(--muted); font-size: 20px; }
+.trip-sidebar-details { position: absolute; top: 100%; left: 0; right: 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface, #fff); box-shadow: 0 12px 32px rgb(35 53 75 / 14%); z-index: 150; color: var(--muted); font-size: 12px; }
+.trip-sidebar-details p { margin: 0 0 10px; }
+.trip-map-actions { position: absolute; top: 12px; right: 400px; display: flex; align-items: center; gap: 8px; z-index: 60; }
+.map-shell.is-route-utility-collapsed .trip-map-actions { right: 76px; }
+@media(max-width:1023px) { .trip-map-actions { right: 76px; } }
+@media(max-width:767px) { .trip-map-actions { top: 10px; right: 16px; } .map-shell.is-route-utility-collapsed .trip-map-actions { right: 16px; } }
 </style>
 
 <style scoped src="../styles/route-sky-theme.css"></style>
