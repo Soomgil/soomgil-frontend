@@ -31,7 +31,6 @@ const serviceNavItems = computed(() => [
   { label: t('nav.trips'), key: 'my-trips', path: '/my-trips' },
   { label: t('nav.preferences'), key: 'swipe', path: '/swipe' },
   { label: t('nav.community'), key: 'community', path: '/community' },
-  { label: t('nav.records'), key: 'record', path: '/record' },
 ])
 
 const isLandingPage = computed(() => route.path === '/')

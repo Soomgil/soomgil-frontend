@@ -236,7 +236,7 @@ describe('MyTripsPage', () => {
       sortOrder: 4,
     })
     expect(tripApiMock.createInvite).toHaveBeenCalledWith('trip-1', { inviteeUserId: 'friend-1' })
-    expect(routing.push).toHaveBeenCalledWith({ name: 'TripVote', params: { tripId: 'trip-1' } })
+    expect(routing.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { vote: '1' } })
   })
 
   it('첫 진입에서 실제 여행 목록의 첫 페이지를 요청한다', async () => {
@@ -291,7 +291,7 @@ describe('MyTripsPage', () => {
     routing.push.mockClear()
     await wrapper.get('.timeline-card-vote').trigger('click')
     expect(routing.push).toHaveBeenCalledTimes(1)
-    expect(routing.push).toHaveBeenLastCalledWith({ name: 'TripVote', params: { tripId: trip.id } })
+    expect(routing.push).toHaveBeenLastCalledWith({ name: 'Route', params: { tripId: trip.id }, query: { vote: '1' } })
     routing.push.mockClear()
     await wrapper.get('.trip-options').trigger('click')
     expect(routing.push).not.toHaveBeenCalled()
@@ -395,7 +395,7 @@ describe('MyTripsPage', () => {
 
     await voteButton!.trigger('click')
 
-    expect(routing.push).toHaveBeenCalledWith({ name: 'TripVote', params: { tripId: 'trip-1' } })
+    expect(routing.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { vote: '1' } })
   })
 
   it('멤버 카드에는 투표 버튼을 보여주지 않는다', async () => {

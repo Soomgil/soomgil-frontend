@@ -84,7 +84,7 @@ const router = createRouter({
     {
       path: '/trips/:tripId/vote',
       name: 'TripVote',
-      component: () => import('@/pages/TripVotePage.vue'),
+      redirect: to => ({ name: 'Route', params: { tripId: to.params.tripId }, query: { ...to.query, vote: '1' } }),
       meta: { requiresAuth: true },
     },
     {
@@ -106,12 +106,6 @@ const router = createRouter({
       path: '/community/story-write',
       name: 'StoryWrite',
       component: () => import('@/pages/StoryWritePage.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/record',
-      name: 'Record',
-      component: () => import('@/pages/RecordPage.vue'),
       meta: { requiresAuth: true },
     },
     {

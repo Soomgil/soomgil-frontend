@@ -165,7 +165,7 @@ function goTripDetail(tripId: string) {
 
 /** 방장 전용. 투표 화면은 세션 유무에 따라 시작 설정·진행·결과를 스스로 보여준다. */
 function goTripVote(tripId: string) {
-  router.push({ name: 'TripVote', params: { tripId } })
+  router.push({ name: 'Route', params: { tripId }, query: { vote: '1' } })
 }
 
 function getTripStatus(trip: TripSummary): string {
@@ -337,9 +337,9 @@ async function handleCreateTrip() {
     resetForm()
     createModal.close()
     if (requestedIntent.value === 'route' || requestedIntent.value === 'ai') {
-      await router.replace({ name: 'Route', params: { tripId: created.id }, query: requestedIntent.value === 'ai' ? { panel: 'ai' } : {} })
+      await router.replace({ name: 'Route', params: { tripId: created.id }, query: requestedIntent.value === 'ai' ? { panel: 'ai', vote: '1' } : { vote: '1' } })
     } else {
-      await router.push({ name: 'TripVote', params: { tripId: created.id } })
+      await router.push({ name: 'Route', params: { tripId: created.id }, query: { vote: '1' } })
     }
   } catch {
     createError.value = '여행의 초기 설정을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.'

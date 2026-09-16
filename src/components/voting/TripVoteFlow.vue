@@ -18,7 +18,7 @@ const toast = useToast()
 
 /**
  * 여행 방 투표 흐름 전체(시작 설정 → 스티커 → 대기 → 결과).
- * 페이지(/trips/:id/vote)와 지도 위 모달이 같은 컴포넌트를 쓴다. 이동은 직접 하지 않고 `close`로 알린다.
+ * 지도 위 모달에서 사용한다. 이동은 직접 하지 않고 `close`로 알린다.
  */
 const props = withDefaults(defineProps<{ tripId: string; embedded?: boolean }>(), { embedded: false })
 const emit = defineEmits<{
@@ -117,7 +117,7 @@ async function handleSessionOpened() {
 
 /**
  * 페이지에 머무는 동안 세션이 OPEN → COMPLETED로 넘어가면
- * 결과 오버레이와 함께 지도 화면으로 이동한다.
+ * 부모 모달에 완료를 알린다.
  * 처음부터 COMPLETED로 열린 경우는 결과 화면을 보여준다.
  */
 let sawOpenSession = false

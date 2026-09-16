@@ -9,7 +9,7 @@ import type { DrawingPreviewEvent } from '@/types/collaboration'
 import type { LngLat, Viewport } from '@/types/geo'
 import type { MapDrawing, MapObjectTransform, RouteMode } from '@/types/itinerary'
 import type { AccessibilityFlag, PlaceAccessibility } from '@/types/place'
-import { useTheme } from '@/composables/useTheme'
+import { MAP_THEMES, type MapTheme } from '@/types/map-theme'
 
 export interface ItineraryMapNearbyPlace {
   id: string
@@ -60,6 +60,7 @@ const props = withDefaults(defineProps<{
   drawingsVisible?: boolean
   navigationMode?: boolean
   standardView?: boolean
+  mapTheme?: MapTheme
   routeWaypoints?: LngLat[]
   mapObjects?: MapDrawing[]
   mapObjectImageUrls?: Record<string, string>
@@ -83,6 +84,7 @@ const props = withDefaults(defineProps<{
   drawingsVisible: true,
   navigationMode: false,
   standardView: false,
+  mapTheme: 'light',
   routeWaypoints: () => [],
   mapObjects: () => [],
   mapObjectImageUrls: () => ({}),
@@ -129,13 +131,6 @@ let initializationSequence = 0
 let lastEmittedViewport = ''
 let lastFittedStopsKey = ''
 
-const { isDarkMode } = useTheme()
-
-const MAPBOX_STYLE_LIGHT = 'mapbox://styles/mapbox/light-v11'
-const MAPBOX_STYLE_DARK = 'mapbox://styles/mapbox/dark-v11'
-const MAPBOX_STYLE_NAVIGATION_DAY = 'mapbox://styles/mapbox/navigation-day-v1'
-const MAPBOX_STYLE_NAVIGATION_NIGHT = 'mapbox://styles/mapbox/navigation-night-v1'
-const MAPBOX_STYLE_STANDARD = 'mapbox://styles/mapbox/standard'
 const STANDARD_VIEW_CAMERA = { pitch: 60, bearing: -20 }
 const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16', '#f59e0b', '#64748b']
 const ROUTE_MODE_META: Record<RouteMode, { icon: string; label: string; color: string; bg: string }> = {
@@ -144,15 +139,7 @@ const ROUTE_MODE_META: Record<RouteMode, { icon: string; label: string; color: s
   DRIVING: { icon: 'directions_car', label: '자동차', color: '#ea580c', bg: '#fff7ed' },
 }
 
-const mapStyle = computed(() => {
-  if (props.standardView) {
-    return MAPBOX_STYLE_STANDARD
-  }
-  if (props.navigationMode) {
-    return isDarkMode.value ? MAPBOX_STYLE_NAVIGATION_NIGHT : MAPBOX_STYLE_NAVIGATION_DAY
-  }
-  return isDarkMode.value ? MAPBOX_STYLE_DARK : MAPBOX_STYLE_LIGHT
-})
+const mapStyle = computed(() => MAP_THEMES.find(theme => theme.value === props.mapTheme)!.style)
 
 function applyMapStyle(style: string) {
   if (!map || appliedMapStyle === style) return

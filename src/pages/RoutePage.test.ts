@@ -7,7 +7,7 @@ import { clearCollaborationSessionIds, registerCollaborationSessionId } from '@/
 import RoutePage from './RoutePage.vue'
 
 const holder = vi.hoisted(() => ({ state: null as any, tripStore: null as any, viewportState: null as any, votingStore: null as any }))
-const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
+const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: {} as Record<string, string> }))
 const geo = vi.hoisted(() => ({ simplifyCoordinates: vi.fn() }))
 const realtime = vi.hoisted(() => ({ instances: [] as any[] }))
 const connectedApis = vi.hoisted(() => ({
@@ -128,7 +128,7 @@ vi.mock('@/realtime/stompTransport', () => ({
 }))
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { tripId: 'trip-1' } }),
+  useRoute: () => ({ params: { tripId: 'trip-1' }, query: routing.query }),
   useRouter: () => ({ push: routing.push, replace: routing.replace }),
 }))
 
@@ -189,6 +189,7 @@ vi.mock('@/composables/useMapViewport', async () => {
 describe('RoutePage itinerary integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routing.query = {}
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
     localStorage.clear()
 		localStorage.setItem('accessToken', 'e30.eyJ1c2VySWQiOiJ1c2VyLTEifQ.')
@@ -3192,6 +3193,25 @@ describe('RoutePage itinerary integration', () => {
     EmptyState: true,
     TripVoteFlow: voteFlowStub,
   }
+
+  it('생성 또는 투표 링크로 진입하면 지도 모달을 연다', async () => {
+    routing.query = { vote: '1' }
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="vote-flow-close"]').trigger('click')
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
+  })
+
+  it('관리 오른쪽에서 지도 테마를 선택하고 저장한다', async () => {
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+    await wrapper.get('.map-theme-button').trigger('click')
+    await wrapper.get('input[value="navigation-night"]').setValue(true)
+    expect(wrapper.findComponent(MapboxItineraryMap).props('mapTheme')).toBe('navigation-night')
+    expect(localStorage.getItem('soomgil-map-theme')).toBe('navigation-night')
+    expect(wrapper.find('.map-theme-popover').exists()).toBe(false)
+  })
 
   it('제출하지 않은 투표가 열려 있으면 지도 위에 투표 모달을 자동으로 띄운다', async () => {
     holder.votingStore.session = { status: 'OPEN' }

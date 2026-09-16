@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { MAP_THEMES, type MapTheme } from '@/types/map-theme'
 import AppShell from '@/components/layout/AppShell.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -112,6 +113,7 @@ type RouteAiChatMessage = AiChatMessage & { pending?: boolean; pendingForMessage
 
 /* ── Data ── */
 const route = useRoute()
+const router = useRouter()
 const tripIdParam = route.params.tripId
 const tripId = Array.isArray(tripIdParam) ? tripIdParam[0] ?? '' : tripIdParam ?? ''
 const itinerary = useItinerary(tripId)
@@ -211,6 +213,35 @@ const votePending = computed(
   () => voteSessionStatus.value === 'OPEN' && votingStore.myParticipation != null && !votingStore.isSubmitted,
 )
 const voteModalOpen = ref(false)
+watch(() => route.query?.vote, value => {
+  if (value === '1') {
+    voteModalOpen.value = true
+    const { vote: _vote, ...query } = route.query
+    void router.replace({ query })
+  }
+}, { immediate: true })
+
+const mapTheme = ref<MapTheme>(readMapTheme())
+const mapThemeOpen = ref(false)
+const mapThemeButton = ref<HTMLButtonElement | null>(null)
+function readMapTheme(): MapTheme {
+  try {
+    const saved = localStorage.getItem('soomgil-map-theme')
+    return MAP_THEMES.find(theme => theme.value === saved)?.value ?? 'light'
+  } catch { return 'light' }
+}
+function selectMapTheme(value: MapTheme) {
+  mapTheme.value = value
+  try { localStorage.setItem('soomgil-map-theme', value) } catch { /* 저장 불가 시 현재 화면에만 적용한다. */ }
+  closeMapTheme()
+}
+function onMapThemeFocusOut(event: FocusEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) mapThemeOpen.value = false
+}
+function closeMapTheme() {
+  mapThemeOpen.value = false
+  mapThemeButton.value?.focus()
+}
 const showVoteAction = computed(() => isTripOwner.value || voteSessionStatus.value !== null)
 const voteActionLabel = computed(() => {
   if (votePending.value) return '투표 중 · 미제출'
@@ -4510,6 +4541,7 @@ function textAvatarStyle(index: unknown) {
                     </div>
                     <span v-if="trip.members.length > 3" class="members-count">+{{ trip.members.length - 3 }}</span>
                   </div>
+            <div class="trip-map-buttons">
                   <button
                     v-if="showVoteAction"
                     type="button"
@@ -4520,6 +4552,22 @@ function textAvatarStyle(index: unknown) {
                     <span>{{ voteActionLabel }}</span>
                   </button>
             <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
+            <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
+              <button ref="mapThemeButton" type="button" class="map-theme-button" :aria-expanded="mapThemeOpen" aria-controls="map-theme-options" @click="mapThemeOpen = !mapThemeOpen">
+                <span class="material-symbols-rounded" aria-hidden="true">palette</span><span>지도 테마</span>
+              </button>
+              <div v-if="mapThemeOpen" id="map-theme-options" class="map-theme-popover">
+                <fieldset>
+                  <legend>지도 테마</legend>
+                  <label v-for="theme in MAP_THEMES" :key="theme.value" :class="{ selected: mapTheme === theme.value }">
+                    <span class="map-theme-swatch" :style="{ background: theme.color }" aria-hidden="true"></span>
+                    <span>{{ theme.label }}</span>
+                    <input type="radio" name="map-theme" :value="theme.value" :checked="mapTheme === theme.value" @change="selectMapTheme(theme.value)" />
+                  </label>
+                </fieldset>
+              </div>
+            </div>
+            </div>
           </div>
           <a v-if="!isLeftSidebarOpen" href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
           <!-- ═══ SIDEBAR ═══ -->
@@ -4811,6 +4859,7 @@ function textAvatarStyle(index: unknown) {
               :drawings-visible="drawingOn"
               :navigation-mode="navigationGuideMode"
               :standard-view="standardMapView"
+              :map-theme="mapTheme"
               @select-place="handleSelectPlace"
               @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
               @viewport-change="mapViewport.updateViewport"
@@ -7749,3 +7798,23 @@ function textAvatarStyle(index: unknown) {
 </style>
 
 <style scoped src="../styles/route-sky-theme.css"></style>
+
+<style scoped>
+.trip-map-buttons { display: flex; align-items: center; gap: 8px; }
+.map-theme-control { position: relative; }
+.map-theme-button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.map-theme-button .material-symbols-rounded { font-size: 19px; }
+.map-theme-button:hover, .map-theme-button[aria-expanded="true"] { background: var(--surface-2); border-color: var(--violet); }
+.map-theme-popover { position: absolute; top: calc(100% + 8px); right: 0; width: 206px; padding: 12px; background: var(--surface, #fff); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px #20344f26; }
+.map-theme-popover fieldset { padding: 0; margin: 0; border: 0; }
+.map-theme-popover legend { padding: 0 6px 10px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.map-theme-popover label { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+.map-theme-popover label:hover, .map-theme-popover label.selected { background: var(--surface-2); }
+.map-theme-popover input { margin-left: auto; accent-color: var(--violet); }
+.map-theme-swatch { width: 24px; height: 24px; border: 1px solid #a3b6c455; border-radius: 7px; }
+@media(max-width:767px) {
+  .trip-map-actions { max-width: calc(100% - 24px); gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .trip-map-buttons { gap: 5px; }
+  .map-theme-button, .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { padding: 0 9px; }
+}
+</style>
