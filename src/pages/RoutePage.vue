@@ -3941,7 +3941,7 @@ async function handleSettingsSaved(_tripId: string, settings?: TripDateSettings)
   }
 }
 
-const sidebarTheme = computed(() => getDayColorClass(activeDay.value > 0 ? activeDay.value : 1))
+const tripInfoExpanded = ref(false)
 
 function parseDateInput(value: string) {
   if (!value) return null
@@ -4482,6 +4482,41 @@ function textAvatarStyle(index: unknown) {
 <template>
   <AppShell>
     <section class="section full-screen route-page-section">
+      <header class="trip-workspace-bar" :class="{ 'is-expanded': tripInfoExpanded }" aria-label="여행방 정보">
+        <div class="trip-workspace-identity"><h1 :title="trip.title">{{ trip.title }}</h1><button class="trip-info-toggle" type="button" :aria-expanded="tripInfoExpanded" aria-controls="trip-workspace-details" @click="tripInfoExpanded = !tripInfoExpanded">여행 정보 <span class="material-symbols-rounded" aria-hidden="true">expand_more</span></button></div>
+        <div id="trip-workspace-details" class="trip-workspace-details"><span v-if="trip.destinationName">{{ trip.destinationName }}</span><span>{{ trip.dateRangeText }} · {{ trip.durationText }}</span><span v-if="trip.statusLabel === '보관된 여행'" class="trip-status-badge">지난 여행</span></div>
+        <div class="trip-workspace-actions">                  <div class="avatars-group">
+                    <div class="avatars">
+                      <span
+                        v-for="m in trip.members.slice(0, 3)"
+                        :key="m.userId"
+                        :class="['avatar', 'avatar-with-tooltip', { 'is-online': m.online }]"
+                        :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}"
+                      >
+                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" />
+                        <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
+                        <span v-if="m.online" class="avatar-presence-badge" aria-label="접속 중"></span>
+                        <div class="avatar-tooltip">
+                          <span>{{ m.displayName }} ({{ m.role === 'OWNER' ? '방장' : '멤버' }})</span>
+                          <span class="avatar-tooltip-status">{{ m.online ? '접속 중' : '오프라인' }}</span>
+                        </div>
+                      </span>
+                    </div>
+                    <span v-if="trip.members.length > 3" class="members-count">+{{ trip.members.length - 3 }}</span>
+                  </div>
+                  <button
+                    v-if="showVoteAction"
+                    type="button"
+                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
+                    @click="goTripVote"
+                  >
+                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+                    <span>{{ voteActionLabel }}</span>
+                  </button>
+</div>
+        <TripSettingsButton class="trip-workspace-settings" label="관리" variant="ghost" @click="() => openTripManagement()" />
+      </header>
+
       <div :class="['map-shell', `route-layout--${routeLayoutMode}`, {
         'has-detailbar-open': isDetailbarOpen,
         'is-route-utility-collapsed': isRouteUtilityCollapsed,
@@ -4504,64 +4539,7 @@ function textAvatarStyle(index: unknown) {
               <span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
             </button>
             <div class="sidebar-content">
-              <!-- Trip header card -->
-              <div :class="['trip-header-card', sidebarTheme]" id="trip-header-card-container">
-                <div class="trip-info-badge-row">
-                  <p v-if="trip.destinationName" class="trip-card-dates" style="margin: 0;">
-                    <span class="material-symbols-rounded" style="font-size:13px;vertical-align:middle;margin-right:2px;">location_on</span>
-                    <span style="vertical-align:middle;font-weight:600;">{{ trip.destinationName }}</span>
-                  </p>
-                  <span class="trip-status-badge">{{ trip.statusLabel }}</span>
-                </div>
-                <h3 class="trip-card-title">{{ trip.title }}</h3>
-                <div class="trip-card-period-row">
-                  <span class="material-symbols-rounded icon-calendar">calendar_today</span>
-                  <span class="period-text">{{ trip.dateRangeText }} ({{ trip.durationText }})</span>
-                </div>
-                <div class="trip-card-divider"></div>
-                <div class="trip-stats-grid">
-                  <div class="trip-stat-item">
-                    <span class="stat-label">여행 기간</span>
-                    <span class="stat-value">{{ trip.durationText }}</span>
-                  </div>
-                  <div class="trip-stat-item">
-                    <span class="stat-label">총 방문지</span>
-                    <span class="stat-value">{{ dayPlans.reduce((count, day) => count + day.items.length, 0) }}곳 코스</span>
-                  </div>
-                </div>
-                <div class="trip-card-footer">
-                  <div class="avatars-group">
-                    <div class="avatars">
-                      <span
-                        v-for="m in trip.members.slice(0, 5)"
-                        :key="m.userId"
-                        :class="['avatar', 'avatar-with-tooltip', { 'is-online': m.online }]"
-                        :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}"
-                      >
-                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" />
-                        <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
-                        <span v-if="m.online" class="avatar-presence-badge" aria-label="접속 중"></span>
-                        <div class="avatar-tooltip">
-                          <span>{{ m.displayName }} ({{ m.role === 'OWNER' ? '방장' : '멤버' }})</span>
-                          <span class="avatar-tooltip-status">{{ m.online ? '접속 중' : '오프라인' }}</span>
-                        </div>
-                      </span>
-                    </div>
-                    <span class="members-count">{{ trip.members.length }}명</span>
-                  </div>
-                  <button
-                    v-if="showVoteAction"
-                    type="button"
-                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
-                    @click="goTripVote"
-                  >
-                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-                    <span>{{ voteActionLabel }}</span>
-                  </button>
-                  <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
-                </div>
-              </div>
-
+              <div class="itinerary-panel-heading"><h2>일정</h2><span>{{ dayPlans.reduce((count, day) => count + day.items.length, 0) }}곳</span></div>
               <!-- Day tabs -->
               <div class="day-tabs-container">
                 <button class="day-scroll-btn prev" type="button" aria-label="이전 일차" @click="scrollDayTabs('prev')">
@@ -7702,6 +7680,31 @@ function textAvatarStyle(index: unknown) {
   .route-page-section .route-utility-sidebar {
     animation-duration: 0.01ms !important;
   }
+}
+
+.trip-workspace-bar { display: flex; align-items: center; gap: 20px; padding: 12px 24px; flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--line); background: var(--surface, #fff); color: var(--ink); z-index: 110; }
+.trip-workspace-identity { min-width: 0; max-width: 32%; }
+.trip-workspace-identity h1 { margin: 0; font-size: 17px; line-height: 1.5; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.trip-workspace-details { display: flex; gap: 14px; color: var(--muted); font-size: 12px; min-width: 0; flex-wrap: wrap; }
+.trip-workspace-actions { margin-left: auto; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.trip-workspace-actions .avatars-group { margin: 0; }
+.trip-workspace-settings { flex-shrink: 0; }
+.trip-info-toggle { display: none; }
+.itinerary-panel-heading { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding-bottom: 14px; color: var(--ink); }
+.itinerary-panel-heading h2 { font-size: 17px; margin: 0; }
+.itinerary-panel-heading > span { color: var(--muted); font-size: 12px; }
+.route-page-section .map-shell { height: 0; flex: 1 1 0; }
+.route-page-section .day-tabs-container { flex-shrink: 0; }
+.route-page-section .itinerary { min-height: 0; }
+@media(max-width: 767px) {
+ .trip-workspace-bar { padding: 10px 16px; gap: 10px; flex-wrap: wrap; }
+ .trip-workspace-identity { max-width: none; flex: 1; }
+ .trip-workspace-settings { margin-left: auto; }
+ .trip-workspace-details, .trip-workspace-actions { display: none; }
+ .trip-workspace-bar.is-expanded .trip-workspace-details { display: flex; order: 3; flex-basis: 100%; }
+ .trip-workspace-bar.is-expanded .trip-workspace-actions { display: flex; order: 4; margin-left: 0; }
+ .trip-info-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+ .trip-info-toggle .material-symbols-rounded { font-size: 16px; }
 }
 </style>
 
