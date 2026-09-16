@@ -99,6 +99,20 @@ onUnmounted(() => resizeObserver?.disconnect())
   <AppShell immersive paper>
     <section class="home-canvas" :style="{ '--ink-mask': `url(${inkMask})` }" aria-label="여행 검색과 수상작 감상">
       <InkWashBackdrop />
+      <div class="home-gallery">
+        <div ref="galleryStage" class="home-backdrop">
+          <div v-if="currentPhoto" class="home-ink-underlay" :style="photoStyle" aria-hidden="true"></div>
+          <Transition name="home-photo">
+            <img v-if="currentPhoto" :key="currentPhoto.imageUrl" :src="currentPhoto.imageUrl"
+              :alt="currentPhoto.title || photoTitle" :style="photoStyle" fetchpriority="high" decoding="async"
+              @load="handleImageLoad" @error="handleImageError" />
+          </Transition>
+          <div v-if="!currentPhoto" class="home-photo-status" role="status">
+            <span class="material-symbols-rounded" aria-hidden="true">landscape</span>
+            <p>{{ loading ? '대한민국의 풍경을 불러오는 중…' : failed ? '사진을 불러오지 못했어요. 검색은 바로 이용할 수 있어요.' : '새로운 풍경을 준비하고 있어요. 여행지를 검색해 보세요.' }}</p>
+            <button v-if="failed && !loading" type="button" @click="loadPhotos">다시 불러오기</button>
+          </div>
+        </div>
       <div class="home-search-position">
         <h1 class="home-sr-only">어디로 떠나고 싶으세요?</h1>
         <form class="home-search paper-search" role="search" aria-label="통합 검색" @submit.prevent="submitSearch()"
@@ -117,20 +131,6 @@ onUnmounted(() => resizeObserver?.disconnect())
           </div>
         </form>
       </div>
-      <div class="home-gallery">
-        <div ref="galleryStage" class="home-backdrop">
-          <div v-if="currentPhoto" class="home-ink-underlay" :style="photoStyle" aria-hidden="true"></div>
-          <Transition name="home-photo">
-            <img v-if="currentPhoto" :key="currentPhoto.imageUrl" :src="currentPhoto.imageUrl"
-              :alt="currentPhoto.title || photoTitle" :style="photoStyle" fetchpriority="high" decoding="async"
-              @load="handleImageLoad" @error="handleImageError" />
-          </Transition>
-          <div v-if="!currentPhoto" class="home-photo-status" role="status">
-            <span class="material-symbols-rounded" aria-hidden="true">landscape</span>
-            <p>{{ loading ? '대한민국의 풍경을 불러오는 중…' : failed ? '사진을 불러오지 못했어요. 검색은 바로 이용할 수 있어요.' : '새로운 풍경을 준비하고 있어요. 여행지를 검색해 보세요.' }}</p>
-            <button v-if="failed && !loading" type="button" @click="loadPhotos">다시 불러오기</button>
-          </div>
-        </div>
         <div v-if="currentPhoto" class="home-artwork-footer">
           <div class="home-artwork-info" aria-live="polite" aria-atomic="true">
             <p class="home-artwork-label">{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
@@ -158,14 +158,14 @@ onUnmounted(() => resizeObserver?.disconnect())
 <style scoped>
 .home-canvas { position: relative; isolation: isolate; min-height: 100svh; display: flex; flex-direction: column; overflow: hidden; color: #26332e; background: #fafaf7; }
 .home-canvas::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 48% 44%, rgb(219 224 207 / 20%), transparent 68%); }
-.home-search-position { width: min(760px, calc(100% - 48px)); margin: 108px auto 32px; position: relative; z-index: 2; }
+.home-search-position { width: min(680px, 100%); margin: 24px auto 28px; position: relative; z-index: 2; }
 .home-search { width: min(680px, 100%); position: relative; margin: 0 auto; }
-.home-gallery { width: min(1120px, calc(100% - 96px)); margin: 0 auto; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
+.home-gallery { width: min(1120px, calc(100% - 96px)); margin: 100px auto 0; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
 /* 전시 공간이 최소 목표 크기를 수용하고, 좁은 화면에서는 화면 경계를 우선한다. */
 .home-backdrop { position: relative; display: grid; place-items: center; height: clamp(540px, calc(100svh - 340px), 680px); }
 .home-backdrop img { grid-area: 1 / 1; display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; }
 .home-ink-underlay { grid-area: 1 / 1; width: 80%; height: 90%; max-width: 100%; max-height: 100%; background: #777d6f; opacity: .12; transform: scale(1.06) rotate(-2deg); mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; pointer-events: none; }
-.home-artwork-footer { display: flex; align-items: center; justify-content: space-between; gap: 32px; width: 940px; max-width: 100%; margin: 24px auto 0; }
+.home-artwork-footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 680px; max-width: 100%; margin: 24px auto 0; }
 .home-artwork-info { min-width: 0; }
 .home-artwork-label { margin: 0 0 8px; font-size: 11px; font-weight: 400; letter-spacing: .08em; color: #6c786e; }
 .home-artwork-title { margin: 0 0 8px; font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-size: clamp(23px, 2vw, 30px); font-weight: 500; line-height: 1.35; letter-spacing: -.02em; color: #263c31; overflow-wrap: anywhere; }
@@ -198,12 +198,12 @@ button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
 .home-photo-enter-active, .home-photo-leave-active { transition: opacity .5s ease; }
 .home-photo-enter-from, .home-photo-leave-to { opacity: 0; }
 @media (max-width: 767px) {
-  .home-search-position { width: calc(100% - 32px); margin-top: 140px; margin-bottom: 24px; }
-  .home-gallery { width: calc(100% - 40px); padding-bottom: max(28px, env(safe-area-inset-bottom)); }
+  .home-search-position { width: 100%; margin-top: 20px; margin-bottom: 24px; }
+  .home-gallery { width: calc(100% - 40px); margin-top: 140px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
   .home-backdrop { height: clamp(300px, calc(100svh - 480px), 520px); }
-  .home-artwork-footer { flex-wrap: wrap; gap: 20px; margin-top: 20px; }
+  .home-artwork-footer { flex-wrap: wrap; gap: 12px; margin-top: 20px; }
   .home-artwork-info { flex-basis: 100%; }
-  .home-photo-controls { margin-left: auto; }
+  .home-photo-controls { margin-left: 0; }
   .home-search-history { max-height: 240px; overflow-y: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
