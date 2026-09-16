@@ -395,17 +395,11 @@ const visibleMapDayPlans = computed(() => {
   if (activeDay.value === 0) return dayPlans.value
   return activePlan.value ? [activePlan.value] : []
 })
-function routePenVisibleStop(item: RouteStop) {
-  if (activeTool.value !== 'route-pen') return true
-  return canSelectRouteStopForCurrentStep(item)
-}
-
 const mapStops = computed<ItineraryMapStop[]>(() => {
   let index = 1
   return visibleMapDayPlans.value.flatMap((day) => day.items.flatMap((item) => {
     const currentIndex = index++
     if (item.lat == null || item.lng == null) return []
-    if (!routePenVisibleStop(item)) return []
     return [{
       id: item.id,
       placeProvider: item.placeProvider,
@@ -1610,7 +1604,7 @@ function moveItemGroupAfter(anchorItemId: string, movingItemIds: string[]) {
   return true
 }
 
-const DRAG_LAYER_Z_INDEX = '120'
+const DRAG_LAYER_Z_INDEX = '100001'
 
 function onPointerDown(e: PointerEvent) {
   if ((e.target as HTMLElement).closest('button')) return
@@ -1723,7 +1717,7 @@ function onPointerDown(e: PointerEvent) {
 
     dragElements.forEach((el) => {
       el.classList.add('is-chain-dragging')
-      el.style.setProperty('z-index', DRAG_LAYER_Z_INDEX, 'important')
+      el.style.setProperty('z-index', '100000', 'important')
       el.style.position = 'relative'
       el.style.top = '0px'
     })
@@ -1802,8 +1796,8 @@ function onPointerDown(e: PointerEvent) {
 
     const dx = ev.clientX - e.clientX
     const dy = ev.clientY - e.clientY
-    if (Math.abs(dx) <= 4 && Math.abs(dy) <= 4) return
-    if (Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 20) {
+    if (!dragStarted && Math.abs(dx) <= 4 && Math.abs(dy) <= 4) return
+    if (!dragStarted && Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 20) {
       return
     }
     startDragVisualState()
@@ -1852,9 +1846,8 @@ function onPointerDown(e: PointerEvent) {
       cancelAnimationFrame(autoScrollFrame)
       autoScrollFrame = null
     }
-    stop.removeEventListener('pointermove', onPointerMove)
-    stop.removeEventListener('pointerup', onPointerUp)
-    if (dragStarted && typeof stop.releasePointerCapture === 'function' && stop.hasPointerCapture?.(e.pointerId)) {
+    removeDragListeners()
+    if (typeof stop.releasePointerCapture === 'function' && stop.hasPointerCapture?.(e.pointerId)) {
       stop.releasePointerCapture(e.pointerId)
     }
     if (movedDuringDrag) {
@@ -1915,8 +1908,39 @@ function onPointerDown(e: PointerEvent) {
     })
   }
 
-  stop.addEventListener('pointermove', onPointerMove)
+  function removeDragListeners() {
+    stop.removeEventListener('pointermove', onPointerMove)
+    stop.removeEventListener('pointerup', onPointerUp)
+    stop.removeEventListener('pointercancel', cancelDrag)
+    window.removeEventListener('blur', cancelDrag)
+    window.removeEventListener('keydown', onDragKeyDown)
+  }
+
+  function cancelDrag() {
+    removeDragListeners()
+    if (autoScrollFrame !== null) cancelAnimationFrame(autoScrollFrame)
+    autoScrollFrame = null
+    if (stop.hasPointerCapture?.(e.pointerId)) stop.releasePointerCapture(e.pointerId)
+    document.getElementById('trash-drop-zone')?.classList.remove('is-drag-over-trash')
+    cleanupDragState()
+    restoreItineraryScroll(initialScrollTop)
+    releasePendingItineraryScroll(initialScrollTop)
+  }
+
+  function onDragKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelDrag()
+    }
+  }
+
+  // Capture before the threshold so fast movements cannot escape the card.
+  stop.setPointerCapture?.(e.pointerId)
+  stop.addEventListener('pointermove', onPointerMove, { passive: false })
   stop.addEventListener('pointerup', onPointerUp)
+  stop.addEventListener('pointercancel', cancelDrag)
+  window.addEventListener('blur', cancelDrag)
+  window.addEventListener('keydown', onDragKeyDown)
 }
 
 function isSameFlatNode(left: FlatItineraryNode, right: FlatItineraryNode) {
@@ -4559,7 +4583,7 @@ function textAvatarStyle(index: unknown) {
               <div v-if="mapThemeOpen" id="map-theme-options" class="map-theme-popover">
                 <fieldset>
                   <legend>지도 테마</legend>
-                  <label v-for="theme in MAP_THEMES" :key="theme.value" :class="{ selected: mapTheme === theme.value }">
+                  <label v-for="theme in MAP_THEMES" :key="theme.value" :class="{ selected: mapTheme === theme.value }" @pointerdown.prevent @click.prevent="selectMapTheme(theme.value)">
                     <span class="map-theme-swatch" :style="{ background: theme.color }" aria-hidden="true"></span>
                     <span>{{ theme.label }}</span>
                     <input type="radio" name="map-theme" :value="theme.value" :checked="mapTheme === theme.value" @change="selectMapTheme(theme.value)" />
@@ -4644,6 +4668,7 @@ function textAvatarStyle(index: unknown) {
 					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day" :data-day-id="day.id"
 						@pointerdown="onPointerDown">
                       <span class="day-pill">{{ dayPlanLabel(day) }}</span>
+                      <span class="day-stop-count">{{ day.items.length }}곳</span>
                       <span class="line"></span>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
@@ -4656,6 +4681,7 @@ function textAvatarStyle(index: unknown) {
                         <img
                           v-if="routeStopImage(item)"
                           class="stop-thumb"
+                          draggable="false"
                           :src="routeStopImage(item)"
                           :alt="item.title"
                           loading="lazy"
@@ -4669,6 +4695,9 @@ function textAvatarStyle(index: unknown) {
                       <!-- Route connector between linked adjacent stops -->
                       <div v-if="idx < day.items.length - 1 && hasVisibleRouteConnectorBetween(item.id, day.items[idx + 1].id)"
                         :class="['route-connector', getDayColorClass(day.day)]"
+                        role="button" tabindex="0"
+                        @keydown.enter.prevent="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
+                        @keydown.space.prevent="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
                         :data-from-id="item.id"
                         :data-to-id="day.items[idx + 1].id"
                         @click.stop="removeRouteLinkBetween(item.id, day.items[idx + 1].id)"
@@ -4677,7 +4706,8 @@ function textAvatarStyle(index: unknown) {
                           <span class="material-symbols-rounded" aria-hidden="true">{{ routeModeMeta(routeForDisplayBetween(item.id, day.items[idx + 1].id)?.mode).icon }}</span>
                           {{ routeModeMeta(routeForDisplayBetween(item.id, day.items[idx + 1].id)?.mode).shortLabel }}
                         </span>
-                        <span class="material-symbols-rounded route-unlink-icon">link_off</span>
+                        <span class="route-unlink-label">연결 해제</span>
+                        <span class="material-symbols-rounded route-unlink-icon" aria-hidden="true">link_off</span>
                         <div class="route-connector-line"></div>
                       </div>
                     </template>
@@ -4688,6 +4718,7 @@ function textAvatarStyle(index: unknown) {
 				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay" :data-day-id="activePlan.id"
 					@pointerdown="onPointerDown">
                     <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
+                    <span class="day-stop-count">{{ activePlan.items.length }}곳</span>
                     <span class="line"></span>
                   </div>
                   <template v-for="(item, idx) in activePlan.items" :key="item.id">
@@ -4699,6 +4730,7 @@ function textAvatarStyle(index: unknown) {
                       <img
                         v-if="routeStopImage(item)"
                         class="stop-thumb"
+                          draggable="false"
                         :src="routeStopImage(item)"
                         :alt="item.title"
                         loading="lazy"
@@ -4712,6 +4744,9 @@ function textAvatarStyle(index: unknown) {
                     <!-- Route connector between linked adjacent stops -->
                     <div v-if="idx < activePlan.items.length - 1 && hasVisibleRouteConnectorBetween(item.id, activePlan.items[idx + 1].id)"
                       :class="['route-connector', getDayColorClass(activeDay)]"
+                      role="button" tabindex="0"
+                      @keydown.enter.prevent="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
+                      @keydown.space.prevent="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
                       :data-from-id="item.id"
                       :data-to-id="activePlan.items[idx + 1].id"
                       @click.stop="removeRouteLinkBetween(item.id, activePlan.items[idx + 1].id)"
@@ -4720,7 +4755,8 @@ function textAvatarStyle(index: unknown) {
                         <span class="material-symbols-rounded" aria-hidden="true">{{ routeModeMeta(routeForDisplayBetween(item.id, activePlan.items[idx + 1].id)?.mode).icon }}</span>
                         {{ routeModeMeta(routeForDisplayBetween(item.id, activePlan.items[idx + 1].id)?.mode).shortLabel }}
                       </span>
-                      <span class="material-symbols-rounded route-unlink-icon">link_off</span>
+                      <span class="route-unlink-label">연결 해제</span>
+                        <span class="material-symbols-rounded route-unlink-icon" aria-hidden="true">link_off</span>
                       <div class="route-connector-line"></div>
                     </div>
                   </template>
@@ -7817,4 +7853,26 @@ function textAvatarStyle(index: unknown) {
   .trip-map-buttons { gap: 5px; }
   .map-theme-button, .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { padding: 0 9px; }
 }
+
+/* Keep the planning surface independent of the map tiles underneath it. */
+.route-page-section .sidebar { background: #fff; backdrop-filter: none; }
+.route-page-section .sidebar-content { background: #fff; }
+.route-page-section .day-separator { min-height: 42px; border-radius: 10px; gap: 8px; }
+.day-stop-count { color: #647c92; font-size: 11px; white-space: nowrap; }
+.route-page-section .stop { min-height: 66px; border-radius: 12px; background: #fff; border-color: #dfeaf5; box-shadow: 0 2px 6px rgb(52 102 145 / 4%); }
+.route-page-section .stop:hover { transform: none; box-shadow: 0 3px 10px rgb(52 102 145 / 10%); }
+.route-page-section .stop .grip-icon { color: #92a8bb; padding: 8px 3px; }
+.route-page-section .stop.is-dragging, .route-page-section .day-separator.is-dragging { transform: none; transition: none; box-shadow: 0 8px 24px rgb(50 139 224 / 20%) !important; }
+.route-page-section .is-chain-dragging { transition: none; }
+/* Indicators must not move the target geometry while hit testing. */
+.route-page-section .itinerary :is(.is-drag-over-top, .is-drag-over-bottom) { margin-top: 0 !important; margin-bottom: 0 !important; }
+.route-page-section .itinerary .is-drag-over-top::before { top: -4px; height: 3px; background: #328be0; }
+.route-page-section .itinerary .is-drag-over-bottom::after { bottom: -4px; height: 3px; background: #328be0; }
+.route-page-section .route-connector { min-height: 30px; border-radius: 8px; }
+.route-page-section .route-connector:hover, .route-page-section .route-connector:focus-visible { background: #eaf4ff; outline: 2px solid #c6dff4; }
+.route-page-section .route-connector:hover .route-mode-badge { opacity: 1; }
+.route-page-section .route-unlink-icon { left: auto; right: 8px; transform: translateY(-50%); opacity: 1; color: #647c92; }
+.route-unlink-label { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); color: #647c92; font-size: 10px; }
+.map-theme-popover label:focus-within { outline: 2px solid #328be0; outline-offset: 1px; }
+.route-page-section .day-separator { background: #fff !important; }
 </style>

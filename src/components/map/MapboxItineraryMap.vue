@@ -130,6 +130,7 @@ let appliedMapStyle = ''
 let initializationSequence = 0
 let lastEmittedViewport = ''
 let lastFittedStopsKey = ''
+let wasConnectingRoute = false
 
 const STANDARD_VIEW_CAMERA = { pitch: 60, bearing: -20 }
 const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16', '#f59e0b', '#64748b']
@@ -533,7 +534,13 @@ function renderStops() {
 
 function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
   if (!map) return
-  const stopsKey = props.stops.map((stop) => `${stop.id}:${stop.lng}:${stop.lat}`).join('|')
+  const stopsKey = props.stops.map((stop) => `${stop.id}:${stop.lng}:${stop.lat}`).sort().join('|')
+  const preserveCamera = props.navigationMode || wasConnectingRoute
+  wasConnectingRoute = props.navigationMode
+  if (preserveCamera) {
+    lastFittedStopsKey = stopsKey
+    return
+  }
   if (stopsKey === lastFittedStopsKey) return
   lastFittedStopsKey = stopsKey
   if (props.stops.length === 0) {
@@ -613,6 +620,7 @@ function cleanupMapResources() {
   appliedMapStyle = ''
   lastEmittedViewport = ''
   lastFittedStopsKey = ''
+  wasConnectingRoute = false
   updateDrawingProjection()
 }
 
@@ -689,7 +697,7 @@ function retry() {
   void initializeMap()
 }
 
-watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.cardDisplay], renderStops, { deep: true })
+watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.cardDisplay, props.navigationMode], renderStops, { deep: true })
 watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {

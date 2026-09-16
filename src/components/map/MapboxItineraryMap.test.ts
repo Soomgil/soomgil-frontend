@@ -159,6 +159,32 @@ describe('MapboxItineraryMap', () => {
     expect(wrapper.emitted('selectPlace')).toEqual([[undefined, 'place-1', 'item-1']])
   })
 
+  it('경로 연결 중 장소 필터와 순서가 바뀌어도 카메라를 유지한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops, routes: [] } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    mapbox.map.easeTo.mockClear()
+    mapbox.map.cameraForBounds.mockClear()
+    await wrapper.setProps({ navigationMode: true, stops: [stops[0]] })
+    await wrapper.setProps({ stops: [...stops].reverse(), routes })
+    await wrapper.setProps({ navigationMode: false, stops })
+    expect(mapbox.map.easeTo).not.toHaveBeenCalled()
+    expect(mapbox.map.cameraForBounds).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('카드 순서만 바뀌면 카메라를 유지한다', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops } })
+    await flushPromises()
+    mapbox.handlers.get('style.load')?.()
+    mapbox.map.easeTo.mockClear()
+    await wrapper.setProps({ stops: [...stops].reverse() })
+    expect(mapbox.map.easeTo).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('경로 표시 변경만으로 지도 viewport를 다시 맞추지 않는다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     const wrapper = mount(MapboxItineraryMap, { props: { stops, routes: [] } })

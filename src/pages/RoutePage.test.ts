@@ -760,6 +760,41 @@ describe('RoutePage itinerary integration', () => {
 		})
 	})
 
+	it('드래그가 취소되면 이동 표시를 지우고 순서를 저장하지 않는다', async () => {
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		const separators = wrapper.findAll('.day-separator')
+		const stop = wrapper.get('.stop')
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 320, width: 320, height: 320,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[0].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 32, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(separators[1].element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 72, top: 72, left: 0, right: 320, bottom: 104, width: 320, height: 32,
+			toJSON: () => ({}),
+		} as DOMRect)
+		vi.spyOn(stop.element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 112, top: 112, left: 12, right: 300, bottom: 152, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
+
+		stop.find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 122 }))
+		stop.element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 76 }))
+		stop.element.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true, clientX: 40, clientY: 76 }))
+		await flushPromises()
+
+		expect(holder.state.reorder).not.toHaveBeenCalled()
+		expect(stop.classes()).not.toContain('is-dragging')
+		expect(itineraryEl.classList.contains('dragging-stop')).toBe(false)
+	})
+
 	it('드래그 임계값 전의 클릭 움직임은 일차·여행 카드·연결 그룹의 스크롤과 재정렬을 발생시키지 않는다', async () => {
 		vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
 			callback(0)
@@ -1482,7 +1517,9 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     const map = wrapper.getComponent(MapboxItineraryMap)
 
+    const visibleStopsBeforeConnecting = wrapper.getComponent(MapboxItineraryMap).props('stops')
     await wrapper.get('button[data-tool="route-pen"]').trigger('click')
+    expect(wrapper.getComponent(MapboxItineraryMap).props('stops')).toEqual(visibleStopsBeforeConnecting)
     await nextTick()
     const modeLabels = {
       WALKING: '도보',
@@ -3207,7 +3244,8 @@ describe('RoutePage itinerary integration', () => {
     const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
     await flushPromises()
     await wrapper.get('.map-theme-button').trigger('click')
-    await wrapper.get('input[value="navigation-night"]').setValue(true)
+    await wrapper.get('input[value="navigation-night"]').element.closest('label')!.querySelectorAll('span')[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
     expect(wrapper.findComponent(MapboxItineraryMap).props('mapTheme')).toBe('navigation-night')
     expect(localStorage.getItem('soomgil-map-theme')).toBe('navigation-night')
     expect(wrapper.find('.map-theme-popover').exists()).toBe(false)
