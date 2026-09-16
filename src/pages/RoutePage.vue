@@ -7704,3 +7704,5 @@ function textAvatarStyle(index: unknown) {
   }
 }
 </style>
+
+<style scoped src="../styles/route-sky-theme.css"></style>

@@ -2084,7 +2084,7 @@ describe('RoutePage itinerary integration', () => {
 
     expect((wrapper.get('[data-testid="trip-start-date"]').element as HTMLInputElement).value).toBe('2026-07-01')
     expect((wrapper.get('[data-testid="trip-end-date"]').element as HTMLInputElement).value).toBe('2026-07-01')
-    expect(wrapper.text()).toContain('여행 상태 설정')
+    expect(wrapper.text()).not.toContain('여행 상태 설정')
   })
 
   it('페이지 재진입 시 저장된 여행 기간을 기준으로 일차 탭을 생성한다', async () => {
