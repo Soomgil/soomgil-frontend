@@ -968,32 +968,32 @@ onUnmounted(() => {
   gap: 24px;
 }
 
-.trip-settings-overlay { --ink: #2f4437; --muted: #73806d; --line: #dfe6d8; --violet: #527347; --surface-2: #edf2e7; background: rgb(27 41 30 / 35%); backdrop-filter: blur(5px); padding: 24px; }
-.trip-settings-overlay .trip-settings-card { width: min(100%, 680px); max-width: 680px; max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; background: #fafaf7; border: 1px solid #e0e6d8; border-radius: 24px; box-shadow: 0 24px 80px rgb(30 47 32 / 16%); }
+.trip-settings-overlay { --ink: #35465A; --muted: #647C92; --line: #EAF4FF; --violet: #427EAD; --surface-2: #EAF4FF; background: rgb(35 53 75 / 35%); backdrop-filter: blur(5px); padding: 24px; }
+.trip-settings-overlay .trip-settings-card { width: min(100%, 680px); max-width: 680px; max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; background: #F8FBFF; border: 1px solid #EAF4FF; border-radius: 24px; box-shadow: 0 24px 80px rgb(35 67 98 / 16%); }
 .trip-settings-card .modal-header { padding: 28px 30px 20px; border: 0; background: transparent; flex-shrink: 0; }
-.trip-settings-card .eyebrow { color: #819076; letter-spacing: .12em; font-size: 10px; }
-.trip-settings-card h3 { font-family: 'Noto Serif KR', Batang, serif; font-size: 28px; font-weight: 500; color: #30482f; margin: 6px 0; }
-.trip-settings-card .icon-btn { border: 1px solid #dce4d4; background: #f0f4eb; color: #546c49; border-radius: 50%; width: 40px; height: 40px; }
+.trip-settings-card .eyebrow { color: #647C92; letter-spacing: .12em; font-size: 10px; }
+.trip-settings-card h3 { font-family: 'Noto Serif KR', Batang, serif; font-size: 28px; font-weight: 500; color: #35465A; margin: 6px 0; }
+.trip-settings-card .icon-btn { border: 1px solid #DFEAF5; background: #EAF4FF; color: #427EAD; border-radius: 50%; width: 40px; height: 40px; }
 .trip-settings-card .modal-tabs { margin: 0; padding: 0 30px; gap: 24px; flex-shrink: 0; }
 .trip-settings-card .modal-tab-btn { border-radius: 0; padding: 14px 0; border-bottom: 2px solid transparent; font-size: 14px; font-weight: 500; }
-.trip-settings-card .modal-tab-btn.active { background: transparent; color: #3e6237; border-bottom-color: #527347; }
+.trip-settings-card .modal-tab-btn.active { background: transparent; color: #427EAD; border-bottom-color: #427EAD; }
 .trip-settings-card .modal-body { padding: 24px 30px; overflow-y: auto; min-height: 0; }
 .trip-settings-card .trip-create-form { display: grid; gap: 20px; }
-.trip-settings-card .field { background: #fff; border: 1px solid #dce4d4; border-radius: 10px; box-shadow: none; color: #30482f; min-width: 0; }
+.trip-settings-card .field { background: #fff; border: 1px solid #DFEAF5; border-radius: 10px; box-shadow: none; color: #35465A; min-width: 0; }
 .settings-dates { display: flex; align-items: center; gap: 8px; }
-.trip-settings-card .management-section { background: #fff; border-color: #dfe6d8; border-radius: 14px; box-shadow: none; padding: 16px; }
-.trip-settings-card .management-section h4 { color: #354b31; font-weight: 600; }
-.trip-settings-card .management-section-icon { background: #eaf0e2; color: #617f50; }
+.trip-settings-card .management-section { background: #fff; border-color: #EAF4FF; border-radius: 14px; box-shadow: none; padding: 16px; }
+.trip-settings-card .management-section h4 { color: #35465A; font-weight: 600; }
+.trip-settings-card .management-section-icon { background: #EAF4FF; color: #647C92; }
 .trip-settings-card .status-option-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-.trip-settings-card .status-option { background: #fafbf8; padding: 12px; gap: 8px; }
-.trip-settings-card .status-option.active { background: #edf3e5; border-color: #8fa77d; box-shadow: none; }
+.trip-settings-card .status-option { background: #F8FBFF; padding: 12px; gap: 8px; }
+.trip-settings-card .status-option.active { background: #EAF4FF; border-color: #8A9DAF; box-shadow: none; }
 .trip-settings-card .danger-zone { background: #fffafa; border-color: #efdddd; }
 .trip-settings-card .management-section-icon--danger { color: #a45252; background: #f9eaea; }
-.trip-settings-card .trip-create-actions { position: sticky; bottom: -24px; padding: 16px 0 4px; background: #fafaf7; border-top: 1px solid #dfe6d8; z-index: 3; }
-.trip-settings-card .btn.primary, .trip-settings-card .invite-action-btn--primary { background: #4b6d40; color: white; border-color: #4b6d40; box-shadow: none; }
-.trip-settings-card .invite-link-box { background: #f0f4eb; border-color: #dce4d3; }
-.trip-settings-card .member-item { background: #fff; border-color: #e1e7da; }
-.trip-settings-card .member-avatar { background: #e7eedd; color: #587349; }
+.trip-settings-card .trip-create-actions { position: sticky; bottom: -24px; padding: 16px 0 4px; background: #F8FBFF; border-top: 1px solid #EAF4FF; z-index: 3; }
+.trip-settings-card .btn.primary, .trip-settings-card .invite-action-btn--primary { background: #427EAD; color: white; border-color: #427EAD; box-shadow: none; }
+.trip-settings-card .invite-link-box { background: #EAF4FF; border-color: #DFEAF5; }
+.trip-settings-card .member-item { background: #fff; border-color: #EAF4FF; }
+.trip-settings-card .member-avatar { background: #EAF4FF; color: #427EAD; }
 @media(max-width:600px) {
  .trip-settings-overlay { padding: 12px; }
  .trip-settings-overlay .trip-settings-card { max-height: calc(100dvh - 24px); border-radius: 18px; }
@@ -1007,8 +1007,8 @@ onUnmounted(() => {
 }
 
 /* 헤더와 탭을 하나의 옅은 회녹색 영역으로 묶는다. */
-.trip-settings-card .modal-header { background: #f0f3ec; padding-bottom: 18px; margin-bottom: 0; }
-.trip-settings-card .modal-tabs { background: #f0f3ec; border-bottom: 1px solid #d8e0d1; }
+.trip-settings-card .modal-header { background: #EAF4FF; padding-bottom: 18px; margin-bottom: 0; }
+.trip-settings-card .modal-tabs { background: #EAF4FF; border-bottom: 1px solid #DFEAF5; }
 .trip-settings-card .modal-body { background: #fff; padding-top: 24px; }
 .trip-settings-card .trip-create-actions { background: #fff; }
 .trip-settings-card .modal-header .icon-btn { background: transparent; border-color: transparent; }

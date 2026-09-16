@@ -372,13 +372,13 @@ async function handleLogout() {
 
 <style scoped>
 /* 모든 서비스 탭은 동일한 헤더 색상과 간격을 공유한다. */
-.topbar.paper-header { --ink: #22302f; --muted: #67736e; --bg: #fafaf7; --line: #e4e7e2; --surface-2: #f1f4f0; background: rgb(250 250 247 / 94%); border-bottom: 0; backdrop-filter: none; padding-inline: 40px; }
-.paper-header .brand > span { color: #22302f !important; }
-.paper-header .nav a { color: #63706a; text-shadow: none; }
-.paper-header .nav a.active { color: #365640; background: #eaf0e5; border-color: #d9e3d3; }
+.topbar.paper-header { --ink: #35465A; --muted: #647C92; --bg: #F8FBFF; --line: #EAF4FF; --surface-2: #EAF4FF; background: rgb(248 251 255 / 94%); border-bottom: 0; backdrop-filter: none; padding-inline: 40px; }
+.paper-header .brand > span { color: #35465A !important; }
+.paper-header .nav a { color: #647C92; text-shadow: none; }
+.paper-header .nav a.active { color: #427EAD; background: #EAF4FF; border-color: #DFEAF5; }
 .paper-header .nav-indicator { display: none; }
 .paper-header .header-actions > .btn.ghost,
-.paper-header .header-actions .icon-btn { color: #52625a; background: #f0f3ee; }
+.paper-header .header-actions .icon-btn { color: #427EAD; background: #EAF4FF; }
 @media (max-width: 480px) {
   .topbar.paper-header { height: auto; min-height: 72px; padding: 12px 20px; gap: 10px; flex-wrap: wrap; }
   .paper-header .brand img { width: 38px !important; height: 38px !important; }

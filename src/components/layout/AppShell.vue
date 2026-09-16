@@ -20,7 +20,7 @@ defineProps<{ immersive?: boolean; paper?: boolean }>()
 <style scoped>
 /* 기존 body의 헤더 여백을 홈에서만 상쇄해 사진이 화면 위까지 이어지게 한다. */
 .immersive-shell { margin-top: -72px; }
-.paper-shell { --ink: #22302f; --muted: #67736e; --bg: #fafaf7; --line: #e4e7e2; --surface-2: #f1f4f0; background: #fafaf7; }
+.paper-shell { --ink: #35465A; --muted: #647C92; --bg: #F8FBFF; --line: #EAF4FF; --surface-2: #EAF4FF; background: #F8FBFF; }
 @media (max-width: 480px) {
   .immersive-shell { margin-top: -132px; }
 }

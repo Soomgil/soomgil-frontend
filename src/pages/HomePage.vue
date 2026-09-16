@@ -156,35 +156,35 @@ onUnmounted(() => resizeObserver?.disconnect())
 </template>
 
 <style scoped>
-.home-canvas { position: relative; isolation: isolate; min-height: 100svh; display: flex; flex-direction: column; overflow: hidden; color: #26332e; background: #fafaf7; }
-.home-canvas::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 48% 44%, rgb(219 224 207 / 20%), transparent 68%); }
+.home-canvas { position: relative; isolation: isolate; min-height: 100svh; display: flex; flex-direction: column; overflow: hidden; color: #35465A; background: #F8FBFF; }
+.home-canvas::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 48% 44%, rgb(219 237 255 / 20%), transparent 68%); }
 .home-search-position { width: min(680px, 100%); margin: 24px auto 28px; position: relative; z-index: 2; }
 .home-search { width: min(680px, 100%); position: relative; margin: 0 auto; }
 .home-gallery { width: min(1120px, calc(100% - 96px)); margin: 100px auto 0; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
 /* 전시 공간이 최소 목표 크기를 수용하고, 좁은 화면에서는 화면 경계를 우선한다. */
 .home-backdrop { position: relative; display: grid; place-items: center; height: clamp(540px, calc(100svh - 340px), 680px); }
 .home-backdrop img { grid-area: 1 / 1; display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; }
-.home-ink-underlay { grid-area: 1 / 1; width: 80%; height: 90%; max-width: 100%; max-height: 100%; background: #777d6f; opacity: .12; transform: scale(1.06) rotate(-2deg); mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; pointer-events: none; }
+.home-ink-underlay { grid-area: 1 / 1; width: 80%; height: 90%; max-width: 100%; max-height: 100%; background: #647C92; opacity: .12; transform: scale(1.06) rotate(-2deg); mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; pointer-events: none; }
 .home-artwork-footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 680px; max-width: 100%; margin: 24px auto 0; }
 .home-artwork-info { min-width: 0; }
-.home-artwork-label { margin: 0 0 8px; font-size: 11px; font-weight: 400; letter-spacing: .08em; color: #6c786e; }
-.home-artwork-title { margin: 0 0 8px; font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-size: clamp(23px, 2vw, 30px); font-weight: 500; line-height: 1.35; letter-spacing: -.02em; color: #263c31; overflow-wrap: anywhere; }
-.home-artwork-caption { font-size: 12px; font-weight: 400; margin: 0 0 5px; color: #66756c; }
-.home-explore-link { display: inline-flex; align-items: center; gap: 10px; margin: 2px 0 10px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #345c42; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
-.home-explore-link:hover { color: #173e25; text-decoration: underline; text-underline-offset: 5px; }
+.home-artwork-label { margin: 0 0 8px; font-size: 11px; font-weight: 400; letter-spacing: .08em; color: #647C92; }
+.home-artwork-title { margin: 0 0 8px; font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-size: clamp(23px, 2vw, 30px); font-weight: 500; line-height: 1.35; letter-spacing: -.02em; color: #35465A; overflow-wrap: anywhere; }
+.home-artwork-caption { font-size: 12px; font-weight: 400; margin: 0 0 5px; color: #647C92; }
+.home-explore-link { display: inline-flex; align-items: center; gap: 10px; margin: 2px 0 10px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #427EAD; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.home-explore-link:hover { color: #35465A; text-decoration: underline; text-underline-offset: 5px; }
 .home-explore-link .material-symbols-rounded { font-size: 19px; }
 .home-artwork-credit a { display: inline-block; color: inherit; text-decoration: underline; text-underline-offset: 3px; margin-left: 10px; padding-block: 6px; }
-.home-artwork-credit { margin: 0; font-size: 11px; font-weight: 400; line-height: 1.7; color: #757e75; overflow-wrap: anywhere; }
+.home-artwork-credit { margin: 0; font-size: 11px; font-weight: 400; line-height: 1.7; color: #647C92; overflow-wrap: anywhere; }
 .home-photo-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.home-photo-count { font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .12em; margin-right: 12px; color: #78837a; white-space: nowrap; }
-.home-photo-count strong { color: #314a3b; font-weight: 600; }
-.home-photo-controls button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid #d7ded4; border-radius: 50%; background: transparent; color: #314a3b; cursor: pointer; transition: background .2s; }
-.home-photo-controls button:hover { background: #edf1e8; }
+.home-photo-count { font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .12em; margin-right: 12px; color: #647C92; white-space: nowrap; }
+.home-photo-count strong { color: #35465A; font-weight: 600; }
+.home-photo-controls button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid #DFEAF5; border-radius: 50%; background: transparent; color: #35465A; cursor: pointer; transition: background .2s; }
+.home-photo-controls button:hover { background: #EAF4FF; }
 .home-photo-controls .material-symbols-rounded { font-size: 20px; }
-.home-photo-status { text-align: center; font-size: 13px; font-weight: 400; line-height: 1.7; padding: 24px; color: #6c786e; }
-.home-photo-status > .material-symbols-rounded { display: block; font-size: 36px; margin-bottom: 20px; color: #73786c; }
+.home-photo-status { text-align: center; font-size: 13px; font-weight: 400; line-height: 1.7; padding: 24px; color: #647C92; }
+.home-photo-status > .material-symbols-rounded { display: block; font-size: 36px; margin-bottom: 20px; color: #647C92; }
 .home-photo-status p { margin: 0; }
-.home-photo-status button { min-height: 44px; margin-top: 8px; padding: 8px 0; border: 0; background: transparent; color: #314a3b; font: inherit; text-decoration: underline; cursor: pointer; }
+.home-photo-status button { min-height: 44px; margin-top: 8px; padding: 8px 0; border: 0; background: transparent; color: #35465A; font: inherit; text-decoration: underline; cursor: pointer; }
 .home-search-history { position: absolute; top: calc(100% + 12px); left: 0; right: 0; padding: 18px; border-radius: 20px; background: #fff; box-shadow: 0 16px 40px rgb(0 0 0 / 18%); color: #24333c; }
 .home-search-history-heading { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 8px; font-size: 13px; color: #62707b; }
 .home-search-history button { border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }
