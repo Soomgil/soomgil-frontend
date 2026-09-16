@@ -4501,6 +4501,7 @@ function textAvatarStyle(index: unknown) {
                   </button>
             <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
           </div>
+          <a href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
           <!-- ═══ SIDEBAR ═══ -->
           <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
             <span class="sidebar-sheet-handle" aria-hidden="true"></span>
@@ -7718,6 +7719,14 @@ function textAvatarStyle(index: unknown) {
 .map-shell.is-route-utility-collapsed .trip-map-actions { right: 76px; }
 @media(max-width:1023px) { .trip-map-actions { right: 76px; } }
 @media(max-width:767px) { .trip-map-actions { top: 10px; right: 16px; } .map-shell.is-route-utility-collapsed .trip-map-actions { right: 16px; } }
+
+/* 지도는 공통 헤더 없이 전체 화면을 사용하는 편집 작업공간이다. */
+.route-page-section { top: 0 !important; }
+:global(body:has(.route-page-section)) { padding-top: 0; overflow: hidden; }
+.route-back-link { position: absolute; top: 12px; left: 18px; z-index: 160; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); color: var(--ink); font-size: 12px; text-decoration: none; box-shadow: 0 3px 12px rgb(35 53 75 / 6%); }
+.route-back-link .material-symbols-rounded { font-size: 18px; }
+.route-page-section .sidebar-content { padding-top: 68px; }
+@media(max-width:767px) { .route-page-section .sidebar-content { padding-top: 40px; } .route-back-link { left: 12px; top: 10px; } }
 </style>
 
 <style scoped src="../styles/route-sky-theme.css"></style>

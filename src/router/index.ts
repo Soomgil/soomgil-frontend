@@ -79,7 +79,7 @@ const router = createRouter({
       path: '/trips/:tripId/route',
       name: 'Route',
       component: () => import('@/pages/RoutePage.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, hideLayout: true },
     },
     {
       path: '/trips/:tripId/vote',
