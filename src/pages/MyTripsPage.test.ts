@@ -396,6 +396,8 @@ describe('MyTripsPage', () => {
     await vi.advanceTimersByTimeAsync(300)
     await wrapper.get('[role="option"]').trigger('click')
     vi.useRealTimers()
+    await wrapper.get('input[name="startDate"]').setValue('2026-10-01')
+    await wrapper.get('input[name="endDate"]').setValue('2026-10-03')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
