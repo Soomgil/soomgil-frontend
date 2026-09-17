@@ -100,6 +100,24 @@ onUnmounted(() => resizeObserver?.disconnect())
     <section class="home-canvas" :style="{ '--ink-mask': `url(${inkMask})` }" aria-label="여행 검색과 수상작 감상">
       <InkWashBackdrop />
       <div class="home-gallery">
+      <div class="home-search-position">
+        <h1 class="home-sr-only">어디로 떠나고 싶으세요?</h1>
+        <form class="home-search paper-search" role="search" aria-label="통합 검색" @submit.prevent="submitSearch()"
+          @focusin="searchFocused = true" @focusout="handleFocusOut" @keydown.esc="searchFocused = false">
+          <div class="paper-search-field">
+            <span class="material-symbols-rounded paper-search-icon" aria-hidden="true">search</span>
+            <input v-model="query" class="paper-search-input" type="search" aria-label="검색어" placeholder="어떤 한국의 풍경을 만나고 싶나요?"
+              autocomplete="off" enterkeyhint="search" maxlength="200" />
+            <button class="paper-search-submit" type="submit" aria-label="검색">
+              <span class="material-symbols-rounded" aria-hidden="true">search</span> 검색
+            </button>
+          </div>
+          <div v-if="searchFocused && !query.trim() && recentSearches.length" class="home-search-history">
+            <div class="home-search-history-heading"><span>최근 검색</span><button type="button" @click="clearHistory">전체 삭제</button></div>
+            <ul aria-label="최근 검색어"><li v-for="recent in recentSearches" :key="recent"><button type="button" @click="submitSearch(recent)"><span class="material-symbols-rounded" aria-hidden="true">history</span>{{ recent }}</button></li></ul>
+          </div>
+        </form>
+      </div>
         <div ref="galleryStage" class="home-backdrop">
           <div v-if="currentPhoto" class="home-ink-underlay" :style="photoStyle" aria-hidden="true"></div>
           <Transition name="home-photo">
@@ -113,24 +131,6 @@ onUnmounted(() => resizeObserver?.disconnect())
             <button v-if="failed && !loading" type="button" @click="loadPhotos">다시 불러오기</button>
           </div>
         </div>
-      <div class="home-search-position">
-        <h1 class="home-sr-only">어디로 떠나고 싶으세요?</h1>
-        <form class="home-search paper-search" role="search" aria-label="통합 검색" @submit.prevent="submitSearch()"
-          @focusin="searchFocused = true" @focusout="handleFocusOut" @keydown.esc="searchFocused = false">
-          <div class="paper-search-field">
-            <span class="material-symbols-rounded paper-search-icon" aria-hidden="true">search</span>
-            <input v-model="query" class="paper-search-input" type="search" aria-label="검색어" placeholder="여행지, 계획, 커뮤니티 글, 유저를 검색하세요"
-              autocomplete="off" enterkeyhint="search" maxlength="200" />
-            <button class="paper-search-submit" type="submit" aria-label="검색">
-              <span class="material-symbols-rounded" aria-hidden="true">search</span> 검색
-            </button>
-          </div>
-          <div v-if="searchFocused && !query.trim() && recentSearches.length" class="home-search-history">
-            <div class="home-search-history-heading"><span>최근 검색</span><button type="button" @click="clearHistory">전체 삭제</button></div>
-            <ul aria-label="최근 검색어"><li v-for="recent in recentSearches" :key="recent"><button type="button" @click="submitSearch(recent)"><span class="material-symbols-rounded" aria-hidden="true">history</span>{{ recent }}</button></li></ul>
-          </div>
-        </form>
-      </div>
         <div v-if="currentPhoto" class="home-artwork-footer">
           <div class="home-artwork-info" aria-live="polite" aria-atomic="true">
             <p class="home-artwork-label">{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
@@ -150,6 +150,7 @@ onUnmounted(() => resizeObserver?.disconnect())
             <button type="button" aria-label="다음 사진" @click="changePhoto(1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></button>
           </div>
         </div>
+
       </div>
     </section>
   </AppShell>
@@ -160,6 +161,14 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-canvas::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 48% 44%, rgb(219 237 255 / 20%), transparent 68%); }
 .home-search-position { width: min(680px, 100%); margin: 24px auto 28px; position: relative; z-index: 2; }
 .home-search { width: min(680px, 100%); position: relative; margin: 0 auto; }
+.home-search .paper-search-field { padding: 6px 6px 6px 20px; border: 1px solid #dfe7ee; border-radius: 999px; background: #ffffff; box-shadow: 0 6px 24px rgb(56 89 124 / 5%); }
+.home-search .paper-search-field:focus-within { border-color: #487db5; box-shadow: 0 0 0 3px rgb(72 125 181 / 12%); }
+.home-search .paper-search-icon { display: none; }
+.home-search .paper-search-input { color: #35434a; }
+.home-search .paper-search-input::placeholder { color: #717976; }
+.home-search .paper-search-submit { min-height: 48px; padding: 12px 26px; border-radius: 999px; background: #487db5; font-weight: 600; box-shadow: none; transition: background .2s; }
+.home-search .paper-search-submit:hover { background: #396a9e; box-shadow: none; transform: none; }
+.home-search button:focus-visible { outline: 2px solid #487db5; outline-offset: 3px; }
 .home-gallery { width: min(1120px, calc(100% - 96px)); margin: 100px auto 0; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
 /* 전시 공간이 최소 목표 크기를 수용하고, 좁은 화면에서는 화면 경계를 우선한다. */
 .home-backdrop { position: relative; display: grid; place-items: center; height: clamp(540px, calc(100svh - 340px), 680px); }
@@ -185,13 +194,13 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-photo-status > .material-symbols-rounded { display: block; font-size: 36px; margin-bottom: 20px; color: #647C92; }
 .home-photo-status p { margin: 0; }
 .home-photo-status button { min-height: 44px; margin-top: 8px; padding: 8px 0; border: 0; background: transparent; color: #35465A; font: inherit; text-decoration: underline; cursor: pointer; }
-.home-search-history { position: absolute; top: calc(100% + 12px); left: 0; right: 0; padding: 18px; border-radius: 20px; background: #fff; box-shadow: 0 16px 40px rgb(0 0 0 / 18%); color: #24333c; }
+.home-search-history { position: absolute; top: calc(100% + 8px); left: 0; right: 0; padding: 18px; border: 1px solid #dfe7ee; border-radius: 20px; background: #ffffff; box-shadow: 0 8px 24px rgb(56 89 124 / 8%); color: #35434a; }
 .home-search-history-heading { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 8px; font-size: 13px; color: #62707b; }
 .home-search-history button { border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }
 .home-search-history-heading button { min-height: 32px; }
 .home-search-history ul { list-style: none; margin: 0; padding: 0; }
 .home-search-history li button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px; text-align: left; border-radius: 10px; overflow-wrap: anywhere; }
-.home-search-history li button:hover { background: #f1f5f8; }
+.home-search-history li button:hover { background: #f1f6fb; }
 .home-search-history .material-symbols-rounded { color: #7a8791; font-size: 20px; }
 button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
 .home-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
@@ -199,6 +208,10 @@ button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
 .home-photo-enter-from, .home-photo-leave-to { opacity: 0; }
 @media (max-width: 767px) {
   .home-search-position { width: 100%; margin-top: 20px; margin-bottom: 24px; }
+  .home-search .paper-search-field { padding: 5px 5px 5px 12px; }
+  .home-search .paper-search-icon { display: none; }
+  .home-search .paper-search-input { padding-inline: 8px; font-size: 16px; }
+  .home-search .paper-search-submit { min-height: 46px; padding: 11px 16px; }
   .home-gallery { width: calc(100% - 40px); margin-top: 140px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
   .home-backdrop { height: clamp(300px, calc(100svh - 480px), 520px); }
   .home-artwork-footer { flex-wrap: wrap; gap: 12px; margin-top: 20px; }

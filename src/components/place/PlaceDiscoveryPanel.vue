@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { placeApi } from '@/api/place.api'
 import { swipeApi } from '@/api/swipe.api'
 import type { Place, PlaceRecommendation } from '@/types/place'
@@ -28,6 +28,7 @@ const detailLoadingKey = ref<string | null>(null)
 const loadedRecommendationBbox = ref('')
 const hasPendingMapArea = ref(false)
 let requestRevision = 0
+let areaReloadTimer: ReturnType<typeof setTimeout> | null = null
 
 const emptyMessage = computed(() => mode.value === 'search' ? '검색 결과가 없습니다.' : '추천 장소가 아직 없습니다.')
 const showReloadPrompt = computed(() => mode.value !== 'search' && hasPendingMapArea.value && !!props.bbox.trim())
@@ -189,6 +190,16 @@ watch(() => props.bbox, (bbox, previous) => {
   const nextBbox = bbox.trim()
   if (!nextBbox || nextBbox === previous?.trim() || mode.value === 'search') return
   hasPendingMapArea.value = nextBbox !== loadedRecommendationBbox.value
+  if (!hasPendingMapArea.value) return
+  if (areaReloadTimer) clearTimeout(areaReloadTimer)
+  areaReloadTimer = setTimeout(() => {
+    areaReloadTimer = null
+    void reloadCurrentArea()
+  }, 450)
+})
+
+onUnmounted(() => {
+  if (areaReloadTimer) clearTimeout(areaReloadTimer)
 })
 </script>
 
@@ -294,7 +305,7 @@ watch(() => props.bbox, (bbox, previous) => {
 .discovery-search { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; flex-shrink: 0; }
 .discovery-search input { min-width: 0; border: 0; outline: 0; font-size: 13px; }
 .discovery-search button, .discovery-state button { border: 0; border-radius: 6px; padding: 7px 10px; background: var(--violet); color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; }
-.discovery-reload { flex-shrink: 0; min-height: 38px; border: 1px solid rgba(124, 58, 237, .24); border-radius: 8px; background: rgba(124, 58, 237, .08); color: var(--violet); font-size: 12px; font-weight: 850; display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
+.discovery-reload { flex-shrink: 0; min-height: 38px; border: 1px solid rgba(225,29,72,.28); border-radius: 8px; background: rgba(225,29,72,.08); color: #be123c; font-size: 12px; font-weight: 850; display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
 .discovery-reload:disabled { cursor: wait; opacity: .65; }
 .discovery-reload .material-symbols-rounded { font-size: 16px; }
 .discovery-state { flex: 1; min-height: 150px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; text-align: center; }

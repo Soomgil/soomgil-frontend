@@ -6,6 +6,8 @@ import OwnerVoteSetupPanel from '@/components/voting/OwnerVoteSetupPanel.vue'
 import VoteCandidateDeck from '@/components/voting/VoteCandidateDeck.vue'
 import VoteResultPanel from '@/components/voting/VoteResultPanel.vue'
 import VoteStickerCart from '@/components/voting/VoteStickerCart.vue'
+import { votingApi } from '@/api/voting.api'
+import type { TripVoteSessionResult } from '@/types/voting'
 import { tripApi } from '@/api/trip.api'
 import { useVotingStore } from '@/stores/voting.store'
 import { useAuthStore } from '@/stores/auth.store'
@@ -20,7 +22,7 @@ const toast = useToast()
  * 여행 방 투표 흐름 전체(시작 설정 → 스티커 → 대기 → 결과).
  * 지도 위 모달에서 사용한다. 이동은 직접 하지 않고 `close`로 알린다.
  */
-const props = withDefaults(defineProps<{ tripId: string; embedded?: boolean }>(), { embedded: false })
+const props = withDefaults(defineProps<{ tripId: string; embedded?: boolean; targetSessionId?: string | null }>(), { embedded: false })
 const emit = defineEmits<{
   /** 흐름을 닫는다. showResult가 true면 방금 끝난 투표 결과를 지도에서 보여 달라는 뜻이다. */
   close: [showResult: boolean]
@@ -34,6 +36,19 @@ const isOwner = ref(false)
 const tripTitle = ref('')
 const tripRegions = ref<LegalRegion[]>([])
 const tripDestination = ref<string | null>(null)
+const historicalResult = ref<TripVoteSessionResult | null>(null)
+const targetLoading = ref(Boolean(props.targetSessionId))
+const targetError = ref(false)
+const historical = computed(() => Boolean(props.targetSessionId && props.targetSessionId !== voting.session?.id))
+const displayedResult = computed(() => historical.value ? historicalResult.value : voting.result)
+async function loadTargetResult() {
+  if (!props.targetSessionId) return
+  targetLoading.value = true
+  targetError.value = false
+  try { historicalResult.value = await votingApi.getResult(tripId.value, props.targetSessionId) }
+  catch { targetError.value = true }
+  finally { targetLoading.value = false }
+}
 const closeConfirmOpen = ref(false)
 const acknowledged = ref(false)
 
@@ -52,6 +67,9 @@ const isOwnerCloseAllowed = computed(() => !voting.hasUnvotedParticipants || ack
 const restartRequested = ref(false)
 
 const mode = computed(() => {
+  if (targetLoading.value) return 'loading'
+  if (targetError.value) return 'error'
+  if (historical.value && historicalResult.value) return 'completed'
   if (voting.loading && !voting.session) return 'loading'
   if (voting.error && !voting.session) return 'error'
   const session = voting.session
@@ -99,7 +117,7 @@ function countTripDays(startDate: string | null, endDate: string | null) {
 
 /** 결과에서 선정된 장소 이름. AI 배치 프롬프트에 쓴다. */
 const selectedResultNames = computed(() =>
-  (voting.result?.results ?? [])
+  (displayedResult.value?.results ?? [])
     .filter((item) => item.selected && item.name)
     .map((item) => item.name as string),
 )
@@ -110,7 +128,7 @@ function arrangeWithAi() {
 
 async function handleSessionOpened() {
   restartRequested.value = false
-  toast.success('투표를 시작했어요. 멤버들에게 알려주세요!')
+  toast.success('투표를 시작하고 멤버들에게 알림을 보냈어요.')
   await voting.load(tripId.value)
   voting.startPolling()
 }
@@ -124,6 +142,7 @@ let sawOpenSession = false
 watch(
   () => voting.session?.status,
   (status) => {
+    if (historical.value) return
     if (status === 'OPEN') {
       sawOpenSession = true
       return
@@ -154,6 +173,11 @@ onMounted(async () => {
     tripDestination.value = trip.displayDestination ?? null
     tripDays.value = countTripDays(trip.startDate ?? null, trip.endDate ?? null)
   }
+  targetLoading.value = false
+  if (historical.value) {
+    await loadTargetResult()
+    return
+  }
   if (voting.session?.status === 'OPEN') {
     sawOpenSession = true
     voting.startPolling()
@@ -180,7 +204,7 @@ onUnmounted(() => {
         v-else-if="mode === 'error'"
         data-testid="vote-error"
         message="투표 정보를 불러오지 못했습니다."
-        @retry="voting.load(tripId)"
+        @retry="historical ? loadTargetResult() : voting.load(tripId)"
       />
 
       <!-- 세션 없음 + 방장: 투표 시작 -->
@@ -204,12 +228,12 @@ onUnmounted(() => {
       <!-- 종료된 세션: 결과 -->
       <div v-else-if="mode === 'completed'" class="trip-vote__narrow">
         <VoteResultPanel
-          :session="voting.session!"
-          :result="voting.result"
+          :session="historical ? null : voting.session"
+          :result="displayedResult"
           data-testid="vote-result"
         />
           <button
-            v-if="isOwner"
+            v-if="isOwner && !historical"
             type="button"
             class="trip-vote__ghost trip-vote__restart"
             data-testid="vote-restart"
@@ -268,7 +292,7 @@ onUnmounted(() => {
             </p>
             <!-- 마감은 방장의 진행 관리 동작이라 개인 제출 버튼과 분리해 진행 현황 옆에 둔다. -->
             <button
-              v-if="isOwner"
+              v-if="isOwner && !historical"
               type="button"
               class="trip-vote__ghost trip-vote__close"
               data-testid="vote-close-open"

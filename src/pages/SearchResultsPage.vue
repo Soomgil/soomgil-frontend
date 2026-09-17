@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import InkWashBackdrop from '@/components/layout/InkWashBackdrop.vue'
@@ -10,6 +10,7 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import StoryDetailOverlay from '@/components/community/StoryDetailOverlay.vue'
 import { placeApi } from '@/api/place.api'
 import { searchApi } from '@/api/search.api'
+import { useSwipeStore } from '@/stores/swipe.store'
 import { swipeApi } from '@/api/swipe.api'
 import { communityPostToStory } from '@/utils/community'
 import type { UnifiedSearchResponse } from '@/types/search'
@@ -21,6 +22,29 @@ import type { TripSummary } from '@/types/trip'
 
 const route = useRoute()
 const router = useRouter()
+const swipeStore = useSwipeStore()
+const detailScroller = ref<HTMLElement | null>(null)
+const expandedInfo = ref<HTMLElement | null>(null)
+let detailRequest = 0
+const detailInfoLoaded = ref(false)
+async function togglePlaceInfo() {
+  detailDescriptionExpanded.value = !detailDescriptionExpanded.value
+  const place=selectedPlace.value
+  const request=detailRequest
+  if(detailDescriptionExpanded.value && place && !detailInfoLoaded.value) {
+    placeDetailLoading.value=true
+    try {
+      const detail=await placeApi.getPlace(place.provider,place.externalPlaceId,true)
+      if(request===detailRequest) { selectedPlace.value=detail; detailInfoLoaded.value=true; placeDetailError.value=null }
+    } catch { if(request===detailRequest) placeDetailError.value='이용 정보를 불러오지 못했습니다. 다시 펼쳐 시도해주세요.' }
+    finally { if(request===detailRequest) placeDetailLoading.value=false }
+  }
+  await nextTick()
+  if (detailDescriptionExpanded.value && detailScroller.value && expandedInfo.value) {
+    const offset = expandedInfo.value.getBoundingClientRect().top - detailScroller.value.getBoundingClientRect().top
+    detailScroller.value.scrollBy?.({ top: Math.min(180, Math.max(0, offset - 100)), behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })
+  }
+}
 
 const RECENT_KEY = 'soomgil:recent-searches'
 const RECENT_LIMIT = 8
@@ -32,6 +56,13 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const recentSearches = ref<string[]>(loadRecentSearches())
 const selectedPlace = ref<Place | null>(null)
+const detailPhotoIndex = ref(0)
+const detailPhotoRatio = ref(1.5)
+function measureDetailPhoto(event: Event) {
+  const image=event.target as HTMLImageElement
+  if(image.naturalWidth && image.naturalHeight) detailPhotoRatio.value=image.naturalWidth/image.naturalHeight
+}
+const detailDescriptionExpanded = ref(false)
 const placeDetailLoading = ref(false)
 const placeDetailError = ref<string | null>(null)
 const placeReactionSubmitting = ref(false)
@@ -186,6 +217,10 @@ function gotoTrip(trip: TripSummary) {
 }
 
 async function openPlaceDetail(place: PlaceSearchSummary) {
+  const request = ++detailRequest
+  detailInfoLoaded.value=false
+  detailPhotoIndex.value = 0
+  detailDescriptionExpanded.value = false
   placeDetailLoading.value = true
   placeDetailError.value = null
   placeReactionSubmitting.value = false
@@ -203,16 +238,24 @@ async function openPlaceDetail(place: PlaceSearchSummary) {
     sourceStatus: place.sourceStatus,
   }
   try {
-    selectedPlace.value = await placeApi.getPlace(place.provider, place.externalPlaceId)
+    const [detail, reaction] = await Promise.all([
+      placeApi.getPlace(place.provider, place.externalPlaceId, false),
+      swipeApi.getReaction(place.provider, place.externalPlaceId),
+    ])
+    if (request !== detailRequest) return
+    selectedPlace.value = detail
+    selectedPlaceReaction.value = reaction
   } catch (err) {
+    if (request !== detailRequest) return
     console.error('Failed to load place detail:', err)
     placeDetailError.value = '장소 상세 정보를 불러오지 못했습니다.'
   } finally {
-    placeDetailLoading.value = false
+    if (request === detailRequest) placeDetailLoading.value = false
   }
 }
 
 function closePlaceDetail() {
+  detailRequest++
   selectedPlace.value = null
   placeDetailError.value = null
   placeDetailLoading.value = false
@@ -224,10 +267,15 @@ function closePlaceDetail() {
 async function reactToSelectedPlace(reaction: SwipeAction) {
   const place = selectedPlace.value
   if (!place || placeReactionSubmitting.value) return
+  const request = detailRequest
+  const previous = selectedPlaceReaction.value
+  selectedPlaceReaction.value = reaction
   placeReactionSubmitting.value = true
   placeReactionMessage.value = null
   try {
     const result = await swipeApi.react(place.provider, place.externalPlaceId, reaction)
+    swipeStore.applyExternalReaction(place.provider, place.externalPlaceId, result.reaction)
+    if (request !== detailRequest) return
     selectedPlaceReaction.value = result.reaction
     const labels: Record<SwipeAction, string> = {
       NOPE: '관심 없음으로 저장했어요.',
@@ -236,10 +284,12 @@ async function reactToSelectedPlace(reaction: SwipeAction) {
     }
     placeReactionMessage.value = labels[result.reaction]
   } catch (err) {
+    if (request !== detailRequest) return
+    selectedPlaceReaction.value = previous
     console.error('Failed to react to place:', err)
     placeReactionMessage.value = '반응을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'
   } finally {
-    placeReactionSubmitting.value = false
+    if (request === detailRequest) placeReactionSubmitting.value = false
   }
 }
 
@@ -560,66 +610,84 @@ watch(
         @keydown.esc="closePlaceDetail"
       >
         <div class="place-detail-backdrop" @click="closePlaceDetail"></div>
-        <article class="place-detail-dialog">
+        <article ref="detailScroller" class="place-detail-dialog" :style="{ '--photo-ratio': detailPhotoRatio }">
           <button class="place-detail-close" type="button" aria-label="닫기" @click="closePlaceDetail">
             <span class="material-symbols-rounded">close</span>
           </button>
 
           <div class="place-detail-media">
             <img
-              v-if="selectedPlaceImages[0]"
-              :src="selectedPlaceImages[0]"
+              v-if="selectedPlaceImages[detailPhotoIndex]"
+              :src="selectedPlaceImages[detailPhotoIndex]"
+              @load="measureDetailPhoto"
               :alt="selectedPlace.placeName"
             />
             <div v-else class="place-detail-media-placeholder">
               <span class="material-symbols-rounded">landscape</span>
             </div>
-            <div class="place-detail-media-overlay">
-              <span class="place-detail-category">{{ selectedPlace.category || '추천 장소' }}</span>
-              <h2>{{ selectedPlace.placeName }}</h2>
-              <p v-if="selectedPlace.address">
-                <span class="material-symbols-rounded">location_on</span>
-                {{ selectedPlace.address }}
-              </p>
+            <section
+              v-if="selectedPlaceImages.length > 1"
+              class="place-detail-section"
+              aria-label="장소 사진"
+            >
+
+              <div class="place-detail-gallery">
+                <button v-for="(image, idx) in selectedPlaceImages" :key="image" type="button" class="place-detail-thumbnail" :aria-label="`${idx + 1}번째 사진 보기`" :aria-pressed="detailPhotoIndex === idx" @click="detailPhotoIndex = idx">
+                  <img :src="image" :alt="`${selectedPlace.placeName} 사진 ${idx + 1}`" loading="lazy" />
+                </button>
+              </div>
+            </section>
+
+          </div>
+
+          <div class="place-detail-content">
+            <div class="place-detail-heading">
+              <button class="place-detail-summary-toggle" type="button" :aria-expanded="detailDescriptionExpanded" aria-controls="place-detail-expanded" @click="togglePlaceInfo">
+                <span class="place-detail-summary-copy"><span class="place-detail-name">{{ selectedPlace.placeName }}</span><span v-if="selectedPlace.address" class="place-detail-address">{{ selectedPlace.address }}</span></span>
+                <span class="material-symbols-rounded" aria-hidden="true">{{ detailDescriptionExpanded ? 'expand_less' : 'info' }}</span>
+                <span class="place-detail-toggle-label">{{ detailDescriptionExpanded ? '정보 접기' : '장소 정보' }}</span>
+              </button>
               <div class="place-detail-media-reactions" aria-label="장소 취향 반응">
-                <button
-                  type="button"
-                  class="place-detail-reaction-btn place-detail-reaction-btn--nope"
-                  :class="{ active: selectedPlaceReaction === 'NOPE' }"
-                  :disabled="placeReactionSubmitting || placeDetailLoading"
-                  aria-label="싫어요"
-                  title="싫어요"
-                  @click="reactToSelectedPlace('NOPE')"
-                >
-                  <span class="material-symbols-rounded">close</span>
-                </button>
-                <button
-                  type="button"
-                  class="place-detail-reaction-btn place-detail-reaction-btn--like"
-                  :class="{ active: selectedPlaceReaction === 'LIKE' }"
-                  :disabled="placeReactionSubmitting || placeDetailLoading"
-                  aria-label="좋아요"
-                  title="좋아요"
-                  @click="reactToSelectedPlace('LIKE')"
-                >
-                  <span class="material-symbols-rounded">favorite</span>
-                </button>
                 <button
                   type="button"
                   class="place-detail-reaction-btn place-detail-reaction-btn--super"
                   :class="{ active: selectedPlaceReaction === 'SUPER_LIKE' }"
+                  :aria-pressed="selectedPlaceReaction === 'SUPER_LIKE'"
                   :disabled="placeReactionSubmitting || placeDetailLoading"
                   aria-label="슈퍼라이크"
                   title="슈퍼라이크"
                   @click="reactToSelectedPlace('SUPER_LIKE')"
                 >
-                  <span class="material-symbols-rounded">star</span>
+                  <span class="material-symbols-rounded" aria-hidden="true">star</span><span>슈퍼라이크</span>
+                </button>                <button
+                  type="button"
+                  class="place-detail-reaction-btn place-detail-reaction-btn--like"
+                  :class="{ active: selectedPlaceReaction === 'LIKE' }"
+                  :aria-pressed="selectedPlaceReaction === 'LIKE'"
+                  :disabled="placeReactionSubmitting || placeDetailLoading"
+                  aria-label="좋아요"
+                  title="좋아요"
+                  @click="reactToSelectedPlace('LIKE')"
+                >
+                  <span class="material-symbols-rounded" aria-hidden="true">favorite</span><span>좋아요</span>
                 </button>
+                <button
+                  type="button"
+                  class="place-detail-reaction-btn place-detail-reaction-btn--nope"
+                  :class="{ active: selectedPlaceReaction === 'NOPE' }"
+                  :aria-pressed="selectedPlaceReaction === 'NOPE'"
+                  :disabled="placeReactionSubmitting || placeDetailLoading"
+                  aria-label="싫어요"
+                  title="싫어요"
+                  @click="reactToSelectedPlace('NOPE')"
+                >
+                  <span class="material-symbols-rounded" aria-hidden="true">close</span><span>싫어요</span>
+                </button>
+
               </div>
             </div>
-          </div>
-
-          <div class="place-detail-content">
+            <p v-if="placeReactionMessage" class="place-reaction-feedback" role="status">{{ placeReactionMessage }}</p>
+            <div v-if="detailDescriptionExpanded" ref="expandedInfo" id="place-detail-expanded" class="place-detail-expanded">
             <div v-if="placeDetailLoading" class="place-detail-state" role="status">
               <span class="material-symbols-rounded">progress_activity</span>
               상세 정보를 불러오는 중입니다.
@@ -631,27 +699,12 @@ watch(
 
             <section class="place-detail-section">
               <h3>장소 소개</h3>
-              <p class="place-detail-description">{{ selectedPlaceDescription }}</p>
+              <p id="place-detail-description" class="place-detail-description">{{ selectedPlaceDescription }}</p>
               <div v-if="selectedPlace.tags?.length" class="place-detail-tags">
                 <span v-for="tag in selectedPlace.tags" :key="tag">#{{ tag }}</span>
               </div>
             </section>
 
-            <section
-              v-if="selectedPlaceImages.length > 1"
-              class="place-detail-section"
-              aria-label="장소 사진"
-            >
-              <h3>사진</h3>
-              <div class="place-detail-gallery">
-                <img
-                  v-for="(image, idx) in selectedPlaceImages.slice(1, 5)"
-                  :key="image"
-                  :src="image"
-                  :alt="`${selectedPlace.placeName} 사진 ${idx + 2}`"
-                />
-              </div>
-            </section>
 
             <section class="place-detail-info-grid" aria-label="이용 정보">
               <div class="place-detail-info-card">
@@ -691,6 +744,7 @@ watch(
               </div>
             </section>
 
+            </div>
           </div>
         </article>
       </div>
@@ -1664,7 +1718,8 @@ watch(
 @media (max-width: 600px) { .search-grid--users { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .search-more-btn, .search-card { transition: none; } }
 </style>
-<style scoped src="../styles/paper-search.css">
+<style scoped src="../styles/paper-search.css"></style>
+<style scoped>
 .search-grid--users { gap: 16px; }
 .search-card--user { flex-direction: row; align-items: center; gap: 16px; min-height: 104px; padding: 18px; border: 1px solid #EAF4FF; border-radius: 16px; background: rgb(255 255 255 / 60%); }
 .search-card--user .search-card-body { min-width: 0; flex: 1; padding: 0; gap: 4px; }
@@ -1673,4 +1728,137 @@ watch(
 @media (max-width: 1024px) { .search-grid--users { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .search-grid--users { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .search-more-btn, .search-card { transition: none; } }
+
+/* 사진과 정보를 분리한 여행지 안내 카드 */
+.place-detail-dialog { width:min(1040px, calc(100vw - 48px)); grid-template-columns:minmax(0, 1fr) minmax(0, 1.05fr); background:#fff; color:#35465a; border:1px solid #e4eef6; border-radius:24px; box-shadow:0 28px 90px #28496933; }
+.place-detail-media { min-height:0; background:#edf5fb; }
+.place-detail-media::after { display:none; }
+.place-detail-media > img,.place-detail-media-placeholder { min-height:0; height:100%; max-height:none; object-fit:contain; }
+.place-detail-content { max-height:min(860px,92vh); padding:40px 32px 32px; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#ccdeed transparent; }
+.place-detail-close { top:12px; right:12px; width:40px; height:40px; color:#506b82; box-shadow:0 3px 12px #33597d14; }
+.place-detail-heading { padding:0 18px 24px 0; margin-bottom:24px; border-bottom:1px solid #e6eff6; }
+.place-detail-category { padding:5px 10px; background:#edf6ff; color:#4f87b2; border-radius:7px; font-size:11px; font-weight:700; }
+.place-detail-heading h2 { font-family:'Noto Serif KR',Batang,serif; font-size:30px; line-height:1.45; font-weight:500; margin:4px 0 10px; overflow-wrap:anywhere; }
+.place-detail-heading > p { display:flex; align-items:flex-start; gap:6px; color:#71869a; font-size:13px; line-height:1.7; margin:0; }
+.place-detail-heading > p .material-symbols-rounded { font-size:18px; margin-top:2px; flex-shrink:0; }
+.place-detail-media-reactions { width:100%; gap:8px; margin-top:22px; flex-wrap:wrap; }
+.place-detail-media-reactions .place-detail-reaction-btn { display:flex; flex-direction:row; align-items:center; justify-content:center; gap:6px; width:auto; height:42px; padding:0 12px; border-radius:12px; background:#f6f9fc; border:1px solid #e3ecf4; color:#6f899b; box-shadow:none; font-size:12px; font-weight:600; }
+.place-detail-media-reactions .place-detail-reaction-btn .material-symbols-rounded { width:auto; height:auto; font-size:20px; color:inherit; }
+.place-detail-media-reactions .place-detail-reaction-btn--like { color:#bd617f; background:#fff6f9; border-color:#f4dce5; }
+.place-detail-media-reactions .place-detail-reaction-btn--super { color:#a97d2e; background:#fffbef; border-color:#f1e3bd; }
+.place-detail-media-reactions .place-detail-reaction-btn.active { outline:2px solid currentColor; outline-offset:2px; }
+.place-detail-dialog button:focus-visible { outline:3px solid #7ebcea; outline-offset:3px; }
+.place-detail-section h3 { font-size:14px; font-weight:700; color:#486c89; }
+.place-detail-description { color:#62788c; font-size:14px; line-height:1.9; }
+.place-detail-info-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.place-detail-info-card { background:#f6faff; border:1px solid #e5eef7; border-radius:14px; box-shadow:none; padding:16px; min-width:0; }
+.place-detail-info-card strong { font-size:13px; color:#466179; line-height:1.65; overflow-wrap:anywhere; }
+.place-detail-info-card > .material-symbols-rounded { color:#78a6cb; }
+.place-detail-gallery { gap:8px; }.place-detail-gallery img { border-radius:10px; }
+@media(max-width:760px) {
+ .place-detail-modal { padding:12px; }
+ .place-detail-dialog { display:block; width:min(600px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow-y:auto; overscroll-behavior:contain; border-radius:20px; }
+ .place-detail-media { height:clamp(200px,32dvh,300px); }
+ .place-detail-media > img,.place-detail-media-placeholder { width:100%; height:100%; min-height:0; max-height:none; }
+ .place-detail-content { max-height:none; overflow:visible; padding:24px 20px; }
+ .place-detail-heading { padding-right:0; }.place-detail-heading h2 { font-size:25px; }
+ .place-detail-media-reactions .place-detail-reaction-btn { height:44px; padding:0 10px; }
+}
+
+.place-detail-description.is-collapsed { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+.place-description-more { display:inline-flex; align-items:center; gap:4px; padding:8px 0; border:0; background:transparent; color:#427ead; font-size:12px; font-weight:700; cursor:pointer; }
+.place-description-more .material-symbols-rounded { font-size:18px; }
+.place-detail-gallery { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+.place-detail-thumbnail { padding:0; border:2px solid transparent; border-radius:10px; background:#edf5fb; cursor:pointer; overflow:hidden; aspect-ratio:4/3; }
+.place-detail-thumbnail[aria-pressed="true"] { border-color:#68aee0; box-shadow:0 0 0 2px #dcefff; }
+.place-detail-thumbnail img { display:block; width:100%; height:100%; object-fit:cover; border-radius:0; }
+
+/* 사진 중심 감상: 세부 정보는 명시적으로 열었을 때만 표시한다. */
+.place-detail-dialog { display:block; width:min(1040px,calc(100vw - 48px)); max-height:calc(100dvh - 48px); overflow-y:auto; }
+.place-detail-media { display:flex; flex-direction:column; align-items:center; justify-content:center; height:auto; padding:18px 20px 12px; background:#f1f7fc; }
+.place-detail-media > img,.place-detail-media-placeholder { width:100%; height:clamp(240px,62dvh,650px); min-height:0; max-height:none; object-fit:contain; }
+.place-detail-media > .place-detail-section { margin:12px 0 0; padding:0; width:100%; }
+.place-detail-gallery { display:flex; justify-content:center; gap:8px; overflow-x:auto; padding:4px; }
+.place-detail-thumbnail { flex:0 0 56px; width:56px; height:40px; }
+.place-detail-content { max-height:none; overflow:visible; padding:20px 28px; }
+.place-detail-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:0; margin:0; border:0; }
+.place-detail-summary-toggle { display:flex; align-items:center; gap:12px; min-width:0; padding:4px 0; text-align:left; color:#427ead; background:transparent; border:0; cursor:pointer; }
+.place-detail-summary-copy { display:grid; gap:6px; min-width:0; }.place-detail-name { font-family:'Noto Serif KR',Batang,serif; color:#35465a; font-size:25px; line-height:1.4; overflow-wrap:anywhere; }.place-detail-address { color:#71869a; font-size:12px; line-height:1.5; }
+.place-detail-toggle-label { font-size:11px; white-space:nowrap; }
+.place-detail-media-reactions { width:auto; margin:0; flex-wrap:nowrap; flex-shrink:0; }
+.place-detail-expanded { border-top:1px solid #e6eff6; margin-top:22px; padding-top:24px; }
+@media(max-width:760px) {
+ .place-detail-dialog { width:calc(100vw - 24px); max-height:calc(100dvh - 24px); }
+ .place-detail-media { height:auto; padding:12px 8px 8px; }
+ .place-detail-media > img,.place-detail-media-placeholder { height:clamp(220px,52dvh,520px); }
+ .place-detail-content { padding:16px; }.place-detail-heading { flex-direction:column; align-items:stretch; gap:16px; }.place-detail-name { font-size:22px; }
+ .place-detail-summary-toggle { width:100%; }.place-detail-summary-copy { flex:1; }.place-detail-toggle-label { display:none; }
+ .place-detail-media-reactions { justify-content:center; }.place-detail-media-reactions .place-detail-reaction-btn { flex:1; padding:0 8px; }
+}
+
+.place-detail-dialog { height:min(850px,calc(100dvh - 48px)); max-height:calc(100dvh - 48px); scroll-behavior:smooth; }
+.place-detail-media { position:relative; padding:0; height:calc(min(850px,100dvh - 48px) - 114px); min-height:260px; display:block; }
+.place-detail-media > img,.place-detail-media-placeholder { width:100%; height:100%; object-fit:cover; }
+.place-detail-media > .place-detail-section { position:absolute; left:0; right:0; bottom:14px; margin:0; }
+.place-detail-gallery { justify-content:flex-start; width:max-content; max-width:calc(100% - 40px); margin:auto; padding:7px; background:#ffffffdd; border-radius:13px; overflow-x:auto; }
+.place-detail-thumbnail { flex:0 0 64px; height:46px; border-radius:7px; }
+.place-detail-media .place-detail-thumbnail img { width:100%; height:100%; min-height:0; max-height:none; object-fit:cover; }
+.place-detail-content { padding:18px 24px; }
+.place-detail-summary-toggle { flex-wrap:wrap; gap:6px 10px; }
+.place-detail-summary-copy { flex-basis:100%; }
+.place-detail-summary-toggle > .material-symbols-rounded { font-size:16px; }
+.place-detail-toggle-label { display:inline; color:#427ead; }
+.place-detail-name { font-size:22px; }.place-detail-address { font-size:11px; }
+.place-reaction-feedback { margin:8px 0 0; color:#617d94; font-size:12px; }
+@media(max-width:760px) {
+ .place-detail-dialog { height:calc(100dvh - 24px); }
+ .place-detail-media { height:calc(100dvh - 210px); min-height:220px; }
+ .place-detail-content { padding:14px 16px; }.place-detail-heading { gap:12px; }
+ .place-detail-summary-toggle { display:grid; grid-template-columns:minmax(0,1fr) auto auto; }.place-detail-summary-copy { grid-column:1; }.place-detail-toggle-label { display:inline; }
+}
+@media(prefers-reduced-motion:reduce) { .place-detail-dialog { scroll-behavior:auto; } }
+
+.place-detail-dialog,.place-detail-gallery,.place-detail-content { scrollbar-width:none; -ms-overflow-style:none; }
+.place-detail-dialog::-webkit-scrollbar,.place-detail-gallery::-webkit-scrollbar,.place-detail-content::-webkit-scrollbar { display:none; width:0; height:0; }
+
+.place-detail-close { position:sticky; top:12px; float:right; margin:12px 12px -52px 0; right:auto; z-index:5; }
+
+@media(max-width:760px) {
+ .place-detail-media > img { object-fit:contain; }
+ .place-detail-media { padding-bottom:72px; box-sizing:border-box; }
+ .place-detail-media > .place-detail-section { bottom:10px; }
+}
+
+.place-detail-media > img { object-fit:contain; }
+.place-detail-media { padding:0 0 72px; box-sizing:border-box; }
+
+/* 원본 비율을 기준으로 모달 크기를 맞추고 세부 정보만 내부에서 펼친다. */
+.place-detail-dialog {
+ --photo-height:min(620px,calc(100dvh - 230px),calc((100vw - 48px) / var(--photo-ratio)),calc(1040px / var(--photo-ratio)));
+ width:max(min(380px,calc(100vw - 48px)),calc(var(--photo-height) * var(--photo-ratio)));
+ height:calc(var(--photo-height) + 196px);
+}
+.place-detail-media { height:calc(var(--photo-height) + 64px); min-height:0; padding-bottom:64px; }
+.place-detail-media > img { height:var(--photo-height); width:100%; object-fit:contain; }
+.place-detail-heading { flex-wrap:wrap; gap:10px; }.place-detail-media-reactions { margin-left:auto; }
+@media(max-width:760px) {
+ .place-detail-dialog { --photo-height:min(620px,calc(100dvh - 245px),calc((100vw - 24px) / var(--photo-ratio))); width:calc(100vw - 24px); height:calc(var(--photo-height) + 220px); }
+ .place-detail-media { height:calc(var(--photo-height) + 64px); min-height:0; padding-bottom:64px; }
+ .place-detail-media-reactions { margin-left:0; }
+}
+
+/* 사진 바로 아래에 필요한 행만 배치한다. 비어 있는 썸네일 공간은 만들지 않는다. */
+.place-detail-dialog { height:calc(var(--photo-height) + 132px); }
+.place-detail-dialog:has(.place-detail-thumbnail) { height:calc(var(--photo-height) + 190px); }
+.place-detail-media { display:block; height:auto; padding:0; min-height:0; }
+.place-detail-media > img,.place-detail-media-placeholder { display:block; height:var(--photo-height); min-height:0; }
+.place-detail-media > .place-detail-section { position:static; margin:0; padding:6px 10px; background:#fff; width:100%; box-sizing:border-box; }
+.place-detail-gallery { padding:0; border-radius:0; background:transparent; max-width:100%; }
+.place-detail-thumbnail { height:44px; }
+@media(max-width:760px) {
+ .place-detail-dialog { height:calc(var(--photo-height) + 152px); }
+ .place-detail-dialog:has(.place-detail-thumbnail) { height:calc(var(--photo-height) + 210px); }
+ .place-detail-media { height:auto; padding:0; }
+}
 </style>
+<style scoped src="../styles/travel-page-actions.css"></style>

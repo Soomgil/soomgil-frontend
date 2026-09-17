@@ -44,10 +44,6 @@ onMounted(loadPosts)
         </div>
         <div class="page-hero">
           <div class="page-hero__copy">
-            <p class="page-hero__eyebrow">
-              <span class="material-symbols-rounded" aria-hidden="true">auto_stories</span>
-              All Travel Stories
-            </p>
             <h1 class="page-hero__title"><span class="page-hero__gradient">우리들의 여행 이야기</span>를 둘러보세요</h1>
             <p class="page-hero__lead">직접 가보고 느낀 생생한 후기와 나만 알기 아까운 꿀팁들을 확인해보세요.</p>
           </div>

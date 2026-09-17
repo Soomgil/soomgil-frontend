@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { placeApi } from '@/api/place.api'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -79,6 +80,11 @@ const isDragging = ref(false)
 const overlayOpacity = ref(0)
 const cardTransform = ref('')
 const swipeClass = ref('')
+const isSettling = ref(false)
+const cardEntering = ref(false)
+let exitTimer: ReturnType<typeof setTimeout> | undefined
+let enterTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => { clearTimeout(exitTimer); clearTimeout(enterTimer) })
 const activePhotoIdx = ref(0)
 const galleryPhotos = computed(() => {
   const photos = [currentPlace.value?.thumbnailUrl, ...(currentPlace.value?.photos ?? [])]
@@ -98,114 +104,39 @@ function resetCard() {
 }
 
 async function decide(type: 'like' | 'dislike' | 'superlike') {
-  if (submitting.value || !currentPlace.value) return
+  if (submitting.value || isSettling.value || !currentPlace.value) return
+  isSettling.value = true
   const action: SwipeAction = type === 'superlike' ? 'SUPER_LIKE' : type === 'like' ? 'LIKE' : 'NOPE'
   const saved = await persistReaction(action)
   if (!saved) {
     resetCard()
+    isSettling.value = false
     return
   }
-
-  const label = type === 'superlike' ? 'SUPER' : type === 'like' ? 'LIKE' : 'NOPE'
-  decision.value = label
+  decision.value = type === 'superlike' ? 'SUPER' : type === 'like' ? 'LIKE' : 'NOPE'
   swipeClass.value = `swiped-${type}`
-
-  // Spawn particles at center of stage
-  if (stageRef.value) {
-    const rect = stageRef.value.getBoundingClientRect()
-    const x = rect.width / 2
-    const y = rect.height / 2
-    spawnSwipeBurst(type, x, y)
-  }
-
-  setTimeout(() => {
-    swipeClass.value = ''
-    decision.value = ''
-    overlayOpacity.value = 0
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  exitTimer = setTimeout(() => {
     advance()
     activePhotoIdx.value = 0
     resetCard()
-  }, 700)
+    isSettling.value = false
+    cardEntering.value = true
+    enterTimer = setTimeout(() => { cardEntering.value = false }, reducedMotion ? 0 : 360)
+  }, reducedMotion ? 80 : 620)
 }
 
-/* ── Particle System ──────────────────────────────────── */
-function spawnSwipeBurst(type: string, x: number, y: number) {
-  const stage = stageRef.value
-  if (!stage) return
-
-  const particleCount = 28
-  const isLike = type === 'like'
-  const isNope = type === 'dislike' || type === 'nope'
-  const isSuper = type === 'superlike'
-
-  let symbols: string[] = []
-  let colors: string[] = []
-
-  if (isLike) {
-    symbols = ['♥', '♥', '🌸', '✨', '🌸']
-    colors = ['#ff5c8d', '#ff8aa8', '#ffadc2', '#ff3d71', '#ff7099']
-  } else if (isNope) {
-    symbols = ['✖', '✖', '💧', '💨', '✖']
-    colors = ['#0f172a', '#334155', '#64748b', '#93c5fd', '#dbeafe']
-  } else if (isSuper) {
-    symbols = ['★', '★', '⚡', '✨', '♥', '♥']
-    colors = ['#fde68a', '#f59e0b', '#fb7185', '#d946ef', '#7c3aed']
-  } else {
-    symbols = ['✨']
-    colors = ['#8b5cf6', '#3b82f6', '#feda75', '#ff5c8d']
-  }
-
-  for (let i = 0; i < particleCount; i++) {
-    const particle = document.createElement('div')
-    particle.className = 'swipe-particle'
-
-    const isSymbol = Math.random() < 0.35
-    if (isSymbol) {
-      particle.textContent = symbols[Math.floor(Math.random() * symbols.length)]
-      particle.style.fontSize = `${14 + Math.random() * 16}px`
-      particle.style.color = colors[Math.floor(Math.random() * colors.length)]
-      particle.style.fontWeight = 'bold'
-    } else {
-      const size = 6 + Math.random() * 8
-      particle.style.width = `${size}px`
-      particle.style.height = `${size}px`
-      particle.style.borderRadius = '50%'
-      particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)]
-    }
-
-    let angle = Math.random() * Math.PI * 2
-    let distance = 60 + Math.random() * 140
-
-    if (Math.random() < 0.5) {
-      if (isLike) angle = (Math.random() - 0.5) * Math.PI
-      else if (isNope) angle = Math.PI + (Math.random() - 0.5) * Math.PI
-      else if (isSuper) angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI
-    }
-
-    const tx = Math.cos(angle) * distance
-    const ty = Math.sin(angle) * distance
-
-    particle.style.left = `${x}px`
-    particle.style.top = `${y}px`
-    particle.style.setProperty('--tx', `${tx}px`)
-    particle.style.setProperty('--ty', `${ty}px`)
-    particle.style.setProperty('--rot', `${(Math.random() - 0.5) * 360}deg`)
-    particle.style.setProperty('--delay', `${Math.random() * 0.12}s`)
-    particle.style.setProperty('--duration', `${0.6 + Math.random() * 0.5}s`)
-
-    stage.appendChild(particle)
-    particle.addEventListener('animationend', () => particle.remove())
-  }
-}
-
-function selectPhoto(idx: number) {
-  activePhotoIdx.value = idx
+const photoStrip = ref<HTMLElement | null>(null)
+async function selectPhoto(idx: number) {
+  if (isSettling.value || submitting.value || !galleryPhotos.value.length) return
+  activePhotoIdx.value = (idx + galleryPhotos.value.length) % galleryPhotos.value.length
+  await nextTick()
+  const thumb = photoStrip.value?.children[activePhotoIdx.value] as HTMLElement | undefined
+  thumb?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
 }
 
 function scrollPhotos(dir: number) {
-  const strip = document.querySelector('[data-place-photos]')
-  if (!strip) return
-  strip.scrollBy({ left: dir * 260, behavior: 'smooth' })
+  void selectPhoto(activePhotoIdx.value + dir)
 }
 
 /* ── Drag Handling ────────────────────────────────────── */
@@ -214,7 +145,9 @@ let startY = 0
 let dragging = false
 
 function onPointerDown(e: PointerEvent) {
-  if (isFinished.value || submitting.value) return
+  if (e.button !== 0 || isFinished.value || submitting.value || isSettling.value) return
+  cardEntering.value = false
+  clearTimeout(enterTimer)
   dragging = true
   startX = e.clientX
   startY = e.clientY
@@ -257,6 +190,7 @@ function onPointerUp(e: PointerEvent) {
 }
 
 function onPointerCancel() {
+  if (isSettling.value) return
   dragging = false
   isDragging.value = false
   resetCard()
@@ -265,7 +199,12 @@ function onPointerCancel() {
 watch(() => currentPlace.value?.externalPlaceId, () => {
   descriptionExpanded.value = false
   activePhotoIdx.value = 0
-})
+  const item=currentItem.value
+  if(!item) return
+  void placeApi.getPlace(item.place.provider,item.place.externalPlaceId).then(detail=>{
+    if(currentItem.value===item && detail) item.place={...item.place,...detail}
+  }).catch(()=>{ /* 목록의 기존 정보는 유지하고 다음 상세 요청에서 재시도한다. */ })
+}, { immediate: true })
 
 onMounted(async () => {
   await ensureLoaded()
@@ -283,7 +222,7 @@ onMounted(async () => {
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">
               <span class="material-symbols-rounded" aria-hidden="true">bolt</span>
-              나의 여행 취향
+              Travel Preferences
             </p>
             <h1 class="page-hero__title">
               취향 수집
@@ -324,17 +263,38 @@ onMounted(async () => {
                 />
 
                 <template v-else>
-                  <div class="swipe-guide swipe-guide--top" aria-hidden="true"><span class="material-symbols-rounded">north</span>꼭 가고 싶어요</div>
-                  <div class="swipe-guide swipe-guide--left" aria-hidden="true"><span class="material-symbols-rounded">west</span>다음에</div>
-                  <div class="swipe-guide swipe-guide--right" aria-hidden="true">좋아요<span class="material-symbols-rounded">east</span></div>
+                  <div class="swipe-guide swipe-guide--top" aria-hidden="true">
+                    <span>꼭 가고 싶어요</span>
+                    <svg viewBox="0 0 28 42"><path d="M14 37 Q17 23 13 6 M5 15 Q11 10 13 6 Q18 10 23 15" /><path class="sketch-echo" d="M12 36 Q14 22 12 8" /></svg>
+                  </div>
+                  <div class="swipe-guide swipe-guide--left" aria-hidden="true">
+                    <svg viewBox="0 0 44 28"><path d="M39 15 Q25 10 6 14 M15 5 Q11 10 6 14 Q10 18 16 23" /><path class="sketch-echo" d="M37 17 Q23 13 8 15" /></svg><span>다음에</span>
+                  </div>
+                  <div class="swipe-guide swipe-guide--right" aria-hidden="true">
+                    <svg viewBox="0 0 44 28"><path d="M5 14 Q22 18 38 13 M29 5 Q33 10 38 13 Q34 18 28 23" /><path class="sketch-echo" d="M7 12 Q22 15 36 12" /></svg><span>좋아요</span>
+                  </div>
+
+                  <div v-if="swipeClass" class="swipe-success" :class="swipeClass" role="status">
+                    <span class="material-symbols-rounded swipe-success-icon" aria-hidden="true">{{ decision === 'SUPER' ? 'star' : decision === 'LIKE' ? 'favorite' : 'air' }}</span>
+                    <span>{{ decision === 'SUPER' ? '꼭 가고 싶은 곳으로 담았어요' : decision === 'LIKE' ? '좋아하는 취향으로 담았어요' : '다음 풍경을 만나볼까요' }}</span>
+                    <span v-if="decision === 'NOPE'" class="swipe-breeze" aria-hidden="true">
+                      <svg viewBox="0 0 240 140"><path d="M218 42 C164 12 149 79 77 46 S20 48 14 42" /><path d="M232 70 C175 43 135 113 57 77 S20 82 6 74" /><path d="M200 101 C157 81 134 126 54 111" /></svg>
+                      <i v-for="n in 6" :key="n" :style="{ '--drift-y': `${(n - 3.5) * 22}px`, '--delay': `${n % 3 * 35}ms` }"></i>
+                    </span>
+                    <span v-if="decision !== 'NOPE'" class="swipe-celebration" aria-hidden="true">
+                      <i class="celebration-ring"></i><i class="celebration-ring ring-echo"></i>
+                      <span v-for="n in 12" :key="n" class="celebration-particle" :style="{ '--angle': `${n * 30}deg`, '--distance': `${n % 2 ? 104 : 76}px`, '--delay': `${n % 3 * 25}ms` }"><i>{{ decision === 'SUPER' ? (n % 2 ? '✦' : '✧') : (n % 3 ? '♥' : '✦') }}</i></span>
+                    </span>
+                  </div>
 
                   <!-- Swipe Card -->
                   <article
                     v-if="currentPlace"
+                    :key="`${currentPlace.provider}:${currentPlace.externalPlaceId}`"
                     class="swipe-card"
                     :data-decision="decision"
-                    :class="[swipeClass, { 'is-dragging': isDragging }]"
-                    :style="{ transform: cardTransform || undefined, '--overlay-opacity': overlayOpacity }"
+                    :class="[swipeClass, { 'is-dragging': isDragging, 'is-entering': cardEntering }]"
+                    :style="{ transform: cardTransform || undefined, '--release-transform': cardTransform || 'none', '--overlay-opacity': overlayOpacity }"
                     @pointerdown="onPointerDown"
                     @pointermove="onPointerMove"
                     @pointerup="onPointerUp"
@@ -351,7 +311,41 @@ onMounted(async () => {
                       <span class="material-symbols-rounded">landscape</span>
                       <strong>{{ currentPlace.placeName }}</strong>
                     </div>
-                    <div class="swipe-body">
+                  </article>
+                </template>
+              </div>
+
+              <!-- Photo Strip -->
+              <section v-if="currentPlace && galleryPhotos.length > 0" class="photo-strip-section" aria-label="관광지 추가 사진">
+                <div class="photo-strip-wrap">
+                  <button class="photo-nav prev" type="button" aria-label="이전 사진" :disabled="galleryPhotos.length < 2 || isSettling || submitting" @click="scrollPhotos(-1)">
+                    <span class="material-symbols-rounded">chevron_left</span>
+                  </button>
+                  <div ref="photoStrip" class="photo-strip" data-place-photos>
+                    <button
+                      v-for="(photo, idx) in galleryPhotos"
+                      :key="photo"
+                      class="photo-thumb"
+                      :class="{ active: activePhotoIdx === idx }"
+                      type="button"
+                      :aria-label="`${idx + 1}번째 사진 보기`"
+                      :aria-pressed="activePhotoIdx === idx"
+                      :disabled="isSettling || submitting"
+                      @click="selectPhoto(idx)"
+                    >
+                      <img :src="photo" :alt="`${currentPlace.placeName} 사진 ${idx + 1}`" />
+                    </button>
+                  </div>
+                  <button class="photo-nav next" type="button" aria-label="다음 사진" :disabled="galleryPhotos.length < 2 || isSettling || submitting" @click="scrollPhotos(1)">
+                    <span class="material-symbols-rounded">chevron_right</span>
+                  </button>
+                </div>
+              </section>
+            </div>
+
+            <!-- Detail Panel -->
+            <aside v-if="currentPlace" class="panel place-detail-panel">
+              <div class="swipe-body">
                       <div class="meta-row">
                         <span style="display: flex; align-items: center; gap: 4px">
                           <span class="material-symbols-rounded" style="font-size: 16px">location_on</span>
@@ -363,38 +357,6 @@ onMounted(async () => {
                         <span v-for="tag in (currentPlace.tags ?? [currentPlace.category]).filter(Boolean)" :key="tag ?? ''" class="tag">{{ tag }}</span>
                       </div>
                     </div>
-                  </article>
-                </template>
-              </div>
-
-              <!-- Photo Strip -->
-              <section v-if="currentPlace && galleryPhotos.length > 1" class="photo-strip-section" aria-label="관광지 추가 사진">
-                <div class="photo-strip-wrap">
-                  <button class="photo-nav prev" type="button" aria-label="이전 사진" @click="scrollPhotos(-1)">
-                    <span class="material-symbols-rounded">chevron_left</span>
-                  </button>
-                  <div class="photo-strip" data-place-photos>
-                    <button
-                      v-for="(photo, idx) in galleryPhotos"
-                      :key="photo"
-                      class="photo-thumb"
-                      :class="{ active: activePhotoIdx === idx }"
-                      type="button"
-                      @click="selectPhoto(idx)"
-                    >
-                      <img :src="photo" :alt="`${currentPlace.placeName} 사진 ${idx + 1}`" />
-                    </button>
-                  </div>
-                  <button class="photo-nav next" type="button" aria-label="다음 사진" @click="scrollPhotos(1)">
-                    <span class="material-symbols-rounded">chevron_right</span>
-                  </button>
-                </div>
-              </section>
-            </div>
-
-            <!-- Detail Panel -->
-            <aside v-if="currentPlace" class="panel place-detail-panel">
-              <h3>{{ currentPlace.placeName }}</h3>
 
               <section class="place-description-card" :class="{ 'is-empty': !currentDescription }" aria-label="장소 상세 설명">
                 <button type="button" class="place-description-toggle" :aria-expanded="descriptionExpanded" aria-controls="swipe-place-description" @click="descriptionExpanded = !descriptionExpanded">
@@ -711,54 +673,23 @@ onMounted(async () => {
 .accessibility-status .material-symbols-rounded {
   font-size: 15px;
 }
-/* Particle */
-.swipe-particle {
-  position: absolute;
-  pointer-events: none;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-  animation: swipeParticleFade var(--duration) cubic-bezier(0.1, 0.8, 0.3, 1) var(--delay) forwards;
-}
-@keyframes swipeParticleFade {
-  0% {
-    transform: translate(-50%, -50%) translate(0, 0) scale(0.2) rotate(0deg);
-    opacity: 0;
-  }
-  15% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.4) rotate(0deg);
-  }
-  45% {
-    opacity: 0.9;
-    transform: translate(-50%, -50%) translate(calc(var(--tx) * 0.5), calc(var(--ty) * 0.5)) scale(1.1) rotate(calc(var(--rot) * 0.5));
-  }
-  100% {
-    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0) rotate(var(--rot));
-    opacity: 0;
-  }
-}
-
-
 /* Match My Trips: paper background, serif headings and white album cards. */
 .swipe-discovery { --ink:#35465a; --muted:#647c92; --violet:#328be0; --blue:#328be0; --line:#dfeaf5; --surface:#fff; --surface-2:#eaf4ff; background:#f8fbff; min-height:100svh; }
 .swipe-discovery main { background:transparent; }
 .swipe-discovery .section { max-width:1200px; margin:0 auto; padding:48px 32px; }
 .swipe-discovery .page-hero { background:transparent; border:0; box-shadow:none; margin-bottom:36px; padding:0; }
-.swipe-discovery .page-hero__eyebrow { background:none; border:0; padding:0; color:#647c92; font-weight:400; letter-spacing:.13em; font-size:11px; }
+.swipe-discovery .page-hero__eyebrow { background:none; border:0; padding:0; color:#647c92; font-family:Inter,'Pretendard Variable',Pretendard,sans-serif; font-weight:700; letter-spacing:.13em; font-size:11px; }
 .swipe-discovery .page-hero__title { font-family:'Noto Serif KR','Batang','바탕',serif; font-size:40px; font-weight:500; line-height:1.5; letter-spacing:-.02em; }
 .swipe-discovery .page-hero__gradient { background:none; -webkit-text-fill-color:#35465a; color:#35465a; }
 .swipe-discovery .page-hero__lead { max-width:65ch; font-size:14px; font-weight:400; line-height:1.8; }
 .swipe-workspace-card { background:transparent; border:0; border-radius:0; padding:0; box-shadow:none; overflow:visible; }
 .swipe-layout { grid-template-columns:minmax(0,1fr) 280px; gap:40px; align-items:start; }
-.swipe-main-column { min-height:0; grid-template-rows:auto auto; gap:12px; }
-.swipe-stage { min-height:0; padding:32px 0 0; }
-.swipe-discovery .swipe-card { width:100%; aspect-ratio:auto; grid-template-rows:420px auto; border:1px solid #eaf4ff; border-radius:16px; background:#fff; box-shadow:none; }
+.swipe-main-column { min-width:0; min-height:0; grid-template-rows:auto auto; gap:12px; }
+.swipe-stage { min-height:0; padding:64px 64px 20px; }
+.swipe-discovery .swipe-card { width:100%; aspect-ratio:auto; grid-template-rows:420px; border:1px solid #eaf4ff; border-radius:16px; background:#fff; box-shadow:none; }
 .swipe-card:not(.is-dragging):not(.swiped-like):not(.swiped-dislike):not(.swiped-superlike) { transform:none; }
 .swipe-card img[data-place-image] { position:relative; inset:auto; grid-row:1; width:100%; height:100%; object-fit:cover; }
-.swipe-body { position:relative; inset:auto; grid-row:2; max-height:none; overflow:visible; padding:18px; background:none; color:#35465a; }
+.swipe-body { position:relative; inset:auto; grid-row:auto; max-height:none; overflow:visible; padding:0; background:none; color:#35465a; }
 .swipe-body h2 { font-family:'Noto Serif KR','Batang','바탕',serif; font-size:23px !important; font-weight:500; }
 .swipe-body .meta-row { color:#647c92; font-size:11px; font-weight:400; }
 .swipe-body .tag { color:#647c92; background:transparent; border:1px solid #dfeaf5; font-size:11px; font-weight:400; backdrop-filter:none; }
@@ -779,10 +710,10 @@ onMounted(async () => {
 .photo-thumb { height:64px; border-radius:8px; box-shadow:none; }
 .photo-nav { background:transparent; box-shadow:none; }
 .photo-nav:hover { background:#eaf4ff; }
-.swipe-guide { position:absolute; z-index:2; display:flex; align-items:center; gap:6px; pointer-events:none; color:#647c92; font-size:11px; font-weight:400; }
-.swipe-guide--top { top:0; left:50%; transform:translateX(-50%); color:#427ead; }
-.swipe-guide--left { left:12px; top:4px; }
-.swipe-guide--right { right:12px; top:4px; color:#427ead; }
+.swipe-guide { position:absolute; z-index:2; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none; color:#647c92; font-size:11px; font-weight:500; }
+.swipe-guide--top { top:4px; left:50%; transform:translateX(-50%); color:#427ead; }
+.swipe-guide--left { left:4px; top:calc(50% + 22px); transform:translateY(-50%) rotate(-5deg); }
+.swipe-guide--right { right:4px; top:calc(50% + 22px); transform:translateY(-50%) rotate(5deg); color:#427ead; }
 @media(max-width:900px) {
  .swipe-layout { grid-template-columns:minmax(0,1fr); gap:28px; }
  .place-detail-panel { padding:20px !important; }
@@ -791,9 +722,10 @@ onMounted(async () => {
  .swipe-discovery .section { padding:28px 20px; }
  .swipe-discovery .page-hero { margin-bottom:36px; }
  .swipe-discovery .page-hero__title { font-size:32px; }
- .swipe-discovery .swipe-card { grid-template-rows:280px auto; }
+ .swipe-discovery .swipe-card { grid-template-rows:280px; }
  .swipe-card img[data-place-image] { max-height:280px; }
- .swipe-body { padding:18px; }
+ .swipe-body { padding:0; }
+ .swipe-stage { padding:60px 32px 16px; }
  .swipe-body h2 { font-size:23px !important; }
  .swipe-guide--left { left:0; }
  .swipe-guide--right { right:0; }
@@ -801,4 +733,70 @@ onMounted(async () => {
  .photo-strip-section { padding:0; }
 }
 .swipe-discovery .page-hero__eyebrow .material-symbols-rounded { display:none; }
+
+.swipe-guide svg { width:42px; height:28px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.swipe-guide--top svg { width:24px; height:32px; }
+.swipe-guide .sketch-echo { stroke-width:.8; opacity:.4; }
+.place-detail-panel .swipe-body .meta-row { justify-content:flex-start; }
+.place-detail-panel .swipe-body .meta-row span span:last-child { white-space:normal; overflow-wrap:anywhere; }
+.place-detail-panel .swipe-body .tag-row { max-height:none; flex-wrap:wrap; }
+@media(max-width:640px) { .swipe-guide--left svg,.swipe-guide--right svg { width:26px; height:24px; } }
+
+/* 엽서를 넘기는 짧은 동작. 저장 성공 후에만 반응을 표시한다. */
+.swipe-discovery .swipe-stage::before,.swipe-discovery .swipe-stage::after,
+.swipe-discovery .swipe-card::before,.swipe-discovery .swipe-card::after { content:none !important; }
+.swipe-discovery .swipe-card { will-change:transform,opacity; }
+.swipe-discovery .swipe-card.swiped-like { animation:postcard-right 400ms cubic-bezier(.3,.05,.65,1) both; }
+.swipe-discovery .swipe-card.swiped-dislike { animation:postcard-left 400ms cubic-bezier(.3,.05,.65,1) both; }
+.swipe-discovery .swipe-card.swiped-superlike { animation:postcard-up 400ms cubic-bezier(.3,.05,.65,1) both; }
+.swipe-discovery .swipe-card.is-entering { animation:postcard-enter 360ms cubic-bezier(.16,1,.3,1) both; }
+.swipe-success { position:absolute; z-index:5; top:50%; left:50%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:10px; width:max-content; max-width:90%; color:#427ead; font-size:12px; pointer-events:none; animation:swipe-confirm 620ms ease-out both; }
+.swipe-success-icon { display:grid; place-items:center; width:68px; height:68px; border-radius:50%; background:linear-gradient(135deg,#f7fcff,#d5ecff); box-shadow:0 0 35px #86c9ff66, inset 0 0 0 1px #ffffff; animation:success-pop 620ms cubic-bezier(.2,.8,.2,1) both; font-size:34px; font-variation-settings:'FILL' 1; }
+.swipe-success.swiped-dislike { color:#647c92; }
+.swipe-celebration { position:absolute; top:34px; left:50%; width:0; height:0; }
+.celebration-ring { position:absolute; width:70px; height:70px; left:-35px; top:-35px; border:2px solid #7cc4f4; border-radius:50%; animation:celebration-ring 600ms ease-out both; }
+.celebration-ring.ring-echo { animation-delay:70ms; border:1px solid #b8ddfa; }
+.celebration-particle { position:absolute; left:0; top:0; transform:rotate(var(--angle)); }
+.celebration-particle i { display:block; position:absolute; font-style:normal; font-size:18px; color:#68b2e7; text-shadow:0 0 12px #a7d8ff; animation:celebration-flight 570ms cubic-bezier(.12,.65,.3,1) both; animation-delay:var(--delay); }
+.celebration-particle:nth-child(3n) i { color:#abcff5; font-size:12px; }
+.swiped-superlike .celebration-particle i { color:#71b6ec; font-size:24px; }
+.swiped-superlike .celebration-particle:nth-child(3n) i { color:#e5bf79; font-size:16px; }
+.swipe-success.swiped-like { color:#b34e73; }
+.swiped-like .swipe-success-icon { color:#ec7296; background:linear-gradient(135deg,#fff7fa,#ffdce7); box-shadow:0 0 38px #f393b066,inset 0 0 0 1px #fff; }
+.swiped-like .celebration-ring { border-color:#f4a1bb; }
+.swiped-like .celebration-ring.ring-echo { border-color:#ffd0de; }
+.swiped-like .celebration-particle i { color:#ed7799; text-shadow:0 0 12px #ffc5d7; }
+.swiped-like .celebration-particle:nth-child(3n) i { color:#ffa98f; }
+.swipe-success.swiped-superlike { color:#a47726; }
+.swiped-superlike .swipe-success-icon { color:#eab343; background:linear-gradient(135deg,#fffdf1,#ffe9ad); box-shadow:0 0 40px #f7d27680,inset 0 0 0 1px #fff; }
+.swiped-superlike .celebration-ring { border-color:#efcb77; }
+.swiped-superlike .celebration-ring.ring-echo { border-color:#a7d8f7; }
+.swiped-superlike .celebration-particle i { color:#efba4d; text-shadow:0 0 12px #ffe1a1; }
+.swiped-superlike .celebration-particle:nth-child(3n) i { color:#79bdec; text-shadow:0 0 12px #c2e8ff; }
+.swiped-dislike .swipe-success-icon { color:#72aab7; background:linear-gradient(135deg,#f7ffff,#deeff3); box-shadow:0 0 30px #a7d2dd55,inset 0 0 0 1px #fff; animation:breeze-icon 620ms ease-out both; }
+.swipe-breeze { position:absolute; width:240px; height:140px; left:50%; top:34px; transform:translate(-50%,-50%); }
+.swipe-breeze svg { width:100%; height:100%; overflow:visible; }
+.swipe-breeze path { fill:none; stroke:#91c4d1; stroke-width:2; stroke-linecap:round; stroke-dasharray:95 190; animation:breeze-trail 620ms ease-out both; }
+.swipe-breeze path:nth-child(2) { stroke:#b1dbe2; animation-delay:35ms; }
+.swipe-breeze path:nth-child(3) { stroke-width:1.5; animation-delay:65ms; }
+.swipe-breeze > i { position:absolute; top:50%; left:50%; width:6px; height:6px; border-radius:50%; background:#a8d4dd; animation:breeze-dot 550ms ease-out both; animation-delay:var(--delay); }
+@keyframes breeze-trail { 0% { opacity:0; stroke-dashoffset:95; transform:translateX(20px); } 35% { opacity:.8; } 100% { opacity:0; stroke-dashoffset:-190; transform:translateX(-24px); } }
+@keyframes breeze-dot { 0% { opacity:0; transform:translate(25px,0) scale(.4); } 30% { opacity:.9; } 100% { opacity:0; transform:translate(-95px,var(--drift-y)) scale(.3); } }
+@keyframes breeze-icon { 0% { opacity:0; transform:translateX(22px) rotate(8deg) scale(.65); } 45% { opacity:1; transform:translateX(0) rotate(-5deg) scale(1.08); } 100% { opacity:0; transform:translateX(-22px) rotate(-9deg) scale(.95); } }
+@keyframes celebration-flight { 0% { opacity:0; transform:translateX(12px) rotate(calc(-1 * var(--angle))) scale(.2); } 25% { opacity:1; } 70% { opacity:.9; } 100% { opacity:0; transform:translateX(var(--distance)) rotate(calc(35deg - var(--angle))) scale(.55); } }
+@keyframes celebration-ring { from { opacity:.8; transform:scale(.45); } to { opacity:0; transform:scale(3.4); } }
+@keyframes success-pop { 0% { transform:scale(.4) rotate(-18deg); } 42% { transform:scale(1.18) rotate(8deg); } 65% { transform:scale(.96) rotate(-3deg); } 100% { transform:scale(1); } }
+@keyframes postcard-right { from { transform:var(--release-transform); opacity:1; } to { transform:translateX(110%) rotate(8deg); opacity:0; } }
+@keyframes postcard-left { from { transform:var(--release-transform); opacity:1; } to { transform:translateX(-110%) rotate(-8deg); opacity:0; } }
+@keyframes postcard-up { from { transform:var(--release-transform); opacity:1; } to { transform:translateY(-110%) rotate(-3deg); opacity:0; } }
+@keyframes postcard-enter { from { opacity:0; transform:scale(.94) translateY(18px); } to { opacity:1; transform:none; } }
+@keyframes swipe-confirm { 0% { opacity:0; scale:.92; } 40%,85% { opacity:1; scale:1; } 100% { opacity:0; scale:1; } }
+@keyframes swipe-spark { from { opacity:0; transform:translateY(6px) scale(.6); } 45% { opacity:1; } to { opacity:0; transform:translateY(-10px) scale(1); } }
+@media(prefers-reduced-motion:reduce) {
+ .swipe-discovery .swipe-card.swiped-like,.swipe-discovery .swipe-card.swiped-dislike,.swipe-discovery .swipe-card.swiped-superlike { animation:none; transform:none !important; transition:opacity 80ms; opacity:0; }
+ .swipe-discovery .swipe-card.is-entering { animation:none; }
+ .swipe-success { animation:none; }
+ .swipe-breeze, .swipe-celebration { display:none; }
+ .swipe-success .swipe-success-icon { animation:none; }
+}
 </style>
