@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
+import { translateUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { communityApi } from "@/api/community.api";
@@ -343,7 +345,7 @@ async function submitComment() {
 }
 
 async function deleteComment(commentId: string) {
-  if (!selectedPost.value || !window.confirm("댓글을 삭제할까요?")) return;
+  if (!selectedPost.value || !window.confirm(translateUiText("댓글을 삭제할까요?"))) return;
   try {
     await communityApi.deleteComment(selectedPost.value.id, commentId);
     apiComments.value = apiComments.value.filter((comment) => comment.id !== commentId);
@@ -354,9 +356,9 @@ async function deleteComment(commentId: string) {
 }
 
 async function editStory(story: StoryView) {
-  const title = window.prompt("여행기 제목", story.title)?.trim();
+  const title = window.prompt(translateUiText("여행기 제목"), story.title)?.trim();
   if (!title) return;
-  const summary = window.prompt("여행기 소개", story.summary)?.trim() ?? story.summary;
+  const summary = window.prompt(translateUiText("여행기 소개"), story.summary)?.trim() ?? story.summary;
   try {
     const updated = await communityApi.updatePost(story.id, { title, summary });
     const index = posts.value.findIndex((post) => post.id === story.id);
@@ -369,7 +371,7 @@ async function editStory(story: StoryView) {
 }
 
 async function deleteStory(story: StoryView) {
-  if (!window.confirm("여행기를 삭제할까요?")) return;
+  if (!window.confirm(translateUiText("여행기를 삭제할까요?"))) return;
   try {
     await communityApi.deletePost(story.id);
     posts.value = posts.value.filter((post) => post.id !== story.id);
@@ -665,13 +667,13 @@ watch(
                       <span v-else>{{ story.avatar }}</span>
                     </span>
                     <span class="story-tile-author-name">
-                      <strong>{{ story.author }}</strong>
-                      <span class="muted small">{{ story.location }}</span>
+                      <strong data-no-translate>{{ story.author }}</strong>
+                      <span data-no-translate class="muted small">{{ story.location }}</span>
                     </span>
                   </button>
-                  <h3 class="story-tile-title">{{ story.title }}</h3>
-                  <p v-if="story.summary" class="story-tile-summary">{{ story.summary }}</p>
-                  <div v-if="story.tags.length" class="story-tile-tags">
+                  <h3 data-no-translate class="story-tile-title">{{ story.title }}</h3>
+                  <p data-no-translate v-if="story.summary" class="story-tile-summary">{{ story.summary }}</p>
+                  <div v-if="story.tags.length" class="story-tile-tags" data-no-translate>
                     <span
                       v-for="tag in story.tags.slice(0, 3)"
                       :key="tag"
@@ -802,10 +804,10 @@ watch(
                           <span v-else>{{ visibleStory.avatar }}</span>
                         </div>
                         <div>
-                          <strong style="font-size: 15px; color: var(--violet)">{{
+                          <strong data-no-translate style="font-size: 15px; color: var(--violet)">{{
                             visibleStory.author
                           }}</strong>
-                          <span class="small muted" style="display: block">{{ visibleStory.location }}</span>
+                          <span data-no-translate class="small muted" style="display: block">{{ visibleStory.location }}</span>
                         </div>
                       </div>
                       <button
@@ -844,13 +846,13 @@ watch(
                     >
                   </div>
                   <div class="story-body">
-                    <h3 style="font-size: 20px; line-height: 1.4; margin: 0 0 10px">
+                    <h3 data-no-translate style="font-size: 20px; line-height: 1.4; margin: 0 0 10px">
                       {{ visibleStory.title }}
                     </h3>
                     <div class="tag-row" style="margin-bottom: 10px">
-                      <span v-for="tag in visibleStory.tags" :key="tag" class="tag">{{ tag }}</span>
+                      <span data-no-translate v-for="tag in visibleStory.tags" :key="tag" class="tag">{{ tag }}</span>
                     </div>
-                    <p class="muted" style="font-size: 15px; line-height: 1.7; margin: 0">
+                    <p data-no-translate class="muted" style="font-size: 15px; line-height: 1.7; margin: 0">
                       {{ visibleStory.summary }}
                     </p>
                     <div class="story-action-bar">
@@ -976,9 +978,8 @@ watch(
                       </button>
                     </div>
                     <p v-if="comment.isReply && comment.parentName" class="fc-reply-context">
-                      {{ comment.parentName }}님에게 보낸 답글
-                    </p>
-                    <p class="fc-text">{{ comment.text }}</p>
+                      {{ formatUiText("{0}님에게 보낸 답글", "Reply to {0}", [comment.parentName]) }}</p>
+                    <p data-no-translate class="fc-text">{{ comment.text }}</p>
                     <div class="fc-actions">
                       <button
                         type="button"
@@ -998,7 +999,7 @@ watch(
                   class="small muted"
                   style="display: flex; justify-content: space-between; padding: 0 4px 6px"
                 >
-                  <span>{{ replyTarget.name }}님에게 답글</span
+                  <span>{{ formatUiText("{0}님에게 답글", "Reply to {0}", [replyTarget.name]) }}</span
                   ><button type="button" @click="replyTarget = null">취소</button>
                 </div>
                 <div class="feed-comment-composer">

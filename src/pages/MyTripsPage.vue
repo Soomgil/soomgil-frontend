@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -470,7 +471,7 @@ watch(activeFilter, loadTrips)
                           <span v-else class="material-symbols-rounded" aria-hidden="true">travel_explore</span>
                         </div>
                         <div class="timeline-card-info">
-                          <h3 class="timeline-card-title">{{ trip.title }}</h3>
+                          <h3 data-no-translate class="timeline-card-title">{{ trip.title }}</h3>
                           <p class="timeline-card-destination">{{ getDestinationLabel(trip) }}</p>
                           <p class="timeline-card-date">
                             <span class="material-symbols-rounded">calendar_month</span>
@@ -574,9 +575,7 @@ watch(activeFilter, loadTrips)
             </label>
           </div>
           <p v-if="createDayCount" class="trip-create-duration" aria-live="polite">
-            <span class="material-symbols-rounded" aria-hidden="true">calendar_month</span>
-            {{ createNightCount }}박 {{ createDayCount }}일 일정으로 만들어요.
-          </p>
+            <span class="material-symbols-rounded" aria-hidden="true">calendar_month</span>{{ formatUiText("{0}박 {1}일 일정으로 만들어요.", "Your itinerary will be {0} nights and {1} days.", [createNightCount, createDayCount]) }}</p>
 
           <section class="trip-create-companions" aria-labelledby="trip-create-companions-title">
             <div class="trip-create-section-head">
@@ -584,7 +583,7 @@ watch(activeFilter, loadTrips)
                 <strong id="trip-create-companions-title">누구와 함께 가나요?</strong>
                 <span>사용자를 선택하면 여행 생성과 동시에 초대를 보냅니다. 혼자라면 비워 두세요.</span>
               </div>
-              <span v-if="selectedCompanions.length" class="companion-count">{{ selectedCompanions.length }}명 선택</span>
+              <span v-if="selectedCompanions.length" class="companion-count">{{ formatUiText("{0}명 선택", "{0} selected", [selectedCompanions.length]) }}</span>
             </div>
 
             <div v-if="selectedCompanions.length" class="selected-companions" aria-label="선택한 동행자">
@@ -600,7 +599,7 @@ watch(activeFilter, loadTrips)
                   <img v-if="user.profileImageUrl" :src="user.profileImageUrl" alt="">
                   <template v-else>{{ user.displayName.charAt(0) }}</template>
                 </span>
-                <span>{{ user.displayName }}</span>
+                <span data-no-translate>{{ user.displayName }}</span>
                 <span class="material-symbols-rounded" aria-hidden="true">close</span>
               </button>
             </div>
@@ -633,7 +632,7 @@ watch(activeFilter, loadTrips)
                   <img v-if="user.profileImageUrl" :src="user.profileImageUrl" alt="">
                   <template v-else>{{ user.displayName.charAt(0) }}</template>
                 </span>
-                <span>{{ user.displayName }}</span>
+                <span data-no-translate>{{ user.displayName }}</span>
                 <span class="material-symbols-rounded" aria-hidden="true">add_circle</span>
               </button>
             </div>

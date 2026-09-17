@@ -196,13 +196,24 @@ const translations: Readonly<Record<string, string>> = {
   ...manualTranslations,
 }
 
-const translatedAttributes = ['aria-label', 'title', 'placeholder'] as const
+const translatedAttributes = ['aria-label', 'aria-roledescription', 'title', 'placeholder'] as const
 const hasHangul = /[가-힣]/
 const originalText = new WeakMap<Text, string>()
 const originalAttributes = new WeakMap<Element, Map<string, string>>()
 
 function translated(source: string) {
-  return translations[source] || source
+  return translations[source] || translations[source.trim().replace(/\s+/g, ' ')] || source
+}
+
+/** Localize browser dialogs, which are outside the observed document. */
+export function translateUiText(source: string) {
+  return useLocale().locale.value === 'en' ? translated(source) : source
+}
+
+/** Translate UI around dynamic values without translating API/user content. */
+export function formatUiText(ko: string, en: string, values: readonly unknown[]) {
+  const template = useLocale().locale.value === 'en' ? en : ko
+  return template.replace(/\{(\d+)\}/g, (_, index: string) => String(values[Number(index)] ?? ''))
 }
 
 function isProtected(node: Node) {

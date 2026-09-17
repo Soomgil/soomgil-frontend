@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
+import { translateUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefetchMapStyles } from '@/utils/mapStyleCache'
@@ -2488,7 +2490,7 @@ function scopeForTag(tag: string): PlanningScope {
 
 async function switchMemoDay(tag: string) {
   if (tag === activeMemoDay.value || memoLoading.value) return
-  if (memoDirty.value && !window.confirm('작성 중인 내용을 버리고 다른 메모로 이동할까요?')) return
+  if (memoDirty.value && !window.confirm(translateUiText('작성 중인 내용을 버리고 다른 메모로 이동할까요?'))) return
   activeMemoDay.value = tag
   await loadNote(tag)
 }
@@ -2610,7 +2612,7 @@ async function clearNote() {
     memoConflict.value = false
     return
   }
-  if (!window.confirm('이 메모를 삭제할까요?')) return
+  if (!window.confirm(translateUiText('이 메모를 삭제할까요?'))) return
   const remoteRevisionAtStart = memoRemoteRevisions[tag] ?? 0
   memoLoading.value = true
   try {
@@ -2639,7 +2641,7 @@ async function clearNote() {
 }
 
 async function reloadLatestMemo() {
-  if (memoDirty.value && !window.confirm('작성 중인 내용을 버리고 최신 메모를 불러올까요?')) return
+  if (memoDirty.value && !window.confirm(translateUiText('작성 중인 내용을 버리고 최신 메모를 불러올까요?'))) return
   await loadNote()
 }
 
@@ -3621,7 +3623,7 @@ async function handleMapImageSelected(event: Event) {
     return
   }
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-    window.alert('JPG, PNG, WebP 이미지를 10MB 이하로 선택해 주세요.')
+    window.alert(translateUiText('JPG, PNG, WebP 이미지를 10MB 이하로 선택해 주세요.'))
     return
   }
   mapImageUploading.value = true
@@ -3645,7 +3647,7 @@ async function handleMapImageSelected(event: Event) {
   } catch (cause) {
     URL.revokeObjectURL(previewUrl)
     console.error('Map overlay image upload failed.', cause)
-    window.alert('지도 이미지를 업로드하지 못했습니다.')
+    window.alert(translateUiText('지도 이미지를 업로드하지 못했습니다.'))
   } finally {
     mapImageUploading.value = false
   }
@@ -4625,7 +4627,7 @@ function textAvatarStyle(index: unknown) {
             <div class="sidebar-content">
               <div class="trip-sidebar-summary">
                 <a v-show="!isSearchPanelOpen" href="/my-trips" class="trip-sidebar-back"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
-                <h1 class="trip-sidebar-title" :title="trip.title">{{ trip.title }}</h1>
+                <h1 data-no-translate class="trip-sidebar-title" :title="trip.title">{{ trip.title }}</h1>
                 <p class="trip-sidebar-meta"><span v-if="trip.destinationName">{{ trip.destinationName }} · </span>{{ trip.dateRangeText }} · {{ trip.durationText }}</p>
               </div>
               <!-- Day tabs -->
@@ -4682,7 +4684,7 @@ function textAvatarStyle(index: unknown) {
 					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day" :data-day-id="day.id"
 						@pointerdown="onPointerDown">
                       <span class="day-pill">{{ dayPlanLabel(day) }}</span>
-                      <span class="day-stop-count">{{ day.items.length }}곳</span>
+                      <span class="day-stop-count">{{ formatUiText("{0}곳", "{0} places", [day.items.length]) }}</span>
                       <span class="line"></span>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
@@ -4732,7 +4734,7 @@ function textAvatarStyle(index: unknown) {
 				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay" :data-day-id="activePlan.id"
 					@pointerdown="onPointerDown">
                     <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
-                    <span class="day-stop-count">{{ activePlan.items.length }}곳</span>
+                    <span class="day-stop-count">{{ formatUiText("{0}곳", "{0} places", [activePlan.items.length]) }}</span>
                     <span class="line"></span>
                   </div>
                   <template v-for="(item, idx) in activePlan.items" :key="item.id">
@@ -5156,10 +5158,10 @@ function textAvatarStyle(index: unknown) {
                 <div class="detailbar-category-row">
                   <span class="detailbar-category-pill">{{ selectedPlace.category || '상세 정보' }}</span>
                 </div>
-                <h2 class="detailbar-main-title">{{ selectedPlace.title }}</h2>
+                <h2 data-no-translate class="detailbar-main-title">{{ selectedPlace.title }}</h2>
                 <div v-if="selectedPlace.location" class="detailbar-address-row">
                   <span class="material-symbols-rounded">location_on</span>
-                  <span>{{ selectedPlace.location }}</span>
+                  <span data-no-translate>{{ selectedPlace.location }}</span>
                 </div>
               </div>
 
@@ -5233,7 +5235,7 @@ function textAvatarStyle(index: unknown) {
                   </template>
                 </div>
                 <span class="detailbar-likes-text">
-                  <template v-if="selectedPlace.likedBy.length > 1"><strong>{{ selectedPlace.likedBy.length }}명</strong>이 저장한 장소</template>
+                  <template v-if="selectedPlace.likedBy.length > 1"><strong>{{ formatUiText("{0}명", "{0} people", [selectedPlace.likedBy.length]) }}</strong>이 저장한 장소</template>
                   <template v-else><strong>{{ selectedPlace.likedBy[0].name || '멤버' }}</strong>님이 저장한 장소</template>
                 </span>
               </div>
@@ -5450,7 +5452,7 @@ function textAvatarStyle(index: unknown) {
             </div>
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">
-                <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
+                <span class="memo-char-count" id="memo-char-count">{{ formatUiText("{0}자", "{0} characters", [memoTextDisplay.length]) }}</span>
                 <span v-if="memoStatus" class="memo-status" role="status">{{ memoStatus }}</span>
                 <button v-if="memoConflict" type="button" class="memo-reload-btn" @click="reloadLatestMemo">
                   최신 메모 불러오기

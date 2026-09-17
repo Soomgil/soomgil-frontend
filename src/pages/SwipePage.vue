@@ -371,7 +371,7 @@ onMounted(async () => {
                   <div v-for="story in (currentPlace.travelStories ?? [])" :key="story.id" class="detail-review-card">
                     <img :src="story.image" :alt="story.title" class="detail-review-thumb" />
                     <div class="detail-review-info">
-                      <p class="detail-review-title">{{ story.title }}</p>
+                      <p data-no-translate class="detail-review-title">{{ story.title }}</p>
                       <p class="detail-review-meta">{{ story.author }} · {{ story.date }}</p>
                     </div>
                   </div>

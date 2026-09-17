@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { computed, ref, watch } from 'vue'
 import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import { useVotingStore } from '@/stores/voting.store'
@@ -136,7 +137,7 @@ async function open() {
         <div class="vote-setup__row-copy">
           <strong><span class="vote-setup__step">01</span> 어디로 떠날까요?</strong>
           <span>여행방에 등록한 지역이 미리 들어가 있어요. 이번 투표만 다른 지역으로 바꿀 수 있어요.</span>
-          <p v-if="regions.length === 0 && hasDestination" class="vote-setup__destination">{{ tripDestination }} 지역에서 후보를 찾아요.</p>
+          <p v-if="regions.length === 0 && hasDestination" class="vote-setup__destination">{{ formatUiText("{0} 지역에서 후보를 찾아요.", "Find candidates in {0} areas.", [tripDestination]) }}</p>
           <ul v-if="regions.length > 0" class="vote-setup__chips" aria-label="선택한 지역">
             <li v-for="region in regions" :key="region.code" class="vote-setup__chip" data-testid="setup-region-chip">
               <span>{{ region.name }}</span>
@@ -172,11 +173,8 @@ async function open() {
         <div class="vote-setup__row-copy">
           <strong><span class="vote-setup__step">02</span> 하루에 몇 곳 갈까요?</strong>
           <span v-if="knowsDays" data-testid="setup-days-note">
-            {{ days }}일 여행이에요. 하루 {{ perDay }}곳이면 총 {{ selectionCount }}곳을 뽑아요.
-          </span>
-          <span v-else data-testid="setup-days-note">
-            여행 일정이 아직 없어 {{ days }}일로 가정했어요. 하루 {{ perDay }}곳이면 총 {{ selectionCount }}곳을 뽑아요.
-          </span>
+            {{ formatUiText("{0}일 여행이에요. 하루 {1}곳이면 총 {2}곳을 뽑아요.", "{0} days, {1} places per day: select {2} places in total.", [days, perDay, selectionCount]) }}</span>
+          <span v-else data-testid="setup-days-note">{{ formatUiText("여행 일정이 아직 없어 {0}일로 가정했어요. 하루 {1}곳이면 총 {2}곳을 뽑아요.", "No dates set: assuming {0} days and {1} places per day, select {2} places.", [days, perDay, selectionCount]) }}</span>
         </div>
         <div class="vote-setup__stepper" data-testid="setup-per-day-stepper">
           <button type="button" aria-label="하루 개수 줄이기" :disabled="perDay <= MIN_PER_DAY" data-testid="setup-per-day-minus" @click="stepPerDay(-1)">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import type { RouteMode, TripRoute } from '@/types/itinerary'
 
 defineProps<{
@@ -44,7 +45,7 @@ function changeRoute(event: Event, route: TripRoute) {
     </div>
     <p>경로 연결 펜으로 장소를 이어 주세요.</p>
     <details v-if="routes.length" class="saved-routes">
-      <summary>연결된 구간 {{ routes.length }}개</summary>
+      <summary>{{ formatUiText("연결된 구간 {0}개", "{0} connected routes", [routes.length]) }}</summary>
       <p>이동수단을 바꾸면 두 장소 사이를 다시 계산합니다. 직접 지정한 경유점은 초기화됩니다.</p>
       <div v-for="route in routes" :key="route.id" class="saved-route">
         <div class="route-name">{{ names[route.originItineraryItemId] || '출발지' }} → {{ names[route.destinationItineraryItemId] || '도착지' }}</div>

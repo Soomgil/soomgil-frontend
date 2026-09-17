@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { computed, ref } from 'vue'
 import { useVotingStore } from '@/stores/voting.store'
 import type { TripVoteCandidate } from '@/types/voting'
@@ -111,8 +112,7 @@ function imageUrl(candidate: TripVoteCandidate | null) {
             class="vote-deck__badge"
             data-testid="deck-sticker-badge"
           >
-            <span class="material-symbols-rounded" aria-hidden="true">favorite</span>
-            스티커 {{ currentCount }}
+            <span class="material-symbols-rounded" aria-hidden="true">favorite</span>{{ formatUiText("스티커 {0}", "{0} stickers", [currentCount]) }}
           </span>
 
           <div class="vote-deck__caption">

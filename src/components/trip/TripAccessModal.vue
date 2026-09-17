@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
+import { translateUiText } from '@/i18n/ui-localizer'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -75,7 +77,7 @@ async function copyInviteCode(invite: TripInvite) {
 }
 
 async function revokeInvite(inviteId: string) {
-  if (!props.trip || !window.confirm('이 초대 코드를 취소할까요?')) return
+  if (!props.trip || !window.confirm(translateUiText('이 초대 코드를 취소할까요?'))) return
   actionError.value = ''
   try {
     await tripStore.revokeInvite(props.trip.id, inviteId)
@@ -85,7 +87,7 @@ async function revokeInvite(inviteId: string) {
 }
 
 async function removeMember(userId: string) {
-  if (!props.trip || !window.confirm('이 멤버를 여행에서 내보낼까요?')) return
+  if (!props.trip || !window.confirm(translateUiText('이 멤버를 여행에서 내보낼까요?'))) return
   actionError.value = ''
   try {
     await tripStore.removeMember(props.trip.id, userId)
@@ -102,7 +104,7 @@ async function removeMember(userId: string) {
         <div>
           <p class="eyebrow">Trip Access</p>
           <h2 id="trip-access-title">{{ isOwner ? '멤버 및 초대 관리' : '여행 멤버' }}</h2>
-          <p>{{ trip?.title }}</p>
+          <p data-no-translate>{{ trip?.title }}</p>
         </div>
         <button class="icon-btn" type="button" aria-label="닫기" @click="$emit('close')">
           <span class="material-symbols-rounded" aria-hidden="true">close</span>
@@ -121,7 +123,7 @@ async function removeMember(userId: string) {
         <section class="access-section" aria-labelledby="member-list-title">
           <div class="access-section__head">
             <h3 id="member-list-title">멤버</h3>
-            <span>{{ tripStore.members.length }}명</span>
+            <span>{{ formatUiText("{0}명", "{0} people", [tripStore.members.length]) }}</span>
           </div>
           <EmptyState v-if="tripStore.members.length === 0" icon="group" message="표시할 멤버가 없습니다." />
           <ul v-else class="access-list">
@@ -131,7 +133,7 @@ async function removeMember(userId: string) {
                 <template v-else>{{ member.user.displayName.charAt(0) }}</template>
               </span>
               <div class="access-list__body">
-                <strong>{{ member.user.displayName }}</strong>
+                <strong data-no-translate>{{ member.user.displayName }}</strong>
                 <span>{{ member.accessRole === 'OWNER' ? '방장' : '멤버' }}</span>
               </div>
               <button

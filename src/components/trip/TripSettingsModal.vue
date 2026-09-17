@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { onMounted, onUnmounted, ref, watch, computed } from 'vue'
 import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
 import { useTripStore } from '@/stores/trip.store'
@@ -367,9 +368,7 @@ onUnmounted(() => {
                 <span>-</span>
                 <input type="date" class="field" v-model="editEndDate" :min="editStartDate" style="flex:1;" data-testid="trip-end-date">
               </div>
-              <div v-if="editStartDate && editEndDate" style="text-align:center;font-size:14px;color:var(--violet);font-weight:600;margin-top:8px;">
-                총 {{ editDayCount }}일 여행
-              </div>
+              <div v-if="editStartDate && editEndDate" style="text-align:center;font-size:14px;color:var(--violet);font-weight:600;margin-top:8px;">{{ formatUiText("총 {0}일 여행", "{0}-day trip", [editDayCount]) }}</div>
             </label>
 
 
@@ -447,7 +446,7 @@ onUnmounted(() => {
           <div class="modal-members-section management-section">
             <div class="members-header">
               <h4>참여 중인 멤버</h4>
-              <span v-if="!membersLoading && !membersError" class="member-count">{{ membersList.length }}명</span>
+              <span v-if="!membersLoading && !membersError" class="member-count">{{ formatUiText("{0}명", "{0} people", [membersList.length]) }}</span>
             </div>
             <p v-if="membersLoading" role="status">멤버를 불러오는 중…</p>
             <p v-else-if="membersError" role="alert">{{ membersError }} <button type="button" @click="loadMembers">다시 시도</button></p>
@@ -459,7 +458,7 @@ onUnmounted(() => {
                   <span v-else class="material-symbols-rounded" aria-hidden="true">person</span>
                 </div>
                 <div class="member-info">
-                  <span class="member-name">{{ member.displayName }}</span>
+                  <span data-no-translate class="member-name">{{ member.displayName }}</span>
                   <span class="member-role">{{ member.role === 'OWNER' ? '방장' : '멤버' }}</span>
                 </div>
               </li>

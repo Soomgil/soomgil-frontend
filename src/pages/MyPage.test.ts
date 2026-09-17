@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import MyPage from './MyPage.vue'
 import LikedPlacesModal from '@/components/mypage/LikedPlacesModal.vue'
+import MyStoriesModal from '@/components/mypage/MyStoriesModal.vue'
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
 const auth = vi.hoisted(() => ({
@@ -56,6 +57,7 @@ function mountPage() {
     global: {
       stubs: {
         AppShell: { template: '<div><slot /></div>' },
+        RouterLink: true,
         MyStoriesModal: true,
         StoryDetailOverlay: true,
         FollowListModal: true,
@@ -108,5 +110,26 @@ describe('MyPage super likes', () => {
 
     expect(wrapper.text()).toContain('슈퍼라이크한 장소')
     expect(wrapper.text()).not.toContain('1곳')
+  })
+
+  it('previews six keyboard-accessible story cards and retains the complete story list', async () => {
+    communityApi.getPosts.mockResolvedValue({
+      items: Array.from({ length: 8 }, (_, index) => ({ id: `story-${index}`, title: `여행 ${index}`, hashtags: ['서울'] })),
+      page: { totalElements: 8 },
+    })
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.findAll('button.mypage-story-magazine-item')).toHaveLength(6)
+    expect(wrapper.find('.story-magazine-title').attributes('data-no-translate')).toBeDefined()
+    await wrapper.find('.profile-bottom-col .mypage-more-link').trigger('click')
+    expect(wrapper.findComponent(MyStoriesModal).props('stories')).toHaveLength(8)
+  })
+
+  it('starts dashboard requests while an existing profile is refreshing', async () => {
+    auth.fetchUser.mockImplementationOnce(() => new Promise(() => {}))
+    mountPage()
+    await flushPromises()
+    expect(userApi.getSavedPlaces).toHaveBeenCalledOnce()
+    expect(communityApi.getPosts).toHaveBeenCalledOnce()
   })
 })

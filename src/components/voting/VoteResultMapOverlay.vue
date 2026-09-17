@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useVotingStore } from '@/stores/voting.store'
@@ -75,8 +76,7 @@ function dismiss() {
         <span class="vote-map-overlay__icon material-symbols-rounded" aria-hidden="true">celebration</span>
         <h2 class="vote-map-overlay__title">투표가 끝났어요!</h2>
         <p class="vote-map-overlay__lead">
-          {{ completionLabel }}. 선정된 {{ selectedRows.length }}곳을
-          <strong>일차 미정</strong>에 담아뒀어요.
+          {{ formatUiText("{0}. 선정된 {1}곳을", "{0}. {1} selected places", [completionLabel, selectedRows.length]) }}<strong>일차 미정</strong>에 담아뒀어요.
         </p>
 
         <ol class="vote-map-overlay__list">

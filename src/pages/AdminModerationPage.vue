@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
+import { translateUiText } from '@/i18n/ui-localizer'
 import { onMounted, ref } from 'vue'
 import AppShell from '@/components/layout/AppShell.vue'
 import { adminApi } from '@/api/admin.api'
@@ -30,7 +32,7 @@ async function load() {
 }
 
 async function resolve(report: ContentReport, result: 'RESOLVED' | 'REJECTED', action?: ModerationActionType) {
-  const note = window.prompt('처리 메모를 입력하세요.', '') ?? ''
+  const note = window.prompt(translateUiText('처리 메모를 입력하세요.'), '') ?? ''
   loading.value = true
   error.value = ''
   try {
@@ -70,7 +72,7 @@ onMounted(load)
         <article v-for="report in reports" :key="report.id" class="p-5 rounded-2xl bg-surface border border-line">
           <div class="flex flex-wrap justify-between gap-3"><strong>{{ report.reasonCode }} · {{ report.targetType }}</strong><span class="text-xs text-muted">{{ report.status }} · {{ new Date(report.createdAt).toLocaleString('ko-KR') }}</span></div>
           <p class="text-sm text-muted my-3">{{ report.detail || '상세 설명 없음' }}</p>
-          <p class="text-xs mb-4">대상 ID: {{ report.targetId }} · 신고자: {{ report.reporter?.displayName || '탈퇴 사용자' }}</p>
+          <p class="text-xs mb-4">{{ formatUiText("대상 ID: {0} · 신고자: {1}", "Target ID: {0} · Reporter: {1}", [report.targetId, report.reporter?.displayName || '탈퇴 사용자']) }}</p>
           <div v-if="report.status === 'OPEN' || report.status === 'REVIEWING'" class="flex flex-wrap gap-2">
             <button class="px-3 py-2 rounded-lg bg-brand-violet text-white text-xs" @click="resolve(report, 'RESOLVED', 'HIDE')">숨김 후 해결</button>
             <button class="px-3 py-2 rounded-lg border border-line text-xs" @click="resolve(report, 'RESOLVED')">조치 없이 해결</button>

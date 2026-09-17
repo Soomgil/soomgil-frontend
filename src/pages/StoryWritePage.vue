@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
@@ -205,7 +206,7 @@ onMounted(async () => {
                 <div class="form-group" style="display: grid; gap: 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <label for="story-content" style="font-weight: 800; font-size: 15px; color: var(--ink);">본문</label>
-                    <span class="small muted" style="font-weight: 750;">글자 수: {{ charCount }}자</span>
+                    <span class="small muted" style="font-weight: 750;">{{ formatUiText("글자 수: {0}자", "Characters: {0}", [charCount]) }}</span>
                   </div>
                   <div style="position: relative; border: 1.5px solid rgba(227, 234, 244, 0.9); border-radius: 20px; background: #fff; overflow: hidden; box-shadow: var(--soft-shadow);">
                     <div class="editor-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1.5px solid rgba(227, 234, 244, 0.9); background: #fbfcfe;">
@@ -229,7 +230,7 @@ onMounted(async () => {
                 <div class="form-group" style="display: grid; gap: 10px;">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
                     <label style="font-weight: 800; font-size: 15px; color: var(--ink);">사진 선택</label>
-                    <span class="small muted">{{ selectedMedia.length }}장 선택 · 첫 사진이 커버</span>
+                    <span class="small muted">{{ formatUiText("{0}장 선택 · 첫 사진이 커버", "{0} photos selected · First photo is the cover", [selectedMedia.length]) }}</span>
                   </div>
                   <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                     <input ref="localPhotoInput" type="file" accept="image/jpeg,image/png" multiple hidden @change="addLocalPhotos" />

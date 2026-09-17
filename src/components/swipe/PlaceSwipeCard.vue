@@ -15,8 +15,8 @@ defineEmits<{ swipe: [action: 'LIKE' | 'NOPE' | 'SUPER_LIKE'] }>()
           {{ tag }}
         </span>
       </div>
-      <h3 class="text-2xl font-black text-white leading-tight">{{ place.placeName }}</h3>
-      <p class="text-sm text-white/70 mt-1">{{ place.address }}</p>
+      <h3 data-no-translate class="text-2xl font-black text-white leading-tight">{{ place.placeName }}</h3>
+      <p data-no-translate class="text-sm text-white/70 mt-1">{{ place.address }}</p>
     </div>
   </div>
 </template>

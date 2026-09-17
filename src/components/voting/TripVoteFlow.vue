@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -287,9 +288,7 @@ onUnmounted(() => {
           </div>
           <div class="page-hero__actions trip-vote__hero-actions">
             <p class="trip-vote__progress" data-testid="vote-progress">
-              <span class="material-symbols-rounded" aria-hidden="true">group</span>
-              {{ participantSummary?.submitted ?? 0 }}/{{ participantSummary?.total ?? 0 }}명 제출
-            </p>
+              <span class="material-symbols-rounded" aria-hidden="true">group</span>{{ formatUiText("{0}/{1}명 제출", "{0}/{1} submitted", [participantSummary?.submitted ?? 0, participantSummary?.total ?? 0]) }}</p>
             <!-- 마감은 방장의 진행 관리 동작이라 개인 제출 버튼과 분리해 진행 현황 옆에 둔다. -->
             <button
               v-if="isOwner && !historical"
@@ -329,11 +328,7 @@ onUnmounted(() => {
       <div v-if="closeConfirmOpen" class="trip-vote__modal" data-testid="vote-close-modal">
         <div class="trip-vote__modal-body">
           <h2>투표를 마감할까요?</h2>
-          <p v-if="voting.hasUnvotedParticipants" class="trip-vote__modal-warning" data-testid="vote-close-warning">
-            아직 제출하지 않은 멤버가
-            {{ (participantSummary?.total ?? 0) - (participantSummary?.submitted ?? 0) }}명 있어요.
-            지금 마감하면 그분들의 스티커는 반영되지 않아요.
-          </p>
+          <p v-if="voting.hasUnvotedParticipants" class="trip-vote__modal-warning" data-testid="vote-close-warning">{{ formatUiText("아직 제출하지 않은 멤버가 {0}명 있어요. 지금 마감하면 그분들의 스티커는 반영되지 않아요.", "{0} members have not submitted. Their stickers will not count if voting closes now.", [(participantSummary?.total ?? 0) - (participantSummary?.submitted ?? 0)]) }}</p>
           <label v-if="voting.hasUnvotedParticipants" class="trip-vote__modal-check">
             <input v-model="acknowledged" type="checkbox" data-testid="vote-close-ack" />
             <span>확인했어요</span>

@@ -13,7 +13,7 @@ defineEmits<{ click: [] }>()
   >
     <div class="w-16 h-16 rounded-xl bg-cover bg-center shrink-0" :style="{ backgroundImage: `url(${trip.coverImageUrl ?? ''})` }" />
     <div class="flex-1 min-w-0">
-      <h3 class="font-bold text-ink truncate">{{ trip.title }}</h3>
+      <h3 data-no-translate class="font-bold text-ink truncate">{{ trip.title }}</h3>
       <p class="text-xs text-muted mt-0.5">{{ trip.startDate }}</p>
       <div class="flex -space-x-1.5 mt-2">
         <BaseAvatar v-for="m in (trip.members ?? []).slice(0, 3)" :key="m.id" :name="m.displayName ?? '?'" color="var(--violet)" size="sm" />

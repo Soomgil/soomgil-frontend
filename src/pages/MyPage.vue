@@ -51,8 +51,8 @@ onMounted(async () => {
     return
   }
   try {
-    await auth.fetchUser()
-    await Promise.allSettled([loadFollowData(), loadMyStories(), loadLikedPlaces(), loadMyTripCount(), loadPreferences()])
+    if (!auth.user?.id) await auth.fetchUser()
+    await Promise.allSettled([auth.fetchUser(), loadFollowData(), loadMyStories(), loadLikedPlaces(), loadMyTripCount(), loadPreferences()])
   } catch {
     // fetch 실패해도 페이지는 노출
   } finally {
@@ -423,9 +423,9 @@ function handleUserClick(userId: string) {
 
               <!-- 우측: 이름/핸들/소개/통계/버튼 세로 스택 -->
               <div class="profile-info-col">
-                <h2 class="profile-display-name">{{ displayName }}</h2>
-                <span class="profile-handle">{{ displayEmail }}</span>
-                <p v-if="displayBio" class="profile-bio">{{ displayBio }}</p>
+                <h2 class="profile-display-name" data-no-translate>{{ displayName }}</h2>
+                <span class="profile-handle" data-no-translate>{{ displayEmail }}</span>
+                <p v-if="displayBio" class="profile-bio" data-no-translate>{{ displayBio }}</p>
 
                 <!-- 통계 행: 5개 가로 (박스 없음) -->
                 <div class="profile-stats-row">
@@ -499,10 +499,10 @@ function handleUserClick(userId: string) {
                       <span class="material-symbols-rounded">star</span>
                     </button>
                   </div>
-                  <div class="place-info-wrap">
-                    <h3 class="place-title-h3">{{ place.placeName }}</h3>
-                    <span class="place-region-category">{{ place.address }}</span>
-                    <p class="place-desc-text">{{ place.summary }}</p>
+                  <div class="place-info-wrap" data-no-translate>
+                    <h3 data-no-translate class="place-title-h3">{{ place.placeName }}</h3>
+                    <span data-no-translate class="place-region-category">{{ place.address }}</span>
+                    <p data-no-translate class="place-desc-text">{{ place.summary }}</p>
                     <div class="place-tag-row">
                       <span v-for="tag in (place.tags ?? []).slice(0, 3)" :key="tag" class="place-tag-pill">#{{ tag }}</span>
                     </div>
@@ -537,25 +537,23 @@ function handleUserClick(userId: string) {
 
             <!-- 데이터 있을 때 -->
             <div v-else class="mypage-stories-magazine" data-mypage-stories-list>
-              <div v-for="story in myStories" :key="story.id" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
+              <button v-for="story in myStories.slice(0, 6)" :key="story.id" type="button" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
                 <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
-                <div class="story-magazine-body">
-                  <h3 class="story-magazine-title">
-                    <span>{{ story.title }}</span>
-                  </h3>
-                  <div class="story-magazine-meta">
-                    <span class="story-date">{{ story.location }}</span>
-                    <div class="story-stats-row">
+                <span class="story-magazine-body">
+                  <span class="story-magazine-title" data-no-translate>{{ story.title }}</span>
+                  <span class="story-magazine-meta">
+                    <span class="story-date" data-no-translate>{{ story.location }}</span>
+                    <span class="story-stats-row">
                       <span>
                         <span class="material-symbols-rounded">favorite</span> {{ story.likes }}
                       </span>
                       <span>
                         <span class="material-symbols-rounded">chat_bubble</span> {{ story.comments }}
                       </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                    </span>
+                  </span>
+                </span>
+              </button>
             </div>
           </article>
 
@@ -578,7 +576,7 @@ function handleUserClick(userId: string) {
 
             <template v-else>
             <!-- 태그 칩 -->
-            <div class="pref-tag-list">
+            <div class="pref-tag-list" data-no-translate>
               <span v-for="tag in travelPreferences.tags" :key="tag" class="pref-tag-chip">#{{ tag }}</span>
             </div>
 
@@ -586,7 +584,7 @@ function handleUserClick(userId: string) {
             <div class="pref-style-list">
               <div v-for="style in travelPreferences.styles" :key="style.label" class="pref-style-bar">
                 <div class="pref-style-header">
-                  <span class="pref-style-label">{{ style.label }}</span>
+                  <span class="pref-style-label" data-no-translate>{{ style.label }}</span>
                   <span class="pref-style-percent">{{ style.percent }}%</span>
                 </div>
                 <div class="pref-style-track">
@@ -598,7 +596,7 @@ function handleUserClick(userId: string) {
             <!-- 인사이트 박스 -->
             <div class="pref-insight-box">
               <span class="material-symbols-rounded pref-insight-icon">lightbulb</span>
-              <p class="pref-insight-text">{{ travelPreferences.insight }}</p>
+              <p class="pref-insight-text" data-no-translate>{{ travelPreferences.insight }}</p>
             </div>
             </template>
           </article>

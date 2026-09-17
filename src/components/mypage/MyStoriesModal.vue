@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { ref, computed } from 'vue'
 import type { Story } from '@/types/community'
 
@@ -35,7 +36,7 @@ const filteredStories = computed(() => {
               <span class="material-symbols-rounded">search</span>
               <input type="search" v-model="searchQuery" placeholder="제목, 지역으로 검색" />
             </div>
-            <span class="mypage-search-count">{{ filteredStories.length }}개</span>
+            <span class="mypage-search-count">{{ formatUiText("{0}개", "{0} items", [filteredStories.length]) }}</span>
           </div>
         </div>
 
@@ -51,10 +52,10 @@ const filteredStories = computed(() => {
               <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
               <div class="story-magazine-body">
                 <h3 class="story-magazine-title">
-                  <span>{{ story.title }}</span>
+                  <span data-no-translate>{{ story.title }}</span>
                 </h3>
                 <div class="story-magazine-meta">
-                  <span class="story-date">{{ story.location }}</span>
+                  <span data-no-translate class="story-date">{{ story.location }}</span>
                   <div class="story-stats-row">
                     <span>
                       <span class="material-symbols-rounded">favorite</span> {{ story.likes }}

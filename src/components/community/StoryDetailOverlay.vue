@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
+import { translateUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { communityApi } from "@/api/community.api";
@@ -266,7 +268,7 @@ async function submitComment() {
 }
 
 async function deleteComment(commentId: string) {
-  if (!selectedPost.value || !window.confirm("댓글을 삭제할까요?")) return;
+  if (!selectedPost.value || !window.confirm(translateUiText("댓글을 삭제할까요?"))) return;
   try {
     await communityApi.deleteComment(selectedPost.value.id, commentId);
     apiComments.value = apiComments.value.filter((comment) => comment.id !== commentId);
@@ -283,9 +285,9 @@ function closeCommentMenuSoon() {
 }
 
 async function editStory(story: StoryView) {
-  const title = window.prompt("여행기 제목", story.title)?.trim();
+  const title = window.prompt(translateUiText("여행기 제목"), story.title)?.trim();
   if (!title) return;
-  const summary = window.prompt("여행기 소개", story.summary)?.trim() ?? story.summary;
+  const summary = window.prompt(translateUiText("여행기 소개"), story.summary)?.trim() ?? story.summary;
   try {
     const updated = await communityApi.updatePost(story.id, { title, summary });
     selectedPost.value = updated;
@@ -297,7 +299,7 @@ async function editStory(story: StoryView) {
 }
 
 async function deleteStory(story: StoryView) {
-  if (!window.confirm("여행기를 삭제할까요?")) return;
+  if (!window.confirm(translateUiText("여행기를 삭제할까요?"))) return;
   try {
     await communityApi.deletePost(story.id);
     toast.success("여행기를 삭제했습니다.");
@@ -552,10 +554,10 @@ watch(
                         <span v-else>{{ visibleStory.avatar }}</span>
                       </div>
                       <div>
-                        <strong style="font-size: 15px; color: var(--violet)">{{
+                        <strong data-no-translate style="font-size: 15px; color: var(--violet)">{{
                           visibleStory.author
                         }}</strong>
-                        <span class="small muted" style="display: block">{{ visibleStory.location }}</span>
+                        <span data-no-translate class="small muted" style="display: block">{{ visibleStory.location }}</span>
                       </div>
                     </div>
                     <button
@@ -594,13 +596,13 @@ watch(
                   >
                 </div>
                 <div class="story-body">
-                  <h3 style="font-size: 20px; line-height: 1.4; margin: 0 0 10px">
+                  <h3 data-no-translate style="font-size: 20px; line-height: 1.4; margin: 0 0 10px">
                     {{ visibleStory.title }}
                   </h3>
                   <div class="tag-row" style="margin-bottom: 10px">
-                    <span v-for="tag in visibleStory.tags" :key="tag" class="tag">{{ tag }}</span>
+                    <span data-no-translate v-for="tag in visibleStory.tags" :key="tag" class="tag">{{ tag }}</span>
                   </div>
-                  <p class="muted" style="font-size: 15px; line-height: 1.7; margin: 0">
+                  <p data-no-translate class="muted" style="font-size: 15px; line-height: 1.7; margin: 0">
                     {{ visibleStory.summary }}
                   </p>
                   <div class="story-action-bar">
@@ -725,9 +727,8 @@ watch(
                     </div>
                   </div>
                   <p v-if="comment.isReply && comment.parentName" class="fc-reply-context">
-                    {{ comment.parentName }}님에게 보낸 답글
-                  </p>
-                  <p class="fc-text">{{ comment.text }}</p>
+                    {{ formatUiText("{0}님에게 보낸 답글", "Reply to {0}", [comment.parentName]) }}</p>
+                  <p data-no-translate class="fc-text">{{ comment.text }}</p>
                   <div class="fc-actions">
                     <button
                       type="button"
@@ -747,7 +748,7 @@ watch(
                 class="small muted"
                 style="display: flex; justify-content: space-between; padding: 0 4px 6px"
               >
-                <span>{{ replyTarget.name }}님에게 답글</span
+                <span>{{ formatUiText("{0}님에게 답글", "Reply to {0}", [replyTarget.name]) }}</span
                 ><button type="button" @click="replyTarget = null">취소</button>
               </div>
               <div class="feed-comment-composer">

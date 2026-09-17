@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
+import { useLocale } from '@/i18n'
+const { tr } = useLocale()
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
@@ -120,7 +123,7 @@ function clearRecentSearches() {
 }
 
 const displayedCount = computed(() => visibleTrips.value.length + visiblePlaces.value.length + visiblePosts.value.length + visibleUsers.value.length)
-const searchHeading = computed(() => queryFromUrl().trim() ? '“' + queryFromUrl().trim() + '” 검색 결과' : '다음 여행을 찾아보세요')
+const searchHeading = computed(() => queryFromUrl().trim() ? tr('“' + queryFromUrl().trim() + '” 검색 결과', 'Results for “' + queryFromUrl().trim() + '”') : tr('다음 여행을 찾아보세요', 'Find your next journey'))
 
 const hasQuery = computed(() => searchInput.value.trim().length > 0)
 
@@ -144,9 +147,9 @@ const emptyDescription = computed(() => {
   const q = result.value?.query ?? searchInput.value.trim()
   if (!q) return '다른 키워드로 다시 검색해 보세요.'
   if (activeTab.value === '전체') {
-    return `"${q}" 와(과) 일치하는 결과가 없습니다. 다른 키워드로 다시 검색해 보세요.`
+    return tr(`"${q}" 와(과) 일치하는 결과가 없습니다. 다른 키워드로 다시 검색해 보세요.`, `No results for "${q}". Try another keyword.`)
   }
-  return `"${q}" 에 대한 ${activeTab.value} 결과가 없습니다. 다른 카테고리를 선택하거나 다른 키워드로 검색해 보세요.`
+  return tr(`"${q}" 에 대한 ${activeTab.value} 결과가 없습니다. 다른 카테고리를 선택하거나 다른 키워드로 검색해 보세요.`, `No results for "${q}" in this category. Try another category or keyword.`)
 })
 
 function queryFromUrl(): string {
@@ -400,7 +403,7 @@ watch(
       <header class="search-summary">
         <p class="search-kicker">새로운 여행의 발견</p>
         <h1>{{ searchHeading }}</h1>
-        <p v-if="result && !loading && !error && hasQuery" class="search-result-caption" role="status">표시 중인 결과 {{ displayedCount }}개 · 마음에 드는 풍경에서 다음 여행을 시작해 보세요.</p>
+        <p v-if="result && !loading && !error && hasQuery" class="search-result-caption" role="status">{{ tr(`표시 중인 결과 ${displayedCount}개 · 마음에 드는 풍경에서 다음 여행을 시작해 보세요.`, `${displayedCount} results · Let a beautiful view inspire your next journey.`) }}</p>
         <p v-else class="search-result-caption">가보고 싶은 곳, 함께 떠날 사람, 새로운 여행 이야기를 만나보세요.</p>
       </header>
       <div class="search-tabs" role="group" aria-label="검색 결과 필터">
@@ -476,7 +479,7 @@ watch(
                 </div>
                 <div class="search-card-body">
                   <span class="search-card-eyebrow">{{ trip.status === 'ARCHIVED' ? '완료된 여행' : '진행 중인 여행' }}</span>
-                  <h3 class="search-card-title">{{ trip.title }}</h3>
+                  <h3 data-no-translate class="search-card-title">{{ trip.title }}</h3>
                   <p class="search-card-meta">
                     <span v-if="trip.displayDestination">{{ trip.displayDestination }}</span>
                     <span v-if="trip.displayDestination && trip.createdAt">·</span>
@@ -514,8 +517,8 @@ watch(
                 </div>
                 <div class="search-card-body">
                   <span class="search-card-eyebrow">{{ place.category || '추천 장소' }}</span>
-                  <h3 class="search-card-title">{{ place.name }}</h3>
-                  <p v-if="place.address" class="search-card-meta">{{ place.address }}</p>
+                  <h3 data-no-translate class="search-card-title">{{ place.name }}</h3>
+                  <p data-no-translate v-if="place.address" class="search-card-meta">{{ place.address }}</p>
                 </div>
               </button>
             </div>
@@ -551,9 +554,9 @@ watch(
                   <span v-else class="material-symbols-rounded">auto_stories</span>
                 </div>
                 <div class="search-card-body">
-                  <span class="search-card-eyebrow">좋아요 {{ post.likeCount }} · 댓글 {{ post.commentCount }}</span>
-                  <h3 class="search-card-title">{{ post.title }}</h3>
-                  <p v-if="post.summary" class="search-card-meta">{{ post.summary }}</p>
+                  <span class="search-card-eyebrow">{{ formatUiText("좋아요 {0} · 댓글 {1}", "{0} likes · {1} comments", [post.likeCount, post.commentCount]) }}</span>
+                  <h3 data-no-translate class="search-card-title">{{ post.title }}</h3>
+                  <p data-no-translate v-if="post.summary" class="search-card-meta">{{ post.summary }}</p>
                   <p v-if="post.publishedBy" class="search-card-author">
                     <span class="avatar" :style="{ width: '20px', height: '20px', fontSize: '9px' }">{{ post.publishedBy.displayName.charAt(0) }}</span>
                     {{ post.publishedBy.displayName }}
@@ -589,8 +592,8 @@ watch(
                   <span v-else class="search-card-avatar-fallback">{{ user.displayName.charAt(0) }}</span>
                 </div>
                 <div class="search-card-body">
-                  <h3 class="search-card-title">{{ user.displayName }}</h3>
-                  <p class="search-card-meta">팔로워 {{ user.followerCount }}명</p>
+                  <h3 data-no-translate class="search-card-title">{{ user.displayName }}</h3>
+                  <p class="search-card-meta">{{ formatUiText("팔로워 {0}명", "{0} followers", [user.followerCount]) }}</p>
                 </div>
               </button>
             </div>
@@ -643,7 +646,7 @@ watch(
           <div class="place-detail-content">
             <div class="place-detail-heading">
               <button class="place-detail-summary-toggle" type="button" :aria-expanded="detailDescriptionExpanded" aria-controls="place-detail-expanded" @click="togglePlaceInfo">
-                <span class="place-detail-summary-copy"><span class="place-detail-name">{{ selectedPlace.placeName }}</span><span v-if="selectedPlace.address" class="place-detail-address">{{ selectedPlace.address }}</span></span>
+                <span class="place-detail-summary-copy"><span data-no-translate class="place-detail-name">{{ selectedPlace.placeName }}</span><span data-no-translate v-if="selectedPlace.address" class="place-detail-address">{{ selectedPlace.address }}</span></span>
                 <span class="material-symbols-rounded" aria-hidden="true">{{ detailDescriptionExpanded ? 'expand_less' : 'info' }}</span>
                 <span class="place-detail-toggle-label">{{ detailDescriptionExpanded ? '정보 접기' : '장소 정보' }}</span>
               </button>
