@@ -21,8 +21,9 @@ import { swipeApi } from '@/api/swipe.api'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
 import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
+import MapTasteControl from '@/components/map/MapTasteControl.vue'
 import type { RouteMode } from '@/types/itinerary'
-import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
+import type { ItineraryMapStop, ItineraryMapNearbyPlace as TasteMapPlace } from '@/components/map/MapboxItineraryMap.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/components/map/MapDrawingOverlay.vue'
 import type { MapCursorView, MapObjectLockView } from '@/components/map/MapObjectOverlay.vue'
 import { MAP_STICKERS, stickerHref } from '@/components/map/mapStickerCatalog'
@@ -467,6 +468,11 @@ const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
   })
 })
 const selectedRecommendationMapPlace = ref<ItineraryMapNearbyPlace | null>(null)
+const tastePlaces = ref<TasteMapPlace[]>([])
+const tasteControl = ref<InstanceType<typeof MapTasteControl> | null>(null)
+function selectNearbyMapPlace(provider: string, placeId: string) {
+  if (!tasteControl.value?.select(provider, placeId)) void selectPlace(placeId, provider as PlaceProvider)
+}
 const discoveryBbox = computed(() => {
   if (mapStops.value.length > 0) {
     const lngs = mapStops.value.map((stop) => stop.lng)
@@ -4591,6 +4597,7 @@ function textAvatarStyle(index: unknown) {
                       <strong>투표가 진행 중이에요</strong>
                     </button>
                   </div>
+            <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
             <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
             <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
               <button ref="mapThemeButton" type="button" class="map-theme-button" :aria-expanded="mapThemeOpen" aria-controls="map-theme-options" @click="mapThemeOpen = !mapThemeOpen">
@@ -4893,6 +4900,7 @@ function textAvatarStyle(index: unknown) {
 				:route-display="routeState"
               :card-display="cardState"
               :nearby-places="routeNearbyMapPlaces"
+              :taste-places="tastePlaces"
               :preview-place="selectedRecommendationMapPlace"
               :drawings="mapDrawings"
               :drawing-tool="activeTool"
@@ -4913,7 +4921,7 @@ function textAvatarStyle(index: unknown) {
               :standard-view="standardMapView"
               :map-theme="mapTheme"
               @select-place="handleSelectPlace"
-              @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
+              @select-nearby-place="selectNearbyMapPlace"
               @viewport-change="mapViewport.updateViewport"
               @drawing-create="handleDrawingCreate"
               @drawing-erase="eraseLocalDrawings"
@@ -5559,9 +5567,9 @@ function textAvatarStyle(index: unknown) {
 .trip-map-actions .trip-vote-button--alert { color:#296c9a; background:#e5f3ff; border-color:#9cc9e8; animation:vote-alert-pulse 2.4s ease-in-out infinite; }
 .trip-map-actions .trip-vote-button--alert:hover { background:#d7edff; border-color:#78b5df; }
 @keyframes vote-alert-pulse { 0%,100% { box-shadow:0 0 0 0 rgb(72 145 199 / 22%); } 65% { box-shadow:0 0 0 7px rgb(72 145 199 / 0%); } }
-.vote-pending-card { position:absolute; top:calc(100% + 12px); right:0; width:max-content; padding:12px 16px; display:block; white-space:nowrap; border:1px solid #cde3f3; border-radius:16px; background:#fff; color:#607b90; text-align:left; box-shadow:0 8px 26px rgb(51 100 138 / 12%); cursor:pointer; font:inherit; font-size:12px; }
+.vote-pending-card { position:absolute; top:calc(100% + 10px); right:0; width:max-content; padding:5px 9px; display:block; white-space:nowrap; border:1px solid #cde3f3; border-radius:9px; background:#fff; color:#607b90; text-align:left; box-shadow:0 8px 26px rgb(51 100 138 / 12%); cursor:pointer; font:inherit; font-size:12px; }
 .vote-pending-card::before { content:''; position:absolute; right:26px; top:-6px; width:10px; height:10px; background:#fff; border-top:1px solid #cde3f3; border-left:1px solid #cde3f3; transform:rotate(45deg); }
-.vote-pending-card strong { color:#344e65; font-size:14px; }
+.vote-pending-card strong { color:#344e65; font-size:11px; font-weight:600; line-height:1.4; }
 .vote-pending-card:focus-visible { outline:2px solid #487db5; outline-offset:3px; }
 @media(max-width:767px) { .vote-pending-card { right:auto; left:0; width:max-content; } .vote-pending-card::before { right:auto; left:26px; } }
 @media(prefers-reduced-motion:reduce) { .trip-map-actions .trip-vote-button--alert { animation:none; } }

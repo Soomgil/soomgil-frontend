@@ -972,5 +972,17 @@ export const uiTranslationsEn: Readonly<Record<string, string>> = {
   "투표를 시작하고 멤버들에게 알림을 보냈어요.": "Voting started and members were notified.",
   "방장이 투표를 마감했어요": "The trip owner closed voting",
   "모두 제출해서 자동으로 마감됐어요": "Voting closed after everyone submitted",
-  "방장이 마감했어요": "Closed by the trip owner"
+  "방장이 마감했어요": "Closed by the trip owner",
+  "취향 보기": "Preferences",
+  "취향 관광지": "Places you love",
+  "여행 멤버가 좋아한 장소를 지도에서 찾아보세요.": "Explore places your travel companions liked.",
+  "내 취향": "Mine",
+  "동료 취향": "Companions",
+  "함께 좋아한 곳": "Shared favorites",
+  "슈퍼라이크만 보기": "Super Likes only",
+  "이 지도에서 다시 찾기": "Search this area",
+  "취향 장소를 불러오지 못했습니다.": "Could not load favorite places.",
+  "지도를 움직여 탐색할 지역을 선택해 주세요.": "Move the map to choose an area.",
+  "이 지역에 표시할 선호 장소가 없어요.": "No favorite places in this area.",
+  "공개 범위에 따라 최대 200개 장소를 표시합니다.": "Up to 200 places, subject to profile visibility."
 }
