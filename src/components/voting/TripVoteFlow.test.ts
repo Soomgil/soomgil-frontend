@@ -506,4 +506,25 @@ describe('여행 방 투표 화면', () => {
     expect(wrapper.get('[data-testid="vote-setup"]').text()).toContain('3일')
     expect(wrapper.get('[data-testid="setup-selection-count"]').text()).toBe('9')
   })
+  it('과거 투표 알림은 현재 진행 중 투표 대신 해당 세션 결과를 조회한다', async () => {
+    mocks.votingApi.getResult.mockRejectedValue(new Error('unavailable'))
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true, targetSessionId: 'old-session' }, global: { stubs } })
+    await flushPromises()
+    expect(mocks.votingApi.getResult).toHaveBeenCalledWith('trip-1', 'old-session')
+    expect(wrapper.find('[data-testid="vote-error"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="candidate-name"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('과거 결과의 관광지와 마감 사유를 보여주고 새 투표 버튼을 숨긴다', async () => {
+    mocks.votingApi.getResult.mockResolvedValue({ sessionId: 'old-session', tripId: 'trip-1', status: 'COMPLETED', completionReason: 'OWNER_EARLY_CLOSE', completedAt: null, selectionCount: 1,
+      results: [{ candidateId: 'old-place', name: '이전 투표의 해변', thumbnailUrl: null, stickerCount: 4, selected: true, selectedRank: 1, itineraryOutcome: 'ADDED', itineraryItemId: 'old-item' }], unscheduledDayId: null, itineraryVersion: null })
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true, targetSessionId: 'old-session' }, global: { stubs } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('이전 투표의 해변')
+    expect(wrapper.text()).toContain('방장이 마감했어요')
+    expect(wrapper.find('[data-testid="vote-restart"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
 })

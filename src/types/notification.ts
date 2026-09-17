@@ -8,9 +8,10 @@ export interface Notification {
   body: string | null
   payload: {
     tripId: string
-    inviteId: string
-    inviteCode: string
+    inviteId?: string | null
+    inviteCode?: string | null
     route: string | null
+    voteSessionId?: string | null
   } | null
   readAt: string | null
   createdAt: string

@@ -3,7 +3,7 @@ import { computed, ref, watch, nextTick } from 'vue'
 import type { TripVoteSessionDetail, TripVoteSessionResult } from '@/types/voting'
 
 const props = defineProps<{
-  session: TripVoteSessionDetail
+  session: TripVoteSessionDetail | null
   result: TripVoteSessionResult | null
 }>()
 
@@ -21,7 +21,7 @@ const rows = computed(() => {
       alreadyInItinerary: item.itineraryOutcome === 'SKIPPED_DUPLICATE',
     }))
   }
-  return [...props.session.candidates]
+  return [...(props.session?.candidates ?? [])]
     .sort((a, b) => (b.stickerCount ?? 0) - (a.stickerCount ?? 0) || a.rank - b.rank)
     .map((candidate) => ({
       id: candidate.id,
@@ -41,7 +41,7 @@ const brokenImages = ref(new Set<string>())
 const displayedRows = computed(() => showAll.value ? rows.value : rows.value.slice(0, 5))
 const addedCount = computed(() => rows.value.filter(row => row.addedToItinerary).length)
 const duplicateCount = computed(() => rows.value.filter(row => row.alreadyInItinerary).length)
-watch(() => props.session.id, () => { showAll.value = false; brokenImages.value = new Set() })
+watch(() => props.result?.sessionId ?? props.session?.id, () => { showAll.value = false; brokenImages.value = new Set() })
 async function toggleResults() {
   showAll.value = !showAll.value
   await nextTick()
@@ -51,7 +51,7 @@ async function toggleResults() {
 const selectedCount = computed(() => rows.value.filter((row) => row.selected).length)
 
 const completionLabel = computed(() =>
-  props.session.completionReason === 'OWNER_EARLY_CLOSE' ? '방장이 마감했어요' : '모두 제출해서 자동으로 마감됐어요',
+  (props.result?.completionReason ?? props.session?.completionReason) === 'OWNER_EARLY_CLOSE' ? '방장이 마감했어요' : '모두 제출해서 자동으로 마감됐어요',
 )
 </script>
 
