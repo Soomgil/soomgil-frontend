@@ -481,19 +481,21 @@ function onTouchEnd(e: TouchEvent) {
 }
 function onWheel(e: WheelEvent) {
   if (Math.abs(e.deltaY) < 15) return;
-  const article = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(".story-post");
-  if (!article) return;
-  const atTop = article.scrollTop <= 0;
-  const atBottom = article.scrollTop + article.clientHeight >= article.scrollHeight - 1;
-  if (e.deltaY > 0) {
-    if (!atBottom) return;
-    e.preventDefault();
-    goToStory(1);
-  } else {
-    if (!atTop) return;
-    e.preventDefault();
-    goToStory(-1);
-  }
+  e.preventDefault();
+  goToStory(e.deltaY > 0 ? 1 : -1);
+}
+let feedDragStart: number | null = null;
+function onFeedPointerDown(e: PointerEvent) {
+  if (e.pointerType !== 'mouse' || (e.target as HTMLElement).closest('button,a,input,textarea')) return;
+  feedDragStart = e.clientY;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+function onFeedPointerUp(e: PointerEvent) {
+  if (feedDragStart !== null && Math.abs(e.clientY - feedDragStart) > 55) goToStory(e.clientY < feedDragStart ? 1 : -1);
+  feedDragStart = null;
+}
+function focusStoryComments(e: Event) {
+  (e.currentTarget as HTMLElement).closest('.feed-layout')?.querySelector<HTMLInputElement>('.feed-comment-input-area input')?.focus();
 }
 function onKeydown(e: KeyboardEvent) {
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
@@ -752,7 +754,7 @@ watch(
               tabindex="0"
               @touchstart.passive="onTouchStart"
               @touchend.passive="onTouchEnd"
-              @wheel="onWheel"
+              @wheel="onWheel" @pointerdown="onFeedPointerDown" @pointerup="onFeedPointerUp" @pointercancel="feedDragStart = null"
               @keydown="onKeydown"
             >
               <Transition :name="transitionName" mode="out-in">
@@ -823,11 +825,7 @@ watch(
                     >
                       <span class="material-symbols-rounded">chevron_left</span>
                     </button>
-                    <img
-                      :alt="visibleStory.title"
-                      :src="currentStoryPhoto(visibleStory)"
-                      class="story-post-photo-img"
-                    />
+                    <Transition name="story-photo" mode="out-in"><img :key="currentStoryPhoto(visibleStory)" :alt="visibleStory.title" :src="currentStoryPhoto(visibleStory)" class="story-post-photo-img" draggable="false" /></Transition>
                     <button
                       v-if="visibleStory.photos.length > 1"
                       type="button"
@@ -854,7 +852,7 @@ watch(
                     <div class="story-action-bar">
                       <button
                         type="button"
-                        class="story-like-button"
+                        class="story-like-button story-heart-button"
                         :class="{ active: visibleStory.likedByMe }"
                         :disabled="likingPostIds.has(visibleStory.id)"
                         :aria-pressed="visibleStory.likedByMe"
@@ -863,14 +861,7 @@ watch(
                         <span class="material-symbols-rounded" style="font-size: 20px">favorite</span>
                         {{ visibleStory.likes }}
                       </button>
-                      <span style="display: flex; align-items: center; gap: 4px"
-                        ><span
-                          class="material-symbols-rounded"
-                          style="font-size: 20px; color: var(--violet)"
-                          >chat_bubble</span
-                        >
-                        {{ visibleStory.comments }}</span
-                      >
+                      <button type="button" class="story-like-button story-comment-button" aria-label="댓글 작성" @click="focusStoryComments"><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ visibleStory.comments }}</button>
                       <button type="button" class="story-like-button" @click="retripStory(visibleStory)">
                         <span class="material-symbols-rounded" style="font-size: 20px"
                           >content_copy</span
