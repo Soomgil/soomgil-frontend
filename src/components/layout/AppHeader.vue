@@ -1,3 +1,7 @@
+<script lang="ts">
+// Page shells remount the header; retain only the last menu key between them.
+let previousNavKey = ''
+</script>
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -46,6 +50,21 @@ const activeNavKey = computed(() => {
   if (path === '/home') return 'home'
   return ''
 })
+
+const navElement = ref<HTMLElement | null>(null)
+const indicatorStyle = ref({ width: '0px', height: '0px', transform: 'translate(0px, 0px)', opacity: '0' })
+const indicatorReady = ref(false)
+let navObserver: ResizeObserver | undefined
+let navFrame = 0
+function positionIndicator(key = activeNavKey.value) {
+  const link = navElement.value?.querySelector<HTMLElement>(`[data-nav-key="${key}"]`)
+  if (!link) { indicatorStyle.value.opacity = '0'; return }
+  indicatorStyle.value = { width: `${link.offsetWidth}px`, height: `${link.offsetHeight}px`, transform: `translate(${link.offsetLeft}px, ${link.offsetTop}px)`, opacity: '1' }
+}
+watch(activeNavKey, () => {
+  positionIndicator()
+}, { flush: 'post' })
+watch(() => serviceNavItems.value.map(item => item.label).join(), () => positionIndicator(), { flush: 'post' })
 
 /* ── Dropdowns ── */
 const showBriefing = ref(false)
@@ -282,6 +301,19 @@ watch(() => [auth.isAuthenticated, auth.user?.id], () => {
 }, { immediate: true })
 watch(() => route.fullPath, closeAllDropdowns)
 onMounted(() => {
+  positionIndicator(previousNavKey || activeNavKey.value)
+  previousNavKey = activeNavKey.value
+  navFrame = requestAnimationFrame(() => {
+    navFrame = requestAnimationFrame(() => {
+      indicatorReady.value = true
+      positionIndicator()
+    })
+  })
+  if (typeof ResizeObserver !== 'undefined' && navElement.value) {
+    navObserver = new ResizeObserver(() => { if (indicatorReady.value) positionIndicator() })
+    navObserver.observe(navElement.value)
+    navElement.value.querySelectorAll('a').forEach(link => navObserver!.observe(link))
+  }
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
   document.addEventListener('visibilitychange', refreshInbox)
@@ -289,6 +321,8 @@ onMounted(() => {
   notificationTimer = setInterval(refreshInbox, 30000)
 })
 onUnmounted(() => {
+  cancelAnimationFrame(navFrame)
+  navObserver?.disconnect()
   sessionVersion++
   clearInterval(notificationTimer)
   document.removeEventListener('click', handleClickOutside)
@@ -330,7 +364,7 @@ async function handleLogout() {
     </div>
 
     <!-- Center: Nav -->
-    <nav class="nav" aria-label="Primary">
+    <nav ref="navElement" class="nav" aria-label="Primary">
       <template v-if="isLandingPage">
         <a
           v-for="item in landingNavItems"
@@ -345,11 +379,12 @@ async function handleLogout() {
           :key="item.key"
           href="#"
           :class="{ active: activeNavKey === item.key }"
+          :data-nav-key="item.key"
           :aria-current="activeNavKey === item.key ? 'page' : undefined"
           @click.prevent="handleNavClick(item)"
         >{{ item.label }}</a>
       </template>
-      <div class="nav-indicator"></div>
+      <div class="nav-indicator" :class="{ 'is-ready': indicatorReady }" :style="indicatorStyle" aria-hidden="true"></div>
     </nav>
 
     <!-- Right: Actions -->
@@ -592,4 +627,24 @@ async function handleLogout() {
 @keyframes inbox-in { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:translateY(0); } }
 @media (max-width:600px) { #header-briefing-panel.inbox-panel,#header-notif-panel.inbox-panel { position:fixed; top:126px; left:12px; right:12px; width:auto !important; max-height:calc(100dvh - 145px); } }
 @media (prefers-reduced-motion:reduce) { .inbox-panel { animation:none !important; } }
+</style>
+<style scoped>
+.topbar.paper-header { --ink:#344e65; --muted:#6b879d; --surface-2:#edf7fd; --violet:#487db5; --blue:#63b2df; background:linear-gradient(110deg,rgb(255 255 255 / 97%),rgb(241 249 255 / 94%),rgb(255 255 255 / 97%)); border-bottom:1px solid rgb(198 222 240 / 45%); box-shadow:0 3px 18px rgb(91 152 192 / 3%); }
+.paper-header .nav { isolation:isolate; position:relative; }
+.paper-header .nav a { color:#68849a; background:transparent; transition:color .2s; }
+.paper-header .nav a:hover { color:#307eb3; background:rgb(227 244 255 / 38%); }
+.paper-header .nav a.active { color:#2c729f; background:transparent; border-color:transparent; }
+.paper-header .nav .nav-indicator { display:block; position:absolute; top:0; left:0; z-index:0; box-sizing:border-box; border-radius:999px; border:1px solid #bcdcf1; background:#deeffb; box-shadow:none; pointer-events:none; transition:none; }
+.paper-header .nav .nav-indicator.is-ready { transition:transform .42s cubic-bezier(.22,1,.36,1),width .42s cubic-bezier(.22,1,.36,1),height .2s,opacity .15s; }
+.paper-header .nav-indicator::after { display:none; }
+.paper-header .nav a:focus-visible { outline:2px solid #487db5; outline-offset:-3px; }
+.paper-header .inbox-trigger { color:#428cb9; background:transparent; }
+.paper-header .inbox-trigger:hover,.paper-header .inbox-trigger[aria-expanded=true] { background:#e8f5fe; border-color:#cee6f5; }
+.paper-header .header-actions .material-symbols-rounded { filter:none; }
+.paper-header .header-actions > .btn { border-radius:999px; box-shadow:none; }
+.paper-header .header-actions > .btn.primary { background:#487db5; color:white; }
+.paper-header .header-actions > .btn.primary:hover { background:#396a9e; }
+.paper-header .header-actions > .btn.ghost { background:transparent; color:#428cb9; }
+@media(max-width:480px) { .paper-header .nav { justify-content:space-between; gap:2px; } .paper-header .nav a { text-align:center; flex:1; padding-inline:8px; } }
+@media(prefers-reduced-motion:reduce) { .paper-header .nav .nav-indicator.is-ready,.paper-header .nav a { transition:none; } }
 </style>

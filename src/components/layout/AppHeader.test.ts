@@ -67,6 +67,14 @@ describe('AppHeader 알림 API 연동', () => {
     expect(mocks.push).toHaveBeenCalledWith('/swipe')
   })
 
+  it('선택 메뉴의 접근성 상태와 장식용 이동 알약을 제공한다', () => {
+    const wrapper = mount(AppHeader)
+    expect(wrapper.get('nav a[aria-current="page"]').attributes('data-nav-key')).toBe('home')
+    expect(wrapper.get('.nav-indicator').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.findAll('nav a[data-nav-key]')).toHaveLength(4)
+    wrapper.unmount()
+  })
+
   it('빈 알림 page를 명시적으로 표시한다', async () => {
     const wrapper = mount(AppHeader)
     await flushPromises()
