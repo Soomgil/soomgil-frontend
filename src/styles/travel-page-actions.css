@@ -35,11 +35,11 @@
   box-shadow: 0 0 0 3px rgb(72 125 181 / 12%);
 }
 .community-paper .community-story-search .search-box__button {
-  background: var(--action-blue);
-  color: #fff;
+  background: transparent;
+  color: var(--action-blue-hover);
   box-shadow: none;
 }
-.community-paper .community-story-search .search-box__button:hover { background: var(--action-blue-hover); }
+.community-paper .community-story-search .search-box__button:hover { background: transparent; box-shadow: none; transform: none; }
 .travel-paper .trip-tabs { gap: 6px; flex-wrap: wrap; }
 .travel-paper .trip-tabs button,
 .travel-paper .timeline-card-vote,
