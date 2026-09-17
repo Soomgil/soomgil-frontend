@@ -54,9 +54,9 @@ const filteredPlaces = computed(() => {
                 </button>
               </div>
               <div class="place-info-wrap">
-                <h3 class="place-title-h3">{{ place.placeName }}</h3>
-                <span class="place-region-category">{{ place.address }}</span>
-                <p class="place-desc-text">{{ place.summary }}</p>
+                <h3 data-no-translate class="place-title-h3">{{ place.placeName }}</h3>
+                <span data-no-translate class="place-region-category">{{ place.address }}</span>
+                <p data-no-translate class="place-desc-text">{{ place.summary }}</p>
                 <div class="place-tag-row">
                   <span v-for="tag in (place.tags ?? []).slice(0, 3)" :key="tag" class="place-tag-pill">#{{ tag }}</span>
                 </div>

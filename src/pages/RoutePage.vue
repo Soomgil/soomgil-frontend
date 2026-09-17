@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
+import { translateUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefetchMapStyles } from '@/utils/mapStyleCache'
@@ -19,8 +21,9 @@ import { swipeApi } from '@/api/swipe.api'
 import { dayPlanLabel, toDayPlans } from '@/components/itinerary/itineraryViewModel'
 import type { DayPlanViewModel, RouteStopViewModel } from '@/components/itinerary/itineraryViewModel'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
+import MapTasteControl from '@/components/map/MapTasteControl.vue'
 import type { RouteMode } from '@/types/itinerary'
-import type { ItineraryMapStop } from '@/components/map/MapboxItineraryMap.vue'
+import type { ItineraryMapStop, ItineraryMapNearbyPlace as TasteMapPlace } from '@/components/map/MapboxItineraryMap.vue'
 import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/components/map/MapDrawingOverlay.vue'
 import type { MapCursorView, MapObjectLockView } from '@/components/map/MapObjectOverlay.vue'
 import { MAP_STICKERS, stickerHref } from '@/components/map/mapStickerCatalog'
@@ -209,10 +212,12 @@ const isTripOwner = computed(() => {
   return (detail?.myRole ?? trip.value.myRole) === 'OWNER'
 })
 const voteSessionStatus = computed(() => votingStore.session?.status ?? null)
-/** 내가 참여자인데 아직 제출하지 않은 진행 중 투표가 있는지. 빨간 경고의 기준이다. */
+/** 내가 참여자인데 아직 제출하지 않은 진행 중 투표가 있는지. 투표 안내의 기준이다. */
 const votePending = computed(
   () => voteSessionStatus.value === 'OPEN' && votingStore.myParticipation != null && !votingStore.isSubmitted,
 )
+const voteHintDismissed = ref(false)
+watch(() => votingStore.session?.id, () => { voteHintDismissed.value = false })
 const voteModalOpen = ref(false)
 const notificationVoteSessionId = ref<string | null>(null)
 watch(() => route.query?.vote, value => {
@@ -233,8 +238,8 @@ const mapThemeButton = ref<HTMLButtonElement | null>(null)
 function readMapTheme(): MapTheme {
   try {
     const saved = localStorage.getItem('soomgil-map-theme')
-    return MAP_THEMES.find(theme => theme.value === saved)?.value ?? 'light'
-  } catch { return 'light' }
+    return MAP_THEMES.find(theme => theme.value === saved)?.value ?? 'standard'
+  } catch { return 'standard' }
 }
 function selectMapTheme(value: MapTheme) {
   mapTheme.value = value
@@ -463,6 +468,11 @@ const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
   })
 })
 const selectedRecommendationMapPlace = ref<ItineraryMapNearbyPlace | null>(null)
+const tastePlaces = ref<TasteMapPlace[]>([])
+const tasteControl = ref<InstanceType<typeof MapTasteControl> | null>(null)
+function selectNearbyMapPlace(provider: string, placeId: string) {
+  if (!tasteControl.value?.select(provider, placeId)) void selectPlace(placeId, provider as PlaceProvider)
+}
 const discoveryBbox = computed(() => {
   if (mapStops.value.length > 0) {
     const lngs = mapStops.value.map((stop) => stop.lng)
@@ -2486,7 +2496,7 @@ function scopeForTag(tag: string): PlanningScope {
 
 async function switchMemoDay(tag: string) {
   if (tag === activeMemoDay.value || memoLoading.value) return
-  if (memoDirty.value && !window.confirm('작성 중인 내용을 버리고 다른 메모로 이동할까요?')) return
+  if (memoDirty.value && !window.confirm(translateUiText('작성 중인 내용을 버리고 다른 메모로 이동할까요?'))) return
   activeMemoDay.value = tag
   await loadNote(tag)
 }
@@ -2608,7 +2618,7 @@ async function clearNote() {
     memoConflict.value = false
     return
   }
-  if (!window.confirm('이 메모를 삭제할까요?')) return
+  if (!window.confirm(translateUiText('이 메모를 삭제할까요?'))) return
   const remoteRevisionAtStart = memoRemoteRevisions[tag] ?? 0
   memoLoading.value = true
   try {
@@ -2637,7 +2647,7 @@ async function clearNote() {
 }
 
 async function reloadLatestMemo() {
-  if (memoDirty.value && !window.confirm('작성 중인 내용을 버리고 최신 메모를 불러올까요?')) return
+  if (memoDirty.value && !window.confirm(translateUiText('작성 중인 내용을 버리고 최신 메모를 불러올까요?'))) return
   await loadNote()
 }
 
@@ -3619,7 +3629,7 @@ async function handleMapImageSelected(event: Event) {
     return
   }
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-    window.alert('JPG, PNG, WebP 이미지를 10MB 이하로 선택해 주세요.')
+    window.alert(translateUiText('JPG, PNG, WebP 이미지를 10MB 이하로 선택해 주세요.'))
     return
   }
   mapImageUploading.value = true
@@ -3643,7 +3653,7 @@ async function handleMapImageSelected(event: Event) {
   } catch (cause) {
     URL.revokeObjectURL(previewUrl)
     console.error('Map overlay image upload failed.', cause)
-    window.alert('지도 이미지를 업로드하지 못했습니다.')
+    window.alert(translateUiText('지도 이미지를 업로드하지 못했습니다.'))
   } finally {
     mapImageUploading.value = false
   }
@@ -4573,16 +4583,22 @@ function textAvatarStyle(index: unknown) {
                     <span v-if="trip.members.length > 3" class="members-count">+{{ trip.members.length - 3 }}</span>
                   </div>
             <div class="trip-map-buttons">
+                  <div v-if="showVoteAction" class="trip-vote-control">
                   <button
-                    v-if="showVoteAction"
                     type="button"
                     :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
+                    :aria-describedby="votePending && !voteModalOpen && !voteHintDismissed ? 'vote-pending-card' : undefined"
                     @click="goTripVote"
                   >
                     <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
                     <span>{{ voteActionLabel }}</span>
                   </button>
-            <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
+                    <button v-if="votePending && !voteModalOpen && !voteHintDismissed" id="vote-pending-card" class="vote-pending-card" data-testid="vote-pending-card" type="button" aria-label="투표가 진행 중이에요, 안내 닫기" @click="voteHintDismissed = true">
+                      <strong>투표가 진행 중이에요</strong>
+                    </button>
+                  </div>
+            <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
+            <TripSettingsButton label="관리" variant="chip" @click="() => openTripManagement()" />
             <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
               <button ref="mapThemeButton" type="button" class="map-theme-button" :aria-expanded="mapThemeOpen" aria-controls="map-theme-options" @click="mapThemeOpen = !mapThemeOpen">
                 <span class="material-symbols-rounded" aria-hidden="true">palette</span><span>지도 테마</span>
@@ -4618,7 +4634,7 @@ function textAvatarStyle(index: unknown) {
             <div class="sidebar-content">
               <div class="trip-sidebar-summary">
                 <a v-show="!isSearchPanelOpen" href="/my-trips" class="trip-sidebar-back"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
-                <h1 class="trip-sidebar-title" :title="trip.title">{{ trip.title }}</h1>
+                <h1 data-no-translate class="trip-sidebar-title" :title="trip.title">{{ trip.title }}</h1>
                 <p class="trip-sidebar-meta"><span v-if="trip.destinationName">{{ trip.destinationName }} · </span>{{ trip.dateRangeText }} · {{ trip.durationText }}</p>
               </div>
               <!-- Day tabs -->
@@ -4675,7 +4691,7 @@ function textAvatarStyle(index: unknown) {
 					<div :class="['day-separator', getDayColorClass(day.day)]" :data-day="day.day" :data-day-id="day.id"
 						@pointerdown="onPointerDown">
                       <span class="day-pill">{{ dayPlanLabel(day) }}</span>
-                      <span class="day-stop-count">{{ day.items.length }}곳</span>
+                      <span class="day-stop-count">{{ formatUiText("{0}곳", "{0} places", [day.items.length]) }}</span>
                       <span class="line"></span>
                       <span class="material-symbols-rounded grip-icon">drag_indicator</span>
                     </div>
@@ -4725,7 +4741,7 @@ function textAvatarStyle(index: unknown) {
 				<div :class="['day-separator', getDayColorClass(activeDay)]" :data-day="activeDay" :data-day-id="activePlan.id"
 					@pointerdown="onPointerDown">
                     <span class="day-pill">{{ dayPlanLabel(activePlan) }}</span>
-                    <span class="day-stop-count">{{ activePlan.items.length }}곳</span>
+                    <span class="day-stop-count">{{ formatUiText("{0}곳", "{0} places", [activePlan.items.length]) }}</span>
                     <span class="line"></span>
                   </div>
                   <template v-for="(item, idx) in activePlan.items" :key="item.id">
@@ -4777,9 +4793,13 @@ function textAvatarStyle(index: unknown) {
                   <span>여기로 끌어서 삭제</span>
                 </div>
 
-                <button class="add-stop-dashed" type="button" :disabled="dayPlans.length === 0 || itinerary.mutating.value" @click="openSearchPanel">
+                <button v-if="!isSearchPanelOpen" class="add-stop-dashed" type="button" :disabled="dayPlans.length === 0 || itinerary.mutating.value" @click="openSearchPanel">
                   <span class="material-symbols-rounded">add_circle</span>
                   <span>일정 추가</span>
+                </button>
+                <button v-else class="add-stop-dashed search-panel-custom-trigger" :aria-expanded="showCustomForm" type="button" @click="showCustomForm = !showCustomForm">
+                  <span class="material-symbols-rounded" aria-hidden="true">edit_note</span>
+                  <span>{{ showCustomForm ? '커스텀 일정 입력 닫기' : '커스텀 일정 추가' }}</span>
                 </button>
                 <div class="add-stop-popover" id="add-stop-popover">
                   <button class="popover-item" type="button" @click="openSearchPanel">
@@ -4804,10 +4824,7 @@ function textAvatarStyle(index: unknown) {
                 <button class="icon-btn" id="search-panel-back" type="button" aria-label="일정으로 돌아가기" @click="closeSearchPanel">
                   <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span><span>일정으로</span>
                 </button>
-                <button :class="['category-chip', 'search-panel-custom-trigger']" type="button" @click="showCustomForm = !showCustomForm">
-                  <span class="material-symbols-rounded" aria-hidden="true">edit_note</span>
-                  커스텀 일정 추가
-                </button>
+
               </div>
               <div class="search-panel-body">
                 <!-- 커스텀 일정 폼 -->
@@ -4883,6 +4900,7 @@ function textAvatarStyle(index: unknown) {
 				:route-display="routeState"
               :card-display="cardState"
               :nearby-places="routeNearbyMapPlaces"
+              :taste-places="tastePlaces"
               :preview-place="selectedRecommendationMapPlace"
               :drawings="mapDrawings"
               :drawing-tool="activeTool"
@@ -4903,7 +4921,7 @@ function textAvatarStyle(index: unknown) {
               :standard-view="standardMapView"
               :map-theme="mapTheme"
               @select-place="handleSelectPlace"
-              @select-nearby-place="(provider, placeId) => selectPlace(placeId, provider as PlaceProvider)"
+              @select-nearby-place="selectNearbyMapPlace"
               @viewport-change="mapViewport.updateViewport"
               @drawing-create="handleDrawingCreate"
               @drawing-erase="eraseLocalDrawings"
@@ -4958,18 +4976,6 @@ function textAvatarStyle(index: unknown) {
               </button>
             </div>
 
-            <!-- 닫아 둔 미제출 투표는 지도 상단에 빨갛게 남겨 눈에 띄게 한다. -->
-            <button
-              v-if="votePending && !voteModalOpen"
-              type="button"
-              class="vote-pending-banner"
-              data-testid="vote-pending-banner"
-              @click="openVoteModal"
-            >
-              <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-              <span>투표가 진행 중이에요 · 아직 제출하지 않았어요</span>
-              <strong>이어서 투표하기</strong>
-            </button>
             <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
               지도 범위를 동기화하는 중
             </div>
@@ -5160,10 +5166,10 @@ function textAvatarStyle(index: unknown) {
                 <div class="detailbar-category-row">
                   <span class="detailbar-category-pill">{{ selectedPlace.category || '상세 정보' }}</span>
                 </div>
-                <h2 class="detailbar-main-title">{{ selectedPlace.title }}</h2>
+                <h2 data-no-translate class="detailbar-main-title">{{ selectedPlace.title }}</h2>
                 <div v-if="selectedPlace.location" class="detailbar-address-row">
                   <span class="material-symbols-rounded">location_on</span>
-                  <span>{{ selectedPlace.location }}</span>
+                  <span data-no-translate>{{ selectedPlace.location }}</span>
                 </div>
               </div>
 
@@ -5237,7 +5243,7 @@ function textAvatarStyle(index: unknown) {
                   </template>
                 </div>
                 <span class="detailbar-likes-text">
-                  <template v-if="selectedPlace.likedBy.length > 1"><strong>{{ selectedPlace.likedBy.length }}명</strong>이 저장한 장소</template>
+                  <template v-if="selectedPlace.likedBy.length > 1"><strong>{{ formatUiText("{0}명", "{0} people", [selectedPlace.likedBy.length]) }}</strong>이 저장한 장소</template>
                   <template v-else><strong>{{ selectedPlace.likedBy[0].name || '멤버' }}</strong>님이 저장한 장소</template>
                 </span>
               </div>
@@ -5454,7 +5460,7 @@ function textAvatarStyle(index: unknown) {
             </div>
             <div class="panel-footer memo-footer">
               <div class="memo-footer-left">
-                <span class="memo-char-count" id="memo-char-count">{{ memoTextDisplay.length }}자</span>
+                <span class="memo-char-count" id="memo-char-count">{{ formatUiText("{0}자", "{0} characters", [memoTextDisplay.length]) }}</span>
                 <span v-if="memoStatus" class="memo-status" role="status">{{ memoStatus }}</span>
                 <button v-if="memoConflict" type="button" class="memo-reload-btn" @click="reloadLatestMemo">
                   최신 메모 불러오기
@@ -5556,49 +5562,17 @@ function textAvatarStyle(index: unknown) {
 </template>
 
 <style scoped>
-/* ── 미제출 투표 경고: 카드 버튼은 빨갛게, 지도 상단에는 띠로 남긴다. ── */
-.trip-vote-button--alert {
-  animation: vote-alert-pulse 1.6s ease-in-out infinite;
-  background: rgba(244, 63, 94, 0.1);
-  border-color: rgba(244, 63, 94, 0.55);
-  color: #be123c;
-}
-
-.trip-vote-button--alert:hover {
-  border-color: #be123c;
-  color: #9f1239;
-}
-
-@keyframes vote-alert-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.35); }
-  50% { box-shadow: 0 0 0 6px rgba(244, 63, 94, 0); }
-}
-
-.vote-pending-banner {
-  align-items: center;
-  background: #e11d48;
-  border: 0;
-  border-radius: 999px;
-  box-shadow: 0 10px 28px rgba(225, 29, 72, 0.35);
-  color: #fff;
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 13px;
-  font-weight: 800;
-  gap: 8px;
-  left: 50%;
-  max-width: calc(100% - 32px);
-  padding: 10px 16px;
-  position: absolute;
-  top: 16px;
-  transform: translateX(-50%);
-  z-index: 30;
-}
-
-.vote-pending-banner strong {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
+/* 투표 안내는 해당 액션에 붙여 지도 중앙을 가리지 않는다. */
+.trip-vote-control { position:relative; }
+.trip-map-actions .trip-vote-button--alert { color:#296c9a; background:#e5f3ff; border-color:#9cc9e8; animation:vote-alert-pulse 2.4s ease-in-out infinite; }
+.trip-map-actions .trip-vote-button--alert:hover { background:#d7edff; border-color:#78b5df; }
+@keyframes vote-alert-pulse { 0%,100% { box-shadow:0 0 0 0 rgb(72 145 199 / 22%); } 65% { box-shadow:0 0 0 7px rgb(72 145 199 / 0%); } }
+.vote-pending-card { position:absolute; top:calc(100% + 10px); right:0; width:max-content; padding:5px 9px; display:block; white-space:nowrap; border:1px solid #cde3f3; border-radius:9px; background:#fff; color:#607b90; text-align:left; box-shadow:0 8px 26px rgb(51 100 138 / 12%); cursor:pointer; font:inherit; font-size:12px; }
+.vote-pending-card::before { content:''; position:absolute; right:26px; top:-6px; width:10px; height:10px; background:#fff; border-top:1px solid #cde3f3; border-left:1px solid #cde3f3; transform:rotate(45deg); }
+.vote-pending-card strong { color:#344e65; font-size:11px; font-weight:600; line-height:1.4; }
+.vote-pending-card:focus-visible { outline:2px solid #487db5; outline-offset:3px; }
+@media(max-width:767px) { .vote-pending-card { right:auto; left:0; width:max-content; } .vote-pending-card::before { right:auto; left:26px; } }
+@media(prefers-reduced-motion:reduce) { .trip-map-actions .trip-vote-button--alert { animation:none; } }
 
 .vote-modal-overlay {
   align-items: center;
@@ -7839,6 +7813,7 @@ function textAvatarStyle(index: unknown) {
 #search-panel-back { display: inline-flex; align-items: center; gap: 6px; width: auto; min-height: 40px; padding: 6px 12px; border: 1px solid #dfeaf5; border-radius: 12px; background: #fff; color: #506880; font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 3px 10px rgb(52 102 145 / 7%); }
 #search-panel-back:hover { border-color: #abcbe5; background: #f5faff; color: #3579b0; }
 .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { min-height: 40px; padding: 0 14px; font-size: 13px; }
+.trip-map-actions :deep(.trip-settings-button) { background:#fff; }
 .trip-map-actions .avatar { width: 34px; height: 34px; }
 .trip-map-actions .members-count { font-size: 12px; }
 .trip-map-actions .avatars-group { padding: 4px 10px; }
@@ -7850,7 +7825,7 @@ function textAvatarStyle(index: unknown) {
 <style scoped>
 .trip-map-buttons { display: flex; align-items: center; gap: 8px; }
 .map-theme-control { position: relative; }
-.map-theme-button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.map-theme-button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .map-theme-button .material-symbols-rounded { font-size: 19px; }
 .map-theme-button:hover, .map-theme-button[aria-expanded="true"] { background: var(--surface-2); border-color: var(--violet); }
 .map-theme-popover { position: absolute; top: calc(100% + 8px); right: 0; width: 206px; padding: 12px; background: var(--surface, #fff); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px #20344f26; }
@@ -7888,4 +7863,18 @@ function textAvatarStyle(index: unknown) {
 .route-unlink-label { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); color: #647c92; font-size: 10px; }
 .map-theme-popover label:focus-within { outline: 2px solid #328be0; outline-offset: 1px; }
 .route-page-section .day-separator { background: #fff !important; }
+</style>
+
+<style scoped>
+.route-page-section .add-stop-container .search-panel-custom-trigger { width:100%; margin:0; border:1px solid #b9d8ee; border-radius:999px; background:#edf6fc; color:#397dab; }
+.route-page-section .add-stop-container .search-panel-custom-trigger:hover { background:#deeffb; border-color:#94c1e1; }
+.route-page-section .search-panel-body { overflow-y:auto; padding-bottom:88px; }
+#search-panel-back { border-radius:999px; border:1px solid #dfe7ee; background:#fff; color:#396a9e; box-shadow:none; min-height:40px; padding:8px 16px; }
+#search-panel-back:hover { background:#f1f6fb; border-color:#b7cde2; }
+</style>
+
+<style scoped>
+.trip-sidebar-back { padding:8px 16px; border:1px solid #dfe7ee; border-radius:999px; background:#fff; color:#396a9e; font-weight:600; transition:background .2s,border-color .2s; }
+.trip-sidebar-back:hover { background:#f1f6fb; border-color:#b7cde2; }
+.trip-sidebar-back:focus-visible { outline:2px solid #487db5; outline-offset:3px; }
 </style>

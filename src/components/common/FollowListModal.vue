@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { ref, computed } from 'vue'
 import type { UserSummary } from '@/types/auth'
 
@@ -47,7 +48,7 @@ function toggleFollow(userId: string) {
       <div style="padding: 32px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
           <h2 style="font-size: 22px; font-weight: 850; color: var(--ink); margin: 0;">{{ title }}</h2>
-          <span style="font-size: 13px; color: var(--muted); font-weight: 700;">{{ filteredUsers.length }}명</span>
+          <span style="font-size: 13px; color: var(--muted); font-weight: 700;">{{ formatUiText("{0}명", "{0} people", [filteredUsers.length]) }}</span>
         </div>
 
         <!-- 유저 검색창 -->
@@ -77,8 +78,8 @@ function toggleFollow(userId: string) {
               <span v-else>{{ user.displayName.charAt(0) }}</span>
             </span>
             <div style="flex: 1; min-width: 0;">
-              <strong style="font-size: 14px; color: var(--ink); display: block;">{{ user.displayName }}</strong>
-              <span style="font-size: 12px; color: var(--muted); display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ user.bio }}</span>
+              <strong data-no-translate style="font-size: 14px; color: var(--ink); display: block;">{{ user.displayName }}</strong>
+              <span data-no-translate style="font-size: 12px; color: var(--muted); display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ user.bio }}</span>
             </div>
             <button type="button"
               :style="{

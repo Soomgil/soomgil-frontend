@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, watch } from 'vue'
 import http from '@/api/http'
 import { communityApi } from '@/api/community.api'
@@ -269,7 +270,7 @@ onMounted(loadTrips)
               <div style="display: grid; gap: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <label for="modal-story-content" style="font-weight: 800; font-size: 15px; color: var(--ink);">본문</label>
-                  <span style="font-weight: 750; font-size: 12px; color: var(--muted);">글자 수: {{ charCount }}자</span>
+                  <span style="font-weight: 750; font-size: 12px; color: var(--muted);">{{ formatUiText("글자 수: {0}자", "Characters: {0}", [charCount]) }}</span>
                 </div>
                 <div style="position: relative; border: 1.5px solid rgba(227, 234, 244, 0.9); border-radius: 20px; background: #fff; overflow: hidden; box-shadow: var(--soft-shadow);">
                   <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1.5px solid rgba(227, 234, 244, 0.9); background: #fbfcfe;">
@@ -290,7 +291,7 @@ onMounted(loadTrips)
               <div style="display: grid; gap: 10px;">
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
                   <label style="font-weight: 800; font-size: 15px; color: var(--ink);">사진 선택</label>
-                  <span style="font-size:12px; color:var(--muted);">{{ selectedPhotos.length }}장 선택 · 첫 사진이 커버</span>
+                  <span style="font-size:12px; color:var(--muted);">{{ formatUiText("{0}장 선택 · 첫 사진이 커버", "{0} photos selected · First photo is the cover", [selectedPhotos.length]) }}</span>
                 </div>
                 <div class="photo-strip">
                   <button
@@ -338,7 +339,7 @@ onMounted(loadTrips)
                     @click="photoPageNext"
                   ><span class="material-symbols-rounded">chevron_right</span></button>
                 </div>
-                <p v-if="totalPhotoPages > 1" style="margin:0; font-size:12px; color:var(--muted); text-align:right;">{{ photoPage + 1 }} / {{ totalPhotoPages }} 페이지</p>
+                <p v-if="totalPhotoPages > 1" style="margin:0; font-size:12px; color:var(--muted); text-align:right;">{{ formatUiText("{0} / {1} 페이지", "Page {0} of {1}", [photoPage + 1, totalPhotoPages]) }}</p>
               </div>
             </form>
           </div>

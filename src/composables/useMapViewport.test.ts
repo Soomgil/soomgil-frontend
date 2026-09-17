@@ -8,6 +8,21 @@ vi.mock('@/api/geo.api', () => ({
 }))
 
 describe('useMapViewport', () => {
+  it('작은 이동은 API를 재호출하지 않고 현재 좌표만 갱신한다', async () => {
+    const v = { minLng:126, minLat:36, maxLng:127, maxLat:37 }
+    vi.mocked(geoApi.summarizeViewport).mockResolvedValue({ viewport:v, center:{lng:126.5,lat:36.5}, widthMeters:100, heightMeters:100 })
+    const state = useMapViewport()
+    state.updateViewport(v); await vi.advanceTimersByTimeAsync(250)
+    const small = { ...v, minLng:126.1, maxLng:127.1 }
+    state.updateViewport(small); await vi.advanceTimersByTimeAsync(250)
+    expect(state.viewport.value).toEqual(small)
+    expect(geoApi.summarizeViewport).toHaveBeenCalledTimes(1)
+    expect(state.loading.value).toBe(false)
+    state.updateViewport({ ...v, minLng:126.4, maxLng:127.4 }); await vi.advanceTimersByTimeAsync(250)
+    expect(geoApi.summarizeViewport).toHaveBeenCalledTimes(2)
+    state.updateViewport({ minLng:126.4,minLat:36,maxLng:126.5,maxLat:36.1 }); await vi.advanceTimersByTimeAsync(250)
+    expect(geoApi.summarizeViewport).toHaveBeenCalledTimes(3)
+  })
   beforeEach(() => {
     vi.useFakeTimers()
     vi.clearAllMocks()

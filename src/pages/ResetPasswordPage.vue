@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth.api'
-import AppHeader from '@/components/layout/AppHeader.vue'
 import { useLocale } from '@/i18n'
 
 const router = useRouter()
@@ -53,7 +52,6 @@ async function handleReset() {
 
 <template>
   <div class="app-shell">
-    <AppHeader />
     <main class="auth-page auth-modern-page">
       <section class="auth-card auth-modern-card" style="grid-template-columns: 1fr;">
         <form class="auth-form auth-modern-form" @submit.prevent="step === 'request' ? handleRequest() : handleReset()">

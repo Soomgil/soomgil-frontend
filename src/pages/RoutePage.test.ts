@@ -3,6 +3,7 @@ import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
 import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
+import TripDateRangeDialog from '@/components/trip/TripDateRangeDialog.vue'
 import { clearCollaborationSessionIds, registerCollaborationSessionId } from '@/realtime/collaborationSession'
 import RoutePage from './RoutePage.vue'
 
@@ -1310,7 +1311,9 @@ describe('RoutePage itinerary integration', () => {
     ])
     expect(wrapper.text()).toContain('일정 추가')
 
-    await wrapper.get('.search-panel-custom-trigger').trigger('click')
+    await wrapper.get('.add-stop-dashed').trigger('click')
+    expect(wrapper.find('.search-panel-header .search-panel-custom-trigger').exists()).toBe(false)
+    await wrapper.get('.add-stop-container .search-panel-custom-trigger').trigger('click')
     await wrapper.get('#inline-custom-title').setValue('점심 식사')
     await wrapper.get('#inline-custom-submit').trigger('click')
     expect(holder.state.createItem).toHaveBeenCalledWith({
@@ -2084,8 +2087,8 @@ describe('RoutePage itinerary integration', () => {
 
     await wrapper.get('.trip-settings-button').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-testid="trip-start-date"]').setValue('2026-07-01')
-    await wrapper.get('[data-testid="trip-end-date"]').setValue('2026-07-02')
+    await wrapper.get('[data-testid="trip-period-card"]').trigger('click')
+    wrapper.getComponent(TripDateRangeDialog).vm.$emit('apply', '2026-07-01', '2026-07-02')
     await wrapper.get('.trip-create-form').trigger('submit')
     await flushPromises()
 
@@ -2120,8 +2123,7 @@ describe('RoutePage itinerary integration', () => {
     await wrapper.get('.trip-settings-button').trigger('click')
     await flushPromises()
 
-    expect((wrapper.get('[data-testid="trip-start-date"]').element as HTMLInputElement).value).toBe('2026-07-01')
-    expect((wrapper.get('[data-testid="trip-end-date"]').element as HTMLInputElement).value).toBe('2026-07-01')
+    expect(wrapper.get('[data-testid="trip-period-card"]').text()).toContain('2026-07-01 → 2026-07-01')
     expect(wrapper.text()).not.toContain('여행 상태 설정')
   })
 
@@ -3241,9 +3243,12 @@ describe('RoutePage itinerary integration', () => {
   })
 
   it('관리 오른쪽에서 지도 테마를 선택하고 저장한다', async () => {
+    localStorage.removeItem('soomgil-map-theme')
     const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
     await flushPromises()
     await wrapper.get('.map-theme-button').trigger('click')
+    expect(wrapper.findComponent(MapboxItineraryMap).props('mapTheme')).toBe('standard')
+    expect(wrapper.findAll('.map-theme-popover input')[0].attributes('value')).toBe('standard')
     await wrapper.get('input[value="navigation-night"]').element.closest('label')!.querySelectorAll('span')[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(wrapper.findComponent(MapboxItineraryMap).props('mapTheme')).toBe('navigation-night')
@@ -3263,7 +3268,7 @@ describe('RoutePage itinerary integration', () => {
     expect(routing.push).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'TripVote' }))
   })
 
-  it('모달을 닫으면 미제출 경고가 카드 버튼과 지도 상단 배너에 빨갛게 남고, 배너로 다시 열 수 있다', async () => {
+  it('투표 안내 카드는 한 줄로 표시하고 클릭하면 닫히며 투표 버튼으로 다시 연다', async () => {
     holder.votingStore.session = { status: 'OPEN' }
     holder.votingStore.myParticipation = { status: 'NOT_STARTED' }
     holder.votingStore.isSubmitted = false
@@ -3276,10 +3281,14 @@ describe('RoutePage itinerary integration', () => {
     const voteButton = wrapper.get('.trip-vote-button')
     expect(voteButton.classes()).toContain('trip-vote-button--alert')
     expect(voteButton.text()).toContain('미제출')
-    const banner = wrapper.get('[data-testid="vote-pending-banner"]')
-    expect(banner.text()).toContain('투표')
+    expect(wrapper.find('[data-testid="vote-pending-banner"]').exists()).toBe(false)
+    const banner = wrapper.get('.trip-vote-control [data-testid="vote-pending-card"]')
+    expect(banner.text()).toBe('투표가 진행 중이에요')
 
     await banner.trigger('click')
+    expect(wrapper.find('[data-testid="vote-pending-card"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
+    await voteButton.trigger('click')
     expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
   })
 

@@ -90,6 +90,20 @@ const routes = [{
 }]
 
 describe('MapboxItineraryMap', () => {
+  it('renders clustered taste markers without moving the camera', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops } })
+    await flushPromises(); mapbox.handlers.get('style.load')?.()
+    mapbox.map.fitBounds.mockClear(); mapbox.map.easeTo.mockClear(); mapbox.Marker.mockClear()
+    await wrapper.setProps({ tastePlaces: [1, 2].map(i => ({ id: `taste-${i}`, provider: 'KTO', externalPlaceId: String(i), title: `Place ${i}`, category: null, lat: 36, lng: 127, taste: 'favorite' as const })) })
+    const el = (mapbox.Marker.mock.calls.at(-1)?.[0] as { element: HTMLElement }).element
+    expect(el.querySelectorAll('button')).toHaveLength(2)
+    el.querySelector('button')?.click()
+    expect(wrapper.emitted('selectNearbyPlace')?.at(-1)).toEqual(['KTO', '1'])
+    expect(mapbox.map.fitBounds).not.toHaveBeenCalled()
+    expect(mapbox.map.easeTo).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     mapbox.handlers.clear()

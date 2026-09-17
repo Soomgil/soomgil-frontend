@@ -65,7 +65,26 @@ export interface RecommendationParams {
   size?: number
 }
 
+export interface TripPreferencePlace {
+  provider: PlaceProvider
+  externalPlaceId: string
+  name: string
+  address: string | null
+  lat: number
+  lng: number
+  thumbnailUrl: string | null
+  category: string | null
+  userId: string
+  displayName: string
+  profileImageUrl: string | null
+  reaction: 'LIKE' | 'SUPER_LIKE'
+}
+
 export const swipeApi = {
+  async getTripPreferencePlaces(tripId: string, bbox: string): Promise<TripPreferencePlace[]> {
+    const response = await http.get<TripPreferencePlace[]>(`/trips/${tripId}/preference-places`, { params: { bbox } })
+    return response.data
+  },
   async getReaction(provider: PlaceProvider, externalPlaceId: string): Promise<SwipeAction | null> {
     const response = await http.get<{ reaction: SwipeAction | null }>(`/places/${provider}/${externalPlaceId}/swipe-reaction`)
     return response.data.reaction

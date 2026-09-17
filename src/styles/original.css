@@ -12383,3 +12383,17 @@ button,
 .text-area {
   font-family: var(--font-sans) !important;
 }
+
+/* Preference markers keep their own palette across all map themes. */
+.map-taste-marker, .map-taste-cluster > summary { display:flex; align-items:center; gap:7px; min-height:42px; padding:6px 13px 6px 7px; border:2px solid #e94758; border-radius:999px; background:#fff; color:#202a35; box-shadow:0 0 0 3px #ffffffed,0 5px 16px #25344738; cursor:pointer; font:700 13px var(--font-sans); }
+.map-taste-marker, .map-taste-cluster { z-index:2; }
+.map-taste-marker .material-symbols-rounded, .map-taste-cluster > summary .material-symbols-rounded { display:grid; place-items:center; width:28px; height:28px; border-radius:50%; background:#fff0f2; font-size:21px; color:#e53945; font-variation-settings:'FILL' 1; }
+.map-taste-marker.is-super { border-color:#d69a22; }
+.map-taste-marker.is-super .material-symbols-rounded { background:#fff5d9; color:#b7790b; }
+.map-taste-marker:hover, .map-taste-cluster > summary:hover { background:#fff6f7; box-shadow:0 0 0 3px #fff,0 6px 20px #25344750; }
+.map-taste-cluster > summary { list-style:none; }
+.map-taste-cluster > summary::-webkit-details-marker { display:none; }
+.map-taste-marker .map-nearby-place-label { max-width:140px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.map-taste-cluster-list { display:grid; gap:6px; position:absolute; top:100%; left:0; width:200px; max-height:230px; overflow:auto; padding:10px; background:#fff; border:1px solid #e4edf5; border-radius:16px; box-shadow:0 8px 24px #24374b24; }
+.map-taste-cluster[open] { z-index:10; }
+.map-taste-marker:focus-visible, .map-taste-cluster > summary:focus-visible { outline:2px solid #4a8bc0; outline-offset:3px; }

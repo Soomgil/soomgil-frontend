@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { onMounted, ref } from 'vue'
 import { communityApi } from '@/api/community.api'
 import type { CommunityComment, CommunityPostDetail } from '@/types/community'
@@ -50,7 +51,7 @@ onMounted(load)
       <template v-else-if="post">
         <header class="my-story-head">
           <p class="eyebrow">My Travel Story</p>
-          <h2>{{ post.title }}</h2>
+          <h2 data-no-translate>{{ post.title }}</h2>
           <p>{{ post.publishedBy?.displayName ?? '여행자' }} · {{ new Date(post.publishedAt).toLocaleDateString('ko-KR') }}</p>
         </header>
         <div v-if="post.media.some(mediaUrl)" class="my-story-gallery">
@@ -62,7 +63,7 @@ onMounted(load)
             <span v-for="tag in post.hashtags" :key="tag">#{{ tag }}</span>
           </div>
           <section class="my-story-comments" aria-label="댓글">
-            <h3>댓글 {{ post.commentCount }}</h3>
+            <h3>{{ formatUiText("댓글 {0}", "{0} comments", [post.commentCount]) }}</h3>
             <p v-if="comments.length === 0" class="muted">아직 댓글이 없습니다.</p>
             <div v-for="comment in comments" :key="comment.id" class="my-story-comment">
               <strong>{{ comment.author.displayName }}</strong>

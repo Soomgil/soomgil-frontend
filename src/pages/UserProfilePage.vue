@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import '@/styles/mypage.css'
@@ -214,7 +215,7 @@ function openCommunityStory(storyId: string) {
               </button>
               <p class="page-hero__eyebrow" style="margin-bottom: 0;"><span class="material-symbols-rounded" aria-hidden="true">person</span> Profile</p>
             </div>
-            <h1 id="user-profile-title" class="page-hero__title"><span class="page-hero__gradient">{{ user.displayName }}님의 여행 프로필</span>을 살펴보세요</h1>
+            <h1 id="user-profile-title" class="page-hero__title"><span class="page-hero__gradient">{{ formatUiText("{0}님의 여행 프로필", "{0}’s travel profile", [user.displayName]) }}</span>을 살펴보세요</h1>
             <p class="page-hero__lead">
               {{ canViewProfileDetails ? '공개된 여행기와 관심 장소를 통해 이 여행자의 취향과 여정을 확인할 수 있습니다.' : '비공개 프로필입니다. 팔로우가 승인되면 상세 콘텐츠를 볼 수 있습니다.' }}
             </p>
@@ -247,9 +248,9 @@ function openCommunityStory(storyId: string) {
               </div>
 
               <div class="profile-info-col">
-                <h2 class="profile-display-name">{{ user.displayName }}</h2>
+                <h2 data-no-translate class="profile-display-name">{{ user.displayName }}</h2>
                 <span v-if="user.email" class="profile-handle">{{ user.email }}</span>
-                <p v-if="user.bio" class="profile-bio">{{ user.bio }}</p>
+                <p data-no-translate v-if="user.bio" class="profile-bio">{{ user.bio }}</p>
 
                 <div class="profile-stats-row">
                   <div
@@ -318,7 +319,7 @@ function openCommunityStory(storyId: string) {
                       <span class="material-symbols-rounded">search</span>
                       <input type="search" v-model="placeSearchQuery" placeholder="장소명, 지역, 태그로 검색" />
                     </div>
-                    <span class="mypage-search-count">{{ filteredPlaces.length }}곳</span>
+                    <span class="mypage-search-count">{{ formatUiText("{0}곳", "{0} places", [filteredPlaces.length]) }}</span>
                     <a href="#" class="mypage-more-link" @click.prevent="likedPlacesModal.open()">모두 보기 ›</a>
                   </div>
                 </div>
@@ -345,9 +346,9 @@ function openCommunityStory(storyId: string) {
                           </span>
                         </div>
                         <div class="place-info-wrap">
-                          <h3 class="place-title-h3">{{ place.placeName }}</h3>
-                          <span class="place-region-category">{{ place.address }}</span>
-                          <p class="place-desc-text">{{ place.summary }}</p>
+                          <h3 data-no-translate class="place-title-h3">{{ place.placeName }}</h3>
+                          <span data-no-translate class="place-region-category">{{ place.address }}</span>
+                          <p data-no-translate class="place-desc-text">{{ place.summary }}</p>
                           <div class="place-tag-row">
                             <span v-for="tag in (place.tags ?? []).slice(0, 3)" :key="tag" class="place-tag-pill">#{{ tag }}</span>
                           </div>
@@ -365,8 +366,7 @@ function openCommunityStory(storyId: string) {
                 <article class="profile-bottom-col">
                 <div class="mypage-section-header">
                   <h2 id="section-my-stories-title" class="mypage-section-title">
-                    <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">auto_stories</span>{{ user.displayName }}님의 여행기
-                  </h2>
+                    <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">auto_stories</span>{{ formatUiText("{0}님의 여행기", "Stories by {0}", [user.displayName]) }}</h2>
                   <a v-if="userStories.length > 0" href="#" class="mypage-more-link" @click.prevent="myStoriesModal.open()">모두 보기 ›</a>
                 </div>
 
@@ -383,10 +383,10 @@ function openCommunityStory(storyId: string) {
                     <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
                     <div class="story-magazine-body">
                       <h3 class="story-magazine-title">
-                        <span>{{ story.title }}</span>
+                        <span data-no-translate>{{ story.title }}</span>
                       </h3>
                       <div class="story-magazine-meta">
-                        <span class="story-date">{{ story.location }}</span>
+                        <span data-no-translate class="story-date">{{ story.location }}</span>
                         <div class="story-stats-row">
                           <span>
                             <span class="material-symbols-rounded">favorite</span> {{ story.likes }}

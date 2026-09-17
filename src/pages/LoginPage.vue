@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import AppHeader from '@/components/layout/AppHeader.vue'
 import OAuthButtons from '@/components/auth/OAuthButtons.vue'
 import { getAuthErrorMessage } from '@/utils/auth-error'
 import { useLocale } from '@/i18n'
@@ -51,7 +50,6 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
 
 <template>
   <div class="app-shell">
-    <AppHeader />
 
     <main class="auth-page auth-modern-page">
       <section class="auth-card auth-modern-card">

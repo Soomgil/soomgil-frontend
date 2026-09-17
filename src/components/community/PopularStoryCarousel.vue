@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { useLocale } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 interface Story {
   id: string; title: string; summary: string; image: string; author: string
   authorProfileImageUrl: string | null; avatar: string; likes: number; comments: number
 }
+const { tr } = useLocale()
 const props = defineProps<{ stories: Story[]; fallbackImage: string }>()
 const emit = defineEmits<{ open: [id: string] }>()
 const index = ref(0)
@@ -32,22 +34,22 @@ onBeforeUnmount(() => clearInterval(timer))
   <div v-if="story" class="popular-carousel" role="region" aria-roledescription="캐러셀" aria-label="인기 여행기" @mouseenter="hovered = true" @mouseleave="hovered = false" @focusin="playing = false">
     <Transition name="popular-slide" mode="out-in">
     <div :key="story.id" class="featured-story" :aria-live="playing ? 'off' : 'polite'" aria-atomic="true">
-      <button class="featured-polaroid" type="button" :aria-label="`${story.title} 여행기 보기`" @click="emit('open', story.id)">
+      <button class="featured-polaroid" type="button" :aria-label="tr(`${story.title} 여행기 보기`, `Read ${story.title}`)" @click="emit('open', story.id)">
         <div :key="story.id" class="featured-photo">
           <img v-if="story.image !== fallbackImage && !failedImages.has(story.image)" :src="story.image" :alt="story.title" @error="failedImages.add(story.image)" />
           <span v-else class="material-symbols-rounded" aria-hidden="true">auto_stories</span>
         </div>
-        <span class="photo-caption">{{ story.author }}의 여행 한 장</span>
+        <span class="photo-caption" data-no-translate>{{ tr(`${story.author}의 여행 한 장`, `A moment from ${story.author}`) }}</span>
       </button>
       <div class="featured-copy">
         <div class="popular-heading">
           <p class="featured-label">POPULAR STORIES</p>
           <h2 id="popular-stories-title">여행자들이 좋아한 이야기</h2>
         </div>
-        <h3>{{ story.title }}</h3>
-        <p class="featured-summary">{{ story.summary || '사진 속 여행의 순간을 만나보세요.' }}</p>
-        <div class="featured-author"><span class="author-avatar"><img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" alt="" /><span v-else>{{ story.avatar }}</span></span>{{ story.author }}</div>
-        <div class="featured-stats"><span><span class="material-symbols-rounded" aria-hidden="true">favorite</span>좋아요 {{ story.likes }}</span><span><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>댓글 {{ story.comments }}</span></div>
+        <h3 data-no-translate>{{ story.title }}</h3>
+        <p class="featured-summary" :data-no-translate="story.summary ? '' : undefined">{{ story.summary || '사진 속 여행의 순간을 만나보세요.' }}</p>
+        <div class="featured-author" data-no-translate><span class="author-avatar"><img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" alt="" /><span v-else>{{ story.avatar }}</span></span>{{ story.author }}</div>
+        <div class="featured-stats"><span><span class="material-symbols-rounded" aria-hidden="true">favorite</span>{{ tr('좋아요', 'Likes') }} {{ story.likes }}</span><span><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ tr('댓글', 'Comments') }} {{ story.comments }}</span></div>
         <button class="read-story" type="button" @click="emit('open', story.id)">여행기 읽기 <span aria-hidden="true">↗</span></button>
       </div>
     </div>

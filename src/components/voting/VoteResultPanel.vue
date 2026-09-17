@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { computed, ref, watch, nextTick } from 'vue'
 import type { TripVoteSessionDetail, TripVoteSessionResult } from '@/types/voting'
 
@@ -61,10 +62,9 @@ const completionLabel = computed(() =>
       <p class="vote-result__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span> 함께 고른 여행</p>
       <h1 ref="heading" tabindex="-1" class="vote-result__title">{{ showAll ? '전체 투표 결과' : '우리의 다음 여행지' }}</h1>
       <p class="vote-result__lead" data-testid="result-summary">
-        {{ completionLabel }}. <strong>{{ selectedCount }}곳 선정</strong>
+        {{ completionLabel }}. <strong>{{ formatUiText("{0}곳 선정", "{0} places selected", [selectedCount]) }}</strong>
       </p>
-      <p v-if="addedCount || duplicateCount" class="vote-result__outcome">
-        일차 미정에 {{ addedCount }}곳 추가<span v-if="duplicateCount"> · 이미 일정에 {{ duplicateCount }}곳</span>
+      <p v-if="addedCount || duplicateCount" class="vote-result__outcome">{{ formatUiText("일차 미정에 {0}곳 추가", "{0} places added to unscheduled", [addedCount]) }}<span v-if="duplicateCount">{{ formatUiText("· 이미 일정에 {0}곳", "· {0} already scheduled", [duplicateCount]) }}</span>
       </p>
     </header>
     <p v-if="!rows.length" class="vote-result__empty">아직 표시할 투표 결과가 없어요.</p>

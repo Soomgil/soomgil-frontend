@@ -84,7 +84,7 @@ const messages = {
 type MessageKey = keyof typeof messages.ko
 
 export function setLocale(next: string) {
-  locale.value = next === 'en' ? 'en' : 'ko'
+  locale.value = next?.trim().toLowerCase().split(/[-_]/)[0] === 'en' ? 'en' : 'ko'
   localStorage.setItem(STORAGE_KEY, locale.value)
   document.documentElement.lang = locale.value
 }

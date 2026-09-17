@@ -20,10 +20,10 @@ defineEmits<{ click: [] }>()
           <img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" :alt="`${story.author} 프로필 사진`" class="w-full h-full object-cover" />
           <template v-else>{{ story.avatar }}</template>
         </div>
-        <span class="text-xs font-semibold text-muted">{{ story.author }}</span>
-        <span class="text-xs text-muted/60 ml-auto">{{ story.location }}</span>
+        <span data-no-translate class="text-xs font-semibold text-muted">{{ story.author }}</span>
+        <span data-no-translate class="text-xs text-muted/60 ml-auto">{{ story.location }}</span>
       </div>
-      <h3 class="font-bold text-ink text-sm leading-snug line-clamp-2">{{ story.title }}</h3>
+      <h3 data-no-translate class="font-bold text-ink text-sm leading-snug line-clamp-2">{{ story.title }}</h3>
       <div class="flex items-center gap-3 mt-3 text-xs text-muted">
         <span class="flex items-center gap-1">
           <span class="material-symbols-rounded text-base">favorite</span>

@@ -2,7 +2,6 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { placeApi } from '@/api/place.api'
 import { useRouter } from 'vue-router'
-import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -214,7 +213,6 @@ onMounted(async () => {
 
 <template>
   <div class="app-shell swipe-discovery">
-    <AppHeader />
 
     <main>
       <section class="section page-with-hero">
@@ -373,7 +371,7 @@ onMounted(async () => {
                   <div v-for="story in (currentPlace.travelStories ?? [])" :key="story.id" class="detail-review-card">
                     <img :src="story.image" :alt="story.title" class="detail-review-thumb" />
                     <div class="detail-review-info">
-                      <p class="detail-review-title">{{ story.title }}</p>
+                      <p data-no-translate class="detail-review-title">{{ story.title }}</p>
                       <p class="detail-review-meta">{{ story.author }} · {{ story.date }}</p>
                     </div>
                   </div>

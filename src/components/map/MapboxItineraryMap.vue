@@ -21,6 +21,7 @@ export interface ItineraryMapNearbyPlace {
   lat: number
   lng: number
   dayIndex?: number
+  taste?: 'favorite' | 'star'
   image?: string | null
   accessibility?: PlaceAccessibility
 }
@@ -53,6 +54,7 @@ const props = withDefaults(defineProps<{
   routeDisplay?: 'route' | 'dashed' | 'hidden'
   cardDisplay?: 'full' | 'min' | 'hidden'
   nearbyPlaces?: ItineraryMapNearbyPlace[]
+  tastePlaces?: ItineraryMapNearbyPlace[]
   previewPlace?: ItineraryMapNearbyPlace | null
   drawings?: MapDrawingStroke[]
   drawingTool?: MapDrawingTool
@@ -76,6 +78,7 @@ const props = withDefaults(defineProps<{
   drawings: () => [],
   routes: () => [],
   nearbyPlaces: () => [],
+  tastePlaces: () => [],
   previewPlace: null,
   routeDisplay: 'route',
   cardDisplay: 'full',
@@ -85,7 +88,7 @@ const props = withDefaults(defineProps<{
   drawingsVisible: true,
   navigationMode: false,
   standardView: false,
-  mapTheme: 'light',
+  mapTheme: 'standard',
   routeWaypoints: () => [],
   mapObjects: () => [],
   mapObjectImageUrls: () => ({}),
@@ -276,12 +279,12 @@ function createMarkerElement(stop: ItineraryMapStop) {
 function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
   const el = document.createElement('button')
   el.type = 'button'
-  el.className = `map-nearby-place-marker ${dayClass(place.dayIndex ?? 1)}`
-  el.setAttribute('aria-label', `${place.title} 주변 관광지`)
+  el.className = place.taste ? `map-taste-marker${place.taste === 'star' ? ' is-super' : ''}` : `map-nearby-place-marker ${dayClass(place.dayIndex ?? 1)}`
+  el.setAttribute('aria-label', place.taste ? place.title : `${place.title} 주변 관광지`)
 
   const icon = document.createElement('span')
   icon.className = 'material-symbols-rounded'
-  icon.textContent = 'explore'
+  icon.textContent = place.taste ?? 'explore'
   el.appendChild(icon)
 
   const label = document.createElement('span')
@@ -299,6 +302,45 @@ function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement 
   })
 
   return el
+}
+
+let tasteMarkers: MapboxMarker[] = []
+function clearTasteMarkers() { tasteMarkers.forEach(marker => marker.remove()); tasteMarkers = [] }
+function renderTasteMarkers() {
+  clearTasteMarkers()
+  if (!map || !mapboxgl || !styleReady) return
+  const groups: { x: number; y: number; places: ItineraryMapNearbyPlace[] }[] = []
+  for (const place of props.tastePlaces) {
+    const point = map.project([place.lng, place.lat])
+    const group = groups.find(g => Math.hypot(g.x - point.x, g.y - point.y) < 48)
+    if (group) group.places.push(place)
+    else groups.push({ x: point.x, y: point.y, places: [place] })
+  }
+  for (const group of groups) {
+    const first = group.places[0]
+    let element: HTMLElement
+    if (group.places.length === 1) element = createNearbyMarkerElement(first)
+    else {
+      const details = document.createElement('details')
+      details.className = 'map-taste-cluster'
+      const summary = document.createElement('summary')
+      const icon = document.createElement('span')
+      icon.className = 'material-symbols-rounded'
+      icon.textContent = 'favorite'
+      icon.setAttribute('aria-hidden', 'true')
+      const count = document.createElement('span')
+      count.textContent = String(group.places.length)
+      summary.append(icon, count)
+      const list = document.createElement('div')
+      list.className = 'map-taste-cluster-list'
+      group.places.forEach(place => list.appendChild(createNearbyMarkerElement(place)))
+      details.append(summary, list)
+      details.addEventListener('click', e => e.stopPropagation())
+      element = details
+    }
+    tasteMarkers.push(new mapboxgl.Marker({ element, anchor: 'bottom', offset: [0, -6] })
+      .setLngLat([first.lng, first.lat]).addTo(map))
+  }
 }
 
 function createPreviewPlaceMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
@@ -611,6 +653,7 @@ function zoomMapByOverlayWheel(payload: { point: { x: number; y: number }; delta
 }
 
 function cleanupMapResources() {
+  clearTasteMarkers()
   resizeObserver?.disconnect()
   resizeObserver = null
   clearMapContent()
@@ -663,6 +706,7 @@ async function initializeMap() {
       canRetry.value = false
       lineLayerIds = []
       renderStops()
+      renderTasteMarkers()
       updateDrawingProjection()
     })
     createdMap.once('idle', emitViewport)
@@ -671,7 +715,7 @@ async function initializeMap() {
       mapError.value = '지도를 불러오지 못했습니다.'
       canRetry.value = true
     })
-    createdMap.on('moveend', emitViewport)
+    createdMap.on('moveend', () => { emitViewport(); renderTasteMarkers() })
     createdMap.on('move', updateDrawingProjection)
     createdMap.on('resize', updateDrawingProjection)
     createdMap.on('mousemove', (event) => emit('cursorMove', { lng: event.lngLat.lng, lat: event.lngLat.lat }))
@@ -699,6 +743,7 @@ function retry() {
 
 watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.cardDisplay, props.navigationMode], renderStops, { deep: true })
 watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
+watch(() => props.tastePlaces, renderTasteMarkers, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {
   initializationSequence++

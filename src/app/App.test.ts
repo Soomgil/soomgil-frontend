@@ -6,6 +6,11 @@ import { useAuthStore } from '@/stores/auth.store'
 import { useSwipeStore } from '@/stores/swipe.store'
 import App from './App.vue'
 
+vi.mock('vue-router', async (importOriginal) => ({
+  ...await importOriginal<typeof import('vue-router')>(),
+  useRoute: () => ({ path: '/home', meta: {} }),
+}))
+
 vi.mock('@/api/swipe.api', () => ({
   swipeApi: {
     getFeed: vi.fn(),
@@ -44,7 +49,7 @@ describe('App swipe queue bootstrap', () => {
     mount(App, {
       global: {
         plugins: [pinia],
-        stubs: { RouterView: true, VoteResultMapOverlay: true },
+        stubs: { AppHeader: true, RouterView: true, VoteResultMapOverlay: true },
       },
     })
     await flushPromises()

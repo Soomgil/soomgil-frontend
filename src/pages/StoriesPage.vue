@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { communityApi } from '@/api/community.api'
@@ -70,8 +71,8 @@ onMounted(loadPosts)
             <img :alt="story.title + ' 스토리'" :src="story.coverMedia?.servingUrl ?? story.coverMedia?.publicUrl ?? '/images/랜딩페이지/korea_hero.png'" />
             <div>
               <span class="post-type story">여행기</span>
-              <h3>{{ story.title }}</h3>
-              <p class="muted">{{ story.publishedBy?.displayName ?? '숨길 여행자' }} · 좋아요 {{ story.likeCount }} · 댓글 {{ story.commentCount }}</p>
+              <h3 data-no-translate>{{ story.title }}</h3>
+              <p class="muted">{{ formatUiText("{0} · 좋아요 {1} · 댓글 {2}", "{0} · {1} likes · {2} comments", [story.publishedBy?.displayName ?? '숨길 여행자', story.likeCount, story.commentCount]) }}</p>
             </div>
           </a>
         </div>

@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TripSettingsModal from './TripSettingsModal.vue'
+import TripDateRangeDialog from './TripDateRangeDialog.vue'
 import type { TripDetail, TripSummary } from '@/types/trip'
 
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
@@ -36,6 +37,19 @@ const expectedBaseUpdate = {
 }
 
 describe('TripSettingsModal', () => {
+  it('일반 멤버에게 사용할 수 없는 초대 입력창 대신 방장 안내를 보여준다', async () => {
+    const w=mount(TripSettingsModal,{props:{open:true,trip:{...trip,myRole:'MEMBER'},defaultTab:'tab-members'}})
+    await flushPromises()
+    expect(w.find('.invite-link-box').exists()).toBe(false)
+    expect(w.text()).toContain('초대 링크는 방장이 공유할 수 있어요.')
+    w.unmount()
+  })
+  it('만료되거나 개인에게 지정된 초대는 공용 공유 링크로 재사용하지 않는다', async () => {
+    tripApiMock.getInvites.mockResolvedValue([{status:'PENDING',inviteCode:'old',expiresAt:'2000-01-01'}, {status:'PENDING',inviteCode:'private',inviteeUserId:'someone'}])
+    const w=mount(TripSettingsModal,{props:{open:true,trip}}); await flushPromises()
+    expect(tripApiMock.createInvite).toHaveBeenCalledWith(trip.id)
+    w.unmount()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     Object.defineProperty(navigator, 'clipboard', {
@@ -135,15 +149,8 @@ describe('TripSettingsModal', () => {
       },
     })
 
-    const startDateInput = wrapper.get('[data-testid="trip-start-date"]')
-    const endDateInput = wrapper.get('[data-testid="trip-end-date"]')
-
-    expect((startDateInput.element as HTMLInputElement).disabled).toBe(false)
-    expect((endDateInput.element as HTMLInputElement).disabled).toBe(false)
-    expect(wrapper.text()).not.toContain('일정 페이지에서만 수정 가능')
-
-    await startDateInput.setValue('2026-07-10')
-    await endDateInput.setValue('2026-07-12')
+    await wrapper.get('[data-testid="trip-period-card"]').trigger('click')
+    wrapper.getComponent(TripDateRangeDialog).vm.$emit('apply','2026-07-10','2026-07-12')
     await wrapper.get('form').trigger('submit')
 
     expect(store.updateTrip).toHaveBeenCalledWith(trip.id, {
@@ -170,8 +177,8 @@ describe('TripSettingsModal', () => {
     const wrapper = mount(TripSettingsModal, { props: { open: true, trip: memberTrip } })
 
     await wrapper.get('input[name="title"]').setValue('수정한 부산 여행')
-    await wrapper.get('[data-testid="trip-start-date"]').setValue('2026-07-10')
-    await wrapper.get('[data-testid="trip-end-date"]').setValue('2026-07-12')
+    await wrapper.get('[data-testid="trip-period-card"]').trigger('click')
+    wrapper.getComponent(TripDateRangeDialog).vm.$emit('apply','2026-07-10','2026-07-12')
     await wrapper.get('form').trigger('submit')
 
     expect(wrapper.find('[data-status="ARCHIVED"]').exists()).toBe(false)

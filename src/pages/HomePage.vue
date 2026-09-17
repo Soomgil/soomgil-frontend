@@ -135,7 +135,7 @@ onUnmounted(() => resizeObserver?.disconnect())
           <div class="home-artwork-info" aria-live="polite" aria-atomic="true">
             <p class="home-artwork-label">{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
             <h2 class="home-artwork-title">{{ photoTitle }}</h2>
-            <p v-if="currentPhoto.title && currentPhoto.title !== photoTitle" class="home-artwork-caption">{{ currentPhoto.title }}</p>
+            <p data-no-translate v-if="currentPhoto.title && currentPhoto.title !== photoTitle" class="home-artwork-caption">{{ currentPhoto.title }}</p>
             <button v-if="exploreQuery" class="home-explore-link" type="button" @click="explorePhoto">
               {{ currentPhoto.placeName?.trim() ? '이 여행지 둘러보기' : '이 지역 둘러보기' }}
               <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>

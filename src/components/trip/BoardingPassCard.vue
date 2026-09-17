@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
 import { computed, nextTick, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { toPng } from 'html-to-image'
@@ -120,8 +121,8 @@ async function exportTicket() {
       </div>
       <div class="ticket-reservation">
         <span class="ticket-reservation-label">TRIP RESERVATION</span>
-        <h2>{{ trip.title }}</h2>
-        <p>서울에서 {{ destinationName }}까지</p>
+        <h2 data-no-translate>{{ trip.title }}</h2>
+        <p>{{ formatUiText("서울에서 {0}까지", "From Seoul to {0}", [destinationName]) }}</p>
       </div>
       <div class="ticket-details">
         <div class="detail-item ticket-field">
@@ -156,7 +157,7 @@ async function exportTicket() {
             <span class="stub-route-code">{{ destinationCode }}</span>
           </div>
         </div>
-        <h2 class="stub-title">{{ trip.title }}</h2>
+        <h2 data-no-translate class="stub-title">{{ trip.title }}</h2>
         <p class="stub-date-info">
           <span class="stub-date-label" aria-hidden="true">DATE</span>
           {{ periodLabel }}

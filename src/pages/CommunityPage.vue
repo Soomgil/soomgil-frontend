@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatUiText } from '@/i18n/ui-localizer'
+import { translateUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { communityApi } from "@/api/community.api";
@@ -343,7 +345,7 @@ async function submitComment() {
 }
 
 async function deleteComment(commentId: string) {
-  if (!selectedPost.value || !window.confirm("댓글을 삭제할까요?")) return;
+  if (!selectedPost.value || !window.confirm(translateUiText("댓글을 삭제할까요?"))) return;
   try {
     await communityApi.deleteComment(selectedPost.value.id, commentId);
     apiComments.value = apiComments.value.filter((comment) => comment.id !== commentId);
@@ -354,9 +356,9 @@ async function deleteComment(commentId: string) {
 }
 
 async function editStory(story: StoryView) {
-  const title = window.prompt("여행기 제목", story.title)?.trim();
+  const title = window.prompt(translateUiText("여행기 제목"), story.title)?.trim();
   if (!title) return;
-  const summary = window.prompt("여행기 소개", story.summary)?.trim() ?? story.summary;
+  const summary = window.prompt(translateUiText("여행기 소개"), story.summary)?.trim() ?? story.summary;
   try {
     const updated = await communityApi.updatePost(story.id, { title, summary });
     const index = posts.value.findIndex((post) => post.id === story.id);
@@ -369,7 +371,7 @@ async function editStory(story: StoryView) {
 }
 
 async function deleteStory(story: StoryView) {
-  if (!window.confirm("여행기를 삭제할까요?")) return;
+  if (!window.confirm(translateUiText("여행기를 삭제할까요?"))) return;
   try {
     await communityApi.deletePost(story.id);
     posts.value = posts.value.filter((post) => post.id !== story.id);
@@ -460,40 +462,46 @@ function goToStory(direction: -1 | 1) {
   }, 350);
 }
 
-let touchStartY = 0;
-let touchStartX = 0;
-function onTouchStart(e: TouchEvent) {
-  touchStartY = e.touches[0].clientY;
-  touchStartX = e.touches[0].clientX;
-}
-function onTouchEnd(e: TouchEvent) {
-  const dy = touchStartY - e.changedTouches[0].clientY;
-  const dx = touchStartX - e.changedTouches[0].clientX;
-  if (Math.abs(dy) < 50 || Math.abs(dy) < Math.abs(dx)) return;
-  const article = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(".story-post");
-  const atTop = article ? article.scrollTop <= 0 : true;
-  const atBottom = article
-    ? article.scrollTop + article.clientHeight >= article.scrollHeight - 1
-    : true;
-  if (dy > 0 && !atBottom) return;
-  if (dy < 0 && !atTop) return;
-  goToStory(dy > 0 ? 1 : -1);
-}
+const feedDragY = ref(0);
+const feedDragging = ref(false);
+let feedStartY = 0;
+let feedPointerId: number | null = null;
+let lastWheelTime = 0;
 function onWheel(e: WheelEvent) {
-  if (Math.abs(e.deltaY) < 15) return;
-  const article = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(".story-post");
-  if (!article) return;
-  const atTop = article.scrollTop <= 0;
-  const atBottom = article.scrollTop + article.clientHeight >= article.scrollHeight - 1;
-  if (e.deltaY > 0) {
-    if (!atBottom) return;
-    e.preventDefault();
-    goToStory(1);
-  } else {
-    if (!atTop) return;
-    e.preventDefault();
-    goToStory(-1);
-  }
+  e.preventDefault();
+  const now = performance.now();
+  if (Math.abs(e.deltaY) < 15 || now - lastWheelTime < 500) return;
+  lastWheelTime = now;
+  scrollGuideVisible.value = false;
+  goToStory(e.deltaY > 0 ? 1 : -1);
+}
+function onFeedPointerDown(e: PointerEvent) {
+  if (!e.isPrimary || e.button !== 0 || isTransitioning.value || (e.target as HTMLElement).closest('button,a,input,textarea')) return;
+  feedPointerId = e.pointerId;
+  feedStartY = e.clientY;
+  feedDragging.value = true;
+  scrollGuideVisible.value = false;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+function onFeedPointerMove(e: PointerEvent) {
+  if (feedPointerId !== e.pointerId) return;
+  const distance = e.clientY - feedStartY;
+  const atEdge = distance > 0 ? visibleStoryIdx.value === 0 : visibleStoryIdx.value >= stories.value.length - 1;
+  feedDragY.value = distance * (atEdge ? .22 : .85);
+}
+function onFeedPointerUp(e: PointerEvent) {
+  if (feedPointerId !== e.pointerId) return;
+  const distance = feedDragY.value;
+  cancelFeedDrag();
+  if (Math.abs(distance) > 65) goToStory(distance < 0 ? 1 : -1);
+}
+function cancelFeedDrag() {
+  feedPointerId = null;
+  feedDragging.value = false;
+  feedDragY.value = 0;
+}
+function focusStoryComments(e: Event) {
+  (e.currentTarget as HTMLElement).closest('.feed-layout')?.querySelector<HTMLInputElement>('.feed-comment-input-area input')?.focus();
 }
 function onKeydown(e: KeyboardEvent) {
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
@@ -659,13 +667,13 @@ watch(
                       <span v-else>{{ story.avatar }}</span>
                     </span>
                     <span class="story-tile-author-name">
-                      <strong>{{ story.author }}</strong>
-                      <span class="muted small">{{ story.location }}</span>
+                      <strong data-no-translate>{{ story.author }}</strong>
+                      <span data-no-translate class="muted small">{{ story.location }}</span>
                     </span>
                   </button>
-                  <h3 class="story-tile-title">{{ story.title }}</h3>
-                  <p v-if="story.summary" class="story-tile-summary">{{ story.summary }}</p>
-                  <div v-if="story.tags.length" class="story-tile-tags">
+                  <h3 data-no-translate class="story-tile-title">{{ story.title }}</h3>
+                  <p data-no-translate v-if="story.summary" class="story-tile-summary">{{ story.summary }}</p>
+                  <div v-if="story.tags.length" class="story-tile-tags" data-no-translate>
                     <span
                       v-for="tag in story.tags.slice(0, 3)"
                       :key="tag"
@@ -746,13 +754,13 @@ watch(
         <div class="feed-layout" id="overlay-feed-layout">
           <section class="story-feed" aria-label="여행기 피드">
             <div
-              class="story-feed-window"
+              class="story-feed-window" :class="{ 'is-dragging': feedDragging, 'show-swipe-demo': scrollGuideVisible }" :style="{ '--feed-drag-y': `${feedDragY}px` }"
               aria-label="여행기 피드"
               id="overlay-feed-stories"
               tabindex="0"
-              @touchstart.passive="onTouchStart"
-              @touchend.passive="onTouchEnd"
-              @wheel="onWheel"
+              
+              
+              @wheel="onWheel" @pointerdown="onFeedPointerDown" @pointermove="onFeedPointerMove" @pointerup="onFeedPointerUp" @pointercancel="cancelFeedDrag" @lostpointercapture="cancelFeedDrag"
               @keydown="onKeydown"
             >
               <Transition :name="transitionName" mode="out-in">
@@ -796,10 +804,10 @@ watch(
                           <span v-else>{{ visibleStory.avatar }}</span>
                         </div>
                         <div>
-                          <strong style="font-size: 15px; color: var(--violet)">{{
+                          <strong data-no-translate style="font-size: 15px; color: var(--violet)">{{
                             visibleStory.author
                           }}</strong>
-                          <span class="small muted" style="display: block">{{ visibleStory.location }}</span>
+                          <span data-no-translate class="small muted" style="display: block">{{ visibleStory.location }}</span>
                         </div>
                       </div>
                       <button
@@ -823,11 +831,7 @@ watch(
                     >
                       <span class="material-symbols-rounded">chevron_left</span>
                     </button>
-                    <img
-                      :alt="visibleStory.title"
-                      :src="currentStoryPhoto(visibleStory)"
-                      class="story-post-photo-img"
-                    />
+                    <Transition name="story-photo" mode="out-in"><img :key="currentStoryPhoto(visibleStory)" :alt="visibleStory.title" :src="currentStoryPhoto(visibleStory)" class="story-post-photo-img" draggable="false" /></Transition>
                     <button
                       v-if="visibleStory.photos.length > 1"
                       type="button"
@@ -842,19 +846,19 @@ watch(
                     >
                   </div>
                   <div class="story-body">
-                    <h3 style="font-size: 20px; line-height: 1.4; margin: 0 0 10px">
+                    <h3 data-no-translate style="font-size: 20px; line-height: 1.4; margin: 0 0 10px">
                       {{ visibleStory.title }}
                     </h3>
                     <div class="tag-row" style="margin-bottom: 10px">
-                      <span v-for="tag in visibleStory.tags" :key="tag" class="tag">{{ tag }}</span>
+                      <span data-no-translate v-for="tag in visibleStory.tags" :key="tag" class="tag">{{ tag }}</span>
                     </div>
-                    <p class="muted" style="font-size: 15px; line-height: 1.7; margin: 0">
+                    <p data-no-translate class="muted" style="font-size: 15px; line-height: 1.7; margin: 0">
                       {{ visibleStory.summary }}
                     </p>
                     <div class="story-action-bar">
                       <button
                         type="button"
-                        class="story-like-button"
+                        class="story-like-button story-heart-button"
                         :class="{ active: visibleStory.likedByMe }"
                         :disabled="likingPostIds.has(visibleStory.id)"
                         :aria-pressed="visibleStory.likedByMe"
@@ -863,14 +867,7 @@ watch(
                         <span class="material-symbols-rounded" style="font-size: 20px">favorite</span>
                         {{ visibleStory.likes }}
                       </button>
-                      <span style="display: flex; align-items: center; gap: 4px"
-                        ><span
-                          class="material-symbols-rounded"
-                          style="font-size: 20px; color: var(--violet)"
-                          >chat_bubble</span
-                        >
-                        {{ visibleStory.comments }}</span
-                      >
+                      <button type="button" class="story-like-button story-comment-button" aria-label="댓글 작성" @click="focusStoryComments"><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ visibleStory.comments }}</button>
                       <button type="button" class="story-like-button" @click="retripStory(visibleStory)">
                         <span class="material-symbols-rounded" style="font-size: 20px"
                           >content_copy</span
@@ -907,7 +904,7 @@ watch(
                 <span
                   class="guide-text"
                   style="font-weight: 800; font-size: 16px; letter-spacing: -0.02em"
-                  >위로 스와이프하여 탐색</span
+                  >위로 드래그하거나 스크롤해 다음 여행 보기</span
                 >
               </div>
             </div>
@@ -981,13 +978,12 @@ watch(
                       </button>
                     </div>
                     <p v-if="comment.isReply && comment.parentName" class="fc-reply-context">
-                      {{ comment.parentName }}님에게 보낸 답글
-                    </p>
-                    <p class="fc-text">{{ comment.text }}</p>
+                      {{ formatUiText("{0}님에게 보낸 답글", "Reply to {0}", [comment.parentName]) }}</p>
+                    <p data-no-translate class="fc-text">{{ comment.text }}</p>
                     <div class="fc-actions">
                       <button
                         type="button"
-                        class="fc-action-btn fc-reply-btn"
+                        v-if="!comment.isReply" class="fc-action-btn fc-reply-btn" :aria-pressed="replyTarget?.id === comment.id"
                         @click="replyTarget = { id: comment.id, name: comment.name }"
                       >
                         답글
@@ -1003,7 +999,7 @@ watch(
                   class="small muted"
                   style="display: flex; justify-content: space-between; padding: 0 4px 6px"
                 >
-                  <span>{{ replyTarget.name }}님에게 답글</span
+                  <span>{{ formatUiText("{0}님에게 답글", "Reply to {0}", [replyTarget.name]) }}</span
                   ><button type="button" @click="replyTarget = null">취소</button>
                 </div>
                 <div class="feed-comment-composer">
@@ -2761,3 +2757,4 @@ watch(
 </style>
 
 <style scoped src="../styles/travel-page-actions.css"></style>
+<style scoped src="../styles/story-detail-theme.css"></style>

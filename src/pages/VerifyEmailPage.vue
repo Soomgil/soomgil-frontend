@@ -3,7 +3,6 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { authApi } from '@/api/auth.api'
-import AppHeader from '@/components/layout/AppHeader.vue'
 import { useLocale } from '@/i18n'
 
 const route = useRoute()
@@ -111,7 +110,6 @@ onUnmounted(() => {
 
 <template>
   <div class="app-shell">
-    <AppHeader />
     <main class="auth-page auth-modern-page">
       <section class="auth-card auth-modern-card" style="grid-template-columns: 1fr;">
         <form class="auth-form auth-modern-form" :aria-label="tr('이메일 인증', 'Email verification')" @submit.prevent="handleVerify">
