@@ -113,6 +113,8 @@ function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryVie
 }
 
 const selectedPost = ref<CommunityPostDetail | null>(null);
+const photoDirection = ref(1);
+const photoTransitioning = ref(false);
 const storyPhotoIndexes = ref<Record<string, number>>({});
 
 function currentStoryPhoto(story: StoryView): string {
@@ -121,7 +123,9 @@ function currentStoryPhoto(story: StoryView): string {
 }
 
 function moveStoryPhoto(story: StoryView, direction: -1 | 1) {
-  if (story.photos.length < 2) return;
+  if (story.photos.length < 2 || photoTransitioning.value || isTransitioning.value) return;
+  photoTransitioning.value = true;
+  photoDirection.value = direction;
   const current = storyPhotoIndexes.value[story.id] ?? 0;
   storyPhotoIndexes.value = {
     ...storyPhotoIndexes.value,
@@ -362,17 +366,25 @@ function closeModal() {
 }
 
 const feedDragY = ref(0);
+const feedReleaseY = ref(0);
 const feedDragging = ref(false);
 let feedStartY = 0;
 let feedPointerId: number | null = null;
-let lastWheelTime = 0;
+let lastWheelTime = -Infinity;
+let wheelDistance = 0;
+let wheelConsumed = false;
 function onWheel(e: WheelEvent) {
   e.preventDefault();
   const now = performance.now();
-  if (Math.abs(e.deltaY) < 15 || now - lastWheelTime < 500) return;
+  if (now - lastWheelTime > 180) { wheelDistance = 0; wheelConsumed = false; }
   lastWheelTime = now;
+  if (wheelConsumed || isTransitioning.value || feedDragging.value) return;
+  const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 600 : 1);
+  wheelDistance += delta;
+  if (Math.abs(wheelDistance) < 40) return;
+  wheelConsumed = true;
   scrollGuideVisible.value = false;
-  goToStory(e.deltaY > 0 ? 1 : -1);
+  goToStory(wheelDistance > 0 ? 1 : -1);
 }
 function onFeedPointerDown(e: PointerEvent) {
   if (!e.isPrimary || e.button !== 0 || isTransitioning.value || (e.target as HTMLElement).closest('button,a,input,textarea')) return;
@@ -391,8 +403,8 @@ function onFeedPointerMove(e: PointerEvent) {
 function onFeedPointerUp(e: PointerEvent) {
   if (feedPointerId !== e.pointerId) return;
   const distance = feedDragY.value;
-  cancelFeedDrag();
   if (Math.abs(distance) > 65) goToStory(distance < 0 ? 1 : -1);
+  cancelFeedDrag();
 }
 function cancelFeedDrag() {
   feedPointerId = null;
@@ -412,18 +424,23 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+function finishFeedTransition() {
+  feedReleaseY.value = 0;
+  feedDragY.value = 0;
+  isTransitioning.value = false;
+}
+
 function goToStory(direction: -1 | 1) {
-  if (isTransitioning.value) return;
+  if (isTransitioning.value || photoTransitioning.value) return;
   const next = visibleStoryIdx.value + direction;
   if (next < 0 || next >= props.stories.length) return;
+  feedReleaseY.value = feedDragY.value;
   isTransitioning.value = true;
   transitionName.value = direction > 0 ? "slide-up" : "slide-down";
   visibleStoryIdx.value = next;
   scrollGuideVisible.value = false;
   void selectVisibleStory(next);
-  window.setTimeout(() => {
-    isTransitioning.value = false;
-  }, 350);
+
 }
 
 let visibleStoryRequest = 0;
@@ -504,7 +521,7 @@ watch(
       <div class="feed-layout" id="overlay-feed-layout">
         <section class="story-feed" aria-label="여행기 피드">
           <div
-            class="story-feed-window" :class="{ 'is-dragging': feedDragging, 'show-swipe-demo': scrollGuideVisible }" :style="{ '--feed-drag-y': `${feedDragY}px` }"
+            class="story-feed-window" :class="{ 'is-dragging': feedDragging }" :style="{ '--feed-drag-y': `${feedDragY}px`, '--feed-release-y': `${feedReleaseY}px` }"
             aria-label="여행기 피드"
             id="overlay-feed-stories"
             tabindex="0"
@@ -513,7 +530,7 @@ watch(
             @wheel="onWheel" @pointerdown="onFeedPointerDown" @pointermove="onFeedPointerMove" @pointerup="onFeedPointerUp" @pointercancel="cancelFeedDrag" @lostpointercapture="cancelFeedDrag"
             @keydown="onKeydown"
           >
-            <Transition :name="transitionName" mode="out-in">
+            <Transition :name="transitionName" @after-enter="finishFeedTransition">
               <article
                 :key="visibleStory.id"
                 :data-story-id="visibleStory.id"
@@ -581,7 +598,7 @@ watch(
                   >
                     <span class="material-symbols-rounded">chevron_left</span>
                   </button>
-                  <Transition name="story-photo" mode="out-in"><img :key="currentStoryPhoto(visibleStory)" :alt="visibleStory.title" :src="currentStoryPhoto(visibleStory)" class="story-post-photo-img" draggable="false" /></Transition>
+                  <Transition :name="photoDirection > 0 ? 'photo-next' : 'photo-prev'" @after-enter="photoTransitioning = false" @enter-cancelled="photoTransitioning = false"><img :key="currentStoryPhoto(visibleStory)" :alt="visibleStory.title" :src="currentStoryPhoto(visibleStory)" class="story-post-photo-img" draggable="false" /></Transition>
                   <button
                     v-if="visibleStory.photos.length > 1"
                     type="button"
@@ -1077,7 +1094,7 @@ watch(
 .slide-up-leave-active,
 .slide-down-enter-active,
 .slide-down-leave-active {
-  transition: transform 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: transform .48s cubic-bezier(.22,.72,.18,1);
 }
 .slide-up-enter-from {
   transform: translateY(100%);

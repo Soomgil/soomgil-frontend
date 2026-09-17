@@ -585,7 +585,7 @@ watch(
         />
 
         <div v-if="!loading && !loadError && stories.length" class="community-content-container">
-          <section v-if="popularStories.length" class="today-pick-section" aria-labelledby="popular-stories-title">
+          <section v-if="popularStories.length" class="today-pick-section" aria-label="인기 여행기">
             <PopularStoryCarousel :stories="popularStories" :fallback-image="FALLBACK_IMAGE" @open="openPopularStory" />
           </section>
 

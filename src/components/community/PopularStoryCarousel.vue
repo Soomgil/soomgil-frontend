@@ -42,10 +42,7 @@ onBeforeUnmount(() => clearInterval(timer))
         <span class="photo-caption" data-no-translate>{{ tr(`${story.author}의 여행 한 장`, `A moment from ${story.author}`) }}</span>
       </button>
       <div class="featured-copy">
-        <div class="popular-heading">
-          <p class="featured-label">POPULAR STORIES</p>
-          <h2 id="popular-stories-title">여행자들이 좋아한 이야기</h2>
-        </div>
+
         <h3 data-no-translate>{{ story.title }}</h3>
         <p class="featured-summary" :data-no-translate="story.summary ? '' : undefined">{{ story.summary || '사진 속 여행의 순간을 만나보세요.' }}</p>
         <div class="featured-author" data-no-translate><span class="author-avatar"><img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" alt="" /><span v-else>{{ story.avatar }}</span></span>{{ story.author }}</div>

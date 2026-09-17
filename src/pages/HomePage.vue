@@ -133,21 +133,24 @@ onUnmounted(() => resizeObserver?.disconnect())
         </div>
         <div v-if="currentPhoto" class="home-artwork-footer">
           <div class="home-artwork-info" aria-live="polite" aria-atomic="true">
-            <p class="home-artwork-label">{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
-            <h2 class="home-artwork-title">{{ photoTitle }}</h2>
             <p data-no-translate v-if="currentPhoto.title && currentPhoto.title !== photoTitle" class="home-artwork-caption">{{ currentPhoto.title }}</p>
-            <button v-if="exploreQuery" class="home-explore-link" type="button" @click="explorePhoto">
-              {{ currentPhoto.placeName?.trim() ? '이 여행지 둘러보기' : '이 지역 둘러보기' }}
-              <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-            </button>
+            <h2 class="home-artwork-title">{{ photoTitle }}</h2>
+            <p class="home-artwork-label">{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
+
             <p class="home-artwork-credit">{{ photoCredit }}
               <a :href="currentPhoto.imageUrl" target="_blank" rel="noopener noreferrer" aria-label="수상작 원본 보기 (새 창)">원본 보기</a>
             </p>
           </div>
+          <div class="home-artwork-actions">
+            <button v-if="exploreQuery" class="home-explore-link" type="button" @click="explorePhoto">
+              {{ currentPhoto.placeName?.trim() ? '이 여행지 둘러보기' : '이 지역 둘러보기' }}
+              <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
+            </button>
           <div v-if="photos.length > 1" class="home-photo-controls" role="group" aria-label="수상작 사진 전환">
             <span class="home-photo-count"><strong>{{ String(currentIndex + 1).padStart(2, '0') }}</strong><span aria-hidden="true"> / </span><span class="home-sr-only">전체</span>{{ String(photos.length).padStart(2, '0') }}</span>
             <button type="button" aria-label="이전 사진" @click="changePhoto(-1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span></button>
             <button type="button" aria-label="다음 사진" @click="changePhoto(1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></button>
+          </div>
           </div>
         </div>
 
@@ -175,6 +178,7 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-backdrop img { grid-area: 1 / 1; display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; }
 .home-ink-underlay { grid-area: 1 / 1; width: 80%; height: 90%; max-width: 100%; max-height: 100%; background: #647C92; opacity: .12; transform: scale(1.06) rotate(-2deg); mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; pointer-events: none; }
 .home-artwork-footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 680px; max-width: 100%; margin: 24px auto 0; }
+.home-artwork-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0; }
 .home-artwork-info { min-width: 0; }
 .home-artwork-label { margin: 0 0 8px; font-size: 11px; font-weight: 400; letter-spacing: .08em; color: #647C92; }
 .home-artwork-title { margin: 0 0 8px; font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-size: clamp(23px, 2vw, 30px); font-weight: 500; line-height: 1.35; letter-spacing: -.02em; color: #35465A; overflow-wrap: anywhere; }
@@ -215,7 +219,8 @@ button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
   .home-gallery { width: calc(100% - 40px); margin-top: 140px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
   .home-backdrop { height: clamp(300px, calc(100svh - 480px), 520px); }
   .home-artwork-footer { flex-wrap: wrap; gap: 12px; margin-top: 20px; }
-  .home-artwork-info { flex-basis: 100%; }
+  .home-artwork-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0; }
+.home-artwork-info { flex-basis: 100%; }
   .home-photo-controls { margin-left: 0; }
   .home-search-history { max-height: 240px; overflow-y: auto; }
 }
