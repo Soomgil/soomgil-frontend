@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createFeedWheelGate } from "@/utils/feedWheelGate";
 import { formatUiText } from '@/i18n/ui-localizer'
 import { translateUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
@@ -368,24 +369,27 @@ function closeModal() {
 const feedDragY = ref(0);
 const feedReleaseY = ref(0);
 const feedDragging = ref(false);
+const adjacentDragStory = computed(() => {
+  if (!feedDragging.value || !feedDragY.value) return null;
+  return props.stories[visibleStoryIdx.value + (feedDragY.value < 0 ? 1 : -1)] ?? null;
+});
+watch(() => [visibleStoryIdx.value, props.stories], () => {
+  for (const index of [visibleStoryIdx.value - 1, visibleStoryIdx.value + 1]) {
+    const story = props.stories[index];
+    if (story?.image) { const image = new Image(); image.src = story.image; }
+  }
+}, { immediate: true });
+
 let feedStartY = 0;
 let feedPointerId: number | null = null;
-let lastWheelTime = -Infinity;
-let wheelDistance = 0;
-let wheelConsumed = false;
+const wheelGate = createFeedWheelGate();
 function onWheel(e: WheelEvent) {
   e.preventDefault();
-  const now = performance.now();
-  if (now - lastWheelTime > 180) { wheelDistance = 0; wheelConsumed = false; }
-  lastWheelTime = now;
-  if (wheelConsumed || isTransitioning.value || feedDragging.value) return;
   const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 600 : 1);
-  wheelDistance += delta;
-  if (Math.abs(wheelDistance) < 40) return;
-  wheelConsumed = true;
-  scrollGuideVisible.value = false;
-  goToStory(wheelDistance > 0 ? 1 : -1);
+  const direction = wheelGate(delta, performance.now(), isTransitioning.value || feedDragging.value || photoTransitioning.value);
+  if (direction) goToStory(direction);
 }
+
 function onFeedPointerDown(e: PointerEvent) {
   if (!e.isPrimary || e.button !== 0 || isTransitioning.value || (e.target as HTMLElement).closest('button,a,input,textarea')) return;
   feedPointerId = e.pointerId;
@@ -415,6 +419,7 @@ function focusStoryComments(e: Event) {
   (e.currentTarget as HTMLElement).closest('.feed-layout')?.querySelector<HTMLInputElement>('.feed-comment-input-area input')?.focus();
 }
 function onKeydown(e: KeyboardEvent) {
+  if (e.repeat) { e.preventDefault(); return; }
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
     e.preventDefault();
     goToStory(1);
@@ -530,7 +535,13 @@ watch(
             @wheel="onWheel" @pointerdown="onFeedPointerDown" @pointermove="onFeedPointerMove" @pointerup="onFeedPointerUp" @pointercancel="cancelFeedDrag" @lostpointercapture="cancelFeedDrag"
             @keydown="onKeydown"
           >
-            <Transition :name="transitionName" @after-enter="finishFeedTransition">
+            <article v-if="adjacentDragStory" class="feed-drag-preview" aria-hidden="true"
+                :style="{ transform: `translateY(calc(${feedDragY < 0 ? '100%' : '-100%'} + ${feedDragY}px))` }">
+                <div class="story-post-head"><strong>{{ adjacentDragStory.author }}</strong><span>{{ adjacentDragStory.location }}</span></div>
+                <div class="story-post-photo-frame"><img class="story-post-photo-img" :src="adjacentDragStory.image" alt="" /></div>
+                <div class="story-body"><h3>{{ adjacentDragStory.title }}</h3><p>{{ adjacentDragStory.summary }}</p></div>
+              </article>
+              <Transition :name="transitionName" @after-enter="finishFeedTransition">
               <article
                 :key="visibleStory.id"
                 :data-story-id="visibleStory.id"

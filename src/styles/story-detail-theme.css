@@ -143,3 +143,8 @@
  .story-overlay .feed-layout .story-post[class*="-active"],
  .story-overlay .feed-layout .story-post-photo-img[class*="-active"] { transition-duration:.01ms; }
 }
+
+/* The neighboring cover follows the pointer before the release commits navigation. */
+.story-overlay .feed-layout .feed-drag-preview { position:absolute; inset:0; display:grid; grid-template-rows:auto minmax(100px,1fr) auto; background:#fff; overflow:hidden; pointer-events:none; }
+.story-overlay .feed-layout .feed-drag-preview .story-post-head { display:flex; flex-direction:column; gap:4px; padding:16px; color:#487db5; }
+.story-overlay .feed-layout .feed-drag-preview .story-post-photo-frame { position:relative; }
