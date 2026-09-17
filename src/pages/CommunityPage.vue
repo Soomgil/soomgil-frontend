@@ -2760,3 +2760,5 @@ watch(
 }
 @media(prefers-reduced-motion:reduce) { .community-paper .story-tile,.story-view-toggle button { transition:none; } }
 </style>
+
+<style scoped src="../styles/travel-page-actions.css"></style>
