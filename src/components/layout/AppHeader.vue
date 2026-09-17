@@ -1,7 +1,3 @@
-<script lang="ts">
-// Page shells remount the header; retain only the last menu key between them.
-let previousNavKey = ''
-</script>
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -301,8 +297,7 @@ watch(() => [auth.isAuthenticated, auth.user?.id], () => {
 }, { immediate: true })
 watch(() => route.fullPath, closeAllDropdowns)
 onMounted(() => {
-  positionIndicator(previousNavKey || activeNavKey.value)
-  previousNavKey = activeNavKey.value
+  positionIndicator()
   navFrame = requestAnimationFrame(() => {
     navFrame = requestAnimationFrame(() => {
       indicatorReady.value = true

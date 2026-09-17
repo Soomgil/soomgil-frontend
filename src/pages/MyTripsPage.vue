@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -373,7 +372,6 @@ watch(activeFilter, loadTrips)
 
 <template>
   <div class="app-shell travel-paper">
-    <AppHeader />
 
     <main>
       <section class="section my-trips-dashboard page-with-hero">

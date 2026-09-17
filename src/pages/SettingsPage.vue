@@ -125,8 +125,16 @@ async function saveSettings() {
 </script>
 
 <template>
-  <AppShell>
+  <AppShell paper>
     <div class="settings-page profile-settings-page page-with-hero max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <header class="page-hero">
+        <div class="page-hero__copy">
+          <p class="page-hero__eyebrow">Settings</p>
+          <h1 class="page-hero__title">나에게 맞는 여행 환경</h1>
+          <p class="page-hero__lead">언어와 공개 범위, 여행 초대 수신을 한곳에서 관리하세요.</p>
+        </div>
+        <RouterLink to="/mypage" class="account-page-link">내 프로필 보기 <span aria-hidden="true">↗</span></RouterLink>
+      </header>
       <!-- 로딩 상태 알림 -->
       <div v-if="loading" class="settings-loading-card">
         <div class="loading-spinner-wrap">
@@ -241,6 +249,7 @@ async function saveSettings() {
                       type="button"
                       class="visibility-segment-btn"
                       :class="{ 'is-active': profileVisibility === 'PUBLIC' }"
+                      :aria-pressed="profileVisibility === 'PUBLIC'"
                       :disabled="updatingVisibility"
                       @click="updateProfileVisibility('PUBLIC')"
                     >
@@ -251,6 +260,7 @@ async function saveSettings() {
                       type="button"
                       class="visibility-segment-btn"
                       :class="{ 'is-active': profileVisibility === 'PRIVATE' }"
+                      :aria-pressed="profileVisibility === 'PRIVATE'"
                       :disabled="updatingVisibility"
                       @click="updateProfileVisibility('PRIVATE')"
                     >
@@ -279,7 +289,7 @@ async function saveSettings() {
                 </div>
                 <div class="settings-item__control">
                   <label class="switch-control" @click.stop>
-                    <input type="checkbox" v-model="settingsForm.tripInviteEmailOptIn" />
+                    <input type="checkbox" v-model="settingsForm.tripInviteEmailOptIn" :aria-label="t('settings.tripEmail')" />
                     <span class="switch-track" />
                   </label>
                 </div>
@@ -1069,3 +1079,5 @@ async function saveSettings() {
   }
 }
 </style>
+
+<style scoped src="@/styles/account-theme.css"></style>

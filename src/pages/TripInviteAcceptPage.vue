@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AppHeader from '@/components/layout/AppHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import { useTripStore } from '@/stores/trip.store'
 import { useAuth } from '@/composables/useAuth'
@@ -100,7 +99,6 @@ watch(inviteCode, () => {
 
 <template>
   <div class="app-shell">
-    <AppHeader />
 
     <main class="invite-page">
       <section class="invite-status" aria-live="polite">

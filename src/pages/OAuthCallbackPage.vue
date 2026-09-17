@@ -3,7 +3,6 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import type { OAuthProvider } from '@/types/auth'
-import AppHeader from '@/components/layout/AppHeader.vue'
 import { useLocale } from '@/i18n'
 
 const route = useRoute()
@@ -56,7 +55,6 @@ onMounted(async () => {
 
 <template>
   <div class="app-shell">
-    <AppHeader />
     <main class="auth-page auth-modern-page">
       <section class="auth-card auth-modern-card" style="grid-template-columns: 1fr;">
         <div class="auth-form auth-modern-form">

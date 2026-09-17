@@ -383,21 +383,22 @@ function handleUserClick(userId: string) {
 </script>
 
 <template>
-  <AppShell>
+  <AppShell paper>
     <main>
       <section class="section mypage-shell page-with-hero" aria-labelledby="mypage-title">
         <div class="mypage-page-heading page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">person</span> My Page</p>
-            <h1 id="mypage-title" class="page-hero__title"><span class="page-hero__gradient">나의 여행 프로필</span>을 관리하세요</h1>
-            <p class="page-hero__lead">슈퍼라이크한 장소와 여행기, 취향 데이터를 모아 나만의 여행 기록을 살펴볼 수 있습니다.</p>
+            <h1 id="mypage-title" class="page-hero__title">여행으로 채운 나의 공간</h1>
+            <p class="page-hero__lead">마음에 담은 장소부터 여행의 순간까지, 나의 여행 취향을 만나보세요.</p>
           </div>
+          <RouterLink to="/settings" class="account-page-link"><span class="material-symbols-rounded" aria-hidden="true">tune</span>환경 설정</RouterLink>
         </div>
 
         <!-- 프로필 히어로 영역 -->
         <div class="mypage-hero" data-mypage-hero>
           <div class="mypage-hero__content">
-            <div class="mypage-profile-card profile-header-card" style="margin-bottom: 30px;">
+            <div class="mypage-profile-card profile-header-card">
               <!-- 좌측: 큰 원형 프로필 이미지 -->
               <div class="profile-avatar-col">
                 <div class="profile-avatar-wrap" style="cursor: pointer;" @click="openProfileEdit">
@@ -1197,3 +1198,5 @@ function handleUserClick(userId: string) {
   }
 }
 </style>
+
+<style scoped src="@/styles/account-theme.css"></style>

@@ -2,7 +2,6 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { placeApi } from '@/api/place.api'
 import { useRouter } from 'vue-router'
-import AppHeader from '@/components/layout/AppHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -214,7 +213,6 @@ onMounted(async () => {
 
 <template>
   <div class="app-shell swipe-discovery">
-    <AppHeader />
 
     <main>
       <section class="section page-with-hero">
