@@ -439,7 +439,7 @@ async function handleLogout() {
 
         <!-- Profile -->
         <div class="profile-dropdown" style="position:relative;">
-          <button type="button" id="header-profile-btn" class="btn ghost" style="border-radius:50%; width:40px; height:40px; padding:0; border:none; background:var(--surface-2); display:flex; align-items:center; justify-content:center; overflow:hidden; font-weight:800; color:var(--violet); font-size:14px; cursor:pointer;" title="내 프로필" @click.stop="toggleProfile">
+          <button type="button" id="header-profile-btn" class="header-profile-trigger" :aria-expanded="showProfile" aria-controls="header-profile-panel" title="내 프로필" @click.stop="toggleProfile">
             <img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="내 프로필 사진" style="width:100%;height:100%;object-fit:cover;" />
             <template v-else>{{ auth.user?.displayName?.charAt(0) || 'U' }}</template>
           </button>
@@ -638,8 +638,10 @@ async function handleLogout() {
 .paper-header .nav .nav-indicator.is-ready { transition:transform .42s cubic-bezier(.22,1,.36,1),width .42s cubic-bezier(.22,1,.36,1),height .2s,opacity .15s; }
 .paper-header .nav-indicator::after { display:none; }
 .paper-header .nav a:focus-visible { outline:2px solid #487db5; outline-offset:-3px; }
-.paper-header .inbox-trigger { color:#428cb9; background:transparent; }
-.paper-header .inbox-trigger:hover,.paper-header .inbox-trigger[aria-expanded=true] { background:#e8f5fe; border-color:#cee6f5; }
+.paper-header .inbox-trigger, .paper-header .header-profile-trigger { display:grid; place-items:center; width:40px; height:40px; padding:0; border:1px solid #cce1f0; border-radius:50%; color:#397dab; background:#edf6fc; box-shadow:0 2px 5px rgb(66 124 165 / 5%); cursor:pointer; transition:background .2s,border-color .2s; }
+.paper-header .header-profile-trigger { overflow:hidden; font-size:14px; font-weight:800; }
+.paper-header .header-profile-trigger:focus-visible { outline:2px solid #487db5; outline-offset:3px; }
+.paper-header .inbox-trigger:hover,.paper-header .inbox-trigger[aria-expanded=true],.paper-header .header-profile-trigger:hover,.paper-header .header-profile-trigger[aria-expanded=true] { background:#deeffb; border-color:#a9cfe8; }
 .paper-header .header-actions .material-symbols-rounded { filter:none; }
 .paper-header .header-actions > .btn { border-radius:999px; box-shadow:none; }
 .paper-header .header-actions > .btn.primary { background:#487db5; color:white; }
