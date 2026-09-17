@@ -1861,3 +1861,4 @@ watch(
  .place-detail-media { height:auto; padding:0; }
 }
 </style>
+<style scoped src="../styles/travel-page-actions.css"></style>

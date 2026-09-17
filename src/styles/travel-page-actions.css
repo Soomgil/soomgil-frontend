@@ -1,0 +1,98 @@
+/* Home search palette shared by the travel and community page controls. */
+:is(.travel-paper, .community-paper) {
+  --action-blue: #487db5;
+  --action-blue-hover: #396a9e;
+  --action-border: #dfe7ee;
+  --action-soft: #f1f6fb;
+}
+.travel-paper .trip-create-button,
+.community-paper .story-write-pill {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--action-blue);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: none;
+  transform: none;
+}
+.travel-paper .trip-create-button:hover:not(:disabled),
+.community-paper .story-write-pill:hover:not(:disabled) {
+  background: var(--action-blue-hover);
+  box-shadow: none;
+  transform: none;
+}
+.travel-paper .trip-search,
+.community-paper .community-story-search {
+  border: 1px solid var(--action-border);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 6px 24px rgb(56 89 124 / 5%);
+}
+.travel-paper .trip-search:focus-within,
+.community-paper .community-story-search:focus-within {
+  border-color: var(--action-blue);
+  box-shadow: 0 0 0 3px rgb(72 125 181 / 12%);
+}
+.community-paper .community-story-search .search-box__button {
+  background: var(--action-blue);
+  color: #fff;
+  box-shadow: none;
+}
+.community-paper .community-story-search .search-box__button:hover { background: var(--action-blue-hover); }
+.travel-paper .trip-tabs { gap: 6px; flex-wrap: wrap; }
+.travel-paper .trip-tabs button,
+.travel-paper .timeline-card-vote,
+.travel-paper .trip-options,
+.travel-paper .trip-pagination button,
+.community-paper .pg-btn,
+.community-paper .story-view-toggle button {
+  border: 1px solid var(--action-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--action-blue-hover);
+  box-shadow: none;
+}
+.travel-paper .trip-tabs button { min-height: 44px; padding: 10px 16px; }
+.travel-paper .timeline-card-vote { min-height: 40px; }
+.travel-paper .trip-tabs button:hover:not(.active),
+.travel-paper .timeline-card-vote:hover:not(:disabled),
+.travel-paper .trip-options:hover,
+.travel-paper .trip-pagination button:hover:not(:disabled):not([aria-current=page]),
+.community-paper .pg-btn:hover:not(:disabled):not(.active),
+.community-paper .story-view-toggle button:hover:not([aria-pressed=true]) {
+  background: var(--action-soft);
+  border-color: #b7cde2;
+  color: var(--action-blue-hover);
+}
+.travel-paper .trip-tabs button.active,
+.travel-paper .trip-pagination button[aria-current=page],
+.community-paper .pg-btn.active,
+.community-paper .story-view-toggle button[aria-pressed=true] {
+  background: var(--action-blue);
+  border-color: var(--action-blue);
+  color: #fff;
+  box-shadow: none;
+}
+.community-paper .story-view-toggle { border-radius: 999px; background: var(--action-soft); border-color: var(--action-border); }
+.community-paper .story-view-toggle button { min-height: 40px; border-color: transparent; background: transparent; }
+.community-paper :deep(.read-story) { padding: 11px 20px; min-height: 44px; gap: 16px; border: 1px solid var(--action-border); border-radius: 999px; background: #fff; color: var(--action-blue-hover); }
+.community-paper :deep(.carousel-controls button) { border-color: var(--action-border); background: #fff; color: var(--action-blue-hover); }
+.community-paper :deep(.read-story:hover),
+.community-paper :deep(.carousel-controls button:hover:not(:disabled)) { background: var(--action-soft); border-color: #b7cde2; }
+:is(.travel-paper, .community-paper) button:focus-visible,
+.community-paper :deep(.read-story:focus-visible),
+.community-paper :deep(.carousel-controls button:focus-visible) { outline: 2px solid #487db5; outline-offset: 3px; }
+.search-page .paper-search-field { padding: 6px 6px 6px 20px; border: 1px solid #dfe7ee; border-radius: 999px; background: #fff; box-shadow: 0 6px 24px rgb(56 89 124 / 5%); }
+.search-page .paper-search-field:focus-within { border-color: #487db5; box-shadow: 0 0 0 3px rgb(72 125 181 / 12%); }
+.search-page .paper-search-icon { display: none; }
+.search-page .paper-search-submit { border-radius: 999px; background: #487db5; font-weight: 600; box-shadow: none; transform: none; }
+.search-page .paper-search-submit:hover { background: #396a9e; box-shadow: none; transform: none; }
+.search-page .search-tabs { gap: 8px; padding: 4px 3px 12px; }
+.search-page .search-tab,
+.search-page .search-more-btn { border: 1px solid #dfe7ee; border-radius: 999px; background: #fff; color: #396a9e; padding: 10px 16px; min-height: 44px; }
+.search-page .search-tab:hover,
+.search-page .search-more-btn:hover { background: #f1f6fb; border-color: #b7cde2; }
+.search-page .search-tab.active { background: #487db5; border-color: #487db5; color: #fff; }
+.search-page button:focus-visible { outline: 2px solid #487db5; outline-offset: 3px; }
+@media(max-width:768px) { .search-page .paper-search-field { padding: 5px 5px 5px 12px; } }

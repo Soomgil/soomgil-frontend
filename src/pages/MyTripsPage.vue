@@ -1168,3 +1168,5 @@ watch(activeFilter, loadTrips)
 .travel-paper .timeline-card-open { flex: 0 0 auto; }
 .travel-paper .timeline-card-actions { flex-wrap: nowrap; }
 </style>
+
+<style scoped src="../styles/travel-page-actions.css"></style>
