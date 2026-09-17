@@ -214,10 +214,12 @@ const votePending = computed(
   () => voteSessionStatus.value === 'OPEN' && votingStore.myParticipation != null && !votingStore.isSubmitted,
 )
 const voteModalOpen = ref(false)
+const notificationVoteSessionId = ref<string | null>(null)
 watch(() => route.query?.vote, value => {
   if (value === '1') {
+    notificationVoteSessionId.value = typeof route.query.voteSession === 'string' ? route.query.voteSession : null
     voteModalOpen.value = true
-    const { vote: _vote, ...query } = route.query
+    const { vote: _vote, voteSession: _session, ...query } = route.query
     void router.replace({ query })
   }
 }, { immediate: true })
@@ -254,6 +256,7 @@ const voteActionLabel = computed(() => {
   return '투표 시작'
 })
 function openVoteModal() {
+  notificationVoteSessionId.value = null
 	voteModalOpen.value = true
 }
 function closeVoteModal() {
@@ -5547,7 +5550,7 @@ function textAvatarStyle(index: unknown) {
         <button type="button" class="icon-btn vote-modal-close" aria-label="투표 창 닫기" @click="closeVoteModal">
           <span class="material-symbols-rounded">close</span>
         </button>
-        <TripVoteFlow :trip-id="tripId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
+        <TripVoteFlow :key="notificationVoteSessionId ?? 'current'" :trip-id="tripId" :target-session-id="notificationVoteSessionId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
       </div>
     </div>
   </AppShell>

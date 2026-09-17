@@ -54,6 +54,9 @@ const profileImageRequests = new Map<string, Promise<string | null>>();
 
 const searchQuery = ref("");
 const currentPage = ref(1);
+const latestView = ref<"grid" | "list">("grid");
+const brokenStoryImages = ref(new Set<string>());
+function markStoryImageBroken(id: string) { brokenStoryImages.value = new Set(brokenStoryImages.value).add(id); }
 const selectedPost = ref<CommunityPostDetail | null>(null);
 const storyWriteModal = useModal();
 
@@ -589,6 +592,10 @@ watch(
                 </div>
               </div>
               <div class="latest-stories-tools">
+                <div class="story-view-toggle" role="group" aria-label="최근 게시물 보기 방식">
+                  <button type="button" aria-label="그리드 보기" :aria-pressed="latestView === 'grid'" @click="latestView = 'grid'"><span class="material-symbols-rounded" aria-hidden="true">grid_view</span><span>그리드</span></button>
+                  <button type="button" aria-label="리스트 보기" :aria-pressed="latestView === 'list'" @click="latestView = 'list'"><span class="material-symbols-rounded" aria-hidden="true">view_agenda</span><span>리스트</span></button>
+                </div>
                 <button
                   type="button"
                   class="community-pill community-pill-primary story-write-pill"
@@ -612,7 +619,7 @@ watch(
             </div>
 
             <p v-if="!filteredStories.length" class="community-empty" role="status">검색 조건에 맞는 여행기가 없습니다.</p>
-            <div class="story-card-grid" data-stories-list>
+            <div class="story-card-grid" :class="{ 'story-card-grid--list': latestView === 'list' }" :data-view="latestView" data-stories-list>
               <article
                 v-for="story in pagedStories"
                 :key="story.id"
@@ -623,8 +630,9 @@ watch(
                 @keydown.space.self.prevent="openStory(story)"
                 @click.prevent="openStory(story)"
               >
-                <div class="story-tile-image-wrap" :class="{ 'story-tile-image-wrap--empty': story.image === FALLBACK_IMAGE }">
-                  <img v-if="story.image !== FALLBACK_IMAGE" class="story-tile-image" :src="story.image" :alt="story.title" />
+                <div class="story-tile-image-wrap" :class="{ 'story-tile-image-wrap--empty': story.image === FALLBACK_IMAGE || brokenStoryImages.has(story.id) }">
+                  <img v-if="story.image !== FALLBACK_IMAGE && !brokenStoryImages.has(story.id)" class="story-tile-image" :src="story.image" :alt="story.title" loading="lazy" @error="markStoryImageBroken(story.id)" />
+                  <div v-else class="story-photo-placeholder"><span class="material-symbols-rounded" aria-hidden="true">photo_camera</span><span>글로 남긴 여행의 한 장면</span></div>
                   <button
                     type="button"
                     class="story-tile-like"
@@ -657,7 +665,7 @@ watch(
                     </span>
                   </button>
                   <h3 class="story-tile-title">{{ story.title }}</h3>
-                  <p class="story-tile-summary">{{ story.summary }}</p>
+                  <p v-if="story.summary" class="story-tile-summary">{{ story.summary }}</p>
                   <div v-if="story.tags.length" class="story-tile-tags">
                     <span
                       v-for="tag in story.tags.slice(0, 3)"
@@ -2693,4 +2701,62 @@ watch(
 @media(max-width:1000px) { .community-paper .story-card-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .popular-gallery { gap: 18px; } .community-paper .polaroid-title { font-size: 18px; } }
 @media(max-width:600px) { .community-paper .community-page { padding: 28px 20px 40px; } .community-paper .community-hero-title { font-size: 32px; } .popular-gallery { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 8px 24px; } .community-paper .polaroid-card { flex: 0 0 84%; scroll-snap-align: center; } .community-paper .story-card-grid { grid-template-columns: 1fr; } .community-paper .latest-stories-tools { width: 100%; } .community-paper .community-story-search { min-width: 0; flex: 1; width: auto; } .community-paper .story-write-pill { padding: 10px 14px; white-space: nowrap; } .community-paper .latest-stories-title h2 { font-size: 23px; } }
 @media(prefers-reduced-motion:reduce) { .community-paper .polaroid-card { transition: none; } }
+
+/* 최근 여행기: 사진을 담은 흰 종이 카드와 빠르게 훑는 목록 보기 */
+.story-view-toggle { display:flex; gap:3px; padding:4px; border:1px solid #dfeaf5; border-radius:13px; background:#f0f6fc; flex-shrink:0; }
+.story-view-toggle button { display:flex; align-items:center; justify-content:center; gap:5px; min-height:34px; padding:6px 10px; border:1px solid transparent; border-radius:9px; background:transparent; color:#71869a; font-size:11px; font-weight:650; cursor:pointer; transition:background .18s, color .18s; }
+.story-view-toggle button[aria-pressed=true] { background:#fff; color:#427ead; border-color:#e3edf6; box-shadow:0 2px 6px #35465a0a; }
+.story-view-toggle button:hover { color:#427ead; }
+.story-view-toggle button:focus-visible { outline:2px solid #427ead; outline-offset:2px; }
+.story-view-toggle .material-symbols-rounded { font-size:17px; }
+.community-paper .latest-stories-tools { flex-wrap:wrap; justify-content:flex-end; }
+.community-paper .story-card-grid { gap:32px 26px; align-items:stretch; padding:6px 3px 12px; }
+.community-paper .story-tile { align-self:stretch; padding:11px 11px 0; border:1px solid #e3eaf0; border-radius:3px; background:white; box-shadow:0 3px 7px #35465a08,0 12px 26px #35465a09; transform:rotate(-.45deg); transition:transform .2s ease,box-shadow .2s ease; }
+.community-paper .story-tile:nth-child(2n) { transform:rotate(.45deg); }
+.community-paper .story-tile:hover { background:#fff; transform:translateY(-4px) rotate(0); box-shadow:0 12px 30px #35465a16; }
+.community-paper .story-tile-image-wrap { aspect-ratio:1; height:auto; border-radius:1px; background:#f0f6fc; flex-shrink:0; }
+.community-paper .story-tile-image { transform:none; }
+.community-paper .story-tile:hover .story-tile-image { transform:none; }
+.story-photo-placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; height:100%; min-height:100%; color:#8ea7ba; font-size:11px; background:linear-gradient(135deg,#f0f6fb,#fafcfe); }
+.story-photo-placeholder .material-symbols-rounded { font-size:32px; color:#a3bdd1; }
+.community-paper .story-tile-body { padding:20px 10px 18px; gap:12px; min-width:0; }
+.community-paper .story-tile-title { order:0; margin:0; font-family:'Noto Serif KR',Batang,serif; font-size:19px; font-weight:600; line-height:1.55; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.community-paper .story-tile-summary { order:1; margin:0; font-size:12px; }
+.community-paper .story-tile-tags { order:2; }
+.community-paper .story-tile-author { order:3; margin-top:auto; padding-top:6px; }
+.community-paper .story-tile-avatar { width:26px; height:26px; font-size:11px; flex-shrink:0; }
+.community-paper .story-tile-author-name { min-width:0; }
+.community-paper .story-tile-author-name strong { font-size:11px; }
+.community-paper .story-tile-author-name .small { display:none; }
+.community-paper .story-tile-footer { order:4; padding-top:4px; border:0; font-size:10px; gap:10px; }
+.community-paper .story-tile-stat .material-symbols-rounded { font-size:14px; }
+.community-paper .story-tile-like { width:32px; height:32px; top:10px; right:10px; box-shadow:0 2px 8px #35465a14; }
+.community-paper .story-card-grid--list { grid-template-columns:1fr; gap:16px; padding:0; }
+.community-paper .story-card-grid--list .story-tile { display:grid; grid-template-columns:180px minmax(0,1fr); padding:10px; transform:none; border-radius:4px; box-shadow:0 4px 16px #35465a08; }
+.community-paper .story-card-grid--list .story-tile:hover { transform:translateY(-2px); }
+.community-paper .story-card-grid--list .story-tile-image-wrap { width:100%; height:100%; min-height:176px; aspect-ratio:1; }
+.community-paper .story-card-grid--list .story-tile-body { padding:8px 16px; gap:8px; }
+.community-paper .story-card-grid--list .story-tile-title { font-size:19px; }
+.community-paper .story-card-grid--list .story-tile-tags { display:none; }
+.community-paper .story-card-grid--list .story-tile-author { padding-top:2px; }
+@media(max-width:1000px) { .community-paper .story-card-grid--list { grid-template-columns:1fr; } }
+@media(max-width:600px) {
+  .community-paper .latest-stories-tools { justify-content:flex-start; gap:10px; }
+  .community-paper .story-view-toggle { order:2; }
+  .community-paper .story-write-pill { order:3; margin-left:auto; }
+  .community-paper .community-story-search { order:0; flex:1 0 100%; width:100%; }
+  .community-paper .story-card-grid { gap:24px; padding-inline:1px; }
+  .community-paper .story-tile,.community-paper .story-tile:nth-child(2n) { transform:none; }
+  .community-paper .story-card-grid--list { gap:12px; }
+  .community-paper .story-card-grid--list .story-tile { grid-template-columns:104px minmax(0,1fr); gap:12px; padding:8px; }
+  .community-paper .story-card-grid--list .story-tile-image-wrap { min-height:138px; aspect-ratio:auto; }
+  .community-paper .story-card-grid--list .story-tile-body { padding:3px 2px 3px 0; gap:8px; }
+  .community-paper .story-card-grid--list .story-tile-title { font-size:15px; }
+  .community-paper .story-card-grid--list .story-tile-summary { display:none; }
+  .community-paper .story-card-grid--list .story-tile-footer { flex-wrap:wrap; gap:5px 8px; }
+  .community-paper .story-card-grid--list .story-tile-stat-end { flex-basis:100%; margin-left:0; }
+  .community-paper .story-card-grid--list .story-photo-placeholder { font-size:9px; text-align:center; padding:6px; }
+  .community-paper .story-card-grid--list .story-tile-like { top:6px; right:6px; width:28px; height:28px; }
+}
+@media(prefers-reduced-motion:reduce) { .community-paper .story-tile,.story-view-toggle button { transition:none; } }
 </style>
