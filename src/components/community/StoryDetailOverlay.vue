@@ -727,7 +727,7 @@ watch(
                   <div class="fc-actions">
                     <button
                       type="button"
-                      class="fc-action-btn fc-reply-btn"
+                      v-if="!comment.isReply" class="fc-action-btn fc-reply-btn" :aria-pressed="replyTarget?.id === comment.id"
                       @click="replyTarget = { id: comment.id, name: comment.name }"
                     >
                       답글

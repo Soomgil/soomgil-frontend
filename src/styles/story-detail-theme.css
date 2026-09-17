@@ -90,3 +90,11 @@
 .story-overlay .feed-layout .feed-scroll-guide { top:80px; bottom:auto; }
 @media(max-width:760px) { .story-overlay-panel:has(> .feed-layout) { width:calc(100vw - 16px); } .story-overlay-panel .feed-layout { grid-template-columns:1fr; gap:8px; } }
 .story-overlay .feed-layout .fc-reply { border:0; }
+.story-overlay .feed-layout .fc-reply-btn { display:inline-flex; align-items:center; min-height:32px; padding:5px 12px; border:1px solid #d7e6f1; border-radius:999px; color:#397dab; background:#fff; font-size:12px; font-weight:600; }
+.story-overlay .feed-layout .fc-reply-btn:hover,.story-overlay .feed-layout .fc-reply-btn[aria-pressed=true] { background:#deeffb; border-color:#aacfe8; }
+.story-overlay .feed-layout .fc-item { margin-top:0; margin-bottom:0; }
+.story-overlay .feed-layout .fc-item.has-replies::after { top:48px; left:17px; width:2px; height:calc(100% - 48px); background:#b4c9d9; }
+.story-overlay .feed-layout .fc-item.is-reply { margin-left:44px; }
+.story-overlay .feed-layout .fc-item.is-reply::before { display:block; content:''; top:0; left:-27px; width:23px; height:25px; border-left:2px solid #b4c9d9; border-bottom:2px solid #b4c9d9; border-bottom-left-radius:14px; }
+.story-overlay .feed-layout .fc-item.is-reply:not(.is-last-reply)::after { display:block; content:''; top:0; left:-27px; width:2px; height:100%; background:#b4c9d9; }
+.story-overlay .feed-layout .fc-item.is-last-reply::after { display:none; }
