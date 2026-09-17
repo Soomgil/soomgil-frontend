@@ -1546,3 +1546,4 @@ watch(
   }
 }
 </style>
+<style scoped src="../../styles/story-detail-theme.css"></style>

@@ -3265,7 +3265,7 @@ describe('RoutePage itinerary integration', () => {
     expect(routing.push).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'TripVote' }))
   })
 
-  it('모달을 닫으면 투표 버튼의 팝업 카드로 미제출을 안내하고 다시 열 수 있다', async () => {
+  it('투표 안내 카드는 한 줄로 표시하고 클릭하면 닫히며 투표 버튼으로 다시 연다', async () => {
     holder.votingStore.session = { status: 'OPEN' }
     holder.votingStore.myParticipation = { status: 'NOT_STARTED' }
     holder.votingStore.isSubmitted = false
@@ -3280,9 +3280,12 @@ describe('RoutePage itinerary integration', () => {
     expect(voteButton.text()).toContain('미제출')
     expect(wrapper.find('[data-testid="vote-pending-banner"]').exists()).toBe(false)
     const banner = wrapper.get('.trip-vote-control [data-testid="vote-pending-card"]')
-    expect(banner.text()).toContain('투표')
+    expect(banner.text()).toBe('투표가 진행 중이에요')
 
     await banner.trigger('click')
+    expect(wrapper.find('[data-testid="vote-pending-card"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
+    await voteButton.trigger('click')
     expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(true)
   })
 

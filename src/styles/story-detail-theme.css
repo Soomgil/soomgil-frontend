@@ -1,0 +1,47 @@
+/* Shared by the community feed and reusable detail overlay entry points. */
+.story-overlay-panel:has(> .feed-layout) { --ink:#344e65; --muted:#6b8398; --violet:#487db5; --blue:#69adde; --line:#e1ebf3; --surface-2:#edf6fc; width:min(1160px,calc(100vw - 48px)); height:min(860px,calc(100dvh - 48px)); max-height:calc(100dvh - 48px); padding:52px 20px 20px; border:1px solid #dfe7ee; border-radius:24px; background:#fff; box-shadow:0 24px 80px rgb(30 66 94 / 20%); overflow:hidden; }
+.story-overlay-panel .feed-layout { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr); gap:24px; align-items:stretch; height:100%; min-height:0; }
+.story-overlay .feed-layout .story-feed { width:100%; height:100%; max-width:none; aspect-ratio:auto; min-height:0; align-self:stretch; }
+.story-overlay .feed-layout .story-feed-window { width:100%; height:100%; margin:0; }
+.story-overlay .feed-layout .story-post { border:0; border-radius:16px; box-shadow:none; background:#fff; }
+.story-overlay #overlay-feed-stories .story-post:hover { transform:none; box-shadow:none; }
+.story-overlay .feed-layout .story-post-photo-frame { aspect-ratio:4/3; background:#f1f6fb; }
+.story-overlay .feed-layout .story-post-photo-img { object-fit:contain; }
+.story-overlay .feed-layout .story-body { padding:24px 12px 16px; flex:0 0 auto; }
+.story-overlay .feed-layout .story-body h3 { font-family:'Noto Serif KR',Batang,serif; color:#344e65; line-height:1.5; }
+.story-overlay .feed-layout .story-body p { line-height:1.85; overflow-wrap:anywhere; }
+.story-overlay .feed-layout .story-action-bar { flex-wrap:wrap; gap:8px; margin-top:20px; padding-top:16px; }
+.story-overlay .feed-layout .story-like-button { min-height:40px; padding:8px 12px; border:1px solid #dfe7ee; border-radius:999px; background:#fff; color:#487db5; }
+.story-overlay .feed-layout .story-like-button:hover,.story-overlay .feed-layout .story-like-button.active { background:#e5f2fc; color:#396a9e; }
+.story-overlay .feed-layout .feed-sidebar { width:100%; height:100%; max-height:none; margin:0; padding:0; min-height:0; align-self:stretch; }
+.story-overlay .feed-layout .feed-comment-widget.widget-card { height:100%; max-height:none; margin:0; padding:0; border:1px solid #e1ebf3; border-radius:20px; background:#f8fbfe; box-shadow:none; display:flex; flex-direction:column; }
+.story-overlay .feed-layout .feed-comment-widget.widget-card:hover { transform:none; box-shadow:none; }
+.story-overlay .feed-layout .feed-comment-header { padding:20px; border-bottom:1px solid #e1ebf3; background:#f1f8fd; border-radius:20px 20px 0 0; }
+.story-overlay .feed-layout .feed-comment-header h3 { color:#344e65; font-size:17px; }
+.story-overlay .feed-layout .comment-count-badge { background:#deeffb; color:#397dab; }
+.story-overlay .feed-layout .feed-comment-scroll { margin:0; padding:20px; background:transparent; }
+.story-overlay .feed-layout .fc-item { padding:14px 0; border-bottom:1px solid #e7eff6; }
+.story-overlay .feed-layout .fc-text { color:#466177; line-height:1.75; overflow-wrap:anywhere; }
+.story-overlay .feed-layout .feed-comment-input-area { padding:16px; border-top:1px solid #e1ebf3; background:#fff; border-radius:0 0 20px 20px; }
+.story-overlay .feed-layout .feed-comment-input-area input { min-height:48px; border:1px solid #dfe7ee; border-radius:999px; background:#fff; color:#344e65; padding-left:16px; }
+.story-overlay .feed-layout .comment-submit-btn { background:#487db5; box-shadow:none; }
+.story-overlay .feed-layout .comment-submit-btn:hover { background:#396a9e; box-shadow:none; }
+.story-overlay-panel:has(> .feed-layout) > .story-overlay-close { top:10px; right:14px; width:34px; height:34px; border-color:#dfe7ee; color:#487db5; box-shadow:none; background:#f1f8fd; }
+.story-overlay .feed-layout button:focus-visible { outline:2px solid #487db5; outline-offset:2px; }
+@media(max-width:760px) {
+ .story-overlay-panel:has(> .feed-layout) { width:calc(100vw - 16px); height:calc(100dvh - 16px); max-height:calc(100dvh - 16px); padding:52px 12px 16px; border-radius:20px; overflow-y:auto; }
+ .story-overlay-panel .feed-layout { display:flex; flex-direction:column; height:auto; gap:20px; }
+ .story-overlay .feed-layout .story-feed,.story-overlay .feed-layout .story-feed-window,.story-overlay .feed-layout .story-post { height:auto; max-height:none; overflow:visible; }
+ .story-overlay .feed-layout .feed-sidebar { height:auto; }
+ .story-overlay .feed-layout .feed-comment-widget.widget-card { height:auto; min-height:300px; }
+ .story-overlay .feed-layout .feed-comment-scroll { flex:none; max-height:360px; overflow-y:auto; }
+ .story-overlay .feed-layout .story-body { padding:20px 8px 12px; }
+}
+.story-overlay .feed-layout .feed-sidebar { aspect-ratio:auto; }
+.story-overlay .feed-layout .feed-comment-widget.widget-card { width:100%; }
+.story-overlay .feed-layout .feed-scroll-guide { position:absolute; inset:auto 0 16px; display:flex; justify-content:center; pointer-events:none; transform:none; }
+.story-overlay .feed-layout .feed-scroll-guide-pill { width:auto; min-width:0; height:auto; min-height:0; padding:10px 16px; border:1px solid #dfe7ee; border-radius:999px; background:rgb(255 255 255 / 94%); color:#487db5; box-shadow:0 3px 12px #344e6512; backdrop-filter:none; }
+.story-overlay .feed-layout .swipe-track-container { display:none; }
+.story-overlay .feed-layout .guide-text { color:#487db5 !important; font-size:12px !important; text-shadow:none; }
+.story-overlay .feed-layout .feed-comment-header,.story-overlay .feed-layout .feed-comment-input-area { flex-shrink:0; }
+@media(max-width:760px) { .story-overlay .feed-layout .feed-sidebar { flex:none; overflow:visible; } .story-overlay .feed-layout .feed-comment-widget.widget-card { min-height:300px; height:auto; } }

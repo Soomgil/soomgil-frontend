@@ -443,21 +443,15 @@ async function handleLogout() {
             <img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="내 프로필 사진" style="width:100%;height:100%;object-fit:cover;" />
             <template v-else>{{ auth.user?.displayName?.charAt(0) || 'U' }}</template>
           </button>
-          <div id="header-profile-panel" class="header-dropdown-panel" :class="{ 'is-open': showProfile }">
-            <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--line);">
-              <strong style="font-size:14px; display:block; color:var(--ink);">{{ auth.user?.displayName || '사용자' }}</strong>
-              <span style="font-size:12px; color:var(--muted); display:block; word-break:break-all;">{{ auth.user?.email || '이메일 미확인' }}</span>
+          <div id="header-profile-panel" class="header-dropdown-panel profile-menu" :class="{ 'is-open': showProfile }" aria-label="프로필 메뉴">
+            <div class="profile-menu-heading">
+              <span class="profile-menu-avatar"><img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="" /><span v-else>{{ auth.user?.displayName?.charAt(0) || 'U' }}</span></span>
+              <div class="profile-menu-identity"><strong>{{ auth.user?.displayName || '사용자' }}</strong><span>{{ auth.user?.email || '이메일 미확인' }}</span></div>
             </div>
-            <div style="display:grid; gap:4px;">
-              <a href="#" style="font-size:13px; color:var(--ink); text-decoration:none; padding:8px; border-radius:8px; display:flex; align-items:center; gap:8px;" class="profile-item-link" @click.prevent="closeAllDropdowns(); router.push('/mypage')">
-                <span class="material-symbols-rounded" style="font-size:18px; color:var(--muted)">person</span>{{ t('common.myPage') }}
-              </a>
-              <a href="#" style="font-size:13px; color:var(--ink); text-decoration:none; padding:8px; border-radius:8px; display:flex; align-items:center; gap:8px;" class="profile-item-link" @click.prevent="closeAllDropdowns(); router.push('/settings')">
-                <span class="material-symbols-rounded" style="font-size:18px; color:var(--muted)">settings</span>{{ t('common.settings') }}
-              </a>
-              <a href="#" style="font-size:13px; color:var(--rose); text-decoration:none; padding:8px; border-radius:8px; display:flex; align-items:center; gap:8px;" class="profile-item-link" @click.prevent="handleLogout">
-                <span class="material-symbols-rounded" style="font-size:18px; color:var(--rose)">logout</span>{{ t('auth.logout') }}
-              </a>
+            <div class="profile-menu-links">
+              <a href="/mypage" class="profile-item-link" @click.prevent="closeAllDropdowns(); router.push('/mypage')"><span class="material-symbols-rounded" aria-hidden="true">person</span>{{ t('common.myPage') }}<span class="material-symbols-rounded profile-link-arrow" aria-hidden="true">chevron_right</span></a>
+              <a href="/settings" class="profile-item-link" @click.prevent="closeAllDropdowns(); router.push('/settings')"><span class="material-symbols-rounded" aria-hidden="true">settings</span>{{ t('common.settings') }}<span class="material-symbols-rounded profile-link-arrow" aria-hidden="true">chevron_right</span></a>
+              <a href="#" class="profile-item-link profile-logout" @click.prevent="handleLogout"><span class="material-symbols-rounded" aria-hidden="true">logout</span>{{ t('auth.logout') }}</a>
             </div>
           </div>
         </div>
@@ -649,4 +643,24 @@ async function handleLogout() {
 .paper-header .header-actions > .btn.ghost { background:transparent; color:#428cb9; }
 @media(max-width:480px) { .paper-header .nav { justify-content:space-between; gap:2px; } .paper-header .nav a { text-align:center; flex:1; padding-inline:8px; } }
 @media(prefers-reduced-motion:reduce) { .paper-header .nav .nav-indicator.is-ready,.paper-header .nav a { transition:none; } }
+</style>
+
+<style scoped>
+#header-profile-panel.profile-menu { width:288px; max-width:calc(100vw - 32px); padding:0; border:1px solid #dfe7ee; border-radius:22px; background:#fff; color:#344e65; box-shadow:0 14px 40px rgb(51 100 138 / 14%); overflow:hidden; }
+.profile-menu-heading { display:flex; align-items:center; gap:12px; padding:20px; background:#f1f8fd; border-bottom:1px solid #e3eef6; }
+.profile-menu-avatar { display:grid; place-items:center; flex-shrink:0; width:44px; height:44px; border-radius:50%; background:#deeffb; color:#397dab; border:1px solid #cce1f0; overflow:hidden; font-weight:750; }
+.profile-menu-avatar img { width:100%; height:100%; object-fit:cover; }
+.profile-menu-identity { display:grid; gap:4px; min-width:0; }
+.profile-menu-identity strong { font-size:14px; overflow-wrap:anywhere; }
+.profile-menu-identity > span { font-size:12px; color:#6b879d; overflow-wrap:anywhere; }
+.profile-menu-links { display:grid; gap:4px; padding:10px; }
+.profile-menu .profile-item-link { display:flex; align-items:center; gap:10px; min-height:44px; padding:10px 14px; border-radius:999px; color:#46677f; text-decoration:none; font-size:13px; font-weight:600; }
+.profile-menu .profile-item-link:hover { background:#edf6fc; color:#396a9e; }
+.profile-menu .material-symbols-rounded { font-size:19px; color:#528aaf; }
+.profile-menu .profile-link-arrow { margin-left:auto; color:#90adbf; font-size:17px; }
+.profile-menu .profile-logout { margin-top:4px; border-top:1px solid #edf3f8; border-radius:0 0 16px 16px; color:#6b7f90; }
+.profile-menu .profile-item-link:focus-visible { outline:2px solid #487db5; outline-offset:-2px; }
+</style>
+<style scoped>
+#header-profile-panel.profile-menu { width:288px !important; padding:0 !important; border:1px solid #dfe7ee !important; border-radius:22px !important; box-shadow:0 14px 40px rgb(51 100 138 / 14%) !important; }
 </style>

@@ -209,10 +209,12 @@ const isTripOwner = computed(() => {
   return (detail?.myRole ?? trip.value.myRole) === 'OWNER'
 })
 const voteSessionStatus = computed(() => votingStore.session?.status ?? null)
-/** 내가 참여자인데 아직 제출하지 않은 진행 중 투표가 있는지. 빨간 경고의 기준이다. */
+/** 내가 참여자인데 아직 제출하지 않은 진행 중 투표가 있는지. 투표 안내의 기준이다. */
 const votePending = computed(
   () => voteSessionStatus.value === 'OPEN' && votingStore.myParticipation != null && !votingStore.isSubmitted,
 )
+const voteHintDismissed = ref(false)
+watch(() => votingStore.session?.id, () => { voteHintDismissed.value = false })
 const voteModalOpen = ref(false)
 const notificationVoteSessionId = ref<string | null>(null)
 watch(() => route.query?.vote, value => {
@@ -4577,16 +4579,14 @@ function textAvatarStyle(index: unknown) {
                   <button
                     type="button"
                     :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
-                    :aria-describedby="votePending && !voteModalOpen ? 'vote-pending-card' : undefined"
+                    :aria-describedby="votePending && !voteModalOpen && !voteHintDismissed ? 'vote-pending-card' : undefined"
                     @click="goTripVote"
                   >
                     <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
                     <span>{{ voteActionLabel }}</span>
                   </button>
-                    <button v-if="votePending && !voteModalOpen" id="vote-pending-card" class="vote-pending-card" data-testid="vote-pending-card" type="button" @click="openVoteModal">
+                    <button v-if="votePending && !voteModalOpen && !voteHintDismissed" id="vote-pending-card" class="vote-pending-card" data-testid="vote-pending-card" type="button" aria-label="투표가 진행 중이에요, 안내 닫기" @click="voteHintDismissed = true">
                       <strong>투표가 진행 중이에요</strong>
-                      <span>아직 제출하지 않았어요</span>
-                      <span class="vote-pending-card-action">이어서 투표하기 →</span>
                     </button>
                   </div>
             <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
@@ -5557,12 +5557,11 @@ function textAvatarStyle(index: unknown) {
 .trip-map-actions .trip-vote-button--alert { color:#296c9a; background:#e5f3ff; border-color:#9cc9e8; animation:vote-alert-pulse 2.4s ease-in-out infinite; }
 .trip-map-actions .trip-vote-button--alert:hover { background:#d7edff; border-color:#78b5df; }
 @keyframes vote-alert-pulse { 0%,100% { box-shadow:0 0 0 0 rgb(72 145 199 / 22%); } 65% { box-shadow:0 0 0 7px rgb(72 145 199 / 0%); } }
-.vote-pending-card { position:absolute; top:calc(100% + 12px); right:0; width:220px; padding:16px; display:grid; gap:6px; border:1px solid #cde3f3; border-radius:16px; background:#fff; color:#607b90; text-align:left; box-shadow:0 8px 26px rgb(51 100 138 / 12%); cursor:pointer; font:inherit; font-size:12px; }
+.vote-pending-card { position:absolute; top:calc(100% + 12px); right:0; width:max-content; padding:12px 16px; display:block; white-space:nowrap; border:1px solid #cde3f3; border-radius:16px; background:#fff; color:#607b90; text-align:left; box-shadow:0 8px 26px rgb(51 100 138 / 12%); cursor:pointer; font:inherit; font-size:12px; }
 .vote-pending-card::before { content:''; position:absolute; right:26px; top:-6px; width:10px; height:10px; background:#fff; border-top:1px solid #cde3f3; border-left:1px solid #cde3f3; transform:rotate(45deg); }
 .vote-pending-card strong { color:#344e65; font-size:14px; }
-.vote-pending-card-action { color:#397dab; font-weight:700; margin-top:4px; }
 .vote-pending-card:focus-visible { outline:2px solid #487db5; outline-offset:3px; }
-@media(max-width:767px) { .vote-pending-card { right:auto; left:0; width:200px; } .vote-pending-card::before { right:auto; left:26px; } }
+@media(max-width:767px) { .vote-pending-card { right:auto; left:0; width:max-content; } .vote-pending-card::before { right:auto; left:26px; } }
 @media(prefers-reduced-motion:reduce) { .trip-map-actions .trip-vote-button--alert { animation:none; } }
 
 .vote-modal-overlay {
@@ -7861,4 +7860,10 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .search-panel-body { overflow-y:auto; padding-bottom:88px; }
 #search-panel-back { border-radius:999px; border:1px solid #dfe7ee; background:#fff; color:#396a9e; box-shadow:none; min-height:40px; padding:8px 16px; }
 #search-panel-back:hover { background:#f1f6fb; border-color:#b7cde2; }
+</style>
+
+<style scoped>
+.trip-sidebar-back { padding:8px 16px; border:1px solid #dfe7ee; border-radius:999px; background:#fff; color:#396a9e; font-weight:600; transition:background .2s,border-color .2s; }
+.trip-sidebar-back:hover { background:#f1f6fb; border-color:#b7cde2; }
+.trip-sidebar-back:focus-visible { outline:2px solid #487db5; outline-offset:3px; }
 </style>

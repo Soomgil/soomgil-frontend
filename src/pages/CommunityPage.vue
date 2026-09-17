@@ -2761,3 +2761,4 @@ watch(
 </style>
 
 <style scoped src="../styles/travel-page-actions.css"></style>
+<style scoped src="../styles/story-detail-theme.css"></style>
