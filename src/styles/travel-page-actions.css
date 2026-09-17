@@ -76,9 +76,9 @@
 }
 .community-paper .story-view-toggle { border-radius: 999px; background: var(--action-soft); border-color: var(--action-border); }
 .community-paper .story-view-toggle button { min-height: 40px; border-color: transparent; background: transparent; }
-.community-paper :deep(.read-story) { padding: 11px 20px; min-height: 44px; gap: 16px; border: 1px solid var(--action-border); border-radius: 999px; background: #fff; color: var(--action-blue-hover); }
+.community-paper :deep(.read-story) { padding: 11px 20px; min-height: 44px; gap: 16px; border: 1px solid var(--action-blue); border-radius: 999px; background: var(--action-blue); color: #fff; }
 .community-paper :deep(.carousel-controls button) { border-color: var(--action-border); background: #fff; color: var(--action-blue-hover); }
-.community-paper :deep(.read-story:hover),
+.community-paper :deep(.read-story:hover) { background: var(--action-blue-hover); border-color: var(--action-blue-hover); }
 .community-paper :deep(.carousel-controls button:hover:not(:disabled)) { background: var(--action-soft); border-color: #b7cde2; }
 :is(.travel-paper, .community-paper) button:focus-visible,
 .community-paper :deep(.read-story:focus-visible),
