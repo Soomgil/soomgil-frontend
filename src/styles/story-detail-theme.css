@@ -98,3 +98,9 @@
 .story-overlay .feed-layout .fc-item.is-reply::before { display:block; content:''; top:0; left:-27px; width:23px; height:25px; border-left:2px solid #b4c9d9; border-bottom:2px solid #b4c9d9; border-bottom-left-radius:14px; }
 .story-overlay .feed-layout .fc-item.is-reply:not(.is-last-reply)::after { display:block; content:''; top:0; left:-27px; width:2px; height:100%; background:#b4c9d9; }
 .story-overlay .feed-layout .fc-item.is-last-reply::after { display:none; }
+.story-overlay .feed-layout .story-feed-window { touch-action:pan-x; user-select:none; cursor:grab; transform:translateY(var(--feed-drag-y,0px)); transition:transform .3s cubic-bezier(.22,1,.36,1); will-change:transform; }
+.story-overlay .feed-layout .story-feed-window.is-dragging { transition:none; cursor:grabbing; }
+.story-overlay .feed-layout .story-feed-window.show-swipe-demo { animation:feed-swipe-demo 1.4s .5s ease-in-out 2; }
+@keyframes feed-swipe-demo { 0%,100% { transform:translateY(0); } 45% { transform:translateY(-18px); } 65% { transform:translateY(-18px); } }
+.story-overlay .feed-layout .feed-scroll-guide-pill { max-width:calc(100% - 24px); text-align:center; }
+@media(prefers-reduced-motion:reduce) { .story-overlay .feed-layout .story-feed-window { transition:none; } .story-overlay .feed-layout .story-feed-window.show-swipe-demo { animation:none; } }

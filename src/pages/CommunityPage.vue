@@ -460,39 +460,43 @@ function goToStory(direction: -1 | 1) {
   }, 350);
 }
 
-let touchStartY = 0;
-let touchStartX = 0;
-function onTouchStart(e: TouchEvent) {
-  touchStartY = e.touches[0].clientY;
-  touchStartX = e.touches[0].clientX;
-}
-function onTouchEnd(e: TouchEvent) {
-  const dy = touchStartY - e.changedTouches[0].clientY;
-  const dx = touchStartX - e.changedTouches[0].clientX;
-  if (Math.abs(dy) < 50 || Math.abs(dy) < Math.abs(dx)) return;
-  const article = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(".story-post");
-  const atTop = article ? article.scrollTop <= 0 : true;
-  const atBottom = article
-    ? article.scrollTop + article.clientHeight >= article.scrollHeight - 1
-    : true;
-  if (dy > 0 && !atBottom) return;
-  if (dy < 0 && !atTop) return;
-  goToStory(dy > 0 ? 1 : -1);
-}
+const feedDragY = ref(0);
+const feedDragging = ref(false);
+let feedStartY = 0;
+let feedPointerId: number | null = null;
+let lastWheelTime = 0;
 function onWheel(e: WheelEvent) {
-  if (Math.abs(e.deltaY) < 15) return;
   e.preventDefault();
+  const now = performance.now();
+  if (Math.abs(e.deltaY) < 15 || now - lastWheelTime < 500) return;
+  lastWheelTime = now;
+  scrollGuideVisible.value = false;
   goToStory(e.deltaY > 0 ? 1 : -1);
 }
-let feedDragStart: number | null = null;
 function onFeedPointerDown(e: PointerEvent) {
-  if (e.pointerType !== 'mouse' || (e.target as HTMLElement).closest('button,a,input,textarea')) return;
-  feedDragStart = e.clientY;
+  if (!e.isPrimary || e.button !== 0 || isTransitioning.value || (e.target as HTMLElement).closest('button,a,input,textarea')) return;
+  feedPointerId = e.pointerId;
+  feedStartY = e.clientY;
+  feedDragging.value = true;
+  scrollGuideVisible.value = false;
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 }
+function onFeedPointerMove(e: PointerEvent) {
+  if (feedPointerId !== e.pointerId) return;
+  const distance = e.clientY - feedStartY;
+  const atEdge = distance > 0 ? visibleStoryIdx.value === 0 : visibleStoryIdx.value >= stories.value.length - 1;
+  feedDragY.value = distance * (atEdge ? .22 : .85);
+}
 function onFeedPointerUp(e: PointerEvent) {
-  if (feedDragStart !== null && Math.abs(e.clientY - feedDragStart) > 55) goToStory(e.clientY < feedDragStart ? 1 : -1);
-  feedDragStart = null;
+  if (feedPointerId !== e.pointerId) return;
+  const distance = feedDragY.value;
+  cancelFeedDrag();
+  if (Math.abs(distance) > 65) goToStory(distance < 0 ? 1 : -1);
+}
+function cancelFeedDrag() {
+  feedPointerId = null;
+  feedDragging.value = false;
+  feedDragY.value = 0;
 }
 function focusStoryComments(e: Event) {
   (e.currentTarget as HTMLElement).closest('.feed-layout')?.querySelector<HTMLInputElement>('.feed-comment-input-area input')?.focus();
@@ -748,13 +752,13 @@ watch(
         <div class="feed-layout" id="overlay-feed-layout">
           <section class="story-feed" aria-label="여행기 피드">
             <div
-              class="story-feed-window"
+              class="story-feed-window" :class="{ 'is-dragging': feedDragging, 'show-swipe-demo': scrollGuideVisible }" :style="{ '--feed-drag-y': `${feedDragY}px` }"
               aria-label="여행기 피드"
               id="overlay-feed-stories"
               tabindex="0"
-              @touchstart.passive="onTouchStart"
-              @touchend.passive="onTouchEnd"
-              @wheel="onWheel" @pointerdown="onFeedPointerDown" @pointerup="onFeedPointerUp" @pointercancel="feedDragStart = null"
+              
+              
+              @wheel="onWheel" @pointerdown="onFeedPointerDown" @pointermove="onFeedPointerMove" @pointerup="onFeedPointerUp" @pointercancel="cancelFeedDrag" @lostpointercapture="cancelFeedDrag"
               @keydown="onKeydown"
             >
               <Transition :name="transitionName" mode="out-in">
@@ -898,7 +902,7 @@ watch(
                 <span
                   class="guide-text"
                   style="font-weight: 800; font-size: 16px; letter-spacing: -0.02em"
-                  >위로 스와이프하여 탐색</span
+                  >위로 드래그하거나 스크롤해 다음 여행 보기</span
                 >
               </div>
             </div>
