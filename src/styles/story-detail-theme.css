@@ -89,5 +89,4 @@
 .story-overlay .feed-layout .fc-item.is-reply { border:0; }
 .story-overlay .feed-layout .feed-scroll-guide { top:80px; bottom:auto; }
 @media(max-width:760px) { .story-overlay-panel:has(> .feed-layout) { width:calc(100vw - 16px); } .story-overlay-panel .feed-layout { grid-template-columns:1fr; gap:8px; } }
-.story-overlay .feed-layout .fc-item.is-reply::before,.story-overlay .feed-layout .fc-item.is-reply::after { display:none; }
 .story-overlay .feed-layout .fc-reply { border:0; }
