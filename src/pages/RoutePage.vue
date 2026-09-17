@@ -4573,15 +4573,22 @@ function textAvatarStyle(index: unknown) {
                     <span v-if="trip.members.length > 3" class="members-count">+{{ trip.members.length - 3 }}</span>
                   </div>
             <div class="trip-map-buttons">
+                  <div v-if="showVoteAction" class="trip-vote-control">
                   <button
-                    v-if="showVoteAction"
                     type="button"
                     :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
+                    :aria-describedby="votePending && !voteModalOpen ? 'vote-pending-card' : undefined"
                     @click="goTripVote"
                   >
                     <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
                     <span>{{ voteActionLabel }}</span>
                   </button>
+                    <button v-if="votePending && !voteModalOpen" id="vote-pending-card" class="vote-pending-card" data-testid="vote-pending-card" type="button" @click="openVoteModal">
+                      <strong>투표가 진행 중이에요</strong>
+                      <span>아직 제출하지 않았어요</span>
+                      <span class="vote-pending-card-action">이어서 투표하기 →</span>
+                    </button>
+                  </div>
             <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
             <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
               <button ref="mapThemeButton" type="button" class="map-theme-button" :aria-expanded="mapThemeOpen" aria-controls="map-theme-options" @click="mapThemeOpen = !mapThemeOpen">
@@ -4777,9 +4784,13 @@ function textAvatarStyle(index: unknown) {
                   <span>여기로 끌어서 삭제</span>
                 </div>
 
-                <button class="add-stop-dashed" type="button" :disabled="dayPlans.length === 0 || itinerary.mutating.value" @click="openSearchPanel">
+                <button v-if="!isSearchPanelOpen" class="add-stop-dashed" type="button" :disabled="dayPlans.length === 0 || itinerary.mutating.value" @click="openSearchPanel">
                   <span class="material-symbols-rounded">add_circle</span>
                   <span>일정 추가</span>
+                </button>
+                <button v-else class="add-stop-dashed search-panel-custom-trigger" :aria-expanded="showCustomForm" type="button" @click="showCustomForm = !showCustomForm">
+                  <span class="material-symbols-rounded" aria-hidden="true">edit_note</span>
+                  <span>{{ showCustomForm ? '커스텀 일정 입력 닫기' : '커스텀 일정 추가' }}</span>
                 </button>
                 <div class="add-stop-popover" id="add-stop-popover">
                   <button class="popover-item" type="button" @click="openSearchPanel">
@@ -4804,10 +4815,7 @@ function textAvatarStyle(index: unknown) {
                 <button class="icon-btn" id="search-panel-back" type="button" aria-label="일정으로 돌아가기" @click="closeSearchPanel">
                   <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span><span>일정으로</span>
                 </button>
-                <button :class="['category-chip', 'search-panel-custom-trigger']" type="button" @click="showCustomForm = !showCustomForm">
-                  <span class="material-symbols-rounded" aria-hidden="true">edit_note</span>
-                  커스텀 일정 추가
-                </button>
+
               </div>
               <div class="search-panel-body">
                 <!-- 커스텀 일정 폼 -->
@@ -4958,18 +4966,6 @@ function textAvatarStyle(index: unknown) {
               </button>
             </div>
 
-            <!-- 닫아 둔 미제출 투표는 지도 상단에 빨갛게 남겨 눈에 띄게 한다. -->
-            <button
-              v-if="votePending && !voteModalOpen"
-              type="button"
-              class="vote-pending-banner"
-              data-testid="vote-pending-banner"
-              @click="openVoteModal"
-            >
-              <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-              <span>투표가 진행 중이에요 · 아직 제출하지 않았어요</span>
-              <strong>이어서 투표하기</strong>
-            </button>
             <div v-if="mapViewport.loading.value" class="map-viewport-status" role="status">
               지도 범위를 동기화하는 중
             </div>
@@ -5556,49 +5552,18 @@ function textAvatarStyle(index: unknown) {
 </template>
 
 <style scoped>
-/* ── 미제출 투표 경고: 카드 버튼은 빨갛게, 지도 상단에는 띠로 남긴다. ── */
-.trip-vote-button--alert {
-  animation: vote-alert-pulse 1.6s ease-in-out infinite;
-  background: rgba(244, 63, 94, 0.1);
-  border-color: rgba(244, 63, 94, 0.55);
-  color: #be123c;
-}
-
-.trip-vote-button--alert:hover {
-  border-color: #be123c;
-  color: #9f1239;
-}
-
-@keyframes vote-alert-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.35); }
-  50% { box-shadow: 0 0 0 6px rgba(244, 63, 94, 0); }
-}
-
-.vote-pending-banner {
-  align-items: center;
-  background: #e11d48;
-  border: 0;
-  border-radius: 999px;
-  box-shadow: 0 10px 28px rgba(225, 29, 72, 0.35);
-  color: #fff;
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 13px;
-  font-weight: 800;
-  gap: 8px;
-  left: 50%;
-  max-width: calc(100% - 32px);
-  padding: 10px 16px;
-  position: absolute;
-  top: 16px;
-  transform: translateX(-50%);
-  z-index: 30;
-}
-
-.vote-pending-banner strong {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
+/* 투표 안내는 해당 액션에 붙여 지도 중앙을 가리지 않는다. */
+.trip-vote-control { position:relative; }
+.trip-map-actions .trip-vote-button--alert { color:#296c9a; background:#e5f3ff; border-color:#9cc9e8; animation:vote-alert-pulse 2.4s ease-in-out infinite; }
+.trip-map-actions .trip-vote-button--alert:hover { background:#d7edff; border-color:#78b5df; }
+@keyframes vote-alert-pulse { 0%,100% { box-shadow:0 0 0 0 rgb(72 145 199 / 22%); } 65% { box-shadow:0 0 0 7px rgb(72 145 199 / 0%); } }
+.vote-pending-card { position:absolute; top:calc(100% + 12px); right:0; width:220px; padding:16px; display:grid; gap:6px; border:1px solid #cde3f3; border-radius:16px; background:#fff; color:#607b90; text-align:left; box-shadow:0 8px 26px rgb(51 100 138 / 12%); cursor:pointer; font:inherit; font-size:12px; }
+.vote-pending-card::before { content:''; position:absolute; right:26px; top:-6px; width:10px; height:10px; background:#fff; border-top:1px solid #cde3f3; border-left:1px solid #cde3f3; transform:rotate(45deg); }
+.vote-pending-card strong { color:#344e65; font-size:14px; }
+.vote-pending-card-action { color:#397dab; font-weight:700; margin-top:4px; }
+.vote-pending-card:focus-visible { outline:2px solid #487db5; outline-offset:3px; }
+@media(max-width:767px) { .vote-pending-card { right:auto; left:0; width:200px; } .vote-pending-card::before { right:auto; left:26px; } }
+@media(prefers-reduced-motion:reduce) { .trip-map-actions .trip-vote-button--alert { animation:none; } }
 
 .vote-modal-overlay {
   align-items: center;
@@ -7888,4 +7853,12 @@ function textAvatarStyle(index: unknown) {
 .route-unlink-label { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); color: #647c92; font-size: 10px; }
 .map-theme-popover label:focus-within { outline: 2px solid #328be0; outline-offset: 1px; }
 .route-page-section .day-separator { background: #fff !important; }
+</style>
+
+<style scoped>
+.route-page-section .add-stop-container .search-panel-custom-trigger { width:100%; margin:0; border:1px solid #b9d8ee; border-radius:999px; background:#edf6fc; color:#397dab; }
+.route-page-section .add-stop-container .search-panel-custom-trigger:hover { background:#deeffb; border-color:#94c1e1; }
+.route-page-section .search-panel-body { overflow-y:auto; padding-bottom:88px; }
+#search-panel-back { border-radius:999px; border:1px solid #dfe7ee; background:#fff; color:#396a9e; box-shadow:none; min-height:40px; padding:8px 16px; }
+#search-panel-back:hover { background:#f1f6fb; border-color:#b7cde2; }
 </style>

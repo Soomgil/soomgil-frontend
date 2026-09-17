@@ -1310,7 +1310,9 @@ describe('RoutePage itinerary integration', () => {
     ])
     expect(wrapper.text()).toContain('일정 추가')
 
-    await wrapper.get('.search-panel-custom-trigger').trigger('click')
+    await wrapper.get('.add-stop-dashed').trigger('click')
+    expect(wrapper.find('.search-panel-header .search-panel-custom-trigger').exists()).toBe(false)
+    await wrapper.get('.add-stop-container .search-panel-custom-trigger').trigger('click')
     await wrapper.get('#inline-custom-title').setValue('점심 식사')
     await wrapper.get('#inline-custom-submit').trigger('click')
     expect(holder.state.createItem).toHaveBeenCalledWith({
@@ -3263,7 +3265,7 @@ describe('RoutePage itinerary integration', () => {
     expect(routing.push).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'TripVote' }))
   })
 
-  it('모달을 닫으면 미제출 경고가 카드 버튼과 지도 상단 배너에 빨갛게 남고, 배너로 다시 열 수 있다', async () => {
+  it('모달을 닫으면 투표 버튼의 팝업 카드로 미제출을 안내하고 다시 열 수 있다', async () => {
     holder.votingStore.session = { status: 'OPEN' }
     holder.votingStore.myParticipation = { status: 'NOT_STARTED' }
     holder.votingStore.isSubmitted = false
@@ -3276,7 +3278,8 @@ describe('RoutePage itinerary integration', () => {
     const voteButton = wrapper.get('.trip-vote-button')
     expect(voteButton.classes()).toContain('trip-vote-button--alert')
     expect(voteButton.text()).toContain('미제출')
-    const banner = wrapper.get('[data-testid="vote-pending-banner"]')
+    expect(wrapper.find('[data-testid="vote-pending-banner"]').exists()).toBe(false)
+    const banner = wrapper.get('.trip-vote-control [data-testid="vote-pending-card"]')
     expect(banner.text()).toContain('투표')
 
     await banner.trigger('click')
