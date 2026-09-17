@@ -96,3 +96,12 @@
 .search-page .search-tab.active { background: #487db5; border-color: #487db5; color: #fff; }
 .search-page button:focus-visible { outline: 2px solid #487db5; outline-offset: 3px; }
 @media(max-width:768px) { .search-page .paper-search-field { padding: 5px 5px 5px 12px; } }
+
+/* Equal segments let the selection pill move without measuring the DOM. */
+.community-paper .story-view-toggle { position:relative; isolation:isolate; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.community-paper .story-view-toggle::before { content:''; position:absolute; z-index:0; top:4px; bottom:4px; left:4px; width:calc((100% - 11px) / 2); border-radius:999px; background:var(--action-blue); pointer-events:none; transform:translateX(0); transition:transform .42s cubic-bezier(.22,1,.36,1); }
+.community-paper .story-view-toggle:has(button:last-child[aria-pressed=true])::before { transform:translateX(calc(100% + 3px)); }
+.community-paper .story-view-toggle button { position:relative; z-index:1; transition:color .2s; }
+.community-paper .story-view-toggle button[aria-pressed=true],
+.community-paper .story-view-toggle button:hover:not([aria-pressed=true]) { background:transparent; border-color:transparent; box-shadow:none; }
+@media(prefers-reduced-motion:reduce) { .community-paper .story-view-toggle::before,.community-paper .story-view-toggle button { transition:none; } }
