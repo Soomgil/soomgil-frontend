@@ -100,19 +100,6 @@ onUnmounted(() => resizeObserver?.disconnect())
     <section class="home-canvas" :style="{ '--ink-mask': `url(${inkMask})` }" aria-label="여행 검색과 수상작 감상">
       <InkWashBackdrop />
       <div class="home-gallery">
-        <div ref="galleryStage" class="home-backdrop">
-          <div v-if="currentPhoto" class="home-ink-underlay" :style="photoStyle" aria-hidden="true"></div>
-          <Transition name="home-photo">
-            <img v-if="currentPhoto" :key="currentPhoto.imageUrl" :src="currentPhoto.imageUrl"
-              :alt="currentPhoto.title || photoTitle" :style="photoStyle" fetchpriority="high" decoding="async"
-              @load="handleImageLoad" @error="handleImageError" />
-          </Transition>
-          <div v-if="!currentPhoto" class="home-photo-status" role="status">
-            <span class="material-symbols-rounded" aria-hidden="true">landscape</span>
-            <p>{{ loading ? '대한민국의 풍경을 불러오는 중…' : failed ? '사진을 불러오지 못했어요. 검색은 바로 이용할 수 있어요.' : '새로운 풍경을 준비하고 있어요. 여행지를 검색해 보세요.' }}</p>
-            <button v-if="failed && !loading" type="button" @click="loadPhotos">다시 불러오기</button>
-          </div>
-        </div>
       <div class="home-search-position">
         <h1 class="home-sr-only">어디로 떠나고 싶으세요?</h1>
         <form class="home-search paper-search" role="search" aria-label="통합 검색" @submit.prevent="submitSearch()"
@@ -131,6 +118,19 @@ onUnmounted(() => resizeObserver?.disconnect())
           </div>
         </form>
       </div>
+        <div ref="galleryStage" class="home-backdrop">
+          <div v-if="currentPhoto" class="home-ink-underlay" :style="photoStyle" aria-hidden="true"></div>
+          <Transition name="home-photo">
+            <img v-if="currentPhoto" :key="currentPhoto.imageUrl" :src="currentPhoto.imageUrl"
+              :alt="currentPhoto.title || photoTitle" :style="photoStyle" fetchpriority="high" decoding="async"
+              @load="handleImageLoad" @error="handleImageError" />
+          </Transition>
+          <div v-if="!currentPhoto" class="home-photo-status" role="status">
+            <span class="material-symbols-rounded" aria-hidden="true">landscape</span>
+            <p>{{ loading ? '대한민국의 풍경을 불러오는 중…' : failed ? '사진을 불러오지 못했어요. 검색은 바로 이용할 수 있어요.' : '새로운 풍경을 준비하고 있어요. 여행지를 검색해 보세요.' }}</p>
+            <button v-if="failed && !loading" type="button" @click="loadPhotos">다시 불러오기</button>
+          </div>
+        </div>
         <div v-if="currentPhoto" class="home-artwork-footer">
           <div class="home-artwork-info" aria-live="polite" aria-atomic="true">
             <p class="home-artwork-label">{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
@@ -150,6 +150,7 @@ onUnmounted(() => resizeObserver?.disconnect())
             <button type="button" aria-label="다음 사진" @click="changePhoto(1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></button>
           </div>
         </div>
+
       </div>
     </section>
   </AppShell>

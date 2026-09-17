@@ -101,8 +101,8 @@ export const placeApi = {
     return { items: response.data.items.map(mapPlace), page: response.data.page }
   },
 
-  async getPlace(provider: PlaceProvider, externalPlaceId: string): Promise<Place> {
-    const response = await http.get<PlaceDetailDto>(`/places/${provider}/${externalPlaceId}`)
+  async getPlace(provider: PlaceProvider, externalPlaceId: string, includeInfo = true): Promise<Place> {
+    const response = await http.get<PlaceDetailDto>(`/places/${provider}/${externalPlaceId}`, { params: { includeInfo } })
     return mapPlace(response.data)
   },
 

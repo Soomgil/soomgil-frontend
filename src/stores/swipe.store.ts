@@ -193,6 +193,17 @@ export function createSwipeFeedQueue(gateway: SwipeFeedGateway) {
     }
   }
 
+  function applyExternalReaction(provider: PlaceProvider, externalPlaceId: string, reaction: SwipeAction) {
+    const matching=items.value.findIndex(item=>item.place.provider===provider && item.place.externalPlaceId===externalPlaceId)
+    if(matching<0) return
+    const item=items.value[matching]
+    if(item) item.myReaction=reaction
+    if(lastParams.value.excludeRecent!==false) {
+      items.value.splice(matching,1)
+      if(matching<currentIndex.value) currentIndex.value=Math.max(0,currentIndex.value-1)
+    }
+  }
+
   function reset() {
     sessionVersion += 1
     activeLoad = null
@@ -250,6 +261,7 @@ export function createSwipeFeedQueue(gateway: SwipeFeedGateway) {
     react,
     refreshTags,
     reset,
+    applyExternalReaction,
   }
 }
 

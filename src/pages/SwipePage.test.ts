@@ -8,6 +8,7 @@ const { getFeed, react, push } = vi.hoisted(() => ({
   push: vi.fn(),
 }))
 
+vi.mock('@/api/place.api', () => ({ placeApi: { getPlace: vi.fn().mockResolvedValue(null) } }))
 vi.mock('@/api/swipe.api', () => ({ swipeApi: { getFeed, react } }))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
@@ -57,6 +58,8 @@ describe('SwipePage', () => {
 
     await flushPromises()
     expect(wrapper.text()).toContain('해운대해수욕장')
+    expect(wrapper.find('.swipe-card .swipe-body').exists()).toBe(false)
+    expect(wrapper.get('.place-detail-panel .swipe-body').text()).toContain('부산 해운대구')
     expect(wrapper.text()).toContain('09:00~18:00')
     expect(wrapper.text()).toContain('무료')
     expect(wrapper.text()).toContain('휠체어')
@@ -162,6 +165,10 @@ describe('SwipePage', () => {
       'https://cdn.example.com/haeundae-2.jpg',
     ])
 
+    await wrapper.get('[aria-label="다음 사진"]').trigger('click')
+    expect(wrapper.findAll('.photo-thumb')[1].attributes('aria-pressed')).toBe('true')
+    await wrapper.get('[aria-label="이전 사진"]').trigger('click')
+    expect(wrapper.findAll('.photo-thumb')[0].attributes('aria-pressed')).toBe('true')
     await wrapper.findAll('.photo-thumb')[1].trigger('click')
     expect(wrapper.get('[data-place-image]').attributes('src')).toBe('https://cdn.example.com/haeundae-2.jpg')
   })

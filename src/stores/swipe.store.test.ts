@@ -88,4 +88,16 @@ describe('swipe store', () => {
     expect(store.items).toEqual([])
     expect(store.initialized).toBe(false)
   })
+  it('reflects a modal reaction without refetching the remaining queue', async () => {
+    const next = { ...item, place: { ...item.place, externalPlaceId: '126509' } }
+    vi.mocked(swipeApi.getFeed).mockResolvedValue({ items: [item, next], nextSeed: null })
+    const store = useSwipeStore()
+    await store.warm()
+    store.applyExternalReaction('KTO', '126508', 'LIKE')
+    await store.ensureLoaded()
+    expect(store.items.map(entry => entry.place.externalPlaceId)).toEqual(['126509'])
+    expect(store.currentItem?.place.externalPlaceId).toBe('126509')
+    expect(swipeApi.getFeed).toHaveBeenCalledTimes(1)
+  })
+
 })

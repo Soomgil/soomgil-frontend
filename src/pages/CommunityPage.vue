@@ -14,6 +14,7 @@ import AppShell from "@/components/layout/AppShell.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import ErrorState from "@/components/common/ErrorState.vue";
 import LoadingState from "@/components/common/LoadingState.vue";
+import PopularStoryCarousel from "@/components/community/PopularStoryCarousel.vue";
 import StoryWriteModal from "@/components/community/StoryWriteModal.vue";
 import { useModal } from "@/composables/useModal";
 import { useToast } from "@/composables/useToast";
@@ -161,6 +162,11 @@ const filteredStories = computed(() => {
 const popularStories = computed(() =>
   [...stories.value].sort((a, b) => b.likes - a.likes).slice(0, 3),
 );
+
+function openPopularStory(id: string) {
+  const story = popularStories.value.find((item) => item.id === id);
+  if (story) void openStory(story);
+}
 
 const totalPages = computed(() => Math.ceil(filteredStories.value.length / PER_PAGE));
 
@@ -570,15 +576,7 @@ watch(
         <div v-if="!loading && !loadError && stories.length" class="community-content-container">
           <section v-if="popularStories.length" class="today-pick-section" aria-labelledby="popular-stories-title">
             <div class="popular-heading"><p class="eyebrow">POPULAR STORIES</p><h2 id="popular-stories-title">눈길이 머문 여행</h2><p>여행자들이 좋아한 이야기</p></div>
-            <div class="popular-gallery" aria-label="인기 여행기">
-              <button v-for="(story, index) in popularStories" :key="story.id" type="button" class="polaroid-card" :style="{ '--tilt': `${index === 1 ? 1.2 : -1}deg` }" @click="openStory(story)">
-                <div class="polaroid-image"><img v-if="story.image !== FALLBACK_IMAGE" :src="story.image" :alt="story.title" /><span v-else class="popular-no-photo material-symbols-rounded" aria-hidden="true">auto_stories</span></div>
-                <div class="polaroid-caption"><h3 class="polaroid-title">{{ story.title }}</h3>
-                  <p class="polaroid-author"><span class="story-tile-avatar"><img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" alt="" /><span v-else>{{ story.avatar }}</span></span>{{ story.author }}</p>
-                  <div class="polaroid-stats"><span class="polaroid-stat"><span class="material-symbols-rounded" aria-hidden="true">favorite</span>{{ story.likes }}</span><span class="polaroid-stat"><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ story.comments }}</span></div>
-                </div>
-              </button>
-            </div>
+            <PopularStoryCarousel :stories="popularStories" :fallback-image="FALLBACK_IMAGE" @open="openPopularStory" />
           </section>
 
           <section class="latest-stories-section" id="latest-stories">

@@ -66,6 +66,10 @@ export interface RecommendationParams {
 }
 
 export const swipeApi = {
+  async getReaction(provider: PlaceProvider, externalPlaceId: string): Promise<SwipeAction | null> {
+    const response = await http.get<{ reaction: SwipeAction | null }>(`/places/${provider}/${externalPlaceId}/swipe-reaction`)
+    return response.data.reaction
+  },
   async getFeed(params: SwipeFeedParams = {}): Promise<SwipeFeed> {
     const response = await http.get<SwipeFeedDto>('/swipe/feed', { params })
     return {
