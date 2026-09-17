@@ -161,14 +161,14 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-canvas::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 48% 44%, rgb(219 237 255 / 20%), transparent 68%); }
 .home-search-position { width: min(680px, 100%); margin: 24px auto 28px; position: relative; z-index: 2; }
 .home-search { width: min(680px, 100%); position: relative; margin: 0 auto; }
-.home-search .paper-search-field { padding: 6px 6px 6px 20px; border: 1px solid #d8dcd9; border-radius: 999px; background: #faf9f6; box-shadow: 0 6px 24px rgb(49 58 57 / 5%); }
-.home-search .paper-search-field:focus-within { border-color: #718694; box-shadow: 0 0 0 3px rgb(82 107 122 / 10%); }
+.home-search .paper-search-field { padding: 6px 6px 6px 20px; border: 1px solid #dfe7ee; border-radius: 999px; background: #ffffff; box-shadow: 0 6px 24px rgb(56 89 124 / 5%); }
+.home-search .paper-search-field:focus-within { border-color: #487db5; box-shadow: 0 0 0 3px rgb(72 125 181 / 12%); }
 .home-search .paper-search-icon { display: none; }
 .home-search .paper-search-input { color: #35434a; }
 .home-search .paper-search-input::placeholder { color: #717976; }
-.home-search .paper-search-submit { min-height: 48px; padding: 12px 26px; border-radius: 999px; background: #526b7a; font-weight: 600; box-shadow: none; transition: background .2s; }
-.home-search .paper-search-submit:hover { background: #405966; box-shadow: none; transform: none; }
-.home-search button:focus-visible { outline: 2px solid #526b7a; outline-offset: 3px; }
+.home-search .paper-search-submit { min-height: 48px; padding: 12px 26px; border-radius: 999px; background: #487db5; font-weight: 600; box-shadow: none; transition: background .2s; }
+.home-search .paper-search-submit:hover { background: #396a9e; box-shadow: none; transform: none; }
+.home-search button:focus-visible { outline: 2px solid #487db5; outline-offset: 3px; }
 .home-gallery { width: min(1120px, calc(100% - 96px)); margin: 100px auto 0; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
 /* 전시 공간이 최소 목표 크기를 수용하고, 좁은 화면에서는 화면 경계를 우선한다. */
 .home-backdrop { position: relative; display: grid; place-items: center; height: clamp(540px, calc(100svh - 340px), 680px); }
@@ -194,13 +194,13 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-photo-status > .material-symbols-rounded { display: block; font-size: 36px; margin-bottom: 20px; color: #647C92; }
 .home-photo-status p { margin: 0; }
 .home-photo-status button { min-height: 44px; margin-top: 8px; padding: 8px 0; border: 0; background: transparent; color: #35465A; font: inherit; text-decoration: underline; cursor: pointer; }
-.home-search-history { position: absolute; top: calc(100% + 8px); left: 0; right: 0; padding: 18px; border: 1px solid #d8dcd9; border-radius: 20px; background: #faf9f6; box-shadow: 0 8px 24px rgb(49 58 57 / 8%); color: #35434a; }
+.home-search-history { position: absolute; top: calc(100% + 8px); left: 0; right: 0; padding: 18px; border: 1px solid #dfe7ee; border-radius: 20px; background: #ffffff; box-shadow: 0 8px 24px rgb(56 89 124 / 8%); color: #35434a; }
 .home-search-history-heading { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 8px; font-size: 13px; color: #62707b; }
 .home-search-history button { border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }
 .home-search-history-heading button { min-height: 32px; }
 .home-search-history ul { list-style: none; margin: 0; padding: 0; }
 .home-search-history li button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px; text-align: left; border-radius: 10px; overflow-wrap: anywhere; }
-.home-search-history li button:hover { background: #eeefeb; }
+.home-search-history li button:hover { background: #f1f6fb; }
 .home-search-history .material-symbols-rounded { color: #7a8791; font-size: 20px; }
 button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
 .home-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
