@@ -4804,7 +4804,6 @@ function textAvatarStyle(index: unknown) {
                 <button class="icon-btn" id="search-panel-back" type="button" aria-label="일정으로 돌아가기" @click="closeSearchPanel">
                   <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span><span>일정으로</span>
                 </button>
-                <h4>일정 추가</h4>
                 <button :class="['category-chip', 'search-panel-custom-trigger']" type="button" @click="showCustomForm = !showCustomForm">
                   <span class="material-symbols-rounded" aria-hidden="true">edit_note</span>
                   커스텀 일정 추가
@@ -5855,9 +5854,7 @@ function textAvatarStyle(index: unknown) {
   right: 0;
   bottom: 0;
   border-left: 1px solid var(--line);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
-    #fff;
+  background: #fff;
   box-shadow: -14px 0 32px rgba(15, 23, 42, 0.06);
   overflow: visible;
   z-index: 100;
@@ -6778,9 +6775,9 @@ function textAvatarStyle(index: unknown) {
   max-width: calc(100% - 32px);
   padding: 7px 10px;
   position: absolute;
-  top: 12px;
+  bottom: 134px;
   transform: translateX(-50%);
-  z-index: 8;
+  z-index: 92;
 }
 
 .map-viewport-status.is-error {
@@ -6810,7 +6807,7 @@ function textAvatarStyle(index: unknown) {
   background: rgb(255 255 255 / 96%);
   border: 1px solid #fecdd3;
   border-radius: 6px;
-  bottom: 82px;
+  bottom: 134px;
   color: #be123c;
   display: flex;
   font-size: 12px;
@@ -6820,7 +6817,7 @@ function textAvatarStyle(index: unknown) {
   padding: 7px 10px;
   position: absolute;
   transform: translateX(-50%);
-  z-index: 8;
+  z-index: 92;
 }
 
 .map-drawing-status button {
@@ -6912,7 +6909,14 @@ function textAvatarStyle(index: unknown) {
 }
 .search-panel-header h4 { font-size:16px;font-weight:800;color:var(--ink);margin:0; }
 .search-panel-custom-trigger {
-  margin-left:auto;
+  margin-left:0;
+  min-height:40px;
+  padding:6px 12px;
+  border:1px solid #cfe2f3;
+  border-radius:12px;
+  background:#eaf4ff;
+  color:#3579b0;
+  font-weight:700;
 }
 
 .search-panel-body { padding:16px;overflow:visible;flex:1;min-height:0; }
@@ -7004,7 +7008,7 @@ function textAvatarStyle(index: unknown) {
 
 /* Toast */
 .toast-notification {
-  position:fixed;bottom:calc(20px + 56px + 12px);left:50vw;transform:translateX(-50%);
+  position:fixed;bottom:134px;left:50vw;transform:translateX(-50%);
   display:flex;align-items:center;gap:10px;
   max-width:min(420px, calc(100vw - 32px));
   padding:12px 18px;border-radius:14px;
@@ -7821,7 +7825,7 @@ function textAvatarStyle(index: unknown) {
 @media(max-width:767px) { .route-page-section .sidebar-content { padding-top: 40px; } .route-back-link { left: 12px; top: 10px; } }
 
 .trip-sidebar-title { margin: 0 0 6px; font-size: 16px; line-height: 1.5; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.trip-sidebar-meta { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.trip-sidebar-meta { margin: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
 .trip-map-actions .avatars-group { display: flex; align-items: center; gap: 5px; margin: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface, #fff); }
 .trip-map-actions .avatar { width: 28px; height: 28px; }
 .trip-map-actions .avatar:focus .avatar-tooltip { opacity: 1; visibility: visible; }
@@ -7832,7 +7836,8 @@ function textAvatarStyle(index: unknown) {
 .trip-sidebar-back { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; margin-bottom: 8px; color: var(--muted); font-size: 12px; text-decoration: none; }
 .trip-sidebar-back .material-symbols-rounded { font-size: 18px; }
 .route-page-section .sidebar-content { padding-top: 16px; }
-#search-panel-back { display: inline-flex; align-items: center; gap: 6px; width: auto; min-height: 40px; padding: 6px 8px; font-size: 12px; white-space: nowrap; }
+#search-panel-back { display: inline-flex; align-items: center; gap: 6px; width: auto; min-height: 40px; padding: 6px 12px; border: 1px solid #dfeaf5; border-radius: 12px; background: #fff; color: #506880; font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 3px 10px rgb(52 102 145 / 7%); }
+#search-panel-back:hover { border-color: #abcbe5; background: #f5faff; color: #3579b0; }
 .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { min-height: 40px; padding: 0 14px; font-size: 13px; }
 .trip-map-actions .avatar { width: 34px; height: 34px; }
 .trip-map-actions .members-count { font-size: 12px; }
@@ -7862,7 +7867,8 @@ function textAvatarStyle(index: unknown) {
 }
 
 /* Keep the planning surface independent of the map tiles underneath it. */
-.route-page-section .sidebar { background: #fff; backdrop-filter: none; }
+.route-page-section .sidebar,
+.route-page-section .route-utility-sidebar { background: #fff; backdrop-filter: none; }
 .route-page-section .sidebar-content { background: #fff; }
 .route-page-section .day-separator { min-height: 42px; border-radius: 10px; gap: 8px; }
 .day-stop-count { color: #647c92; font-size: 11px; white-space: nowrap; }

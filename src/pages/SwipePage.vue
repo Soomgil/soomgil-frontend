@@ -678,7 +678,7 @@ onMounted(async () => {
 .swipe-discovery main { background:transparent; }
 .swipe-discovery .section { max-width:1200px; margin:0 auto; padding:48px 32px; }
 .swipe-discovery .page-hero { background:transparent; border:0; box-shadow:none; margin-bottom:36px; padding:0; }
-.swipe-discovery .page-hero__eyebrow { background:none; border:0; padding:0; color:#647c92; font-weight:700; letter-spacing:.13em; font-size:11px; }
+.swipe-discovery .page-hero__eyebrow { background:none; border:0; padding:0; color:#647c92; font-family:Inter,'Pretendard Variable',Pretendard,sans-serif; font-weight:700; letter-spacing:.13em; font-size:11px; }
 .swipe-discovery .page-hero__title { font-family:'Noto Serif KR','Batang','바탕',serif; font-size:40px; font-weight:500; line-height:1.5; letter-spacing:-.02em; }
 .swipe-discovery .page-hero__gradient { background:none; -webkit-text-fill-color:#35465a; color:#35465a; }
 .swipe-discovery .page-hero__lead { max-width:65ch; font-size:14px; font-weight:400; line-height:1.8; }

@@ -578,7 +578,6 @@ watch(
 
         <div v-if="!loading && !loadError && stories.length" class="community-content-container">
           <section v-if="popularStories.length" class="today-pick-section" aria-labelledby="popular-stories-title">
-            <div class="popular-heading"><p class="eyebrow">POPULAR STORIES</p><h2 id="popular-stories-title">눈길이 머문 여행</h2><p>여행자들이 좋아한 이야기</p></div>
             <PopularStoryCarousel :stories="popularStories" :fallback-image="FALLBACK_IMAGE" @open="openPopularStory" />
           </section>
 

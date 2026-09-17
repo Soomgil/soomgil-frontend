@@ -30,7 +30,8 @@ onBeforeUnmount(() => clearInterval(timer))
 
 <template>
   <div v-if="story" class="popular-carousel" role="region" aria-roledescription="캐러셀" aria-label="인기 여행기" @mouseenter="hovered = true" @mouseleave="hovered = false" @focusin="playing = false">
-    <div class="featured-story" :aria-live="playing ? 'off' : 'polite'" aria-atomic="true">
+    <Transition name="popular-slide" mode="out-in">
+    <div :key="story.id" class="featured-story" :aria-live="playing ? 'off' : 'polite'" aria-atomic="true">
       <button class="featured-polaroid" type="button" :aria-label="`${story.title} 여행기 보기`" @click="emit('open', story.id)">
         <div :key="story.id" class="featured-photo">
           <img v-if="story.image !== fallbackImage && !failedImages.has(story.image)" :src="story.image" :alt="story.title" @error="failedImages.add(story.image)" />
@@ -39,7 +40,10 @@ onBeforeUnmount(() => clearInterval(timer))
         <span class="photo-caption">{{ story.author }}의 여행 한 장</span>
       </button>
       <div class="featured-copy">
-        <p class="featured-label">A MOMENT TO REMEMBER</p>
+        <div class="popular-heading">
+          <p class="featured-label">POPULAR STORIES</p>
+          <h2 id="popular-stories-title">여행자들이 좋아한 이야기</h2>
+        </div>
         <h3>{{ story.title }}</h3>
         <p class="featured-summary">{{ story.summary || '사진 속 여행의 순간을 만나보세요.' }}</p>
         <div class="featured-author"><span class="author-avatar"><img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" alt="" /><span v-else>{{ story.avatar }}</span></span>{{ story.author }}</div>
@@ -47,6 +51,7 @@ onBeforeUnmount(() => clearInterval(timer))
         <button class="read-story" type="button" @click="emit('open', story.id)">여행기 읽기 <span aria-hidden="true">↗</span></button>
       </div>
     </div>
+    </Transition>
     <div class="carousel-controls">
       <span class="slide-count" aria-label="현재 게시물">{{ String(index + 1).padStart(2, '0') }} <span>/ {{ String(stories.length).padStart(2, '0') }}</span></span>
       <button type="button" aria-label="이전 인기 게시물" :disabled="stories.length < 2" @click="navigate(-1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span></button>
@@ -64,7 +69,8 @@ onBeforeUnmount(() => clearInterval(timer))
 .featured-photo img { width: 100%; height: 100%; object-fit: cover; }
 .featured-photo > span { font-size: 56px; color: #8aaac7; }
 .photo-caption { display: block; padding-top: 18px; font-size: 14px; }
-.featured-label { color: #5489b5; font-size: 11px; letter-spacing: .15em; font-weight: 700; }
+.featured-label { margin: 0 0 4px; color: #647c92; font-size: 11px; letter-spacing: .14em; font-weight: 700; }
+.popular-heading h2 { margin: 0; color: #427ead; font-family: 'Noto Serif KR',Batang,serif; font-size: 26px; font-weight: 500; line-height: 1.45; letter-spacing: -.02em; }
 .featured-copy h3 { font-family: 'Noto Serif KR',serif; font-size: clamp(24px,2.6vw,34px); line-height: 1.5; color: #35465a; margin: 14px 0; overflow-wrap: anywhere; }
 .featured-summary { color: #647c92; font-size: 15px; line-height: 1.85; white-space: pre-line; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; min-height: 3.7em; }
 .featured-author { display: flex; align-items: center; gap: 9px; margin-top: 22px; color: #506880; font-size: 13px; }
@@ -79,7 +85,10 @@ onBeforeUnmount(() => clearInterval(timer))
 .carousel-controls button { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid #dce8f2; border-radius: 50%; background: white; color: #4e7da4; cursor: pointer; }
 .carousel-controls button:hover { background: #eaf4ff; }.carousel-controls button:disabled { opacity: .4; cursor: default; }
 button:focus-visible { outline: 3px solid #77b9ee; outline-offset: 5px; }
+.popular-slide-enter-active,.popular-slide-leave-active { transition: opacity .38s ease, transform .38s cubic-bezier(.22,1,.36,1); }
+.popular-slide-enter-from { opacity:0; transform:translateX(28px) scale(.985); }
+.popular-slide-leave-to { opacity:0; transform:translateX(-28px) scale(.985); }
 @keyframes photo-arrive { from { opacity: .3; } to { opacity: 1; } }
 @media(max-width: 700px) { .popular-carousel { padding: 24px 20px 18px; }.featured-story { grid-template-columns: minmax(0,1fr); gap: 30px; }.featured-polaroid { max-width: 400px; margin: auto; }.featured-copy h3 { font-size: 25px; }.featured-summary { min-height: 0; }.carousel-controls { justify-content: center; } }
-@media(prefers-reduced-motion: reduce) { .featured-photo { animation: none; } }
+@media(prefers-reduced-motion: reduce) { .featured-photo { animation: none; }.popular-slide-enter-active,.popular-slide-leave-active { transition-duration:.01ms; } }
 </style>
