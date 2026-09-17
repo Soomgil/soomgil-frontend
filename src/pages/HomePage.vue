@@ -106,7 +106,7 @@ onUnmounted(() => resizeObserver?.disconnect())
           @focusin="searchFocused = true" @focusout="handleFocusOut" @keydown.esc="searchFocused = false">
           <div class="paper-search-field">
             <span class="material-symbols-rounded paper-search-icon" aria-hidden="true">search</span>
-            <input v-model="query" class="paper-search-input" type="search" aria-label="검색어" placeholder="여행지, 계획, 커뮤니티 글, 유저를 검색하세요"
+            <input v-model="query" class="paper-search-input" type="search" aria-label="검색어" placeholder="어떤 한국의 풍경을 만나고 싶나요?"
               autocomplete="off" enterkeyhint="search" maxlength="200" />
             <button class="paper-search-submit" type="submit" aria-label="검색">
               <span class="material-symbols-rounded" aria-hidden="true">search</span> 검색
@@ -161,6 +161,14 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-canvas::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 48% 44%, rgb(219 237 255 / 20%), transparent 68%); }
 .home-search-position { width: min(680px, 100%); margin: 24px auto 28px; position: relative; z-index: 2; }
 .home-search { width: min(680px, 100%); position: relative; margin: 0 auto; }
+.home-search .paper-search-field { padding: 6px 6px 6px 20px; border: 1px solid #d8dcd9; border-radius: 9px; background: #faf9f6; box-shadow: 0 3px 12px rgb(49 58 57 / 4%); }
+.home-search .paper-search-field:focus-within { border-color: #718694; box-shadow: 0 0 0 3px rgb(82 107 122 / 10%); }
+.home-search .paper-search-icon { color: #7a8588; font-size: 22px; }
+.home-search .paper-search-input { color: #35434a; }
+.home-search .paper-search-input::placeholder { color: #717976; }
+.home-search .paper-search-submit { min-height: 48px; padding: 12px 26px; border-radius: 5px; background: #526b7a; font-weight: 600; box-shadow: none; transition: background .2s; }
+.home-search .paper-search-submit:hover { background: #405966; box-shadow: none; transform: none; }
+.home-search button:focus-visible { outline: 2px solid #526b7a; outline-offset: 3px; }
 .home-gallery { width: min(1120px, calc(100% - 96px)); margin: 100px auto 0; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
 /* 전시 공간이 최소 목표 크기를 수용하고, 좁은 화면에서는 화면 경계를 우선한다. */
 .home-backdrop { position: relative; display: grid; place-items: center; height: clamp(540px, calc(100svh - 340px), 680px); }
@@ -186,13 +194,13 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-photo-status > .material-symbols-rounded { display: block; font-size: 36px; margin-bottom: 20px; color: #647C92; }
 .home-photo-status p { margin: 0; }
 .home-photo-status button { min-height: 44px; margin-top: 8px; padding: 8px 0; border: 0; background: transparent; color: #35465A; font: inherit; text-decoration: underline; cursor: pointer; }
-.home-search-history { position: absolute; top: calc(100% + 12px); left: 0; right: 0; padding: 18px; border-radius: 20px; background: #fff; box-shadow: 0 16px 40px rgb(0 0 0 / 18%); color: #24333c; }
+.home-search-history { position: absolute; top: calc(100% + 8px); left: 0; right: 0; padding: 18px; border: 1px solid #d8dcd9; border-radius: 9px; background: #faf9f6; box-shadow: 0 8px 24px rgb(49 58 57 / 8%); color: #35434a; }
 .home-search-history-heading { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 8px; font-size: 13px; color: #62707b; }
 .home-search-history button { border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }
 .home-search-history-heading button { min-height: 32px; }
 .home-search-history ul { list-style: none; margin: 0; padding: 0; }
 .home-search-history li button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px; text-align: left; border-radius: 10px; overflow-wrap: anywhere; }
-.home-search-history li button:hover { background: #f1f5f8; }
+.home-search-history li button:hover { background: #eeefeb; }
 .home-search-history .material-symbols-rounded { color: #7a8791; font-size: 20px; }
 button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
 .home-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
@@ -200,6 +208,10 @@ button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
 .home-photo-enter-from, .home-photo-leave-to { opacity: 0; }
 @media (max-width: 767px) {
   .home-search-position { width: 100%; margin-top: 20px; margin-bottom: 24px; }
+  .home-search .paper-search-field { padding: 5px; }
+  .home-search .paper-search-icon { display: none; }
+  .home-search .paper-search-input { padding-inline: 8px; font-size: 16px; }
+  .home-search .paper-search-submit { min-height: 46px; padding: 11px 16px; }
   .home-gallery { width: calc(100% - 40px); margin-top: 140px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
   .home-backdrop { height: clamp(300px, calc(100svh - 480px), 520px); }
   .home-artwork-footer { flex-wrap: wrap; gap: 12px; margin-top: 20px; }
