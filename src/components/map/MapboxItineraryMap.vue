@@ -88,7 +88,7 @@ const props = withDefaults(defineProps<{
   drawingsVisible: true,
   navigationMode: false,
   standardView: false,
-  mapTheme: 'light',
+  mapTheme: 'standard',
   routeWaypoints: () => [],
   mapObjects: () => [],
   mapObjectImageUrls: () => ({}),
@@ -279,7 +279,7 @@ function createMarkerElement(stop: ItineraryMapStop) {
 function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
   const el = document.createElement('button')
   el.type = 'button'
-  el.className = place.taste ? 'map-taste-marker' : `map-nearby-place-marker ${dayClass(place.dayIndex ?? 1)}`
+  el.className = place.taste ? `map-taste-marker${place.taste === 'star' ? ' is-super' : ''}` : `map-nearby-place-marker ${dayClass(place.dayIndex ?? 1)}`
   el.setAttribute('aria-label', place.taste ? place.title : `${place.title} 주변 관광지`)
 
   const icon = document.createElement('span')
@@ -324,7 +324,13 @@ function renderTasteMarkers() {
       const details = document.createElement('details')
       details.className = 'map-taste-cluster'
       const summary = document.createElement('summary')
-      summary.textContent = `♡ ${group.places.length}`
+      const icon = document.createElement('span')
+      icon.className = 'material-symbols-rounded'
+      icon.textContent = 'favorite'
+      icon.setAttribute('aria-hidden', 'true')
+      const count = document.createElement('span')
+      count.textContent = String(group.places.length)
+      summary.append(icon, count)
       const list = document.createElement('div')
       list.className = 'map-taste-cluster-list'
       group.places.forEach(place => list.appendChild(createNearbyMarkerElement(place)))

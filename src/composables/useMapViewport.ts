@@ -12,6 +12,20 @@ export function useMapViewport() {
   let requestSequence = 0
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   let abortController: AbortController | null = null
+  let requestedViewport: Viewport | null = null
+
+  function movedEnough(next: Viewport) {
+    const old = requestedViewport
+    if (!old) return true
+    const width = Math.max(old.maxLng - old.minLng, 0.0000001)
+    const height = Math.max(old.maxLat - old.minLat, 0.0000001)
+    const dx = Math.abs((next.minLng + next.maxLng - old.minLng - old.maxLng) / 2)
+    const dy = Math.abs((next.minLat + next.maxLat - old.minLat - old.maxLat) / 2)
+    const scaleX = (next.maxLng - next.minLng) / width
+    const scaleY = (next.maxLat - next.minLat) / height
+    return dx >= Math.max(width * .3, .002) || dy >= Math.max(height * .3, .0015)
+      || scaleX > 1.5 || scaleX < 2 / 3 || scaleY > 1.5 || scaleY < 2 / 3
+  }
 
   const center = computed(() => summary.value?.center ?? null)
 
@@ -44,13 +58,15 @@ export function useMapViewport() {
     abortController?.abort()
     abortController = null
     viewport.value = nextViewport
-    summary.value = null
+    requestedViewport = { ...nextViewport }
     loading.value = true
     error.value = null
     return requestId
   }
 
   function updateViewport(nextViewport: Viewport) {
+    viewport.value = nextViewport
+    if (!movedEnough(nextViewport)) return
     const requestId = prepareRequest(nextViewport)
     debounceTimer = setTimeout(() => {
       debounceTimer = null

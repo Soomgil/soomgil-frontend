@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { cachedMapStyle, loadMapStyle, prefetchMapStyles } from './mapStyleCache'
+import { MAP_THEMES } from '@/types/map-theme'
 const url = 'mapbox://styles/mapbox/light-v11'
 const document = { version: 8, sources: {}, layers: [] }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
@@ -19,7 +20,7 @@ it('prefetches five themes once and retries failed requests', async () => {
   vi.stubGlobal('fetch', fetcher)
   await prefetchMapStyles('two')
   expect(fetcher).toHaveBeenCalledTimes(5)
-  await loadMapStyle(url, 'two')
+  await loadMapStyle(MAP_THEMES[0].style, 'two')
   expect(fetcher).toHaveBeenCalledTimes(6)
 })
 it('expires styles and isolates token scopes', async () => {

@@ -984,5 +984,14 @@ export const uiTranslationsEn: Readonly<Record<string, string>> = {
   "취향 장소를 불러오지 못했습니다.": "Could not load favorite places.",
   "지도를 움직여 탐색할 지역을 선택해 주세요.": "Move the map to choose an area.",
   "이 지역에 표시할 선호 장소가 없어요.": "No favorite places in this area.",
-  "공개 범위에 따라 최대 200개 장소를 표시합니다.": "Up to 200 places, subject to profile visibility."
+  "공개 범위에 따라 최대 200개 장소를 표시합니다.": "Up to 200 places, subject to profile visibility.",
+  "여행 기간 선택": "Travel dates",
+  "출발일 선택": "Select start date",
+  "종료일 선택": "Select end date",
+  "이전 달": "Previous month",
+  "다음 달": "Next month",
+  "기간 적용": "Apply dates",
+  "여행 날짜를 선택해 주세요.": "Choose your travel dates.",
+  "초대 링크는 방장이 공유할 수 있어요.": "The trip owner can share an invitation link.",
+  "초대 링크 준비 중": "Preparing invitation link"
 }

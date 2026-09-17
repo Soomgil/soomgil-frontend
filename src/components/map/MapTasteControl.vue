@@ -95,14 +95,7 @@ defineExpose({ select })
       <div v-else-if="error" role="alert"><p>취향 장소를 불러오지 못했습니다.</p><button class="taste-reload" @click="load">다시 시도</button></div>
       <p v-else-if="!bbox">지도를 움직여 탐색할 지역을 선택해 주세요.</p>
       <p v-else-if="!places.length">이 지역에 표시할 선호 장소가 없어요.</p>
-      <div v-else class="taste-list">
-        <button v-for="item in places" :key="`${item.first.provider}:${item.first.externalPlaceId}`" data-testid="taste-place" @click="select(item.first.provider, item.first.externalPlaceId)">
-          <img v-if="item.first.thumbnailUrl" :src="item.first.thumbnailUrl" alt="" loading="lazy" />
-          <span v-else class="taste-placeholder material-symbols-rounded" aria-hidden="true">landscape</span>
-          <span><strong data-no-translate>{{ item.first.name }}</strong><small>{{ formatUiText('{0}명이 좋아해요', '{0} members liked this', [item.members.length]) }}</small></span>
-          <span class="material-symbols-rounded taste-heart" aria-hidden="true">{{ item.members.some(m => m.reaction === 'SUPER_LIKE') ? 'star' : 'favorite' }}</span>
-        </button>
-      </div>
+      <p v-else class="taste-count" role="status">{{ formatUiText('{0}개 장소를 지도에 표시하고 있어요.', 'Showing {0} places on the map.', [places.length]) }}</p>
       <footer>공개 범위에 따라 최대 200개 장소를 표시합니다.</footer>
     </section>
   </div>
@@ -110,9 +103,9 @@ defineExpose({ select })
 
 <style scoped>
 .map-taste-control { position: relative; }
-.taste-toggle { display:flex; align-items:center; gap:6px; min-height:40px; padding:8px 14px; border:1px solid #d7e7f3; border-radius:999px; background:#fff; color:#4d7698; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+.taste-toggle { display:flex; align-items:center; gap:6px; min-height:40px; padding:8px 14px; border:1px solid #d7e7f3; border-radius:999px; background:#fff; color:#171717; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
 .taste-toggle.active { background:#e8f4ff; border-color:#98c9ec; }
-.taste-toggle .material-symbols-rounded { font-size:18px; }
+.taste-toggle .material-symbols-rounded { font-size:18px; color:#e53945; font-variation-settings:'FILL' 1; }
 .taste-panel { position:absolute; top:calc(100% + 10px); right:0; width:330px; padding:18px; border:1px solid #dbe8f2; border-radius:22px; background:#fff; color:#354e65; box-shadow:0 12px 36px #254c721a; max-height:70svh; overflow:auto; }
 header { display:flex; align-items:center; justify-content:space-between; } header strong { font-size:16px; }
 .taste-panel p, footer { font-size:12px; line-height:1.6; color:#73889b; }
@@ -128,14 +121,7 @@ header { display:flex; align-items:center; justify-content:space-between; } head
 .taste-members button[aria-pressed=true] { border-color:#5c9ed0; }
 .taste-members img { width:100%; height:100%; object-fit:cover; }
 .taste-reload { border:1px solid #cce2f3; border-radius:999px; padding:8px 12px; background:#eff7ff; color:#417ba7; font-size:12px; }
-.taste-list { display:grid; gap:8px; max-height:280px; overflow:auto; margin:12px 0; }
-.taste-list button { display:flex; align-items:center; gap:10px; padding:8px; border:1px solid #e7eff5; background:#fff; border-radius:14px; text-align:left; color:inherit; }
-.taste-list button:hover { background:#f5faff; }
-.taste-list img, .taste-placeholder { width:48px; height:48px; border-radius:10px; object-fit:cover; flex-shrink:0; background:#eef6fc; }
-.taste-placeholder { display:grid; place-items:center; color:#9ab8ce; }
-.taste-list strong { display:block; font-size:13px; overflow-wrap:anywhere; }
-.taste-list small { display:block; font-size:11px; margin-top:4px; color:#8194a5; }
-.taste-heart { color:#e28f9f; font-size:18px; margin-left:auto; }
+.taste-count { margin:12px 0 0; }
 footer { margin-top:10px; padding:0; min-height:0; height:auto; background:none; border:0; text-align:left; font-size:11px; }
 button:focus-visible { outline:2px solid #488fc4; outline-offset:3px; }
 @media(max-width:767px) { .taste-panel { position:fixed; top:auto; bottom:calc(80px + env(safe-area-inset-bottom)); left:12px; right:12px; width:auto; max-height:calc(100svh - 240px); } .taste-toggle { padding:7px 10px; font-size:12px; } }

@@ -2,6 +2,7 @@
 import { formatUiText } from '@/i18n/ui-localizer'
 import { onMounted, onUnmounted, ref, watch, computed } from 'vue'
 import LegalRegionCombobox from '@/components/trip/LegalRegionCombobox.vue'
+import TripDateRangeDialog from './TripDateRangeDialog.vue'
 import { useTripStore } from '@/stores/trip.store'
 import { tripApi } from '@/api/trip.api'
 import type { LegalRegion } from '@/types/geo'
@@ -31,6 +32,8 @@ const regionSelectionChanged = ref(false)
 const status = ref<Exclude<TripStatus, 'DELETED'>>('ACTIVE')
 const editStartDate = ref('')
 const editEndDate = ref('')
+const dateDialogOpen = ref(false)
+function applyDateRange(start:string,end:string) { editStartDate.value=start;editEndDate.value=end;dateDialogOpen.value=false }
 const error = ref('')
 const confirmingDelete = ref(false)
 
@@ -41,6 +44,7 @@ const inviteError = ref('')
 const inviteCopied = ref(false)
 let inviteCopiedTimer: number | null = null
 let inviteTripId: string | null = null
+let inviteRequest = 0
 
 const editDayCount = computed(() => {
   if (editStartDate.value && editEndDate.value) {
@@ -56,6 +60,9 @@ watch(
   () => [props.open, props.trip, props.defaultTab] as const,
   ([open, trip, defaultTab]) => {
     if (!open) {
+      dateDialogOpen.value = false
+      inviteRequest++
+      inviteLoading.value = false
       inviteLink.value = ''
       inviteCopied.value = false
       inviteTripId = null
@@ -67,6 +74,9 @@ watch(
     if (!trip) return
 
     if (inviteTripId !== trip.id) {
+      dateDialogOpen.value = false
+      inviteRequest++
+      inviteLoading.value = false
       inviteTripId = trip.id
       inviteLink.value = ''
       inviteCopied.value = false
@@ -111,22 +121,26 @@ watch(
 )
 
 async function fetchInviteLink(tripId: string) {
-  if (inviteLink.value) return
+  if (inviteLink.value || inviteLoading.value) return
+  const request = ++inviteRequest
   inviteLoading.value = true
   inviteError.value = ''
   try {
     const invites = await tripApi.getInvites(tripId)
-    const activeInvite = invites.find(invite => invite.status === 'PENDING')
+    if (request !== inviteRequest) return
+    const activeInvite = invites.find(invite => invite.status === 'PENDING' && !invite.inviteeUserId
+      && !!invite.inviteCode?.trim() && (!invite.expiresAt || Date.parse(invite.expiresAt) > Date.now()))
     const invite = activeInvite ?? await tripApi.createInvite(tripId)
-    inviteLink.value = resolveInviteUrl(invite)
+    if (request === inviteRequest) inviteLink.value = resolveInviteUrl(invite)
   } catch {
-    inviteError.value = '초대 링크를 준비하지 못했습니다.'
+    if (request === inviteRequest) inviteError.value = '초대 링크를 준비하지 못했습니다.'
   } finally {
-    inviteLoading.value = false
+    if (request === inviteRequest) inviteLoading.value = false
   }
 }
 
 function resolveInviteUrl(invite: { inviteUrl: string | null; inviteCode: string }) {
+  if (!invite.inviteCode?.trim()) throw new Error('Missing invite code')
   if (invite.inviteUrl) return invite.inviteUrl
   const code = encodeURIComponent(invite.inviteCode)
   return new URL(`/trip-invites/${code}`, window.location.origin).toString()
@@ -171,7 +185,10 @@ function close() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  if (props.open && event.key === 'Escape') close()
+  if (props.open && event.key === 'Escape') {
+    if (dateDialogOpen.value) dateDialogOpen.value = false
+    else close()
+  }
 }
 
 function handleRegionSelect(region: LegalRegion | null) {
@@ -310,6 +327,7 @@ const isOwner = computed(() => props.trip?.myRole === 'OWNER')
 
 onMounted(() => document.addEventListener('keydown', handleKeydown))
 onUnmounted(() => {
+  inviteRequest++
   document.removeEventListener('keydown', handleKeydown)
   document.body.style.overflow = ''
   if (inviteCopiedTimer) window.clearTimeout(inviteCopiedTimer)
@@ -321,6 +339,7 @@ onUnmounted(() => {
     class="modal-overlay advanced-overlay trip-settings-overlay"
     :class="{ show: open, 'is-open': open }"
     :aria-hidden="!open"
+    :inert="dateDialogOpen"
     @click.self="close"
   >
     <div class="modal-card advanced-modal trip-settings-card" role="dialog" aria-modal="true" aria-labelledby="trip-settings-title">
@@ -361,15 +380,14 @@ onUnmounted(() => {
               />
             </div>
 
-            <label class="form-label">
+            <div class="form-label">
               <span class="form-label-text">여행 기간 설정</span>
-              <div class="settings-dates">
-                <input type="date" class="field" v-model="editStartDate" style="flex:1;" data-testid="trip-start-date">
-                <span>-</span>
-                <input type="date" class="field" v-model="editEndDate" :min="editStartDate" style="flex:1;" data-testid="trip-end-date">
-              </div>
-              <div v-if="editStartDate && editEndDate" style="text-align:center;font-size:14px;color:var(--violet);font-weight:600;margin-top:8px;">{{ formatUiText("총 {0}일 여행", "{0}-day trip", [editDayCount]) }}</div>
-            </label>
+              <button type="button" class="trip-period-card" data-testid="trip-period-card" @click="dateDialogOpen = true">
+                <span class="material-symbols-rounded" aria-hidden="true">calendar_month</span>
+                <span class="period-card-copy"><strong>{{ editStartDate ? `${editStartDate} → ${editEndDate || editStartDate}` : '여행 날짜를 선택해 주세요.' }}</strong><small>{{ editStartDate ? formatUiText('총 {0}일 여행', '{0}-day trip', [editDayCount]) : '날짜 미정' }}</small></span>
+                <span class="material-symbols-rounded" aria-hidden="true">chevron_right</span>
+              </button>
+            </div>
 
 
 
@@ -412,7 +430,7 @@ onUnmounted(() => {
 
         <!-- Members Tab -->
         <div v-show="activeTab === 'tab-members'" class="trip-settings-tab-content members-tab-content">
-          <section class="management-section invite-share-section" aria-labelledby="invite-share-title">
+          <section v-if="isOwner" class="management-section invite-share-section" aria-labelledby="invite-share-title">
             <div class="management-section-head">
               <span class="material-symbols-rounded management-section-icon" aria-hidden="true">link</span>
               <div>
@@ -426,7 +444,7 @@ onUnmounted(() => {
                 type="text"
                 readonly
                 :value="inviteLink"
-                :placeholder="inviteLoading ? '초대 링크 생성 중...' : '초대 링크를 사용할 수 없습니다.'"
+                :placeholder="inviteLoading ? '초대 링크 생성 중...' : '초대 링크 준비 중'"
                 aria-label="초대 링크"
               >
             </div>
@@ -441,7 +459,9 @@ onUnmounted(() => {
               </button>
             </div>
             <p v-if="inviteError" class="invite-error" role="alert">{{ inviteError }}</p>
+            <button v-if="inviteError && trip" type="button" class="invite-action-btn invite-action-btn--ghost" :disabled="inviteLoading" @click="inviteLink ? copyInviteLink() : fetchInviteLink(trip.id)">다시 시도</button>
           </section>
+          <p v-else class="member-invite-note">초대 링크는 방장이 공유할 수 있어요.</p>
 
           <div class="modal-members-section management-section">
             <div class="members-header">
@@ -468,6 +488,7 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
+  <TripDateRangeDialog v-if="open && dateDialogOpen" :start="editStartDate" :end="editEndDate" @apply="applyDateRange" @close="dateDialogOpen = false" />
 </template>
 
 <style scoped>
@@ -1011,4 +1032,12 @@ onUnmounted(() => {
 .trip-settings-card .modal-body { background: #fff; padding-top: 24px; }
 .trip-settings-card .trip-create-actions { background: #fff; }
 .trip-settings-card .modal-header .icon-btn { background: transparent; border-color: transparent; }
+.trip-period-card { display:flex; align-items:center; gap:12px; width:100%; border:1px solid #dce9f3; border-radius:18px; background:#f8fbff; color:#304b63; padding:16px; text-align:left; cursor:pointer; font:inherit; }
+.trip-period-card:hover { border-color:#86b9df; background:#f0f7ff; }
+.period-card-copy { flex:1; min-width:0; }.period-card-copy strong,.period-card-copy small { display:block; }.period-card-copy strong { font-size:14px; }.period-card-copy small { font-size:12px; color:#728ca1; margin-top:5px; }
+.trip-settings-card .member-list { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; max-height:280px; overflow:auto; padding:2px; }
+.trip-settings-card .member-item { flex-direction:column; gap:6px; padding:12px 6px; text-align:center; min-width:0; }
+.trip-settings-card .member-info { width:100%; }.trip-settings-card .member-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.member-invite-note { font-size:13px; color:#71889d; padding:12px; background:#f2f8fd; border-radius:14px; }
+@media(max-width:480px){.trip-settings-card .member-list { grid-template-columns:repeat(3,minmax(0,1fr)); }.period-card-copy strong { font-size:12px; }.trip-period-card { padding:12px; gap:8px; }}
 </style>

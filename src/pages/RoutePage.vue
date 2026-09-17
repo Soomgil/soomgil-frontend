@@ -238,8 +238,8 @@ const mapThemeButton = ref<HTMLButtonElement | null>(null)
 function readMapTheme(): MapTheme {
   try {
     const saved = localStorage.getItem('soomgil-map-theme')
-    return MAP_THEMES.find(theme => theme.value === saved)?.value ?? 'light'
-  } catch { return 'light' }
+    return MAP_THEMES.find(theme => theme.value === saved)?.value ?? 'standard'
+  } catch { return 'standard' }
 }
 function selectMapTheme(value: MapTheme) {
   mapTheme.value = value
@@ -4598,7 +4598,7 @@ function textAvatarStyle(index: unknown) {
                     </button>
                   </div>
             <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
-            <TripSettingsButton label="관리" variant="ghost" @click="() => openTripManagement()" />
+            <TripSettingsButton label="관리" variant="chip" @click="() => openTripManagement()" />
             <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
               <button ref="mapThemeButton" type="button" class="map-theme-button" :aria-expanded="mapThemeOpen" aria-controls="map-theme-options" @click="mapThemeOpen = !mapThemeOpen">
                 <span class="material-symbols-rounded" aria-hidden="true">palette</span><span>지도 테마</span>
@@ -7813,6 +7813,7 @@ function textAvatarStyle(index: unknown) {
 #search-panel-back { display: inline-flex; align-items: center; gap: 6px; width: auto; min-height: 40px; padding: 6px 12px; border: 1px solid #dfeaf5; border-radius: 12px; background: #fff; color: #506880; font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 3px 10px rgb(52 102 145 / 7%); }
 #search-panel-back:hover { border-color: #abcbe5; background: #f5faff; color: #3579b0; }
 .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { min-height: 40px; padding: 0 14px; font-size: 13px; }
+.trip-map-actions :deep(.trip-settings-button) { background:#fff; }
 .trip-map-actions .avatar { width: 34px; height: 34px; }
 .trip-map-actions .members-count { font-size: 12px; }
 .trip-map-actions .avatars-group { padding: 4px 10px; }
@@ -7824,7 +7825,7 @@ function textAvatarStyle(index: unknown) {
 <style scoped>
 .trip-map-buttons { display: flex; align-items: center; gap: 8px; }
 .map-theme-control { position: relative; }
-.map-theme-button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.map-theme-button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .map-theme-button .material-symbols-rounded { font-size: 19px; }
 .map-theme-button:hover, .map-theme-button[aria-expanded="true"] { background: var(--surface-2); border-color: var(--violet); }
 .map-theme-popover { position: absolute; top: calc(100% + 8px); right: 0; width: 206px; padding: 12px; background: var(--surface, #fff); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px #20344f26; }
