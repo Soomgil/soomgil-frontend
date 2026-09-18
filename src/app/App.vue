@@ -35,6 +35,9 @@ watch(
 </template>
 
 <style>
+/* Header stays in normal flow so wrapped navigation reserves its real height. */
+body:has(> #app) { padding-top:0; }
+.app-layout > .topbar { position:sticky; top:0; background:#f8fbff; }
 .app-layout { position: relative; isolation: isolate; display: flow-root; }
 .app-layout.has-service-background .paper-shell,
 .app-layout.has-service-background .travel-paper,

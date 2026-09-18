@@ -2,7 +2,7 @@
 import { createFeedWheelGate } from "@/utils/feedWheelGate";
 import { formatUiText } from '@/i18n/ui-localizer'
 import { translateUiText } from '@/i18n/ui-localizer'
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { communityApi } from "@/api/community.api";
 import { userApi } from "@/api/user.api";
@@ -96,7 +96,12 @@ function openUserProfile(userId: string | null) {
   if (userId) router.push(`/mypage/${userId}`);
 }
 
-const PER_PAGE = 9;
+const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth);
+const perPage = computed(() => latestView.value === 'list' ? 2 : (viewportWidth.value <= 760 ? 2 : viewportWidth.value <= 1100 ? 3 : 4) * 2);
+function updateViewportWidth() { viewportWidth.value = window.innerWidth; }
+onMounted(() => window.addEventListener('resize', updateViewportWidth));
+onUnmounted(() => window.removeEventListener('resize', updateViewportWidth));
+watch(perPage, () => { currentPage.value = 1; });
 
 function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryView {
   const detail = "snapshot" in post ? post : null;
@@ -178,11 +183,11 @@ function openPopularStory(id: string) {
   if (story) void openStory(story);
 }
 
-const totalPages = computed(() => Math.ceil(filteredStories.value.length / PER_PAGE));
+const totalPages = computed(() => Math.ceil(filteredStories.value.length / perPage.value));
 
 const pagedStories = computed(() => {
-  const start = (currentPage.value - 1) * PER_PAGE;
-  return filteredStories.value.slice(start, start + PER_PAGE);
+  const start = (currentPage.value - 1) * perPage.value;
+  return filteredStories.value.slice(start, start + perPage.value);
 });
 
 async function loadPosts() {
@@ -2781,6 +2786,48 @@ watch(
   .community-paper .story-card-grid--list .story-tile-like { top:6px; right:6px; width:28px; height:28px; }
 }
 @media(prefers-reduced-motion:reduce) { .community-paper .story-tile,.story-view-toggle button { transition:none; } }
+
+/* Compact photo collection and a bounded, scan-friendly reading list. */
+.community-paper .story-card-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px; }
+.community-paper .story-tile { min-width:0; padding:8px 8px 0; }
+.community-paper .story-tile-body { padding:12px 6px 14px; gap:7px; }
+.community-paper .story-tile-title { font-size:16px; line-height:1.45; }
+.community-paper .story-tile-summary { -webkit-line-clamp:1; }
+.community-paper .story-tile-tags { flex-wrap:nowrap; overflow:hidden; max-height:24px; }
+.community-paper .story-tile-tags .tag { white-space:nowrap; }
+.community-paper .story-tile-footer { gap:8px; }
+.community-paper .story-tile-stat { font-size:10px; }
+.community-paper .story-card-grid--list { grid-template-columns:1fr; max-width:900px; margin-inline:auto; gap:12px; }
+.community-paper .story-card-grid--list .story-tile { grid-template-columns:144px minmax(0,1fr); gap:18px; padding:10px; border-radius:14px; transform:none; }
+.community-paper .story-card-grid--list .story-tile-image-wrap { height:144px; min-height:0; aspect-ratio:1; border-radius:5px; }
+.community-paper .story-card-grid--list .story-tile-body { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto 1fr; gap:8px 16px; padding:8px 8px 4px 0; }
+.community-paper .story-card-grid--list .story-tile-title { grid-column:1 / -1; font-size:17px; -webkit-line-clamp:1; }
+.community-paper .story-card-grid--list .story-tile-summary { grid-column:1 / -1; -webkit-line-clamp:2; }
+.community-paper .story-card-grid--list .story-tile-author { align-self:end; margin:0; padding:0; }
+.community-paper .story-card-grid--list .story-tile-footer { align-self:end; margin:0; padding:0; flex-wrap:nowrap; }
+.community-paper .story-card-grid--list .story-tile-stat-end { flex-basis:auto; margin-left:8px; }
+@media(max-width:1100px) { .community-paper .story-card-grid:not(.story-card-grid--list) { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:760px) {
+ .community-paper .story-card-grid:not(.story-card-grid--list) { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+ .community-paper .story-card-grid--list .story-tile { grid-template-columns:112px minmax(0,1fr); gap:12px; }
+ .community-paper .story-card-grid--list .story-tile-image-wrap { height:126px; }
+ .community-paper .story-card-grid--list .story-tile-body { display:flex; padding:2px 0; gap:5px; }
+ .community-paper .story-card-grid--list .story-tile-title { font-size:15px; -webkit-line-clamp:2; }
+ .community-paper .story-card-grid--list .story-tile-author { align-self:start; margin-top:auto; }
+ .community-paper .story-card-grid--list .story-tile-footer { align-self:stretch; gap:6px; }
+ .community-paper .story-card-grid--list .story-tile-stat-end { margin-left:auto; }
+}
+@media(max-width:480px) {
+ .community-paper .story-card-grid:not(.story-card-grid--list) { gap:14px 10px; }
+ .community-paper .story-tile { padding:6px 6px 0; }
+ .community-paper .story-tile-body { padding:10px 3px; gap:6px; }
+ .community-paper .story-tile-title { font-size:14px; }
+ .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-summary,
+ .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-tags { display:none; }
+ .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-stat-end { display:none; }
+ .community-paper .story-card-grid--list .story-tile { grid-template-columns:96px minmax(0,1fr); padding:8px; gap:10px; }
+ .community-paper .story-card-grid--list .story-tile-image-wrap { height:118px; }
+}
 </style>
 
 <style scoped src="../styles/travel-page-actions.css"></style>

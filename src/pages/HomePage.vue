@@ -172,7 +172,7 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-search .paper-search-submit { min-height: 48px; padding: 12px 26px; border-radius: 999px; background: #487db5; font-weight: 600; box-shadow: none; transition: background .2s; }
 .home-search .paper-search-submit:hover { background: #396a9e; box-shadow: none; transform: none; }
 .home-search button:focus-visible { outline: 2px solid #487db5; outline-offset: 3px; }
-.home-gallery { width: min(1120px, calc(100% - 96px)); margin: 100px auto 0; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
+.home-gallery { width: min(1120px, calc(100% - 96px)); margin: 28px auto 0; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
 /* 전시 공간이 최소 목표 크기를 수용하고, 좁은 화면에서는 화면 경계를 우선한다. */
 .home-backdrop { position: relative; display: grid; place-items: center; height: clamp(540px, calc(100svh - 340px), 680px); }
 .home-backdrop img { grid-area: 1 / 1; display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; }
@@ -216,7 +216,7 @@ button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
   .home-search .paper-search-icon { display: none; }
   .home-search .paper-search-input { padding-inline: 8px; font-size: 16px; }
   .home-search .paper-search-submit { min-height: 46px; padding: 11px 16px; }
-  .home-gallery { width: calc(100% - 40px); margin-top: 140px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
+  .home-gallery { width: calc(100% - 40px); margin-top: 8px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
   .home-backdrop { height: clamp(300px, calc(100svh - 480px), 520px); }
   .home-artwork-footer { flex-wrap: wrap; gap: 12px; margin-top: 20px; }
   .home-artwork-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0; }
