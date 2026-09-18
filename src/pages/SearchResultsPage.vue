@@ -1867,11 +1867,11 @@ watch(
 <style scoped src="../styles/travel-page-actions.css"></style>
 
 <style scoped>
-/* Solid paper surfaces distinguish each result from the watercolor page backdrop. */
-.search-grid .search-card { min-width:0; background:#fff; border:1px solid #d7e3ed; border-radius:18px; overflow:hidden; box-shadow:0 2px 5px #334e6810,0 8px 22px #334e6808; }
-.search-grid .search-card:hover { background:#fff; border-color:#9fc5df; box-shadow:0 5px 10px #334e6812,0 12px 28px #334e6812; transform:translateY(-3px); }
+/* Match the quiet white card surface used by My Trips. */
+.search-grid .search-card { min-width:0; background:#fff; border:1px solid #eaf4ff; border-radius:16px; overflow:hidden; box-shadow:none; }
+.search-grid .search-card:hover { background:#fff; border-color:#eaf4ff; box-shadow:none; transform:translateY(-3px); }
 .search-grid .search-card:focus-visible { outline:2px solid #5799c6; outline-offset:4px; }
-.search-grid .search-card:not(.search-card--user) .search-card-thumb { background:#f7fafc; border-bottom:1px solid #e6eef4; }
+.search-grid .search-card:not(.search-card--user) .search-card-thumb { background:transparent; border-bottom:0; }
 .search-grid .search-card-body { background:#fff; }
 .search-grid .search-card-title { font-size:18px; font-weight:600; }
 .search-grid .search-card--user { padding:18px; }
