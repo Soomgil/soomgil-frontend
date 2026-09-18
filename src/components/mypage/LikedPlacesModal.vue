@@ -1,51 +1,59 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { Place } from '@/types/place'
 
 const props = defineProps<{ places: Place[], unsavedKeys?: Set<string> }>()
 defineEmits<{ close: []; toggle: [place: Place] }>()
 
 const searchQuery = ref('')
+const appliedQuery = ref('')
+const page = ref(1)
+const pageSize = 8
+const scrollContainer = ref<HTMLElement | null>(null)
+function search() { appliedQuery.value = searchQuery.value; page.value = 1; scrollContainer.value?.scrollTo?.({ top: 0 }) }
+function goToPage(value: number) { page.value = value; scrollContainer.value?.scrollTo?.({ top: 0 }) }
+
 const failedImages = ref(new Set<string>())
 const placeKey = (place: Place) => `${place.provider}:${place.externalPlaceId}`
 function markImageFailed(place: Place) {
   failedImages.value = new Set(failedImages.value).add(placeKey(place))
 }
 const filteredPlaces = computed(() => {
-  if (!searchQuery.value.trim()) return props.places
-  const q = searchQuery.value.trim().toLowerCase()
+  if (!appliedQuery.value.trim()) return props.places
+  const q = appliedQuery.value.trim().toLowerCase()
   return props.places.filter((p) =>
     p.placeName.toLowerCase().includes(q) ||
     (p.address ?? '').toLowerCase().includes(q) ||
     (p.tags ?? []).some(t => t.toLowerCase().includes(q))
   )
 })
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredPlaces.value.length / pageSize)))
+const visiblePlaces = computed(() => filteredPlaces.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+watch(totalPages, count => { page.value = Math.min(page.value, count) })
 </script>
 
 <template>
   <div class="story-overlay" role="dialog" aria-modal="true" aria-label="슈퍼라이크한 장소 모두 보기">
     <div class="story-overlay-backdrop" @click="$emit('close')"></div>
-    <div class="story-overlay-panel" style="width: min(98vw, 1100px); max-height: 94vh;">
+    <div class="story-overlay-panel saved-board-panel">
       <button class="story-overlay-close" type="button" aria-label="닫기" @click="$emit('close')">
         <span class="material-symbols-rounded">close</span>
       </button>
 
-      <div style="padding: 32px;">
-        <div class="mypage-section-header" style="margin-bottom: 24px;">
+      <div class="saved-board-content">
+        <div class="saved-board-heading">
           <h2 class="mypage-section-title">
             <span class="material-symbols-rounded section-icon section-icon--sky" aria-hidden="true">star</span>슈퍼라이크한 장소
           </h2>
-          <div class="mypage-header-search-row">
-            <div class="mypage-search-inline">
-              <span class="material-symbols-rounded">search</span>
-              <input type="search" v-model="searchQuery" placeholder="장소명, 지역, 태그로 검색" />
-            </div>
-          </div>
         </div>
+        <form class="saved-board-search" role="search" @submit.prevent="search">
+          <input type="search" v-model="searchQuery" placeholder="장소명, 지역, 태그로 검색" aria-label="장소명, 지역, 태그로 검색" />
+          <button type="submit" aria-label="검색"><span class="material-symbols-rounded" aria-hidden="true">search</span>검색</button>
+        </form>
 
-        <div class="modal-scroll-container" style="overflow-y: auto; max-height: calc(94vh - 140px); padding: 16px; margin: -16px;">
+        <div class="modal-scroll-container saved-note-board" ref="scrollContainer">
           <div class="mypage-places-grid">
-            <div v-for="place in filteredPlaces" :key="place.externalPlaceId" class="mypage-place-card">
+            <div v-for="place in visiblePlaces" :key="placeKey(place)" class="mypage-place-card">
               <div class="place-img-wrap">
                 <img v-if="place.thumbnailUrl && !failedImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markImageFailed(place)" />
                 <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
@@ -63,53 +71,45 @@ const filteredPlaces = computed(() => {
               </div>
             </div>
           </div>
+          <p v-if="!filteredPlaces.length" class="saved-board-empty" role="status">검색 조건에 맞는 장소가 없습니다.</p>
         </div>
+        <nav v-if="totalPages > 1" class="saved-board-pagination" aria-label="페이지 이동">
+          <button type="button" :disabled="page === 1" aria-label="이전 페이지" @click="goToPage(page - 1)">‹</button>
+          <span aria-live="polite">{{ page }} / {{ totalPages }}</span>
+          <button type="button" :disabled="page === totalPages" aria-label="다음 페이지" @click="goToPage(page + 1)">›</button>
+        </nav>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.modal-scroll-container {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.modal-scroll-container::-webkit-scrollbar {
-  display: none;
-}
-.mypage-search-inline {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.mypage-search-inline .material-symbols-rounded {
-  position: absolute;
-  left: 12px;
-  color: var(--muted);
-  font-size: 18px;
-  pointer-events: none;
-}
-.mypage-search-inline input {
-  width: 240px;
-  height: 38px;
-  border: 1.5px solid rgba(227, 234, 244, 0.9);
-  border-radius: 12px;
-  padding: 0 14px 0 38px;
-  font-size: 13px;
-  font-weight: 600;
-  background: #fff;
-  outline: none;
-  transition: border-color 0.25s;
-}
-.mypage-search-inline input:focus {
-  border-color: var(--violet);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
-}
-.mypage-header-search-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.place-image-placeholder { width: 100%; height: 100%; display: grid; place-items: center; background: linear-gradient(135deg, #eef2ff, #f8fafc); color: var(--muted); }
-.place-image-placeholder .material-symbols-rounded { font-size: 36px; }
+.saved-board-panel { width:min(960px,calc(100vw - 24px)); max-height:92dvh; background:#fff; border-radius:24px; overflow:hidden; }
+.saved-board-content { display:flex; flex-direction:column; max-height:92dvh; padding:28px; gap:18px; }
+.saved-board-heading { padding-right:48px; flex-shrink:0; }
+.saved-board-heading h2 { margin:0; font-size:20px; }
+.saved-board-search { display:flex; gap:8px; padding:5px; background:#f4f9fd; border:1px solid #dceaf4; border-radius:999px; flex-shrink:0; }
+.saved-board-search input { min-width:0; flex:1; width:100%; border:0; outline:none; background:transparent; padding:8px 12px; font:inherit; font-size:13px; }
+.saved-board-search:focus-within { outline:2px solid #9cc9e8; outline-offset:2px; }
+.saved-board-search button { display:flex; align-items:center; gap:5px; padding:9px 16px; border:0; border-radius:999px; background:#deeffb; color:#397dab; font-weight:600; cursor:pointer; white-space:nowrap; }
+.saved-board-search .material-symbols-rounded { font-size:19px; }
+.saved-note-board { overflow-y:auto; min-height:0; padding:24px 18px; border:1px solid #dfeaf2; border-radius:18px; background:radial-gradient(#b6ccd966 1px,transparent 1px) 0 0 / 16px 16px,#f0f6fa; scrollbar-width:thin; }
+.saved-note-board .mypage-places-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:24px 18px; }
+.saved-note-board .mypage-place-card { min-width:0; padding:10px 8px 12px; position:relative; overflow:visible; border:0; border-radius:2px 2px 12px 2px; background:#fff4cf; box-shadow:2px 5px 9px #314a6217; transform:rotate(-1.5deg); }
+.saved-note-board .mypage-place-card:nth-child(3n+2) { background:#e1f1fc; transform:rotate(1.5deg); }
+.saved-note-board .mypage-place-card:nth-child(3n) { background:#eeebfc; transform:rotate(-.8deg); }
+.saved-note-board .mypage-place-card::before { content:''; position:absolute; z-index:2; width:40px; height:14px; top:-7px; left:calc(50% - 20px); background:#ffffffa8; border:1px solid #ffffff66; transform:rotate(-5deg); pointer-events:none; }
+.saved-note-board .place-img-wrap { height:auto; aspect-ratio:4/3; overflow:hidden; border-radius:2px; }
+.saved-note-board .place-img-wrap img { width:100%; height:100%; object-fit:cover; }
+.saved-note-board .place-info-wrap { padding:10px 2px 0; background:transparent; }
+.saved-note-board .place-title-h3 { margin:0 0 4px; font-family:'Noto Serif KR',serif; font-size:13px; line-height:1.5; }
+.saved-note-board .place-region-category { display:block; font-size:10px; color:#647c92; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.saved-note-board .place-desc-text,.saved-note-board .place-tag-row { display:none; }
+.saved-note-board .place-super-like-btn { width:28px; height:28px; top:5px; right:5px; }
+.place-image-placeholder { display:grid; place-items:center; width:100%; height:100%; background:#edf4f9; color:#7995ad; }
+.saved-board-empty { text-align:center; padding:32px 0; color:#647c92; font-size:13px; }
+.saved-board-pagination { display:flex; justify-content:center; align-items:center; gap:18px; flex-shrink:0; font-size:13px; color:#527f9f; }
+.saved-board-pagination button { width:36px; height:36px; border:1px solid #dceaf4; border-radius:50%; background:#fff; color:#397dab; font-size:22px; cursor:pointer; }
+.saved-board-pagination button:disabled { opacity:.35; cursor:default; }
+@media(max-width:760px) { .saved-board-content { padding:24px 16px 16px; gap:16px; }.saved-note-board .mypage-places-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px 14px; }.saved-note-board { padding:22px 14px; }.saved-board-heading h2 { font-size:17px; } }
 </style>
