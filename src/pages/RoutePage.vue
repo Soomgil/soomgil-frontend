@@ -200,6 +200,11 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
+const mapPresenceMembers = computed(() => [...trip.value.members].sort((left, right) => {
+  if (left.online === right.online) return 0
+  return left.online ? -1 : 1
+}))
+const hiddenMapPresenceMembers = computed(() => mapPresenceMembers.value.slice(4))
 
 /* ── 여행 방 투표 진입 ──
  * 투표 세션 상태는 라우터 가드(ensureGate)가 이 여행에 진입할 때 이미 voting store에 채워 둔다.
@@ -472,6 +477,9 @@ const tastePlaces = ref<TasteMapPlace[]>([])
 const tasteControl = ref<InstanceType<typeof MapTasteControl> | null>(null)
 function selectNearbyMapPlace(provider: string, placeId: string) {
   if (!tasteControl.value?.select(provider, placeId)) void selectPlace(placeId, provider as PlaceProvider)
+}
+function closeTasteControl() {
+  tasteControl.value?.close()
 }
 const discoveryBbox = computed(() => {
   if (mapStops.value.length > 0) {
@@ -2309,6 +2317,44 @@ const aiMessages = ref<RouteAiChatMessage[]>([])
 const chatMessages = ref<TripChatMessage[]>([])
 const conversationLoading = ref(false)
 const conversationError = ref('')
+const aiMessagesContainerRef = ref<HTMLElement | null>(null)
+const tripChatMessagesContainerRef = ref<HTMLElement | null>(null)
+const aiChatPinnedToBottom = ref(true)
+const tripChatPinnedToBottom = ref(true)
+
+function isConversationAtBottom(container: HTMLElement) {
+  return container.scrollHeight - container.scrollTop - container.clientHeight <= 40
+}
+
+function updateConversationScrollState(kind: 'ai' | 'chat') {
+  const container = kind === 'ai' ? aiMessagesContainerRef.value : tripChatMessagesContainerRef.value
+  if (!container) return
+  if (kind === 'ai') aiChatPinnedToBottom.value = isConversationAtBottom(container)
+  else tripChatPinnedToBottom.value = isConversationAtBottom(container)
+}
+
+function keepConversationAtBottom(kind: 'ai' | 'chat') {
+  const shouldFollow = kind === 'ai' ? aiChatPinnedToBottom.value : tripChatPinnedToBottom.value
+  if (!shouldFollow) return
+  void nextTick(() => {
+    requestAnimationFrame(() => {
+      const container = kind === 'ai' ? aiMessagesContainerRef.value : tripChatMessagesContainerRef.value
+      if (!container) return
+      container.scrollTop = container.scrollHeight
+    })
+  })
+}
+
+watch(
+  () => aiMessages.value.map((message) => `${message.id}:${message.content?.length ?? 0}`).join('|'),
+  () => keepConversationAtBottom('ai'),
+)
+watch(
+  () => chatMessages.value.map((message) => `${message.id}:${message.content?.length ?? 0}:${message.deletedAt ?? ''}`).join('|'),
+  () => keepConversationAtBottom('chat'),
+)
+watch(isAiChatOpen, (isOpen) => { if (isOpen) keepConversationAtBottom('ai') })
+watch(isTripChatOpen, (isOpen) => { if (isOpen) keepConversationAtBottom('chat') })
 
 function oldestFirst<T extends { createdAt: string }>(messages: T[]) {
   return [...messages].sort((left, right) => (
@@ -3621,8 +3667,8 @@ async function handleMapObjectPlace(transform: MapObjectTransform) {
     selectedMapObjectId.value = created.id
     if (mediaFileId) {
       pendingImageMediaId.value = null
-      activeTool.value = 'cursor'
     }
+    activeTool.value = 'cursor'
   } catch (cause) {
     console.error('Map object could not be created.', cause)
   }
@@ -4647,7 +4693,7 @@ function textAvatarStyle(index: unknown) {
                   <div class="avatars-group">
                     <div class="avatars">
                       <span
-                        v-for="m in trip.members.slice(0, 3)"
+                        v-for="m in mapPresenceMembers.slice(0, 4)"
                         :key="m.userId"
                         tabindex="0"
                         :aria-label="`${m.displayName || '멤버'} · ${m.online ? '접속 중' : '오프라인'}`"
@@ -4663,7 +4709,26 @@ function textAvatarStyle(index: unknown) {
                         </div>
                       </span>
                     </div>
-                    <span v-if="trip.members.length > 3" class="members-count">+{{ trip.members.length - 3 }}</span>
+                    <span
+                      v-if="hiddenMapPresenceMembers.length"
+                      class="members-count members-count-with-tooltip"
+                      tabindex="0"
+                      :aria-label="`추가 멤버 ${hiddenMapPresenceMembers.length}명. 접속 상태 확인`"
+                    >
+                      +{{ hiddenMapPresenceMembers.length }}
+                      <span class="members-count-tooltip" role="tooltip">
+                        <strong>추가 멤버</strong>
+                        <span
+                          v-for="member in hiddenMapPresenceMembers"
+                          :key="member.userId"
+                          class="members-count-tooltip__member"
+                        >
+                          <span :class="['members-count-tooltip__dot', { 'is-online': member.online }]" aria-hidden="true"></span>
+                          <span data-no-translate>{{ member.displayName || '멤버' }}</span>
+                          <span class="members-count-tooltip__status">{{ member.online ? '접속 중' : '오프라인' }}</span>
+                        </span>
+                      </span>
+                    </span>
                   </div>
             <div class="trip-map-buttons">
                   <div v-if="showVoteAction" class="trip-vote-control">
@@ -4680,6 +4745,16 @@ function textAvatarStyle(index: unknown) {
                       <strong>투표가 진행 중이에요</strong>
                     </button>
                   </div>
+            <button
+              type="button"
+              :class="['nearby-toggle', { active: nearbyOn }]"
+              :aria-pressed="nearbyOn"
+              :disabled="itinerary.mutating.value"
+              @click="nearbyOn = !nearbyOn"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">travel_explore</span>
+              주변 여행지
+            </button>
             <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
             <TripSettingsButton label="관리" variant="chip" @click="() => openTripManagement()" />
             <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
@@ -5009,6 +5084,7 @@ function textAvatarStyle(index: unknown) {
               @select-nearby-place="selectNearbyMapPlace"
               @viewport-change="mapViewport.updateViewport"
               @orientation-change="updateMapOrientation"
+              @map-drag-start="closeTasteControl"
               @drawing-create="handleDrawingCreate"
               @drawing-erase="eraseLocalDrawings"
               @drawing-preview="publishDrawingPreview"
@@ -5049,7 +5125,7 @@ function textAvatarStyle(index: unknown) {
                 :aria-pressed="selectedStickerCode === sticker.code"
                 @click="selectedStickerCode = sticker.code"
               >
-                <svg viewBox="0 0 64 64" aria-hidden="true"><use :href="stickerHref(sticker.code) ?? undefined" /></svg>
+                <img :src="stickerHref(sticker.code) ?? undefined" alt="" aria-hidden="true">
               </button>
               <span class="map-sticker-help">지도에서 놓을 위치를 선택하세요</span>
             </div>
@@ -5199,13 +5275,6 @@ function textAvatarStyle(index: unknown) {
                 <span class="material-symbols-rounded icon-min">location_on</span>
                 <span class="material-symbols-rounded icon-hidden-card">visibility_off</span>
                 <span class="tool-tip">{{ cardState === 'full' ? '여행지 카드: 전체 보기' : cardState === 'min' ? '여행지 카드: 최소화 (핀)' : '여행지 카드: 숨김' }}</span>
-              </button>
-              <button :class="['tool-btn', nearbyOn ? 'is-on' : 'is-off']" type="button"
-                data-toggle="nearby" :disabled="itinerary.mutating.value"
-                :aria-pressed="nearbyOn"
-                @click="nearbyOn = !nearbyOn">
-                <span class="material-symbols-rounded">travel_explore</span>
-                <span class="tool-tip">주변 여행지 표시</span>
               </button>
               <button :class="['tool-btn', drawingOn ? 'is-on' : 'is-off']" type="button"
                 data-toggle="drawing" :disabled="itinerary.mutating.value"
@@ -5370,12 +5439,12 @@ function textAvatarStyle(index: unknown) {
                   }"
                   :disabled="placeReactionSubmitting"
                   :aria-pressed="selectedPlaceReaction === 'SUPER_LIKE'"
-                  :aria-label="selectedPlaceReaction === 'SUPER_LIKE' ? '슈퍼라이크 제거하기' : '슈퍼라이크 추가'"
+                  :aria-label="selectedPlaceReaction === 'SUPER_LIKE' ? '슈퍼라이크 제거하기' : '슈퍼라이크'"
                   @click="reactToSelectedPlace('SUPER_LIKE')"
                 >
                   <span class="detailbar-reaction-label detailbar-reaction-label--default">
                     <span class="material-symbols-rounded">{{ selectedPlaceReaction === 'SUPER_LIKE' ? 'stars' : 'star_border' }}</span>
-                    {{ selectedPlaceReaction === 'SUPER_LIKE' ? '슈퍼라이크에 추가됨' : '슈퍼라이크 추가' }}
+                    슈퍼라이크
                   </span>
                   <span v-if="selectedPlaceReaction === 'SUPER_LIKE'" class="detailbar-reaction-label detailbar-reaction-label--remove">
                     <span class="material-symbols-rounded">delete</span>
@@ -5392,12 +5461,12 @@ function textAvatarStyle(index: unknown) {
                   }"
                   :disabled="placeReactionSubmitting"
                   :aria-pressed="selectedPlaceReaction === 'LIKE'"
-                  :aria-label="selectedPlaceReaction === 'LIKE' ? '좋아요 제거하기' : '좋아요 추가'"
+                  :aria-label="selectedPlaceReaction === 'LIKE' ? '좋아요 제거하기' : '좋아요'"
                   @click="reactToSelectedPlace('LIKE')"
                 >
                   <span class="detailbar-reaction-label detailbar-reaction-label--default">
                     <span class="material-symbols-rounded">{{ selectedPlaceReaction === 'LIKE' ? 'favorite' : 'favorite_border' }}</span>
-                    {{ selectedPlaceReaction === 'LIKE' ? '좋아요에 추가됨' : '좋아요 추가' }}
+                    좋아요
                   </span>
                   <span v-if="selectedPlaceReaction === 'LIKE'" class="detailbar-reaction-label detailbar-reaction-label--remove">
                     <span class="material-symbols-rounded">heart_minus</span>
@@ -5414,12 +5483,12 @@ function textAvatarStyle(index: unknown) {
                   }"
                   :disabled="placeReactionSubmitting"
                   :aria-pressed="selectedPlaceReaction === 'NOPE'"
-                  :aria-label="selectedPlaceReaction === 'NOPE' ? '싫어요 제거하기' : '싫어요 추가'"
+                  :aria-label="selectedPlaceReaction === 'NOPE' ? '싫어요 제거하기' : '싫어요'"
                   @click="reactToSelectedPlace('NOPE')"
                 >
                   <span class="detailbar-reaction-label detailbar-reaction-label--default">
                     <span class="material-symbols-rounded">{{ selectedPlaceReaction === 'NOPE' ? 'thumb_down' : 'thumb_down_off_alt' }}</span>
-                    {{ selectedPlaceReaction === 'NOPE' ? '싫어요에 추가됨' : '싫어요 추가' }}
+                    싫어요
                   </span>
                   <span v-if="selectedPlaceReaction === 'NOPE'" class="detailbar-reaction-label detailbar-reaction-label--remove">
                     <span class="material-symbols-rounded">delete</span>
@@ -5522,7 +5591,12 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ AI CHAT PANEL ═══ -->
           <div id="ai-chat-panel" :class="['ai-chat-panel', { show: isAiChatOpen }]">
-            <div class="ai-chat-messages-container" id="ai-chat-messages">
+            <div
+              id="ai-chat-messages"
+              ref="aiMessagesContainerRef"
+              class="ai-chat-messages-container"
+              @scroll.passive="updateConversationScrollState('ai')"
+            >
               <div v-if="conversationError" class="text-sm" style="color:var(--rose);display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span>{{ conversationError }}</span>
                 <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
@@ -5562,7 +5636,12 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ TRIP CHAT PANEL ═══ -->
           <div id="trip-chat-panel" :class="['ai-chat-panel', 'trip-chat-panel', { show: isTripChatOpen }]">
-            <div class="ai-chat-messages-container" id="trip-chat-messages">
+            <div
+              id="trip-chat-messages"
+              ref="tripChatMessagesContainerRef"
+              class="ai-chat-messages-container"
+              @scroll.passive="updateConversationScrollState('chat')"
+            >
               <div v-if="conversationError" class="text-sm" style="color:var(--rose);display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span>{{ conversationError }}</span>
                 <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
@@ -5740,12 +5819,20 @@ function textAvatarStyle(index: unknown) {
 }
 
 .vote-modal-card {
-  max-height: min(92vh, 1040px);
-  max-width: 1120px;
+  max-height: min(88vh, 860px);
+  max-width: 920px;
   overflow: auto;
-  padding: 8px 16px 20px;
+  padding: 12px 24px 24px;
   position: relative;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   width: 100%;
+}
+
+.vote-modal-card::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .vote-modal-close {
@@ -7862,9 +7949,15 @@ function textAvatarStyle(index: unknown) {
   transform: translateY(-1px);
 }
 
-.map-sticker-option svg {
+.map-sticker-option img {
   width: 31px;
   height: 31px;
+  object-fit: contain;
+}
+
+@media (max-width: 760px) {
+  .vote-modal-overlay { padding: 12px; }
+  .vote-modal-card { max-height: calc(100dvh - 24px); padding: 10px 14px 18px; }
 }
 
 .map-sticker-help {
@@ -8229,6 +8322,18 @@ function textAvatarStyle(index: unknown) {
   border-color: transparent transparent var(--ink) transparent;
 }
 .trip-map-actions .members-count { font-size: 11px; color: var(--muted); }
+.trip-map-actions .members-count-with-tooltip { position:relative; display:inline-flex; align-items:center; align-self:stretch; cursor:default; outline:none; }
+.members-count-tooltip { position:absolute; top:calc(100% + 10px); right:-8px; z-index:120; display:grid; gap:7px; min-width:190px; padding:11px 12px; border:1px solid #dce7ef; border-radius:12px; background:#fff; color:#354e65; box-shadow:0 10px 28px rgb(37 76 114 / 18%); font-size:11px; line-height:1.3; pointer-events:none; opacity:0; visibility:hidden; transform:translateY(-4px); transition:opacity .15s ease,transform .15s ease,visibility .15s ease; }
+.members-count-tooltip::before { content:''; position:absolute; right:14px; bottom:100%; width:9px; height:9px; border-top:1px solid #dce7ef; border-left:1px solid #dce7ef; background:#fff; transform:translateY(5px) rotate(45deg); }
+.members-count-tooltip strong { font-size:11px; color:#526b80; }
+.members-count-tooltip__member { display:grid; grid-template-columns:8px minmax(0,1fr) auto; align-items:center; gap:7px; white-space:nowrap; }
+.members-count-tooltip__dot { width:8px; height:8px; border-radius:50%; background:#cbd5df; box-shadow:0 0 0 2px #eef2f6; }
+.members-count-tooltip__dot.is-online { background:#22c55e; box-shadow:0 0 0 2px #dcfce7; }
+.members-count-tooltip__status { color:#8a9bab; font-size:10px; }
+.members-count-tooltip__dot.is-online ~ .members-count-tooltip__status { color:#238749; font-weight:700; }
+.members-count-with-tooltip:hover .members-count-tooltip,
+.members-count-with-tooltip:focus-visible .members-count-tooltip { opacity:1; visibility:visible; transform:translateY(0); }
+.members-count-with-tooltip:focus-visible { border-radius:6px; box-shadow:0 0 0 2px rgb(72 143 196 / 30%); }
 @media(max-width:767px) { .trip-map-actions { top: 58px; right: 12px; } .map-shell.is-route-utility-collapsed .trip-map-actions { right: 12px; } }
 
 .trip-sidebar-back { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; margin-bottom: 8px; color: var(--muted); font-size: 12px; text-decoration: none; }
@@ -8248,6 +8353,13 @@ function textAvatarStyle(index: unknown) {
 
 <style scoped>
 .trip-map-buttons { display: flex; align-items: center; gap: 8px; }
+.nearby-toggle { display:flex; align-items:center; gap:6px; min-height:40px; padding:8px 14px; border:1px solid #d7e7f3; border-radius:999px; background:#fff; color:#171717; font:inherit; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; transition:background-color .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease,transform .16s ease; }
+.nearby-toggle:hover:not(:disabled) { background:#f3faf5; border-color:#add6b8; color:#287847; transform:translateY(-1px); }
+.nearby-toggle.active { background:#edf8f0; border-color:#9dcfad; color:#257a43; box-shadow:0 5px 14px rgb(55 143 83 / 14%); }
+.nearby-toggle.active:hover:not(:disabled) { background:#e1f3e6; border-color:#78bd8d; color:#1f693a; }
+.nearby-toggle:disabled { opacity:.45; cursor:not-allowed; }
+.nearby-toggle .material-symbols-rounded { font-size:18px; color:#3d965b; font-variation-settings:'FILL' 1; }
+.nearby-toggle:focus-visible { outline:2px solid #488fc4; outline-offset:3px; }
 .map-theme-control { position: relative; }
 .map-theme-button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .map-theme-button .material-symbols-rounded { font-size: 19px; }
@@ -8262,7 +8374,7 @@ function textAvatarStyle(index: unknown) {
 @media(max-width:767px) {
   .trip-map-actions { max-width: calc(100% - 24px); gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
   .trip-map-buttons { gap: 5px; }
-  .map-theme-button, .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { padding: 0 9px; }
+  .nearby-toggle, .map-theme-button, .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { padding: 0 9px; }
 }
 
 /* Keep the planning surface independent of the map tiles underneath it. */
@@ -8294,6 +8406,9 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .add-stop-container .search-panel-custom-trigger:hover { background:#3376ad; border-color:#3376ad; }
 .route-page-section .add-stop-container .search-panel-custom-trigger.is-close { background:#d94b4b; border-color:#d94b4b; box-shadow:0 4px 12px rgb(217 75 75 / 20%); }
 .route-page-section .add-stop-container .search-panel-custom-trigger.is-close:hover { background:#bd3838; border-color:#bd3838; }
+.route-page-section .add-stop-container > .add-stop-dashed:not(.search-panel-custom-trigger) { border-color:#9fc4e3; background:#eef6fd; color:#3579b0; box-shadow:0 3px 10px rgb(52 102 145 / 8%); }
+.route-page-section .add-stop-container > .add-stop-dashed:not(.search-panel-custom-trigger):hover:not(:disabled) { border-style:solid; border-color:#6fa8d4; background:#dfeffc; color:#286b9f; box-shadow:0 5px 14px rgb(52 102 145 / 13%); }
+.route-page-section .add-stop-container > .add-stop-dashed:not(.search-panel-custom-trigger):disabled { border-color:#d4e0e9; background:#f2f5f7; color:#9aa9b5; box-shadow:none; cursor:not-allowed; }
 .route-page-section .search-panel-body { overflow-y:auto; padding-bottom:88px; }
 #search-panel-back { border-radius:999px; border:1px solid #dfe7ee; background:#fff; color:#396a9e; box-shadow:none; min-height:40px; padding:8px 16px; }
 #search-panel-back:hover { background:#f1f6fb; border-color:#b7cde2; }

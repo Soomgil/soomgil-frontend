@@ -117,6 +117,7 @@ const emit = defineEmits<{
   mapObjectChange: [drawingId: string, transform: MapObjectTransform]
   cursorMove: [coordinate: LngLat]
   cursorLeave: []
+  mapDragStart: []
 }>()
 
 const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
@@ -752,6 +753,7 @@ async function initializeMap() {
     })
     createdMap.on('moveend', () => { emitViewport(); emitOrientation(); renderTasteMarkers() })
     createdMap.on('move', updateDrawingProjection)
+    createdMap.on('dragstart', () => emit('mapDragStart'))
     createdMap.on('resize', updateDrawingProjection)
     createdMap.on('mousemove', (event) => emit('cursorMove', { lng: event.lngLat.lng, lat: event.lngLat.lat }))
     createdMap.on('mouseleave', () => emit('cursorLeave'))

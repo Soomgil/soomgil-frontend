@@ -23,7 +23,7 @@ const settingsForm = ref({
 
 const languages = [
   { value: 'ko', label: '한국어' },
-  { value: 'en', label: 'English' },
+  { value: 'en', label: '영어' },
 ]
 
 const errorMessage = ref('')
@@ -209,25 +209,30 @@ async function saveSettings() {
                   <span class="material-symbols-rounded" aria-hidden="true">translate</span>
                 </div>
                 <div class="settings-item__info">
-                  <label for="settings-lang-select" class="settings-item__title">
+                  <span id="settings-language-label" class="settings-item__title">
                     {{ t('settings.language') }}
-                  </label>
+                  </span>
                   <p class="settings-item__desc">
                     {{ t('settings.languageHint') }}
                   </p>
                 </div>
                 <div class="settings-item__control">
-                  <div class="settings-select-wrap">
-                    <select
-                      id="settings-lang-select"
-                      v-model="settingsForm.displayLanguage"
-                      class="field settings-select"
+                  <div
+                    class="settings-select-wrap"
+                    role="group"
+                    aria-labelledby="settings-language-label"
+                  >
+                    <button
+                      v-for="language in languages"
+                      :key="language.value"
+                      type="button"
+                      class="settings-language-btn"
+                      :class="{ 'is-active': settingsForm.displayLanguage === language.value }"
+                      :aria-pressed="settingsForm.displayLanguage === language.value"
+                      @click="settingsForm.displayLanguage = language.value"
                     >
-                      <option v-for="language in languages" :key="language.value" :value="language.value">
-                        {{ language.label }}
-                      </option>
-                    </select>
-                    <span class="material-symbols-rounded select-chevron" aria-hidden="true">expand_more</span>
+                      {{ language.label }}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -755,46 +760,50 @@ async function saveSettings() {
   flex-shrink: 0;
 }
 
-/* 셀렉트 드롭다운 */
+/* 언어 토글 */
 .settings-select-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(64px, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.055);
 }
 
-.settings-select {
-  min-width: 100px;
-  height: 40px;
-  min-height: 40px;
-  padding: 0 30px 0 12px;
-  border-radius: 10px;
-  background: #ffffff;
-  border: 1.5px solid var(--line, #e3eaf4);
-  color: var(--ink, #1a2033);
+.settings-language-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted, #68718a);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
+  transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.settings-select:hover {
-  border-color: rgba(0, 102, 255, 0.35);
+.settings-language-btn:hover:not(.is-active) {
+  color: var(--ink, #1a2033);
+  background: rgba(255, 255, 255, 0.55);
 }
 
-.settings-select:focus {
+.settings-language-btn:focus-visible {
   outline: none;
-  border-color: var(--violet, #0066ff);
   box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12);
 }
 
-.select-chevron {
-  position: absolute;
-  right: 10px;
-  color: var(--muted, #68718a);
-  pointer-events: none;
-  font-size: 16px;
+.settings-language-btn.is-active {
+  color: #ffffff;
+  background: var(--violet, #0066ff);
+  box-shadow: 0 3px 9px rgba(0, 102, 255, 0.22);
+  transform: translateY(-1px);
 }
 
 /* 세그먼트 컨트롤 */

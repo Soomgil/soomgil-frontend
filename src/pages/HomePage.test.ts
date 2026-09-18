@@ -107,11 +107,11 @@ describe('홈 검색과 수상작 배경', () => {
     wrapper.unmount()
   })
 
-  it('사진 속 여행지 둘러보기는 장소 검색으로 연결한다', async () => {
+  it('사진 속 여행지 둘러보기는 전체 검색으로 연결한다', async () => {
     const wrapper = render()
     await flushPromises()
     await wrapper.get('.home-explore-link').trigger('click')
-    expect(push).toHaveBeenCalledWith({ path: '/search', query: { q: '성산일출봉', tab: '장소' } })
+    expect(push).toHaveBeenCalledWith({ path: '/search', query: { q: '성산일출봉', tab: '전체' } })
     wrapper.unmount()
   })
 
@@ -119,14 +119,25 @@ describe('홈 검색과 수상작 배경', () => {
     vi.mocked(awardApi.getAwardPhotos).mockResolvedValue([{ ...photo('작품명'), placeName: null }])
     const wrapper = render()
     await flushPromises()
-    expect(wrapper.get('.home-explore-link').text()).toContain('이 지역 둘러보기')
+    expect(wrapper.get('.home-explore-link').text()).toContain('여행지 둘러보기')
     await wrapper.get('.home-explore-link').trigger('click')
-    expect(push).toHaveBeenCalledWith({ path: '/search', query: { q: '제주', tab: '장소' } })
+    expect(push).toHaveBeenCalledWith({ path: '/search', query: { q: '제주', tab: '전체' } })
     wrapper.unmount()
     vi.mocked(awardApi.getAwardPhotos).mockResolvedValue([{ ...photo('작품명'), placeName: null, regionName: null }])
     const unknown = render()
     await flushPromises()
     expect(unknown.find('.home-explore-link').exists()).toBe(false)
     unknown.unmount()
+  })
+
+  it('여행계획 세우기는 수상작 제목과 지역을 새 여행 모달로 전달한다', async () => {
+    const wrapper = render()
+    await flushPromises()
+    await wrapper.get('.home-plan-link').trigger('click')
+    expect(push).toHaveBeenCalledWith({
+      path: '/my-trips',
+      query: { create: '1', title: '성산일출봉', destination: '제주' },
+    })
+    wrapper.unmount()
   })
 })

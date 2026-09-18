@@ -474,7 +474,7 @@ function handleUserClick(userId: string) {
             <!-- 데이터 있을 때 슬라이더 -->
             <div v-else class="mypage-places-slider-wrapper keepsake-board">
               <div class="mypage-places-slider">
-                <div v-for="place in likedPlaces.slice(0, 8)" :key="place.externalPlaceId" class="mypage-place-card mypage-place-card--slider keepsake-note">
+                <div v-for="place in likedPlaces.slice(0, 10)" :key="place.externalPlaceId" class="mypage-place-card mypage-place-card--slider keepsake-note">
                   <div class="place-img-wrap">
                     <img v-if="place.thumbnailUrl && !failedPlaceImages.has(placeKey(place))" :src="place.thumbnailUrl" :alt="place.placeName" @error="markPlaceImageFailed(place)" />
                     <span v-else class="place-image-placeholder" aria-hidden="true"><span class="material-symbols-rounded">landscape</span></span>
@@ -1174,18 +1174,22 @@ function handleUserClick(userId: string) {
 <style scoped src="@/styles/account-theme.css"></style>
 
 <style scoped>
-.keepsake-board { padding:24px; border:1px solid #dfeaf2; border-radius:22px; background:radial-gradient(#b6ccd966 1px,transparent 1px) 0 0 / 16px 16px,#f0f6fa; }
-.keepsake-board .mypage-places-slider { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:24px 20px; overflow:visible; padding:12px 0; margin:0; }
-.keepsake-board .keepsake-note { --note-paper:#fff4cf; position:relative; overflow:visible; min-width:0; max-width:none; width:100%; padding:12px 10px 14px; border:0; border-radius:2px 2px 14px 2px; background:var(--note-paper); box-shadow:2px 5px 9px #314a6217; transform:rotate(-1.5deg); }
-.keepsake-note::before { content:''; position:absolute; z-index:2; width:44px; height:15px; top:-7px; left:calc(50% - 22px); background:#ffffffa8; border:1px solid #ffffff66; transform:rotate(-5deg); pointer-events:none; }
-.keepsake-board .keepsake-note:nth-child(3n+2) { --note-paper:#e1f1fc; transform:rotate(1.5deg); }
-.keepsake-board .keepsake-note:nth-child(3n) { --note-paper:#eeebfc; transform:rotate(-.8deg); }
+.keepsake-board { padding:22px; border:3px solid #d9c2a8; border-radius:22px; background-color:#ead8bd; background-image:radial-gradient(circle at 18% 24%,#fff7e985 0 1px,transparent 1.7px),radial-gradient(circle at 72% 64%,#b8916c24 0 1px,transparent 1.9px),radial-gradient(circle at 42% 78%,#fffaf08f 0 1.3px,transparent 2px),linear-gradient(115deg,#f1e2ca 0%,#e8d2b3 48%,#eedcc2 100%); background-size:15px 17px,19px 21px,25px 23px,100% 100%; box-shadow:inset 0 0 0 1px #fff9ed8c,inset 0 0 20px #9b795117,0 7px 20px #52667a12; }
+.keepsake-board .mypage-places-slider { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:24px 16px; overflow:visible; padding:12px 2px 8px; margin:0; }
+.keepsake-board .keepsake-note { --note-paper:#fff3a8; position:relative; overflow:visible; min-width:0; max-width:none; width:100%; padding:9px 8px 11px; border:0; border-radius:2px 2px 12px 2px; background:linear-gradient(145deg,#ffffff66,transparent 38%),var(--note-paper); box-shadow:2px 5px 11px #52667a1f; transform:rotate(-1.5deg); }
+.keepsake-note::before { content:''; position:absolute; z-index:3; width:14px; height:14px; top:-7px; left:calc(50% - 7px); border:1px solid #b46f68; border-radius:50%; background:radial-gradient(circle at 32% 25%,#fff0e9 0 12%,#dc8d82 28%,#bd6b66 72%,#a45a58 100%); box-shadow:0 2px 4px #77544b4a,inset -1px -1px 2px #8e4c4c52; pointer-events:none; }
+.keepsake-note::after { content:''; position:absolute; z-index:-1; width:18px; height:8px; top:1px; left:calc(50% - 2px); border-radius:50%; background:#77544b26; filter:blur(2px); transform:rotate(24deg); pointer-events:none; }
+.keepsake-board .keepsake-note:nth-child(6n+2) { --note-paper:#cfeeff; transform:rotate(1.5deg); }
+.keepsake-board .keepsake-note:nth-child(6n+3) { --note-paper:#ded8ff; transform:rotate(-.8deg); }
+.keepsake-board .keepsake-note:nth-child(6n+4) { --note-paper:#d5f3dc; transform:rotate(1deg); }
+.keepsake-board .keepsake-note:nth-child(6n+5) { --note-paper:#ffd8e7; transform:rotate(-1.2deg); }
+.keepsake-board .keepsake-note:nth-child(6n) { --note-paper:#ffd9c2; transform:rotate(.7deg); }
 .keepsake-board .keepsake-note .place-img-wrap { height:auto; aspect-ratio:4/3; border-radius:2px; overflow:hidden; }
-.keepsake-board .keepsake-note .place-info-wrap { padding:12px 2px 0; background:transparent; }
-.keepsake-board .keepsake-note .place-title-h3 { font-family:'Noto Serif KR',serif; font-size:14px; line-height:1.5; margin:0 0 4px; }
+.keepsake-board .keepsake-note .place-info-wrap { padding:9px 2px 0; background:transparent; }
+.keepsake-board .keepsake-note .place-title-h3 { font-family:'Noto Serif KR',serif; font-size:13px; line-height:1.45; margin:0 0 3px; }
 .keepsake-board .keepsake-note .place-region-category { display:block; font-size:10px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:#647c92; }
 .keepsake-board .keepsake-note .place-desc-text,.keepsake-board .keepsake-note .place-tag-row { display:none; }
-.keepsake-board .keepsake-note .place-super-like-btn { width:30px; height:30px; top:6px; right:6px; }
+.keepsake-board .keepsake-note .place-super-like-btn { width:27px; height:27px; top:5px; right:5px; }
 .taste-signature { display:flex; align-items:flex-start; gap:16px; padding:22px; margin:16px 0; background:linear-gradient(125deg,#e7f4ff,#f4f9fd 75%); border:1px solid #dcecf7; border-radius:20px; }
 .taste-signature-symbol { display:grid; place-items:center; flex-shrink:0; width:52px; height:52px; background:white; border-radius:50%; color:#528bb6; font-size:30px; box-shadow:0 4px 14px #477ca112; }
 .taste-eyebrow { color:#6a90ad; font-size:10px; letter-spacing:.16em; font-weight:700; }
@@ -1200,7 +1204,8 @@ function handleUserClick(userId: string) {
 .preference-panel .pref-style-label { font-size:12px; }
 .preference-panel .pref-style-percent { margin-left:auto; font-size:12px; color:#527f9f; }
 .preference-panel .pref-style-track { height:5px; background:#edf3f8; border-radius:99px; }
-@media(max-width:1000px) { .keepsake-board .mypage-places-slider { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:1100px) { .keepsake-board .mypage-places-slider { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(max-width:820px) { .keepsake-board .mypage-places-slider { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:600px) { .keepsake-board { padding:18px 14px; }.keepsake-board .mypage-places-slider { grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px 12px; }.taste-signature { padding:16px; gap:12px; }.taste-signature h3 { font-size:20px; } }
 
 .preference-panel .pref-style-percent { color:var(--taste-ink); }

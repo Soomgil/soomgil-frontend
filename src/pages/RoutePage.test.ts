@@ -1397,7 +1397,8 @@ describe('RoutePage itinerary integration', () => {
 
     expect(wrapper.getComponent(MapboxItineraryMap).props('navigationMode')).toBe(true)
     expect(wrapper.getComponent(MapboxItineraryMap).props('standardView')).toBe(false)
-    expect(wrapper.get('[data-toggle="standard-view"]').attributes('aria-pressed')).toBe('false')
+    expect(wrapper.get('[data-toggle="standard-view"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[data-toggle="standard-view"]').attributes('aria-label')).toBe('지도 틸트 초기화')
   })
 
   it('기본 선택과 경로 연결 펜을 왕복 전환하면 활성 상태가 한 버튼에만 남는다', async () => {
@@ -1436,6 +1437,40 @@ describe('RoutePage itinerary integration', () => {
     expect(cursorButton.attributes('aria-pressed')).toBe('true')
     expect(routePenButton.classes()).not.toContain('active')
     expect(routePenButton.attributes('aria-pressed')).toBe('false')
+  })
+
+  it('스티커를 한 번 배치하면 기본 선택 도구로 돌아간다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-tool="sticker"]').trigger('click')
+    await nextTick()
+    expect(wrapper.getComponent(MapboxItineraryMap).props('drawingTool')).toBe('sticker')
+
+    wrapper.getComponent(MapboxItineraryMap).vm.$emit('mapObjectPlace', {
+      centerLng: 127.1,
+      centerLat: 37.5,
+      widthMeters: 800,
+      heightMeters: 800,
+      rotationDeg: 0,
+    })
+    await flushPromises()
+
+    expect(holder.state.createDrawing).toHaveBeenCalledWith(expect.objectContaining({
+      drawingType: 'STICKER',
+      stickerCode: 'HEART',
+    }))
+    expect(wrapper.getComponent(MapboxItineraryMap).props('drawingTool')).toBe('cursor')
+    expect(wrapper.get('[data-tool="cursor"]').classes()).toContain('active')
   })
 
   it('KTO 일정 장소의 접근성을 batch 조회해 지도 마커에 전달한다', async () => {
@@ -1894,7 +1929,7 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
-    await wrapper.get('button[data-toggle="nearby"]').trigger('click')
+    await wrapper.get('.nearby-toggle').trigger('click')
     await flushPromises()
 
     expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
@@ -1926,7 +1961,7 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
-    await wrapper.get('button[data-toggle="nearby"]').trigger('click')
+    await wrapper.get('.nearby-toggle').trigger('click')
     await flushPromises()
 
     expect(connectedApis.swipe.getRecommendations).not.toHaveBeenCalled()
@@ -1984,7 +2019,7 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
-    await wrapper.get('button[data-toggle="nearby"]').trigger('click')
+    await wrapper.get('.nearby-toggle').trigger('click')
     await flushPromises()
     expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toHaveLength(1)
 
@@ -1993,7 +2028,7 @@ describe('RoutePage itinerary integration', () => {
 
     expect(holder.state.deleteRoute).toHaveBeenCalledWith('route-1')
     expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toEqual([])
-    expect(wrapper.get('button[data-toggle="nearby"]').attributes('aria-pressed')).toBe('false')
+    expect(wrapper.get('.nearby-toggle').attributes('aria-pressed')).toBe('false')
   })
 
   it('주변 관광지 상세를 열고 상세 패널에서 일정에 추가한다', async () => {
@@ -2027,7 +2062,7 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('.detailbar-main-title').text()).toBe('주변 명소')
     expect(wrapper.get('.detailbar-desc-text').text()).toContain('도심에서 산책하기 좋은')
     const saveButton = wrapper.get('.detailbar-save-place-btn')
-    expect(saveButton.text()).toContain('슈퍼라이크 추가')
+    expect(saveButton.text()).toContain('슈퍼라이크')
     await saveButton.trigger('click')
     await flushPromises()
     expect(connectedApis.swipe.react).toHaveBeenCalledWith('KTO', 'nearby-1', 'SUPER_LIKE')

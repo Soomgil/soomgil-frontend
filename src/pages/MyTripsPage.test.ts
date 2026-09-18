@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MyTripsPage from './MyTripsPage.vue'
+import TripDateRangeDialog from '@/components/trip/TripDateRangeDialog.vue'
 import type { TripSummary } from '@/types/trip'
 
 const geo = vi.hoisted(() => ({ searchLegalRegions: vi.fn() }))
@@ -113,8 +114,9 @@ describe('MyTripsPage', () => {
     await vi.advanceTimersByTimeAsync(300)
     await wrapper.get('[role="option"]').trigger('click')
     vi.useRealTimers()
-    await wrapper.get('input[name="startDate"]').setValue('2026-10-01')
-    await wrapper.get('input[name="endDate"]').setValue('2026-10-03')
+    await wrapper.get('[data-testid="trip-create-period-card"]').trigger('click')
+    wrapper.findComponent(TripDateRangeDialog).vm.$emit('apply', '2026-10-01', '2026-10-03')
+    await wrapper.vm.$nextTick()
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
@@ -146,6 +148,27 @@ describe('MyTripsPage', () => {
     expect(wrapper.get('.trip-create-modal').attributes('aria-hidden')).toBe('false')
   })
 
+  it('홈 수상작에서 전달한 여행 이름과 지역을 선택된 상태로 채운다', async () => {
+    routing.query = { create: '1', title: '제주의 아침', destination: '제주' }
+    geo.searchLegalRegions.mockResolvedValue({
+      items: [{
+        code: '5000000000', name: '제주특별자치도', fullName: '제주특별자치도',
+        level: 'SIDO', parentCode: null, isActive: true,
+      }],
+      page: { page: 0, size: 20, totalElements: 1, totalPages: 1, sort: [] },
+    })
+
+    const wrapper = mount(MyTripsPage, {
+      global: { stubs: { AppHeader: true, TripSettingsModal: true } },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.trip-create-modal').classes()).toContain('show')
+    expect((wrapper.get('input[name="title"]').element as HTMLInputElement).value).toBe('제주의 아침')
+    expect((wrapper.get('input[name="displayDestination"]').element as HTMLInputElement).value).toBe('제주특별자치도')
+    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
   it('선택한 법정동 코드를 여행 생성 요청에 포함한다', async () => {
     vi.useFakeTimers()
     geo.searchLegalRegions.mockResolvedValue({
@@ -169,8 +192,9 @@ describe('MyTripsPage', () => {
     await wrapper.get('input[name="displayDestination"]').setValue('부산')
     await vi.advanceTimersByTimeAsync(300)
     await wrapper.get('[role="option"]').trigger('click')
-    await wrapper.get('input[name="startDate"]').setValue('2026-10-01')
-    await wrapper.get('input[name="endDate"]').setValue('2026-10-03')
+    await wrapper.get('[data-testid="trip-create-period-card"]').trigger('click')
+    wrapper.findComponent(TripDateRangeDialog).vm.$emit('apply', '2026-10-01', '2026-10-03')
+    await wrapper.vm.$nextTick()
     await wrapper.get('form').trigger('submit')
     await Promise.resolve()
 
@@ -184,7 +208,7 @@ describe('MyTripsPage', () => {
     wrapper.unmount()
   })
 
-  it('여행 기간과 동행자를 함께 정하고 투표 화면으로 바로 이동한다', async () => {
+  it('여행 기간을 정하고 여행을 만든 뒤 새 여행 지도로 이동한다', async () => {
     vi.useFakeTimers()
     geo.searchLegalRegions.mockResolvedValue({
       items: [{
@@ -193,11 +217,6 @@ describe('MyTripsPage', () => {
       }],
       page: { page: 0, size: 10, totalElements: 1, totalPages: 1, sort: [] },
     })
-    users.searchUsers.mockResolvedValue({
-      items: [{ id: 'friend-1', displayName: '민경철', profileImageUrl: null }],
-      page: { page: 0, size: 8, totalElements: 1, totalPages: 1, sort: [] },
-    })
-
     const wrapper = mount(MyTripsPage, {
       global: { stubs: { AppHeader: true, TripAccessModal: true, TripSettingsModal: true } },
     })
@@ -207,13 +226,9 @@ describe('MyTripsPage', () => {
     await vi.advanceTimersByTimeAsync(300)
     await wrapper.get('[role="option"]').trigger('click')
     vi.useRealTimers()
-    await wrapper.get('input[name="startDate"]').setValue('2026-10-01')
-    await wrapper.get('input[name="endDate"]').setValue('2026-10-03')
-    await wrapper.get('input[name="companionSearch"]').setValue('민경철')
-    const searchButton = wrapper.findAll('button').find((button) => button.text() === '검색')!
-    await searchButton.trigger('click')
-    await flushPromises()
-    await wrapper.get('[role="option"]').trigger('click')
+    await wrapper.get('[data-testid="trip-create-period-card"]').trigger('click')
+    wrapper.findComponent(TripDateRangeDialog).vm.$emit('apply', '2026-10-01', '2026-10-03')
+    await wrapper.vm.$nextTick()
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
@@ -235,8 +250,8 @@ describe('MyTripsPage', () => {
       groupType: 'UNSCHEDULED',
       sortOrder: 4,
     })
-    expect(tripApiMock.createInvite).toHaveBeenCalledWith('trip-1', { inviteeUserId: 'friend-1' })
-    expect(routing.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' }, query: { vote: '1' } })
+    expect(tripApiMock.createInvite).not.toHaveBeenCalled()
+    expect(routing.push).toHaveBeenCalledWith({ name: 'Route', params: { tripId: 'trip-1' } })
   })
 
   it('첫 진입에서 실제 여행 목록의 첫 페이지를 요청한다', async () => {
