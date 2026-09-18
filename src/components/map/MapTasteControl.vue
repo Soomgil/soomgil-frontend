@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { swipeApi, type TripPreferencePlace } from '@/api/swipe.api'
 import type { Place, PlaceRecommendation } from '@/types/place'
 import type { ItineraryMapNearbyPlace } from './MapboxItineraryMap.vue'
-import { formatUiText } from '@/i18n/ui-localizer'
 
 const props = defineProps<{ tripId: string; bbox: string; userId: string | null }>()
 const emit = defineEmits<{
@@ -11,6 +10,9 @@ const emit = defineEmits<{
   select: [place: Place, recommendation: PlaceRecommendation]
 }>()
 const open = ref(false)
+const enabled = ref(false)
+let hasOpened = false
+let refreshTimer: ReturnType<typeof setTimeout> | undefined
 const mode = ref<'mine' | 'colleagues' | 'together'>('mine')
 const memberId = ref('')
 const superOnly = ref(false)
@@ -33,7 +35,7 @@ const places = computed(() => {
     return new Set(group.map(r => r.userId)).size >= 2
   }).map(group => ({ first: group[0], members: group }))
 })
-watch([places, open], () => emit('places', open.value ? places.value.map(({ first, members }) => ({
+watch([places, enabled], () => emit('places', enabled.value ? places.value.map(({ first, members }) => ({
   id: `taste:${first.provider}:${first.externalPlaceId}`, provider: first.provider,
   externalPlaceId: first.externalPlaceId, title: first.name, category: first.category,
   lat: first.lat, lng: first.lng, image: first.thumbnailUrl,
@@ -41,8 +43,8 @@ watch([places, open], () => emit('places', open.value ? places.value.map(({ firs
 })) : []), { immediate: true })
 async function load() {
   const request = ++revision
-  rows.value = []; error.value = false
-  if (!props.bbox || !open.value) { loading.value = false; return }
+  error.value = false
+  if (!props.bbox || !enabled.value) { loading.value = false; return }
   loading.value = true
   const bbox = props.bbox
   try {
@@ -52,10 +54,26 @@ async function load() {
   } catch { if (request === revision) error.value = true }
   finally { if (request === revision) loading.value = false }
 }
-watch(open, value => { if (value) void load(); else { revision++; loading.value = false; rows.value = [] } })
-watch(() => [props.tripId, props.userId], () => { rows.value = []; memberId.value = ''; void load() })
-watch(() => props.bbox, () => { if (open.value && !loadedBbox.value && !loading.value) void load() })
-onBeforeUnmount(() => { revision++ })
+watch(open, value => { if (value && !hasOpened) { hasOpened = true; enabled.value = true } })
+watch(enabled, value => {
+  clearTimeout(refreshTimer)
+  if (value) void load()
+  else { revision++; loading.value = false }
+})
+watch(() => [props.tripId, props.userId], () => {
+  revision++; clearTimeout(refreshTimer); rows.value = []; loadedBbox.value = ''; memberId.value = ''; loading.value = false
+  if (enabled.value) void load()
+})
+watch(() => props.bbox, bbox => {
+  clearTimeout(refreshTimer)
+  if (!enabled.value || !bbox) return
+  const old = loadedBbox.value.split(',').map(Number)
+  const next = bbox.split(',').map(Number)
+  const span = Math.max(old[2] - old[0], old[3] - old[1], .002)
+  const changed = !loadedBbox.value || next.some((v, i) => Math.abs(v - old[i]) > span * .3)
+  if (changed) refreshTimer = setTimeout(() => void load(), 500)
+})
+onBeforeUnmount(() => { revision++; clearTimeout(refreshTimer) })
 function select(provider: string, id: string) {
   const item = places.value.find(p => p.first.provider === provider && p.first.externalPlaceId === id)
   if (!item) return false
@@ -72,13 +90,13 @@ defineExpose({ select })
 
 <template>
   <div class="map-taste-control" @keydown.esc.stop="open = false">
-    <button class="taste-toggle" data-testid="taste-toggle" :class="{ active: open }" :aria-expanded="open" aria-controls="map-taste-panel" @click="open = !open">
+    <button class="taste-toggle" data-testid="taste-toggle" :class="{ active: enabled }" :aria-expanded="open" aria-controls="map-taste-panel" @click="open = !open">
       <span class="material-symbols-rounded" aria-hidden="true">favorite</span>취향 보기
     </button>
-    <section v-if="open" id="map-taste-panel" class="taste-panel" aria-label="취향 관광지">
-      <header><strong>취향 관광지</strong><button class="taste-close" aria-label="닫기" @click="open = false">×</button></header>
-      <p>여행 멤버가 좋아한 장소를 지도에서 찾아보세요.</p>
-      <div class="taste-tabs" aria-label="취향 필터">
+    <section :aria-busy="loading" v-if="open" id="map-taste-panel" class="taste-panel" aria-label="취향 보기 설정">
+      <p class="taste-description">여행 멤버가 좋아한 장소를 지도에서 찾아보세요.</p>
+      <div class="taste-tabs" aria-label="취향 필터" :style="{ '--taste-tab-index': mode === 'mine' ? 0 : mode === 'colleagues' ? 1 : 2 }">
+        <span class="taste-tab-indicator" aria-hidden="true"></span>
         <button data-testid="taste-mine" :aria-pressed="mode === 'mine'" @click="mode = 'mine'">내 취향</button>
         <button data-testid="taste-colleagues" :aria-pressed="mode === 'colleagues'" @click="mode = 'colleagues'">동료 취향</button>
         <button data-testid="taste-together" :aria-pressed="mode === 'together'" @click="mode = 'together'">함께 좋아한 곳</button>
@@ -89,14 +107,11 @@ defineExpose({ select })
           <img v-if="member.profileImageUrl" :src="member.profileImageUrl" alt="" /><span v-else data-no-translate>{{ member.displayName?.slice(0, 1) || '?' }}</span>
         </button>
       </div>
-      <label class="taste-super"><input v-model="superOnly" type="checkbox" />슈퍼라이크만 보기</label>
-      <button v-if="loadedBbox !== bbox && bbox && !loading" class="taste-reload" @click="load">이 지도에서 다시 찾기</button>
-      <p v-if="loading" role="status">불러오는 중…</p>
-      <div v-else-if="error" role="alert"><p>취향 장소를 불러오지 못했습니다.</p><button class="taste-reload" @click="load">다시 시도</button></div>
+      <button type="button" role="switch" class="taste-switch-row" data-testid="taste-enabled" :aria-checked="enabled" @click="enabled = !enabled"><span>지도에 취향 표시</span><span class="taste-switch" aria-hidden="true"></span></button>
+      <button type="button" role="switch" class="taste-switch-row" data-testid="taste-super" :aria-checked="superOnly" @click="superOnly = !superOnly"><span>슈퍼라이크만 보기</span><span class="taste-switch" aria-hidden="true"></span></button>
+      <div v-if="error && !loading" role="alert"><p>취향 장소를 불러오지 못했습니다.</p><button class="taste-reload" @click="load">다시 시도</button></div>
       <p v-else-if="!bbox">지도를 움직여 탐색할 지역을 선택해 주세요.</p>
-      <p v-else-if="!places.length">이 지역에 표시할 선호 장소가 없어요.</p>
-      <p v-else class="taste-count" role="status">{{ formatUiText('{0}개 장소를 지도에 표시하고 있어요.', 'Showing {0} places on the map.', [places.length]) }}</p>
-      <footer>공개 범위에 따라 최대 200개 장소를 표시합니다.</footer>
+      <p v-else-if="enabled && !loading && !places.length">이 지역에 표시할 선호 장소가 없어요.</p>
     </section>
   </div>
 </template>
@@ -107,13 +122,14 @@ defineExpose({ select })
 .taste-toggle.active { background:#e8f4ff; border-color:#98c9ec; }
 .taste-toggle .material-symbols-rounded { font-size:18px; color:#e53945; font-variation-settings:'FILL' 1; }
 .taste-panel { position:absolute; top:calc(100% + 10px); right:0; width:330px; padding:18px; border:1px solid #dbe8f2; border-radius:22px; background:#fff; color:#354e65; box-shadow:0 12px 36px #254c721a; max-height:70svh; overflow:auto; }
-header { display:flex; align-items:center; justify-content:space-between; } header strong { font-size:16px; }
+.taste-panel .taste-description { margin:0 0 12px; padding:0 2px; line-height:1.65; }
+.taste-tabs { margin-bottom:8px; }
 .taste-panel p, footer { font-size:12px; line-height:1.6; color:#73889b; }
 .taste-panel button { cursor:pointer; font-family:inherit; }
 .taste-close { border:0; border-radius:50%; width:30px; height:30px; font-size:22px; color:#607c92; background:#f1f7fb; }
-.taste-tabs { display:flex; background:#f0f6fb; border-radius:999px; padding:3px; }
-.taste-tabs button { flex:1; border:0; background:transparent; color:#627b91; padding:9px 3px; border-radius:999px; font-size:12px; white-space:nowrap; }
-.taste-tabs button[aria-pressed=true] { background:#ddecfa; color:#286da3; font-weight:700; }
+.taste-tabs { position:relative; isolation:isolate; display:flex; background:#f0f6fb; border-radius:999px; padding:3px; }
+.taste-tabs button { position:relative; z-index:1; flex:1; border:0; background:transparent; color:#627b91; padding:9px 3px; border-radius:999px; font-size:12px; white-space:nowrap; }
+.taste-tabs button[aria-pressed=true] { background:transparent; color:#286da3; font-weight:700; }
 .taste-super { display:flex; align-items:center; gap:6px; font-size:12px; margin:14px 0; cursor:pointer; }
 .taste-super input { accent-color:#4a8bc0; }
 .taste-members { display:flex; gap:7px; margin-top:12px; flex-wrap:wrap; }
@@ -125,4 +141,12 @@ header { display:flex; align-items:center; justify-content:space-between; } head
 footer { margin-top:10px; padding:0; min-height:0; height:auto; background:none; border:0; text-align:left; font-size:11px; }
 button:focus-visible { outline:2px solid #488fc4; outline-offset:3px; }
 @media(max-width:767px) { .taste-panel { position:fixed; top:auto; bottom:calc(80px + env(safe-area-inset-bottom)); left:12px; right:12px; width:auto; max-height:calc(100svh - 240px); } .taste-toggle { padding:7px 10px; font-size:12px; } }
+.taste-switch-row { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; border:0; background:transparent; min-height:38px; padding:7px 0; color:#354e65; font-size:12px; text-align:left; }
+.taste-apply { flex:1; width:auto; padding:0; margin-right:12px; font-weight:700; }
+.taste-switch { position:relative; width:36px; height:22px; flex-shrink:0; border-radius:99px; background:#ccd9e3; transition:background .2s; }
+.taste-switch::after { content:''; position:absolute; width:16px; height:16px; left:3px; top:3px; border-radius:50%; background:white; box-shadow:0 1px 3px #254c7226; transition:transform .28s cubic-bezier(.22,1,.36,1); }
+.taste-switch-row[aria-checked=true] .taste-switch { background:#528ec0; }
+.taste-switch-row[aria-checked=true] .taste-switch::after { transform:translateX(14px); }
+.taste-tab-indicator { position:absolute; top:3px; bottom:3px; left:3px; width:calc((100% - 6px) / 3); border-radius:999px; background:#ddecfa; transform:translateX(calc(var(--taste-tab-index) * 100%)); transition:transform .3s cubic-bezier(.22,1,.36,1); pointer-events:none; }
+@media(prefers-reduced-motion:reduce) { .taste-switch,.taste-switch::after,.taste-tab-indicator { transition:none; } }
 </style>

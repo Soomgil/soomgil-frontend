@@ -95,9 +95,11 @@ describe('MapboxItineraryMap', () => {
     const wrapper = mount(MapboxItineraryMap, { props: { stops } })
     await flushPromises(); mapbox.handlers.get('style.load')?.()
     mapbox.map.fitBounds.mockClear(); mapbox.map.easeTo.mockClear(); mapbox.Marker.mockClear()
-    await wrapper.setProps({ tastePlaces: [1, 2].map(i => ({ id: `taste-${i}`, provider: 'KTO', externalPlaceId: String(i), title: `Place ${i}`, category: null, lat: 36, lng: 127, taste: 'favorite' as const })) })
+    await wrapper.setProps({ tastePlaces: [1, 2].map(i => ({ id: `taste-${i}`, provider: 'KTO', externalPlaceId: String(i), title: `Place ${i}`, category: null, lat: 36, lng: 127, taste: i === 1 ? 'favorite' as const : 'star' as const })) })
     const el = (mapbox.Marker.mock.calls.at(-1)?.[0] as { element: HTMLElement }).element
     expect(el.querySelectorAll('button')).toHaveLength(2)
+    expect(el.querySelector('summary .is-favorite')?.textContent).toBe('favorite1')
+    expect(el.querySelector('summary .is-star')?.textContent).toBe('star1')
     el.querySelector('button')?.click()
     expect(wrapper.emitted('selectNearbyPlace')?.at(-1)).toEqual(['KTO', '1'])
     expect(mapbox.map.fitBounds).not.toHaveBeenCalled()

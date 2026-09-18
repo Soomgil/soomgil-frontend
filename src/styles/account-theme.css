@@ -21,7 +21,7 @@
   color: #35465a; margin-bottom: 14px;
 }
 .mypage-shell .page-hero__lead, .settings-page .page-hero__lead { font-size: 15px; line-height: 1.8; }
-.mypage-shell .page-hero__eyebrow, .settings-page .page-hero__eyebrow { background: #eaf4fc; color: #5485ad; font-weight: 700; }
+.mypage-shell .page-hero__eyebrow, .settings-page .page-hero__eyebrow { padding:0; border:0; border-radius:0; background:none; color:#647c92; font-size:11px; letter-spacing:.12em; font-weight:700; }
 .profile-settings-page::before, .profile-settings-page::after { display: none; }
 .account-page-link {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -156,3 +156,5 @@
   .settings-item-card--toggle .settings-item__info { flex-basis: 0; }
   .settings-item-card--toggle .settings-item__control { margin-left: 0; }
 }
+
+.mypage-shell .page-hero__eyebrow .material-symbols-rounded { display:none; }

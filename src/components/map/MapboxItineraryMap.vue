@@ -324,13 +324,22 @@ function renderTasteMarkers() {
       const details = document.createElement('details')
       details.className = 'map-taste-cluster'
       const summary = document.createElement('summary')
-      const icon = document.createElement('span')
-      icon.className = 'material-symbols-rounded'
-      icon.textContent = 'favorite'
-      icon.setAttribute('aria-hidden', 'true')
-      const count = document.createElement('span')
-      count.textContent = String(group.places.length)
-      summary.append(icon, count)
+      const stars = group.places.filter(place => place.taste === 'star').length
+      const favorites = group.places.length - stars
+      for (const [symbol, total] of [['favorite', favorites], ['star', stars]] as const) {
+        if (!total) continue
+        const badge = document.createElement('span')
+        badge.className = `map-taste-cluster-count is-${symbol}`
+        const icon = document.createElement('span')
+        icon.className = 'material-symbols-rounded'
+        icon.textContent = symbol
+        icon.setAttribute('aria-hidden', 'true')
+        const count = document.createElement('span')
+        count.textContent = String(total)
+        badge.append(icon, count)
+        summary.appendChild(badge)
+      }
+      summary.setAttribute('aria-label', `좋아요 ${favorites}개, 슈퍼라이크 ${stars}개 장소`)
       const list = document.createElement('div')
       list.className = 'map-taste-cluster-list'
       group.places.forEach(place => list.appendChild(createNearbyMarkerElement(place)))
@@ -816,6 +825,10 @@ onBeforeUnmount(() => {
 .itinerary-map :deep(.mapboxgl-marker) {
   z-index: 2;
 }
+
+.itinerary-map :deep(.mapboxgl-marker.map-taste-marker),
+.itinerary-map :deep(.mapboxgl-marker.map-taste-cluster) { z-index:8; }
+.itinerary-map :deep(.mapboxgl-marker.map-taste-cluster[open]) { z-index:9; }
 
 .itinerary-map :deep(.map-route-mode-marker) {
   display: inline-flex;

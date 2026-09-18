@@ -42,11 +42,8 @@ function isScheduled(place: Place) {
 
 function matchText(item: DiscoveryItem) {
   const count = item.recommendation?.matchedMemberCount ?? item.recommendation?.matchedMembers.length ?? 0
-  const total = item.recommendation?.totalMemberCount ?? 0
   if (count === 0) return item.recommendation?.recommendationReason || ''
-  if (total > 0 && count === total) return '모든 멤버의 취향과 잘 맞아요'
-  if (total > 0) return `${count}/${total}명의 취향과 잘 맞아요`
-  return `${count}명의 멤버가 좋아하는 곳`
+  return `${count}명의 취향과 잘 맞아요`
 }
 
 function matchTierClass(pct: number | null | undefined) {

@@ -42,10 +42,7 @@ onBeforeUnmount(() => clearInterval(timer))
         <span class="photo-caption" data-no-translate>{{ tr(`${story.author}의 여행 한 장`, `A moment from ${story.author}`) }}</span>
       </button>
       <div class="featured-copy">
-        <div class="popular-heading">
-          <p class="featured-label">POPULAR STORIES</p>
-          <h2 id="popular-stories-title">여행자들이 좋아한 이야기</h2>
-        </div>
+
         <h3 data-no-translate>{{ story.title }}</h3>
         <p class="featured-summary" :data-no-translate="story.summary ? '' : undefined">{{ story.summary || '사진 속 여행의 순간을 만나보세요.' }}</p>
         <div class="featured-author" data-no-translate><span class="author-avatar"><img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" alt="" /><span v-else>{{ story.avatar }}</span></span>{{ story.author }}</div>
@@ -66,7 +63,7 @@ onBeforeUnmount(() => clearInterval(timer))
 <style scoped>
 .popular-carousel { padding: 28px 32px 20px; background: linear-gradient(135deg,#f5faff,#fff 75%); border: 1px solid #e6eff7; border-radius: 24px; }
 .featured-story { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: center; gap: 60px; max-width: 960px; margin: auto; }
-.featured-polaroid { width: 100%; padding: 12px 12px 20px; background: white; border: 1px solid #e9eff5; box-shadow: 0 10px 28px #33597d14; transform: rotate(-2deg); cursor: pointer; color: #506880; }
+.featured-polaroid { width: 100%; padding: 12px 12px 20px; background: var(--community-card-paper, #fff); opacity: var(--community-card-opacity, 1); border: 1px solid #e9eff5; box-shadow: 0 10px 28px #33597d14; transform: rotate(-2deg); cursor: pointer; color: #506880; }
 .featured-photo { aspect-ratio: 4/3; overflow: hidden; background: #eaf4ff; display: grid; place-items: center; animation: photo-arrive .35s ease-out; }
 .featured-photo img { width: 100%; height: 100%; object-fit: cover; }
 .featured-photo > span { font-size: 56px; color: #8aaac7; }

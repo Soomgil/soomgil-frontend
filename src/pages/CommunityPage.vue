@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createFeedWheelGate } from "@/utils/feedWheelGate";
 import { formatUiText } from '@/i18n/ui-localizer'
 import { translateUiText } from '@/i18n/ui-localizer'
 import { ref, computed, onMounted, watch } from "vue";
@@ -95,7 +96,7 @@ function openUserProfile(userId: string | null) {
   if (userId) router.push(`/mypage/${userId}`);
 }
 
-const PER_PAGE = 9;
+const PER_PAGE = 8;
 
 function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryView {
   const detail = "snapshot" in post ? post : null;
@@ -137,6 +138,8 @@ const stories = computed(() =>
   ),
 );
 const selectedStory = computed(() => (selectedPost.value ? toStoryView(selectedPost.value) : null));
+const photoDirection = ref(1);
+const photoTransitioning = ref(false);
 const storyPhotoIndexes = ref<Record<string, number>>({});
 
 function currentStoryPhoto(story: StoryView): string {
@@ -145,7 +148,9 @@ function currentStoryPhoto(story: StoryView): string {
 }
 
 function moveStoryPhoto(story: StoryView, direction: -1 | 1) {
-  if (story.photos.length < 2) return;
+  if (story.photos.length < 2 || photoTransitioning.value || isTransitioning.value) return;
+  photoTransitioning.value = true;
+  photoDirection.value = direction;
   const current = storyPhotoIndexes.value[story.id] ?? 0;
   storyPhotoIndexes.value = {
     ...storyPhotoIndexes.value,
@@ -448,33 +453,48 @@ const visibleStory = computed(() => stories.value[visibleStoryIdx.value] || stor
 const transitionName = ref<"slide-up" | "slide-down">("slide-up");
 const isTransitioning = ref(false);
 
+function finishFeedTransition() {
+  feedReleaseY.value = 0;
+  feedDragY.value = 0;
+  isTransitioning.value = false;
+}
 function goToStory(direction: -1 | 1) {
-  if (isTransitioning.value) return;
+  if (isTransitioning.value || photoTransitioning.value) return;
   const next = visibleStoryIdx.value + direction;
   if (next < 0 || next >= stories.value.length) return;
+  feedReleaseY.value = feedDragY.value;
   isTransitioning.value = true;
   transitionName.value = direction > 0 ? "slide-up" : "slide-down";
   visibleStoryIdx.value = next;
   scrollGuideVisible.value = false;
   void selectVisibleStory(next);
-  window.setTimeout(() => {
-    isTransitioning.value = false;
-  }, 350);
+
 }
 
+const feedReleaseY = ref(0);
 const feedDragY = ref(0);
 const feedDragging = ref(false);
+const adjacentDragStory = computed(() => {
+  if (!feedDragging.value || !feedDragY.value) return null;
+  return stories.value[visibleStoryIdx.value + (feedDragY.value < 0 ? 1 : -1)] ?? null;
+});
+watch(() => [visibleStoryIdx.value, stories.value], () => {
+  for (const index of [visibleStoryIdx.value - 1, visibleStoryIdx.value + 1]) {
+    const story = stories.value[index];
+    if (story?.image) { const image = new Image(); image.src = story.image; }
+  }
+}, { immediate: true });
+
 let feedStartY = 0;
 let feedPointerId: number | null = null;
-let lastWheelTime = 0;
+const wheelGate = createFeedWheelGate();
 function onWheel(e: WheelEvent) {
   e.preventDefault();
-  const now = performance.now();
-  if (Math.abs(e.deltaY) < 15 || now - lastWheelTime < 500) return;
-  lastWheelTime = now;
-  scrollGuideVisible.value = false;
-  goToStory(e.deltaY > 0 ? 1 : -1);
+  const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 600 : 1);
+  const direction = wheelGate(delta, performance.now(), isTransitioning.value || feedDragging.value || photoTransitioning.value);
+  if (direction) goToStory(direction);
 }
+
 function onFeedPointerDown(e: PointerEvent) {
   if (!e.isPrimary || e.button !== 0 || isTransitioning.value || (e.target as HTMLElement).closest('button,a,input,textarea')) return;
   feedPointerId = e.pointerId;
@@ -492,8 +512,8 @@ function onFeedPointerMove(e: PointerEvent) {
 function onFeedPointerUp(e: PointerEvent) {
   if (feedPointerId !== e.pointerId) return;
   const distance = feedDragY.value;
-  cancelFeedDrag();
   if (Math.abs(distance) > 65) goToStory(distance < 0 ? 1 : -1);
+  cancelFeedDrag();
 }
 function cancelFeedDrag() {
   feedPointerId = null;
@@ -504,6 +524,7 @@ function focusStoryComments(e: Event) {
   (e.currentTarget as HTMLElement).closest('.feed-layout')?.querySelector<HTMLInputElement>('.feed-comment-input-area input')?.focus();
 }
 function onKeydown(e: KeyboardEvent) {
+  if (e.repeat) { e.preventDefault(); return; }
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
     e.preventDefault();
     goToStory(1);
@@ -585,7 +606,7 @@ watch(
         />
 
         <div v-if="!loading && !loadError && stories.length" class="community-content-container">
-          <section v-if="popularStories.length" class="today-pick-section" aria-labelledby="popular-stories-title">
+          <section v-if="popularStories.length" class="today-pick-section" aria-label="인기 여행기">
             <PopularStoryCarousel :stories="popularStories" :fallback-image="FALLBACK_IMAGE" @open="openPopularStory" />
           </section>
 
@@ -754,7 +775,7 @@ watch(
         <div class="feed-layout" id="overlay-feed-layout">
           <section class="story-feed" aria-label="여행기 피드">
             <div
-              class="story-feed-window" :class="{ 'is-dragging': feedDragging, 'show-swipe-demo': scrollGuideVisible }" :style="{ '--feed-drag-y': `${feedDragY}px` }"
+              class="story-feed-window" :class="{ 'is-dragging': feedDragging }" :style="{ '--feed-drag-y': `${feedDragY}px`, '--feed-release-y': `${feedReleaseY}px` }"
               aria-label="여행기 피드"
               id="overlay-feed-stories"
               tabindex="0"
@@ -763,7 +784,13 @@ watch(
               @wheel="onWheel" @pointerdown="onFeedPointerDown" @pointermove="onFeedPointerMove" @pointerup="onFeedPointerUp" @pointercancel="cancelFeedDrag" @lostpointercapture="cancelFeedDrag"
               @keydown="onKeydown"
             >
-              <Transition :name="transitionName" mode="out-in">
+              <article v-if="adjacentDragStory" class="feed-drag-preview" aria-hidden="true"
+                :style="{ transform: `translateY(calc(${feedDragY < 0 ? '100%' : '-100%'} + ${feedDragY}px))` }">
+                <div class="story-post-head"><strong>{{ adjacentDragStory.author }}</strong><span>{{ adjacentDragStory.location }}</span></div>
+                <div class="story-post-photo-frame"><img class="story-post-photo-img" :src="adjacentDragStory.image" alt="" /></div>
+                <div class="story-body"><h3>{{ adjacentDragStory.title }}</h3><p>{{ adjacentDragStory.summary }}</p></div>
+              </article>
+              <Transition :name="transitionName" @after-enter="finishFeedTransition">
                 <article
                   :key="visibleStory.id"
                   :data-story-id="visibleStory.id"
@@ -831,7 +858,7 @@ watch(
                     >
                       <span class="material-symbols-rounded">chevron_left</span>
                     </button>
-                    <Transition name="story-photo" mode="out-in"><img :key="currentStoryPhoto(visibleStory)" :alt="visibleStory.title" :src="currentStoryPhoto(visibleStory)" class="story-post-photo-img" draggable="false" /></Transition>
+                    <Transition :name="photoDirection > 0 ? 'photo-next' : 'photo-prev'" @after-enter="photoTransitioning = false" @enter-cancelled="photoTransitioning = false"><img :key="currentStoryPhoto(visibleStory)" :alt="visibleStory.title" :src="currentStoryPhoto(visibleStory)" class="story-post-photo-img" draggable="false" /></Transition>
                     <button
                       v-if="visibleStory.photos.length > 1"
                       type="button"
@@ -2754,6 +2781,55 @@ watch(
   .community-paper .story-card-grid--list .story-tile-like { top:6px; right:6px; width:28px; height:28px; }
 }
 @media(prefers-reduced-motion:reduce) { .community-paper .story-tile,.story-view-toggle button { transition:none; } }
+
+/* Share the featured polaroid paper surface in both card layouts. */
+.community-paper { --community-card-paper:#fff; --community-card-opacity:1; }
+.community-paper .story-tile,
+.community-paper .story-tile:hover,
+.community-paper .story-tile-body { background:var(--community-card-paper); }
+.community-paper .story-tile, .community-paper .story-tile:hover { opacity:var(--community-card-opacity); }
+
+/* Compact photo collection and a bounded, scan-friendly reading list. */
+.community-paper .story-card-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px; }
+.community-paper .story-tile { min-width:0; padding:8px 8px 0; }
+.community-paper .story-tile-body { padding:12px 6px 14px; gap:7px; }
+.community-paper .story-tile-title { font-size:16px; line-height:1.45; }
+.community-paper .story-tile-summary { -webkit-line-clamp:1; }
+.community-paper .story-tile-tags { flex-wrap:nowrap; overflow:hidden; max-height:24px; }
+.community-paper .story-tile-tags .tag { white-space:nowrap; }
+.community-paper .story-tile-footer { gap:8px; }
+.community-paper .story-tile-stat { font-size:10px; }
+.community-paper .story-card-grid--list { grid-template-columns:1fr; max-width:900px; margin-inline:auto; gap:12px; }
+.community-paper .story-card-grid--list .story-tile { grid-template-columns:144px minmax(0,1fr); gap:18px; padding:10px; border-radius:14px; transform:none; }
+.community-paper .story-card-grid--list .story-tile-image-wrap { height:144px; min-height:0; aspect-ratio:1; border-radius:5px; }
+.community-paper .story-card-grid--list .story-tile-body { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto 1fr; gap:8px 16px; padding:8px 8px 4px 0; }
+.community-paper .story-card-grid--list .story-tile-title { grid-column:1 / -1; font-size:17px; -webkit-line-clamp:1; }
+.community-paper .story-card-grid--list .story-tile-summary { grid-column:1 / -1; -webkit-line-clamp:2; }
+.community-paper .story-card-grid--list .story-tile-author { align-self:end; margin:0; padding:0; }
+.community-paper .story-card-grid--list .story-tile-footer { align-self:end; margin:0; padding:0; flex-wrap:nowrap; }
+.community-paper .story-card-grid--list .story-tile-stat-end { flex-basis:auto; margin-left:8px; }
+@media(max-width:1100px) { .community-paper .story-card-grid:not(.story-card-grid--list) { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:760px) {
+ .community-paper .story-card-grid:not(.story-card-grid--list) { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+ .community-paper .story-card-grid--list .story-tile { grid-template-columns:112px minmax(0,1fr); gap:12px; }
+ .community-paper .story-card-grid--list .story-tile-image-wrap { height:126px; }
+ .community-paper .story-card-grid--list .story-tile-body { display:flex; padding:2px 0; gap:5px; }
+ .community-paper .story-card-grid--list .story-tile-title { font-size:15px; -webkit-line-clamp:2; }
+ .community-paper .story-card-grid--list .story-tile-author { align-self:start; margin-top:auto; }
+ .community-paper .story-card-grid--list .story-tile-footer { align-self:stretch; gap:6px; }
+ .community-paper .story-card-grid--list .story-tile-stat-end { margin-left:auto; }
+}
+@media(max-width:480px) {
+ .community-paper .story-card-grid:not(.story-card-grid--list) { gap:14px 10px; }
+ .community-paper .story-tile { padding:6px 6px 0; }
+ .community-paper .story-tile-body { padding:10px 3px; gap:6px; }
+ .community-paper .story-tile-title { font-size:14px; }
+ .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-summary,
+ .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-tags { display:none; }
+ .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-stat-end { display:none; }
+ .community-paper .story-card-grid--list .story-tile { grid-template-columns:96px minmax(0,1fr); padding:8px; gap:10px; }
+ .community-paper .story-card-grid--list .story-tile-image-wrap { height:118px; }
+}
 </style>
 
 <style scoped src="../styles/travel-page-actions.css"></style>

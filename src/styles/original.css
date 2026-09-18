@@ -12397,3 +12397,7 @@ button,
 .map-taste-cluster-list { display:grid; gap:6px; position:absolute; top:100%; left:0; width:200px; max-height:230px; overflow:auto; padding:10px; background:#fff; border:1px solid #e4edf5; border-radius:16px; box-shadow:0 8px 24px #24374b24; }
 .map-taste-cluster[open] { z-index:10; }
 .map-taste-marker:focus-visible, .map-taste-cluster > summary:focus-visible { outline:2px solid #4a8bc0; outline-offset:3px; }
+
+.map-taste-cluster-count { display:inline-flex; align-items:center; gap:5px; }
+.map-taste-cluster > summary .is-star .material-symbols-rounded { color:#c58a15; background:#fff5d9; }
+.map-taste-cluster-count + .map-taste-cluster-count { border-left:1px solid #e6edf3; padding-left:8px; margin-left:2px; }
