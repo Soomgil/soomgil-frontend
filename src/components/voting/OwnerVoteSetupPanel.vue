@@ -187,56 +187,22 @@ async function open() {
         </div>
       </div>
 
-      <div class="vote-setup__suggest" aria-label="시스템 제안" aria-live="polite">
-        <p class="vote-setup__suggest-title">
-          <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
-          우리의 투표 미리보기
-        </p>
-        <ul class="vote-setup__suggest-list">
-          <li>
-            <span class="vote-setup__suggest-icon vote-setup__row-icon--rank"><span class="material-symbols-rounded">emoji_events</span></span>
-            <span class="vote-setup__suggest-label">선정할 관광지</span>
-            <strong data-testid="setup-selection-count">{{ selectionCount }}</strong>
-            <span class="vote-setup__suggest-unit">곳 → 일차 미정에 담김</span>
-          </li>
-          <li>
-            <span class="vote-setup__suggest-icon vote-setup__row-icon--count"><span class="material-symbols-rounded">grid_view</span></span>
-            <span class="vote-setup__suggest-label">후보 관광지</span>
-            <strong data-testid="setup-candidate-count">{{ candidateCount }}</strong>
-            <span class="vote-setup__suggest-unit">곳 · 멤버 취향 점수 순</span>
-          </li>
-          <li>
-            <span class="vote-setup__suggest-icon"><span class="material-symbols-rounded">favorite</span></span>
-            <span class="vote-setup__suggest-label">1인당 스티커</span>
-            <strong data-testid="setup-sticker-count">{{ stickerAllowance }}</strong>
-            <span class="vote-setup__suggest-unit">개 · 한 곳에 몰아 붙여도 돼요</span>
-          </li>
-        </ul>
-      </div>
-
-
-      <p class="vote-setup__note">
-        <span class="material-symbols-rounded" aria-hidden="true">info</span>
-        시작한 뒤에는 지역과 개수를 바꿀 수 없어요. 모두 제출하면 자동으로 마감되고, 뽑힌 곳은 일차 미정에 들어가요.
-      </p>
-
       <p v-if="errorMessage" role="alert" class="vote-setup__error" data-testid="setup-error">
         <span class="material-symbols-rounded" aria-hidden="true">error</span>
         {{ errorMessage }}
       </p>
 
       <div class="vote-setup__footer">
-      <p>현재 여행 멤버 모두가 참여해요</p>
-      <button
-        type="button"
-        class="vote-setup__cta"
-        data-testid="setup-open"
-        :disabled="!canOpen"
-        @click="open"
-      >
-        <span class="material-symbols-rounded" aria-hidden="true">rocket_launch</span>
-        {{ opening ? '후보를 고르는 중…' : '투표 시작하기' }}
-      </button>
+        <button
+          type="button"
+          class="vote-setup__cta"
+          data-testid="setup-open"
+          :disabled="!canOpen"
+          @click="open"
+        >
+          <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+          {{ opening ? '후보를 고르는 중…' : '투표 시작하기' }}
+        </button>
       </div>
     </div>
   </div>
@@ -342,74 +308,6 @@ async function open() {
   line-height: 1.55;
 }
 
-.vote-setup__suggest {
-  border: 1px dashed rgba(0, 102, 255, 0.28);
-  border-radius: 18px;
-  padding: 14px 18px;
-}
-
-.vote-setup__suggest-title {
-  align-items: center;
-  color: var(--violet);
-  display: flex;
-  font-size: 13px;
-  font-weight: 850;
-  gap: 6px;
-  letter-spacing: 0.02em;
-  margin: 0 0 10px;
-}
-
-.vote-setup__suggest-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.vote-setup__suggest-list li {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.vote-setup__suggest-icon {
-  align-items: center;
-  background: rgba(244, 63, 94, 0.1);
-  border-radius: 10px;
-  color: #e11d48;
-  display: inline-flex;
-  height: 30px;
-  justify-content: center;
-  width: 30px;
-}
-
-.vote-setup__suggest-icon .material-symbols-rounded {
-  font-size: 18px;
-}
-
-.vote-setup__suggest-label {
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 800;
-  min-width: 96px;
-}
-
-.vote-setup__suggest-list strong {
-  color: var(--violet);
-  font-size: 20px;
-  font-weight: 900;
-  min-width: 28px;
-  text-align: right;
-}
-
-.vote-setup__suggest-unit {
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .vote-setup__chips {
   display: flex;
   flex-wrap: wrap;
@@ -507,18 +405,6 @@ async function open() {
   text-align: center;
 }
 
-.vote-setup__note {
-  align-items: center;
-  background: rgba(0, 102, 255, 0.06);
-  border-radius: 14px;
-  color: var(--muted);
-  display: flex;
-  font-size: 13px;
-  gap: 8px;
-  margin: 0;
-  padding: 12px 14px;
-}
-
 .vote-setup__error {
   align-items: center;
   color: #be123c;
@@ -562,34 +448,36 @@ async function open() {
   }
 }
 
-.vote-setup { gap:10px; color:#35465a; }
-.vote-setup__title { font-size:clamp(23px,3vw,30px); line-height:1.4; font-weight:800; }
-.vote-setup__lead { font-size:14px; max-width:58ch; }
-.vote-setup__trip { margin:0 0 10px; color:#287cbd; font-size:12px; }
-.vote-setup__panel { padding:0; border:0; box-shadow:none; border-radius:0; gap:16px; }
-.vote-setup__row { border-radius:16px; padding:20px; background:#fff; border-color:#dfeaf5; }
-.vote-setup__row--question { background:#f8fbff; }
+.vote-setup { width:min(100%,720px); margin:0 auto; gap:8px; padding:4px 2px 2px; color:#35465a; }
+.vote-setup .page-hero__eyebrow { margin-bottom:0; font-size:10px; }
+.vote-setup__title { font-size:clamp(22px,2.7vw,27px); line-height:1.35; font-weight:750; }
+.vote-setup__lead { max-width:62ch; margin:0; font-size:13px; line-height:1.6; }
+.vote-setup__trip { width:max-content; max-width:100%; margin:2px 0 6px; padding:5px 10px; border-radius:999px; background:#edf6fc; color:#427ead; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vote-setup__panel { gap:12px; padding:18px; border:1px solid #dfeaf5; border-radius:20px; background:#fff; box-shadow:0 12px 32px rgb(52 94 125 / 8%); }
+.vote-setup__row { border-radius:15px; padding:16px; background:#fff; border-color:#dfeaf5; }
+.vote-setup__row--question { background:#f6faff; }
 .vote-setup__step { margin-right:6px; color:#328be0; font-size:12px; }
-.vote-setup__row-icon, .vote-setup__suggest-icon { background:#eaf4ff; color:#328be0; }
-.vote-setup__suggest { border:1px solid #dfeaf5; background:#f1f8ff; border-radius:16px; padding:20px; }
-.vote-setup__suggest-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
-.vote-setup__suggest-list li { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
-.vote-setup__suggest-list strong { text-align:left; color:#287cbd; font-size:28px; }
-.vote-setup__suggest-label { min-width:0; font-size:13px; }
-.vote-setup__suggest-unit { font-size:11px; line-height:1.6; }
-.vote-setup__suggest-title { color:#287cbd; margin-bottom:16px; }
-.vote-setup__note { background:transparent; padding:0 4px; line-height:1.7; align-items:flex-start; font-size:12px; }
-.vote-setup__footer { position:sticky; bottom:-20px; z-index:3; display:flex; align-items:center; gap:16px; justify-content:space-between; background:#fff; border-top:1px solid #dfeaf5; padding:16px 0; }
-.vote-setup__footer p { font-size:12px; color:#647c92; margin:0; }
-.vote-setup__cta { width:auto; min-width:180px; border-radius:12px; background:#328be0; font-weight:700; }
+.vote-setup__row-icon { width:38px; height:38px; border-radius:12px; background:#eaf4ff; color:#328be0; }
+.vote-setup__row-copy strong { font-size:14px; }
+.vote-setup__row-copy > span { font-size:12px; }
+.vote-setup__stepper { background:#fff; border-color:#d5e5f1; }
+.vote-setup__stepper button { width:32px; height:32px; }
+.vote-setup__stepper strong { font-size:16px; }
+.vote-setup__footer { display:flex; justify-content:flex-end; padding:4px 0 0; }
+.vote-setup__cta { width:auto; min-width:164px; min-height:44px; padding:0 18px; border:1px solid #427ead; border-radius:999px; background:#427ead; box-shadow:0 5px 14px rgb(49 95 129 / 18%); font-size:13px; font-weight:700; transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.vote-setup__cta:hover:not(:disabled) { background:#356d99; border-color:#356d99; box-shadow:0 7px 18px rgb(49 95 129 / 24%); transform:translateY(-1px); }
+.vote-setup__cta:focus-visible { outline:2px solid #79b5e0; outline-offset:3px; }
+.vote-setup__cta .material-symbols-rounded { font-size:19px; }
 .vote-setup__stepper button:disabled { opacity:.35; cursor:not-allowed; }
 @media(max-width:520px) {
- .vote-setup__row { padding:14px; gap:10px; }
+ .vote-setup { gap:7px; }
+ .vote-setup__title { font-size:21px; }
+ .vote-setup__lead { font-size:12px; }
+ .vote-setup__panel { padding:12px; gap:10px; border-radius:17px; }
+ .vote-setup__row { padding:13px; gap:10px; }
  .vote-setup__row-icon { width:32px; height:32px; border-radius:10px; }
  .vote-setup__stepper { margin-left:42px; }
- .vote-setup__suggest { padding:16px; }
- .vote-setup__suggest-list { gap:8px; }
- .vote-setup__footer { flex-direction:column; gap:8px; bottom:-16px; }
+ .vote-setup__footer { padding-top:2px; }
  .vote-setup__cta { width:100%; }
 }
 .vote-setup__destination { color:#287cbd; font-size:13px; margin:4px 0; }

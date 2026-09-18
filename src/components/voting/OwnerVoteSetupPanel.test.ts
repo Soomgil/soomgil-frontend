@@ -61,26 +61,16 @@ describe('OwnerVoteSetupPanel', () => {
     expect(chips[0].text()).toContain('제주시')
   })
 
-  it('하루에 갈 곳 수만 정하면 여행 일수로 선정·후보·스티커 개수를 제안한다', async () => {
+  it('하루에 갈 곳 수를 범위 안에서 조절한다', async () => {
     const wrapper = mountPanel({ tripDays: 3 })
 
-    // 기본: 하루 3곳 × 3일 = 선정 9, 후보 18(선정×2), 스티커 5(후보÷4 올림)
     expect(count(wrapper, 'setup-per-day-count')).toBe('3')
-    expect(count(wrapper, 'setup-selection-count')).toBe('9')
-    expect(count(wrapper, 'setup-candidate-count')).toBe('18')
-    expect(count(wrapper, 'setup-sticker-count')).toBe('5')
 
     await wrapper.get('[data-testid="setup-per-day-plus"]').trigger('click')
     expect(count(wrapper, 'setup-per-day-count')).toBe('4')
-    expect(count(wrapper, 'setup-selection-count')).toBe('12')
-    expect(count(wrapper, 'setup-candidate-count')).toBe('24')
-    expect(count(wrapper, 'setup-sticker-count')).toBe('6')
 
     for (let i = 0; i < 6; i += 1) await wrapper.get('[data-testid="setup-per-day-minus"]').trigger('click')
     expect(count(wrapper, 'setup-per-day-count')).toBe('1')
-    expect(count(wrapper, 'setup-selection-count')).toBe('3')
-    expect(count(wrapper, 'setup-candidate-count')).toBe('6')
-    expect(count(wrapper, 'setup-sticker-count')).toBe('3')
 
     for (let i = 0; i < 10; i += 1) await wrapper.get('[data-testid="setup-per-day-plus"]').trigger('click')
     expect(count(wrapper, 'setup-per-day-count')).toBe('6')
@@ -90,7 +80,7 @@ describe('OwnerVoteSetupPanel', () => {
     const wrapper = mountPanel({ tripDays: null })
 
     expect(wrapper.text()).toContain('2일')
-    expect(count(wrapper, 'setup-selection-count')).toBe('6')
+    expect(wrapper.find('.vote-setup__suggest').exists()).toBe(false)
   })
 
   it('시작하면 제안된 개수와 지역 코드를 함께 보낸다', async () => {

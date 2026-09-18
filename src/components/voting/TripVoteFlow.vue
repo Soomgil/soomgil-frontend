@@ -136,23 +136,16 @@ async function handleSessionOpened() {
 
 /**
  * 페이지에 머무는 동안 세션이 OPEN → COMPLETED로 넘어가면
- * 부모 모달에 완료를 알린다.
- * 처음부터 COMPLETED로 열린 경우는 결과 화면을 보여준다.
+ * 모달을 닫지 않고 결과를 불러와 즉시 결과 화면으로 전환한다.
  */
-let sawOpenSession = false
 watch(
   () => voting.session?.status,
   (status) => {
     if (historical.value) return
     if (status === 'OPEN') {
-      sawOpenSession = true
       return
     }
     if (status === 'COMPLETED') {
-      if (sawOpenSession) {
-        goToMap(true)
-        return
-      }
       void voting.loadResult()
     }
   },
@@ -180,7 +173,6 @@ onMounted(async () => {
     return
   }
   if (voting.session?.status === 'OPEN') {
-    sawOpenSession = true
     voting.startPolling()
   } else if (voting.session?.status === 'COMPLETED') {
     void voting.loadResult()

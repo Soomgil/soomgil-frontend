@@ -83,7 +83,10 @@ function select(provider: string, id: string) {
       matchedMembers: matched, matchedMemberCount: matched.length, totalMemberCount: matched.length, rank: null, distanceMeters: null, recommendationReason: null, matchPercentage: null })
   return true
 }
-defineExpose({ select })
+function close() {
+  open.value = false
+}
+defineExpose({ select, close })
 </script>
 
 <template>
