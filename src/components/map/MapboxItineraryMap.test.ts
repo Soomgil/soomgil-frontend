@@ -28,6 +28,8 @@ const mapbox = vi.hoisted(() => {
       getNorth: () => 37.7,
     })),
     getZoom: vi.fn(() => 12),
+    getPitch: vi.fn(() => 0),
+    getBearing: vi.fn(() => 0),
     on: vi.fn((event: string, callback: () => void) => handlers.set(event, callback)),
     once: vi.fn((event: string, callback: () => void) => handlers.set(event, callback)),
     remove: vi.fn(),
@@ -311,7 +313,10 @@ describe('MapboxItineraryMap', () => {
     expect(markerOptions.element.classList.contains('day-color-3')).toBe(true)
     expect(markerOptions.element.textContent).toContain('추천 명소')
     expect((markerOptions.element.querySelector('img') as HTMLImageElement).src).toBe('https://cdn.example.com/pick.jpg')
-    expect(mapbox.map.easeTo).toHaveBeenLastCalledWith({ center: [129.1604, 35.1587], zoom: 14 })
+    expect(mapbox.map.easeTo).toHaveBeenLastCalledWith({
+      center: [129.1604, 35.1587],
+      duration: 350,
+    })
 
     markerOptions.element.click()
     expect(wrapper.emitted('selectNearbyPlace')).toEqual([['KTO', 'pick-1']])

@@ -10,8 +10,7 @@ const emit = defineEmits<{
   select: [place: Place, recommendation: PlaceRecommendation]
 }>()
 const open = ref(false)
-const enabled = ref(false)
-let hasOpened = false
+const enabled = ref(true)
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 const mode = ref<'mine' | 'colleagues' | 'together'>('mine')
 const memberId = ref('')
@@ -54,12 +53,11 @@ async function load() {
   } catch { if (request === revision) error.value = true }
   finally { if (request === revision) loading.value = false }
 }
-watch(open, value => { if (value && !hasOpened) { hasOpened = true; enabled.value = true } })
 watch(enabled, value => {
   clearTimeout(refreshTimer)
   if (value) void load()
   else { revision++; loading.value = false }
-})
+}, { immediate: true })
 watch(() => [props.tripId, props.userId], () => {
   revision++; clearTimeout(refreshTimer); rows.value = []; loadedBbox.value = ''; memberId.value = ''; loading.value = false
   if (enabled.value) void load()
@@ -90,7 +88,7 @@ defineExpose({ select })
 
 <template>
   <div class="map-taste-control" @keydown.esc.stop="open = false">
-    <button class="taste-toggle" data-testid="taste-toggle" :class="{ active: enabled }" :aria-expanded="open" aria-controls="map-taste-panel" @click="open = !open">
+    <button class="taste-toggle" data-testid="taste-toggle" :class="{ active: enabled }" :aria-pressed="enabled" :aria-expanded="open" aria-controls="map-taste-panel" @click="open = !open">
       <span class="material-symbols-rounded" aria-hidden="true">favorite</span>취향 보기
     </button>
     <section :aria-busy="loading" v-if="open" id="map-taste-panel" class="taste-panel" aria-label="취향 보기 설정">
@@ -118,8 +116,9 @@ defineExpose({ select })
 
 <style scoped>
 .map-taste-control { position: relative; }
-.taste-toggle { display:flex; align-items:center; gap:6px; min-height:40px; padding:8px 14px; border:1px solid #d7e7f3; border-radius:999px; background:#fff; color:#171717; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
-.taste-toggle.active { background:#e8f4ff; border-color:#98c9ec; }
+.taste-toggle { display:flex; align-items:center; gap:6px; min-height:40px; padding:8px 14px; border:1px solid #d7e7f3; border-radius:999px; background:#fff; color:#171717; font:inherit; font-size:13px; font-weight:700; cursor:pointer; transition:background-color .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease,transform .16s ease; }
+.taste-toggle.active { background:#fff0f2; border-color:#ef9aa4; color:#b72f3e; box-shadow:0 5px 14px rgb(229 57 69 / 14%); }
+.taste-toggle.active:hover { background:#ffe4e8; border-color:#e76f7c; color:#a82534; transform:translateY(-1px); }
 .taste-toggle .material-symbols-rounded { font-size:18px; color:#e53945; font-variation-settings:'FILL' 1; }
 .taste-panel { position:absolute; top:calc(100% + 10px); right:0; width:330px; padding:18px; border:1px solid #dbe8f2; border-radius:22px; background:#fff; color:#354e65; box-shadow:0 12px 36px #254c721a; max-height:70svh; overflow:auto; }
 .taste-panel .taste-description { margin:0 0 12px; padding:0 2px; line-height:1.65; }

@@ -47,7 +47,9 @@ const connectedApis = vi.hoisted(() => ({
   swipe: {
     getRecommendations: vi.fn(),
     listSaved: vi.fn(),
+    getReaction: vi.fn(),
     react: vi.fn(),
+    removeReaction: vi.fn(),
     savePlace: vi.fn(),
     unsavePlace: vi.fn(),
   },
@@ -225,7 +227,9 @@ describe('RoutePage itinerary integration', () => {
       items: [],
       page: { page: 0, size: 100, totalElements: 0, totalPages: 0, sort: [] },
     })
+    connectedApis.swipe.getReaction.mockResolvedValue(null)
     connectedApis.swipe.react.mockResolvedValue({ reaction: 'SUPER_LIKE', savedPlaceEligible: true })
+    connectedApis.swipe.removeReaction.mockResolvedValue(undefined)
     connectedApis.swipe.savePlace.mockResolvedValue({
       id: 'saved-1',
       place: {
@@ -1313,7 +1317,12 @@ describe('RoutePage itinerary integration', () => {
 
     await wrapper.get('.add-stop-dashed').trigger('click')
     expect(wrapper.find('.search-panel-header .search-panel-custom-trigger').exists()).toBe(false)
-    await wrapper.get('.add-stop-container .search-panel-custom-trigger').trigger('click')
+    const customScheduleTrigger = wrapper.get('.add-stop-container .search-panel-custom-trigger')
+    await customScheduleTrigger.trigger('click')
+    const customScheduleForm = wrapper.get('.add-stop-container .custom-schedule-form')
+    expect(wrapper.find('.search-panel-body .custom-schedule-form').exists()).toBe(false)
+    expect(customScheduleForm.element.compareDocumentPosition(customScheduleTrigger.element) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     await wrapper.get('#inline-custom-title').setValue('점심 식사')
     await wrapper.get('#inline-custom-submit').trigger('click')
     expect(holder.state.createItem).toHaveBeenCalledWith({
@@ -2018,7 +2027,7 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('.detailbar-main-title').text()).toBe('주변 명소')
     expect(wrapper.get('.detailbar-desc-text').text()).toContain('도심에서 산책하기 좋은')
     const saveButton = wrapper.get('.detailbar-save-place-btn')
-    expect(saveButton.text()).toContain('슈퍼라이크에 추가')
+    expect(saveButton.text()).toContain('슈퍼라이크 추가')
     await saveButton.trigger('click')
     await flushPromises()
     expect(connectedApis.swipe.react).toHaveBeenCalledWith('KTO', 'nearby-1', 'SUPER_LIKE')

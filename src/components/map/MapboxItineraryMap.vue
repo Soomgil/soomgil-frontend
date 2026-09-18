@@ -104,6 +104,7 @@ const emit = defineEmits<{
   selectPlace: [placeProvider: string | undefined, placeId: string | undefined, stopId: string]
   selectNearbyPlace: [placeProvider: string, placeId: string]
   viewportChange: [viewport: Viewport]
+  orientationChange: [orientation: { pitch: number; bearing: number }]
   drawingCreate: [drawing: MapDrawingDraft]
   drawingErase: [drawingIds: string[]]
   drawingPreview: [event: DrawingPreviewEvent]
@@ -135,6 +136,7 @@ let initializationSequence = 0
 let lastEmittedViewport = ''
 let lastFittedStopsKey = ''
 let wasConnectingRoute = false
+let preserveCameraForNextStopsChange = false
 
 const STANDARD_VIEW_CAMERA = { pitch: 60, bearing: -20 }
 const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16', '#f59e0b', '#64748b']
@@ -165,6 +167,17 @@ function syncStandardViewCamera(isStandardView: boolean) {
 }
 
 watch(() => props.standardView, syncStandardViewCamera)
+
+function resetOrientation() {
+  if (!map) return
+  map.easeTo({ pitch: 0, bearing: 0, duration: 450 })
+}
+
+function preserveCameraOnNextStopsChange() {
+  preserveCameraForNextStopsChange = true
+}
+
+defineExpose({ resetOrientation, preserveCameraOnNextStopsChange })
 
 function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? `day-color-${DAY_ROUTE_COLORS.length}` : `day-color-${((dayIndex - 1) % DAY_ROUTE_COLORS.length) + 1}`
@@ -587,6 +600,11 @@ function renderStops() {
 function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
   if (!map) return
   const stopsKey = props.stops.map((stop) => `${stop.id}:${stop.lng}:${stop.lat}`).sort().join('|')
+  if (preserveCameraForNextStopsChange) {
+    preserveCameraForNextStopsChange = false
+    lastFittedStopsKey = stopsKey
+    return
+  }
   const preserveCamera = props.navigationMode || wasConnectingRoute
   wasConnectingRoute = props.navigationMode
   if (preserveCamera) {
@@ -615,7 +633,10 @@ function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
 
 function focusPreviewPlace() {
   if (!map || !props.previewPlace) return
-  map.easeTo({ center: [props.previewPlace.lng, props.previewPlace.lat], zoom: 14 })
+  map.easeTo({
+    center: [props.previewPlace.lng, props.previewPlace.lat],
+    duration: 350,
+  })
 }
 
 function emitViewport() {
@@ -632,6 +653,11 @@ function emitViewport() {
   if (viewportKey === lastEmittedViewport) return
   lastEmittedViewport = viewportKey
   emit('viewportChange', viewport)
+}
+
+function emitOrientation() {
+  if (!map) return
+  emit('orientationChange', { pitch: map.getPitch(), bearing: map.getBearing() })
 }
 
 function updateDrawingProjection() {
@@ -718,13 +744,13 @@ async function initializeMap() {
       renderTasteMarkers()
       updateDrawingProjection()
     })
-    createdMap.once('idle', emitViewport)
+    createdMap.once('idle', () => { emitViewport(); emitOrientation() })
     createdMap.on('error', () => {
       if (sequence !== initializationSequence || map !== createdMap || styleReady) return
       mapError.value = '지도를 불러오지 못했습니다.'
       canRetry.value = true
     })
-    createdMap.on('moveend', () => { emitViewport(); renderTasteMarkers() })
+    createdMap.on('moveend', () => { emitViewport(); emitOrientation(); renderTasteMarkers() })
     createdMap.on('move', updateDrawingProjection)
     createdMap.on('resize', updateDrawingProjection)
     createdMap.on('mousemove', (event) => emit('cursorMove', { lng: event.lngLat.lng, lat: event.lngLat.lat }))
@@ -826,6 +852,11 @@ onBeforeUnmount(() => {
   z-index: 2;
 }
 
+.itinerary-map :deep(.mapboxgl-marker.map-pin-card),
+.itinerary-map :deep(.mapboxgl-marker.map-preview-place-card) {
+  z-index: 6;
+}
+
 .itinerary-map :deep(.mapboxgl-marker.map-taste-marker),
 .itinerary-map :deep(.mapboxgl-marker.map-taste-cluster) { z-index:8; }
 .itinerary-map :deep(.mapboxgl-marker.map-taste-cluster[open]) { z-index:9; }
@@ -892,10 +923,11 @@ onBeforeUnmount(() => {
   padding: 8px 10px 10px 8px;
   border: 1px solid var(--day-color-border, rgba(15, 23, 42, 0.12));
   border-radius: 8px;
-  background: linear-gradient(135deg, #ffffff, var(--day-color-bg, #ffffff));
+  background: #ffffff;
   color: #0f172a;
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.2);
   cursor: pointer;
+  opacity: 1 !important;
   text-align: left;
 }
 
@@ -914,6 +946,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 1;
 }
 
 .itinerary-map :deep(.map-preview-place-info) {
@@ -950,6 +983,7 @@ onBeforeUnmount(() => {
   border-right: 1px solid var(--day-color-border, rgba(15, 23, 42, 0.12));
   border-bottom: 1px solid var(--day-color-border, rgba(15, 23, 42, 0.12));
   background: #ffffff;
+  opacity: 1;
   transform: translateX(-50%) rotate(45deg);
 }
 
