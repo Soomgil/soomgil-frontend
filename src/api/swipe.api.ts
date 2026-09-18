@@ -109,6 +109,10 @@ export const swipeApi = {
     return response.data
   },
 
+  async removeReaction(provider: PlaceProvider, externalPlaceId: string): Promise<void> {
+    await http.delete(`/places/${provider}/${externalPlaceId}/preference-reaction`)
+  },
+
   async getTagStatuses(externalPlaceIds: string[]): Promise<SwipeTagStatus[]> {
     const response = await http.get<SwipeTagStatus[]>('/swipe/tags', {
       params: { externalPlaceIds: externalPlaceIds.join(',') },

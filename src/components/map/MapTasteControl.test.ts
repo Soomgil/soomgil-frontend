@@ -9,11 +9,13 @@ const items = [
   { provider: 'KTO', externalPlaceId: '1', name: 'Shared', lat: 33, lng: 126, userId: 'friend', displayName: 'Friend', reaction: 'SUPER_LIKE' },
   { provider: 'KTO', externalPlaceId: '2', name: 'Mine', lat: 33.1, lng: 126, userId: 'me', displayName: 'Me', reaction: 'LIKE' },
 ]
-it('loads only when opened, filters actual reactions and keeps markers after closing', async () => {
+it('starts enabled, filters actual reactions and keeps markers after closing', async () => {
   vi.mocked(swipeApi.getTripPreferencePlaces).mockResolvedValue(items as any)
   const w = mount(MapTasteControl, { props: { tripId: 'trip', bbox: '126,33,127,34', userId: 'me' } })
-  expect(swipeApi.getTripPreferencePlaces).not.toHaveBeenCalled()
-  await w.get('[data-testid="taste-toggle"]').trigger('click'); await flushPromises()
+  await flushPromises()
+  expect(swipeApi.getTripPreferencePlaces).toHaveBeenCalledWith('trip', '126,33,127,34')
+  expect(w.get('[data-testid="taste-toggle"]').classes()).toContain('active')
+  await w.get('[data-testid="taste-toggle"]').trigger('click')
   expect(w.find('[data-testid="taste-place"]').exists()).toBe(false)
   expect(w.emitted('places')?.at(-1)?.[0]).toHaveLength(2)
   await w.get('[data-testid="taste-together"]').trigger('click')
