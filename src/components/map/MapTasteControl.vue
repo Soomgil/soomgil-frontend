@@ -94,8 +94,7 @@ defineExpose({ select })
       <span class="material-symbols-rounded" aria-hidden="true">favorite</span>취향 보기
     </button>
     <section v-if="open" id="map-taste-panel" class="taste-panel" aria-label="취향 보기 설정">
-      <header><button class="taste-close" aria-label="닫기" @click="open = false">×</button></header>
-      <p>여행 멤버가 좋아한 장소를 지도에서 찾아보세요.</p>
+      <p class="taste-description">여행 멤버가 좋아한 장소를 지도에서 찾아보세요.</p>
       <div class="taste-tabs" aria-label="취향 필터" :style="{ '--taste-tab-index': mode === 'mine' ? 0 : mode === 'colleagues' ? 1 : 2 }">
         <span class="taste-tab-indicator" aria-hidden="true"></span>
         <button data-testid="taste-mine" :aria-pressed="mode === 'mine'" @click="mode = 'mine'">내 취향</button>
@@ -124,7 +123,8 @@ defineExpose({ select })
 .taste-toggle.active { background:#e8f4ff; border-color:#98c9ec; }
 .taste-toggle .material-symbols-rounded { font-size:18px; color:#e53945; font-variation-settings:'FILL' 1; }
 .taste-panel { position:absolute; top:calc(100% + 10px); right:0; width:330px; padding:18px; border:1px solid #dbe8f2; border-radius:22px; background:#fff; color:#354e65; box-shadow:0 12px 36px #254c721a; max-height:70svh; overflow:auto; }
-header { display:flex; align-items:center; justify-content:flex-end; } header strong { font-size:16px; }
+.taste-panel .taste-description { margin:0 0 12px; padding:0 2px; line-height:1.65; }
+.taste-tabs { margin-bottom:8px; }
 .taste-panel p, footer { font-size:12px; line-height:1.6; color:#73889b; }
 .taste-panel button { cursor:pointer; font-family:inherit; }
 .taste-close { border:0; border-radius:50%; width:30px; height:30px; font-size:22px; color:#607c92; background:#f1f7fb; }
@@ -142,7 +142,7 @@ header { display:flex; align-items:center; justify-content:flex-end; } header st
 footer { margin-top:10px; padding:0; min-height:0; height:auto; background:none; border:0; text-align:left; font-size:11px; }
 button:focus-visible { outline:2px solid #488fc4; outline-offset:3px; }
 @media(max-width:767px) { .taste-panel { position:fixed; top:auto; bottom:calc(80px + env(safe-area-inset-bottom)); left:12px; right:12px; width:auto; max-height:calc(100svh - 240px); } .taste-toggle { padding:7px 10px; font-size:12px; } }
-.taste-switch-row { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; border:0; background:transparent; padding:14px 0; color:#354e65; font-size:12px; text-align:left; }
+.taste-switch-row { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; border:0; background:transparent; min-height:38px; padding:7px 0; color:#354e65; font-size:12px; text-align:left; }
 .taste-apply { flex:1; width:auto; padding:0; margin-right:12px; font-weight:700; }
 .taste-switch { position:relative; width:36px; height:22px; flex-shrink:0; border-radius:99px; background:#ccd9e3; transition:background .2s; }
 .taste-switch::after { content:''; position:absolute; width:16px; height:16px; left:3px; top:3px; border-radius:50%; background:white; box-shadow:0 1px 3px #254c7226; transition:transform .28s cubic-bezier(.22,1,.36,1); }
