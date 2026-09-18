@@ -2,7 +2,7 @@
 import { createFeedWheelGate } from "@/utils/feedWheelGate";
 import { formatUiText } from '@/i18n/ui-localizer'
 import { translateUiText } from '@/i18n/ui-localizer'
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { communityApi } from "@/api/community.api";
 import { userApi } from "@/api/user.api";
@@ -96,12 +96,7 @@ function openUserProfile(userId: string | null) {
   if (userId) router.push(`/mypage/${userId}`);
 }
 
-const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth);
-const perPage = computed(() => latestView.value === 'list' ? 2 : (viewportWidth.value <= 760 ? 2 : viewportWidth.value <= 1100 ? 3 : 4) * 2);
-function updateViewportWidth() { viewportWidth.value = window.innerWidth; }
-onMounted(() => window.addEventListener('resize', updateViewportWidth));
-onUnmounted(() => window.removeEventListener('resize', updateViewportWidth));
-watch(perPage, () => { currentPage.value = 1; });
+const PER_PAGE = 8;
 
 function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryView {
   const detail = "snapshot" in post ? post : null;
@@ -183,11 +178,11 @@ function openPopularStory(id: string) {
   if (story) void openStory(story);
 }
 
-const totalPages = computed(() => Math.ceil(filteredStories.value.length / perPage.value));
+const totalPages = computed(() => Math.ceil(filteredStories.value.length / PER_PAGE));
 
 const pagedStories = computed(() => {
-  const start = (currentPage.value - 1) * perPage.value;
-  return filteredStories.value.slice(start, start + perPage.value);
+  const start = (currentPage.value - 1) * PER_PAGE;
+  return filteredStories.value.slice(start, start + PER_PAGE);
 });
 
 async function loadPosts() {

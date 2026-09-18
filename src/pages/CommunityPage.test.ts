@@ -27,7 +27,7 @@ describe('최근 여행기 보기 전환', () => {
     expect(wrapper.get('[data-stories-list]').attributes('data-view')).toBe('grid')
     wrapper.unmount()
   })
-  it('shows two rows per page at each breakpoint and in list mode', async () => {
+  it('keeps eight posts per page at every breakpoint and in list mode', async () => {
     mocks.getPosts.mockResolvedValue({items:Array.from({length:12},(_,i)=>({id:String(i),title:'여행 '+i,hashtags:[],likeCount:0,commentCount:0,publishedAt:'2026-09-17T00:00:00Z'}))})
     const oldWidth=window.innerWidth
     Object.defineProperty(window,'innerWidth',{value:1440,writable:true,configurable:true})
@@ -35,11 +35,11 @@ describe('최근 여행기 보기 전환', () => {
     await flushPromises()
     expect(wrapper.findAll('[data-stories-list] .story-tile')).toHaveLength(8)
     window.innerWidth=900;window.dispatchEvent(new Event('resize'));await flushPromises()
-    expect(wrapper.findAll('[data-stories-list] .story-tile')).toHaveLength(6)
+    expect(wrapper.findAll('[data-stories-list] .story-tile')).toHaveLength(8)
     window.innerWidth=390;window.dispatchEvent(new Event('resize'));await flushPromises()
-    expect(wrapper.findAll('[data-stories-list] .story-tile')).toHaveLength(4)
+    expect(wrapper.findAll('[data-stories-list] .story-tile')).toHaveLength(8)
     await wrapper.get('[aria-label="리스트 보기"]').trigger('click')
-    expect(wrapper.findAll('[data-stories-list] .story-tile')).toHaveLength(2)
+    expect(wrapper.findAll('[data-stories-list] .story-tile')).toHaveLength(8)
     wrapper.unmount();window.innerWidth=oldWidth
   })
 
