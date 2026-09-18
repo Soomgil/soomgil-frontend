@@ -93,7 +93,7 @@ defineExpose({ select })
     <button class="taste-toggle" data-testid="taste-toggle" :class="{ active: enabled }" :aria-expanded="open" aria-controls="map-taste-panel" @click="open = !open">
       <span class="material-symbols-rounded" aria-hidden="true">favorite</span>취향 보기
     </button>
-    <section v-if="open" id="map-taste-panel" class="taste-panel" aria-label="취향 보기 설정">
+    <section :aria-busy="loading" v-if="open" id="map-taste-panel" class="taste-panel" aria-label="취향 보기 설정">
       <p class="taste-description">여행 멤버가 좋아한 장소를 지도에서 찾아보세요.</p>
       <div class="taste-tabs" aria-label="취향 필터" :style="{ '--taste-tab-index': mode === 'mine' ? 0 : mode === 'colleagues' ? 1 : 2 }">
         <span class="taste-tab-indicator" aria-hidden="true"></span>
@@ -109,10 +109,9 @@ defineExpose({ select })
       </div>
       <button type="button" role="switch" class="taste-switch-row" data-testid="taste-enabled" :aria-checked="enabled" @click="enabled = !enabled"><span>지도에 취향 표시</span><span class="taste-switch" aria-hidden="true"></span></button>
       <button type="button" role="switch" class="taste-switch-row" data-testid="taste-super" :aria-checked="superOnly" @click="superOnly = !superOnly"><span>슈퍼라이크만 보기</span><span class="taste-switch" aria-hidden="true"></span></button>
-      <p v-if="loading" role="status">불러오는 중…</p>
-      <div v-else-if="error" role="alert"><p>취향 장소를 불러오지 못했습니다.</p><button class="taste-reload" @click="load">다시 시도</button></div>
+      <div v-if="error && !loading" role="alert"><p>취향 장소를 불러오지 못했습니다.</p><button class="taste-reload" @click="load">다시 시도</button></div>
       <p v-else-if="!bbox">지도를 움직여 탐색할 지역을 선택해 주세요.</p>
-      <p v-else-if="enabled && !places.length">이 지역에 표시할 선호 장소가 없어요.</p>
+      <p v-else-if="enabled && !loading && !places.length">이 지역에 표시할 선호 장소가 없어요.</p>
     </section>
   </div>
 </template>

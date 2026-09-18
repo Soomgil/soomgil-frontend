@@ -826,6 +826,10 @@ onBeforeUnmount(() => {
   z-index: 2;
 }
 
+.itinerary-map :deep(.mapboxgl-marker.map-taste-marker),
+.itinerary-map :deep(.mapboxgl-marker.map-taste-cluster) { z-index:8; }
+.itinerary-map :deep(.mapboxgl-marker.map-taste-cluster[open]) { z-index:9; }
+
 .itinerary-map :deep(.map-route-mode-marker) {
   display: inline-flex;
   align-items: center;

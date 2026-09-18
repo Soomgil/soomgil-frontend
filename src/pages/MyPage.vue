@@ -346,7 +346,7 @@ async function loadPreferences() {
     }
     travelPreferences.value = {
       tags: data.preferredTags,
-      styles: data.topCategories.map((c) => ({
+      styles: [...data.topCategories].sort((a, b) => b.percentage - a.percentage).map((c) => ({
         label: c.category,
         percent: c.percentage,
         color: GROUP_COLORS[c.groupCode] ?? DEFAULT_COLOR,
@@ -544,7 +544,6 @@ function handleUserClick(userId: string) {
                 <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">explore</span>여행 취향
               </h2>
             </div>
-            <p class="preference-intro">데이터 기반 나의 여행 스타일</p>
 
             <div v-if="preferenceStatus !== 'ready'" class="pref-empty" role="status">
               <span class="material-symbols-rounded pref-empty-icon">hourglass_top</span>
@@ -555,10 +554,6 @@ function handleUserClick(userId: string) {
             </div>
 
             <template v-else>
-            <div v-if="travelPreferences.styles[0]" class="taste-signature">
-              <span class="taste-signature-symbol material-symbols-rounded" aria-hidden="true">explore</span>
-              <div><span class="taste-eyebrow">TRAVEL DNA</span><h3 data-no-translate>{{ travelPreferences.styles[0].label }}</h3><p class="taste-signature-description" data-no-translate>{{ travelPreferences.insight }}</p></div>
-            </div>
             <!-- 태그 칩 -->
             <div class="pref-tag-list" data-no-translate>
               <span v-for="tag in travelPreferences.tags" :key="tag" class="pref-tag-chip">#{{ tag }}</span>
@@ -566,7 +561,7 @@ function handleUserClick(userId: string) {
 
             <!-- 선호 스타일 progress bar -->
             <div class="pref-style-list">
-              <div v-for="(style, index) in travelPreferences.styles" :key="style.label" class="pref-style-bar">
+              <div v-for="(style, index) in travelPreferences.styles" :key="style.label" class="pref-style-bar" :class="{ 'is-first': index === 0, 'is-second': index === 1 }">
                 <div class="pref-style-header">
                   <span class="taste-rank" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span><span class="pref-style-label" data-no-translate>{{ style.label }}</span>
                   <span class="pref-style-percent">{{ style.percent }}%</span>
@@ -1207,4 +1202,14 @@ function handleUserClick(userId: string) {
 .preference-panel .pref-style-track { height:5px; background:#edf3f8; border-radius:99px; }
 @media(max-width:1000px) { .keepsake-board .mypage-places-slider { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:600px) { .keepsake-board { padding:18px 14px; }.keepsake-board .mypage-places-slider { grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px 12px; }.taste-signature { padding:16px; gap:12px; }.taste-signature h3 { font-size:20px; } }
+
+.preference-panel .pref-style-bar.is-first { padding:18px; border-color:#a8cfea; background:linear-gradient(120deg,#eaf5ff,#f7fbff); box-shadow:0 5px 16px #4b8db614; }
+.preference-panel .is-first .pref-style-percent { font-size:25px; font-weight:800; color:#286eaa; line-height:1.2; }
+.preference-panel .is-first .pref-style-label { font-size:15px; font-weight:750; color:#345a78; }
+.preference-panel .is-first .taste-rank { color:#4f90bd; font-weight:800; }
+.preference-panel .is-first .pref-style-track { height:9px; }
+.preference-panel .pref-style-bar.is-second { border-color:#cfe1ee; background:#f6fafe; padding:15px; }
+.preference-panel .is-second .pref-style-percent { font-size:18px; font-weight:750; color:#5185ad; }
+.preference-panel .is-second .pref-style-label { font-size:13px; font-weight:700; }
+.preference-panel .is-second .pref-style-track { height:7px; }
 </style>

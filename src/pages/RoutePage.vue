@@ -7866,8 +7866,8 @@ function textAvatarStyle(index: unknown) {
 </style>
 
 <style scoped>
-.route-page-section .add-stop-container .search-panel-custom-trigger { width:100%; margin:0; border:1px solid #b9d8ee; border-radius:999px; background:#edf6fc; color:#397dab; }
-.route-page-section .add-stop-container .search-panel-custom-trigger:hover { background:#deeffb; border-color:#94c1e1; }
+.route-page-section .add-stop-container .search-panel-custom-trigger { width:100%; margin:0; border:1px solid #4286bd; border-radius:999px; background:#4286bd; color:#fff; box-shadow:0 4px 12px #4286bd26; }
+.route-page-section .add-stop-container .search-panel-custom-trigger:hover { background:#3376ad; border-color:#3376ad; }
 .route-page-section .search-panel-body { overflow-y:auto; padding-bottom:88px; }
 #search-panel-back { border-radius:999px; border:1px solid #dfe7ee; background:#fff; color:#396a9e; box-shadow:none; min-height:40px; padding:8px 16px; }
 #search-panel-back:hover { background:#f1f6fb; border-color:#b7cde2; }

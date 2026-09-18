@@ -84,8 +84,8 @@ watch(totalPages, count => { page.value = Math.min(page.value, count) })
 </template>
 
 <style scoped>
-.saved-board-panel { width:min(960px,calc(100vw - 24px)); max-height:92dvh; background:#fff; border-radius:24px; overflow:hidden; }
-.saved-board-content { display:flex; flex-direction:column; max-height:92dvh; padding:28px; gap:18px; }
+.saved-board-panel { width:min(960px,calc(100vw - 24px)); height:min(760px,92dvh); max-height:92dvh; background:#fff; border-radius:24px; overflow:hidden; }
+.saved-board-content { display:flex; flex-direction:column; height:100%; max-height:92dvh; box-sizing:border-box; padding:28px; gap:18px; }
 .saved-board-heading { padding-right:48px; flex-shrink:0; }
 .saved-board-heading h2 { margin:0; font-size:20px; }
 .saved-board-search { display:flex; gap:8px; padding:5px; background:#f4f9fd; border:1px solid #dceaf4; border-radius:999px; flex-shrink:0; }
@@ -93,7 +93,7 @@ watch(totalPages, count => { page.value = Math.min(page.value, count) })
 .saved-board-search:focus-within { outline:2px solid #9cc9e8; outline-offset:2px; }
 .saved-board-search button { display:flex; align-items:center; gap:5px; padding:9px 16px; border:0; border-radius:999px; background:#deeffb; color:#397dab; font-weight:600; cursor:pointer; white-space:nowrap; }
 .saved-board-search .material-symbols-rounded { font-size:19px; }
-.saved-note-board { overflow-y:auto; min-height:0; padding:24px 18px; border:1px solid #dfeaf2; border-radius:18px; background:radial-gradient(#b6ccd966 1px,transparent 1px) 0 0 / 16px 16px,#f0f6fa; scrollbar-width:thin; }
+.saved-note-board { flex:1; overflow-y:auto; min-height:0; padding:24px 18px; border:1px solid #dfeaf2; border-radius:18px; background:radial-gradient(#b6ccd966 1px,transparent 1px) 0 0 / 16px 16px,#f0f6fa; scrollbar-width:thin; }
 .saved-note-board .mypage-places-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:24px 18px; }
 .saved-note-board .mypage-place-card { min-width:0; padding:10px 8px 12px; position:relative; overflow:visible; border:0; border-radius:2px 2px 12px 2px; background:#fff4cf; box-shadow:2px 5px 9px #314a6217; transform:rotate(-1.5deg); }
 .saved-note-board .mypage-place-card:nth-child(3n+2) { background:#e1f1fc; transform:rotate(1.5deg); }
