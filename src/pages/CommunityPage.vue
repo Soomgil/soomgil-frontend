@@ -2782,6 +2782,12 @@ watch(
 }
 @media(prefers-reduced-motion:reduce) { .community-paper .story-tile,.story-view-toggle button { transition:none; } }
 
+/* Share the featured polaroid paper surface in both card layouts. */
+.community-paper { --community-card-paper:#fff; }
+.community-paper .story-tile,
+.community-paper .story-tile:hover,
+.community-paper .story-tile-body { background:var(--community-card-paper); }
+
 /* Compact photo collection and a bounded, scan-friendly reading list. */
 .community-paper .story-card-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px; }
 .community-paper .story-tile { min-width:0; padding:8px 8px 0; }
