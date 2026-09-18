@@ -63,7 +63,7 @@ onBeforeUnmount(() => clearInterval(timer))
 <style scoped>
 .popular-carousel { padding: 28px 32px 20px; background: linear-gradient(135deg,#f5faff,#fff 75%); border: 1px solid #e6eff7; border-radius: 24px; }
 .featured-story { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: center; gap: 60px; max-width: 960px; margin: auto; }
-.featured-polaroid { width: 100%; padding: 12px 12px 20px; background: var(--community-card-paper, #fff); border: 1px solid #e9eff5; box-shadow: 0 10px 28px #33597d14; transform: rotate(-2deg); cursor: pointer; color: #506880; }
+.featured-polaroid { width: 100%; padding: 12px 12px 20px; background: var(--community-card-paper, #fff); opacity: var(--community-card-opacity, 1); border: 1px solid #e9eff5; box-shadow: 0 10px 28px #33597d14; transform: rotate(-2deg); cursor: pointer; color: #506880; }
 .featured-photo { aspect-ratio: 4/3; overflow: hidden; background: #eaf4ff; display: grid; place-items: center; animation: photo-arrive .35s ease-out; }
 .featured-photo img { width: 100%; height: 100%; object-fit: cover; }
 .featured-photo > span { font-size: 56px; color: #8aaac7; }
