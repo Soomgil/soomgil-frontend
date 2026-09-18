@@ -2,6 +2,7 @@ import type { Router } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { useSwipeStore } from '@/stores/swipe.store'
 import { useVotingStore } from '@/stores/voting.store'
+import { useOnboardingStore } from '@/stores/onboarding.store'
 
 export function applyGuards(router: Router) {
   router.beforeEach(async (to, _from, next) => {
@@ -12,6 +13,23 @@ export function applyGuards(router: Router) {
     if (to.meta.requiresAuth && !auth.isAuthenticated) {
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return
+    }
+
+    if (auth.isAuthenticated && auth.user?.status === 'ACTIVE') {
+      const onboardingCompleted = await useOnboardingStore().ensureStatus(auth.user.id)
+      if (onboardingCompleted !== true && to.name !== 'OnboardingPreferences') {
+        next({ name: 'OnboardingPreferences', query: { redirect: to.fullPath } })
+        return
+      }
+      if (onboardingCompleted === true && to.name === 'OnboardingPreferences') {
+        const redirect = typeof to.query.redirect === 'string'
+          && to.query.redirect.startsWith('/')
+          && !to.query.redirect.startsWith('//')
+          ? to.query.redirect
+          : '/home'
+        next(redirect)
+        return
+      }
     }
 
     if (to.meta.guestOnly && auth.isAuthenticated) {
