@@ -561,7 +561,7 @@ function handleUserClick(userId: string) {
 
             <!-- 선호 스타일 progress bar -->
             <div class="pref-style-list">
-              <div v-for="(style, index) in travelPreferences.styles" :key="style.label" class="pref-style-bar" :class="{ 'is-first': index === 0, 'is-second': index === 1 }">
+              <div v-for="(style, index) in travelPreferences.styles" :key="style.label" class="pref-style-bar" :style="{ '--taste-fill': ['#7eaa97', '#aaa0c8', '#d3ae85', '#8eafbd', '#c59eac'][index % 5], '--taste-ink': ['#426c59', '#70658e', '#896845', '#526f7c', '#855e6c'][index % 5] }" :class="{ 'is-first': index === 0, 'is-second': index === 1 }">
                 <div class="pref-style-header">
                   <span class="taste-rank" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span><span class="pref-style-label" data-no-translate>{{ style.label }}</span>
                   <span class="pref-style-percent">{{ style.percent }}%</span>
@@ -1203,12 +1203,11 @@ function handleUserClick(userId: string) {
 @media(max-width:1000px) { .keepsake-board .mypage-places-slider { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:600px) { .keepsake-board { padding:18px 14px; }.keepsake-board .mypage-places-slider { grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px 12px; }.taste-signature { padding:16px; gap:12px; }.taste-signature h3 { font-size:20px; } }
 
-.preference-panel .pref-style-bar.is-first { --taste-fill:#3b91ca; border-color:#afd5ee; background:#eaf6ff; }
-.preference-panel .is-first .pref-style-percent,
+.preference-panel .pref-style-percent { color:var(--taste-ink); }
+.preference-panel .pref-style-bar.is-first { border-color:#c6ded1; background:#f0f7f2; }
 .preference-panel .is-first .pref-style-label,
-.preference-panel .is-first .taste-rank { color:#2475ad; }
-.preference-panel .pref-style-bar.is-second { --taste-fill:#78afd2; border-color:#d1e4f1; background:#f3f9fd; }
-.preference-panel .is-second .pref-style-percent,
+.preference-panel .is-first .taste-rank { color:var(--taste-ink); }
+.preference-panel .pref-style-bar.is-second { border-color:#ddd6eb; background:#f6f3fa; }
 .preference-panel .is-second .pref-style-label,
-.preference-panel .is-second .taste-rank { color:#527f9f; }
+.preference-panel .is-second .taste-rank { color:var(--taste-ink); }
 </style>
