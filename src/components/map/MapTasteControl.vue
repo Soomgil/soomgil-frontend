@@ -69,7 +69,7 @@ watch(() => props.bbox, bbox => {
   const next = bbox.split(',').map(Number)
   const span = Math.max(old[2] - old[0], old[3] - old[1], .002)
   const changed = !loadedBbox.value || next.some((v, i) => Math.abs(v - old[i]) > span * .3)
-  if (changed) refreshTimer = setTimeout(() => void load(), 6000)
+  if (changed) refreshTimer = setTimeout(() => void load(), 3000)
 })
 onBeforeUnmount(() => { revision++; clearTimeout(refreshTimer) })
 function select(provider: string, id: string) {
