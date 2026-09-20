@@ -30,6 +30,7 @@ const props = withDefaults(defineProps<{
 })
 const emit = defineEmits<{
   select: [place: Place, recommendation?: PlaceRecommendation]
+  preview: [place: Place | null]
 }>()
 
 const mode = ref<DiscoveryMode>('basic')
@@ -265,6 +266,10 @@ onUnmounted(() => {
         class="discovery-result"
         :aria-busy="detailLoadingKey === placeKey(item.place)"
         @click="selectPlace(item)"
+        @mouseenter="emit('preview', item.place)"
+        @mouseleave="emit('preview', null)"
+        @focusin="emit('preview', item.place)"
+        @focusout="emit('preview', null)"
       >
         <div class="discovery-thumb">
           <img v-if="placeImage(item.place) && !brokenPlaceImageKeys.has(placeKey(item.place))" :src="placeImage(item.place)" :alt="item.place.placeName" @error="markPlaceImageBroken(placeKey(item.place))" />

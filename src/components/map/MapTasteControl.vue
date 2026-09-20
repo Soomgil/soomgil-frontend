@@ -112,7 +112,7 @@ defineExpose({ select, close })
       <button type="button" role="switch" class="taste-switch-row" data-testid="taste-super" :aria-checked="superOnly" @click="superOnly = !superOnly"><span>슈퍼라이크만 보기</span><span class="taste-switch" aria-hidden="true"></span></button>
       <div v-if="error && !loading" role="alert"><p>취향 장소를 불러오지 못했습니다.</p><button class="taste-reload" @click="load">다시 시도</button></div>
       <p v-else-if="!bbox">지도를 움직여 탐색할 지역을 선택해 주세요.</p>
-      <p v-else-if="enabled && !loading && !places.length">이 지역에 표시할 선호 장소가 없어요.</p>
+      <p v-else-if="enabled && !loading && !places.length">이 지역엔 여행 멤버가 좋아한 장소가 아직 없어요. 지도를 옮기거나 ‘취향 수집’에서 좋아요를 모아 보세요.</p>
     </section>
   </div>
 </template>

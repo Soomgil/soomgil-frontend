@@ -56,6 +56,7 @@ const props = withDefaults(defineProps<{
   nearbyPlaces?: ItineraryMapNearbyPlace[]
   tastePlaces?: ItineraryMapNearbyPlace[]
   previewPlace?: ItineraryMapNearbyPlace | null
+  highlightPlace?: ItineraryMapNearbyPlace | null
   drawings?: MapDrawingStroke[]
   drawingTool?: MapDrawingTool
   drawingColor?: string
@@ -80,6 +81,7 @@ const props = withDefaults(defineProps<{
   nearbyPlaces: () => [],
   tastePlaces: () => [],
   previewPlace: null,
+  highlightPlace: null,
   routeDisplay: 'route',
   cardDisplay: 'full',
   drawingTool: 'cursor',
@@ -616,6 +618,17 @@ function renderStops() {
       .addTo(map!))
   }
 
+  // 리스트에서 마우스를 올린 추천 장소를 지도에서 강조한다. 지도를 이동시키지 않는다(hover마다 튀지 않도록).
+  if (props.highlightPlace && Number.isFinite(props.highlightPlace.lng) && Number.isFinite(props.highlightPlace.lat)) {
+    markers.push(new mapbox.Marker({
+      element: createPreviewPlaceMarkerElement(props.highlightPlace),
+      anchor: 'bottom',
+      offset: [0, -18],
+    })
+      .setLngLat([props.highlightPlace.lng, props.highlightPlace.lat])
+      .addTo(map!))
+  }
+
   renderRoutes()
   fitToStopsIfNeeded(mapbox)
   focusPreviewPlace()
@@ -805,7 +818,7 @@ function retry() {
   void initializeMap()
 }
 
-watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.cardDisplay, props.navigationMode], renderStops, { deep: true })
+watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.highlightPlace, props.cardDisplay, props.navigationMode], renderStops, { deep: true })
 watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
 watch(() => props.tastePlaces, renderTasteMarkers, { deep: true })
 onMounted(initializeMap)

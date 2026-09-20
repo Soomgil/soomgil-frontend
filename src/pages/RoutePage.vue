@@ -489,6 +489,25 @@ const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
   })
 })
 const selectedRecommendationMapPlace = ref<ItineraryMapNearbyPlace | null>(null)
+// 기본 추천 리스트에서 마우스를 올린 장소를 지도에서 강조한다(지도는 이동시키지 않음).
+const hoverPreviewMapPlace = ref<ItineraryMapNearbyPlace | null>(null)
+function previewDiscoveredPlace(place: Place | null) {
+  if (!place || place.lat == null || place.lng == null) {
+    hoverPreviewMapPlace.value = null
+    return
+  }
+  hoverPreviewMapPlace.value = {
+    id: `hover:${place.provider}:${place.externalPlaceId}`,
+    provider: place.provider,
+    externalPlaceId: place.externalPlaceId,
+    title: place.placeName,
+    category: place.category ?? null,
+    lat: place.lat,
+    lng: place.lng,
+    dayIndex: mapAccentDayIndex.value,
+    image: placeGallery(place)[0] ?? '',
+  }
+}
 const tastePlaces = ref<TasteMapPlace[]>([])
 const tasteControl = ref<InstanceType<typeof MapTasteControl> | null>(null)
 function selectNearbyMapPlace(provider: string, placeId: string) {
@@ -5103,6 +5122,7 @@ function textAvatarStyle(index: unknown) {
                   :bbox="placeDiscoveryBbox"
                   :scheduled-place-keys="scheduledPlaceKeys"
                   @select="selectDiscoveredPlace"
+                  @preview="previewDiscoveredPlace"
                 />
               </div>
             </div>
@@ -5152,6 +5172,7 @@ function textAvatarStyle(index: unknown) {
               :nearby-places="routeNearbyMapPlaces"
               :taste-places="tastePlaces"
               :preview-place="selectedRecommendationMapPlace"
+              :highlight-place="hoverPreviewMapPlace"
               :drawings="mapDrawings"
               :drawing-tool="activeTool"
               :drawing-color="penColor"
