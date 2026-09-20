@@ -5969,6 +5969,13 @@ function textAvatarStyle(index: unknown) {
   max-width: 760px;
 }
 
+.vote-modal-card:has([data-testid="vote-setup"]) {
+  height: auto;
+  max-height: min(88vh, 720px);
+  max-width: 820px;
+  padding: 18px 28px 28px;
+}
+
 .vote-modal-card::-webkit-scrollbar {
   display: none;
   width: 0;
