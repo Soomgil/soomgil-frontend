@@ -1759,6 +1759,7 @@ function onPointerDown(e: PointerEvent) {
   const stopRect = stop.getBoundingClientRect()
   const offsetY = e.clientY - stopRect.top
   void containerRect
+  let latestClientX = e.clientX
   let latestClientY = e.clientY
   let autoScrollFrame: number | null = null
   let movedDuringDrag = false
@@ -1868,18 +1869,19 @@ function onPointerDown(e: PointerEvent) {
     })
   }
 
-  function updateAutoScroll(clientY: number) {
+  function isPointerOverTrash(clientX: number, clientY: number) {
     const trashZone = document.getElementById('trash-drop-zone')
-    if (trashZone) {
-      const trashRect = trashZone.getBoundingClientRect()
-      const dragRect = stop.getBoundingClientRect()
-      const isOverTrash = dragRect.bottom >= trashRect.top && dragRect.top <= trashRect.bottom &&
-        dragRect.right >= trashRect.left && dragRect.left <= trashRect.right
-      if (isOverTrash) {
-        if (autoScrollFrame !== null) cancelAnimationFrame(autoScrollFrame)
-        autoScrollFrame = null
-        return
-      }
+    if (!trashZone) return false
+    const trashRect = trashZone.getBoundingClientRect()
+    return clientX >= trashRect.left && clientX <= trashRect.right
+      && clientY >= trashRect.top && clientY <= trashRect.bottom
+  }
+
+  function updateAutoScroll(clientX: number, clientY: number) {
+    if (isPointerOverTrash(clientX, clientY)) {
+      if (autoScrollFrame !== null) cancelAnimationFrame(autoScrollFrame)
+      autoScrollFrame = null
+      return
     }
 
     const currentContainerRect = dragContainer.getBoundingClientRect()
@@ -1909,12 +1911,13 @@ function onPointerDown(e: PointerEvent) {
       dragContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, dragContainer.scrollTop + scrollDelta))
       if (dragContainer.scrollTop !== before) applyDragPosition(latestClientY)
       autoScrollFrame = null
-      updateAutoScroll(latestClientY)
+      updateAutoScroll(latestClientX, latestClientY)
     }
     autoScrollFrame = requestAnimationFrame(step)
   }
 
   function onPointerMove(ev: PointerEvent) {
+    latestClientX = ev.clientX
     latestClientY = ev.clientY
 
     const dx = ev.clientX - e.clientX
@@ -1927,7 +1930,7 @@ function onPointerDown(e: PointerEvent) {
     ev.preventDefault()
     movedDuringDrag = true
     applyDragPosition(ev.clientY)
-    updateAutoScroll(ev.clientY)
+    updateAutoScroll(ev.clientX, ev.clientY)
 
     const trashZone = document.getElementById('trash-drop-zone')
     const dragCenter = ev.clientY - offsetY + stopRect.height / 2
@@ -1943,10 +1946,7 @@ function onPointerDown(e: PointerEvent) {
     const targetIdx = normalizeDragTargetIndex(source!, rawTargetIdx)
 
     if (trashZone) {
-      const trashRect = trashZone.getBoundingClientRect()
-      const dragRect = stop.getBoundingClientRect()
-      if (dragRect.bottom >= trashRect.top && dragRect.top <= trashRect.bottom &&
-          dragRect.right >= trashRect.left && dragRect.left <= trashRect.right) {
+      if (isPointerOverTrash(ev.clientX, ev.clientY)) {
         trashZone.classList.add('is-drag-over-trash')
       } else {
         trashZone.classList.remove('is-drag-over-trash')
@@ -1998,7 +1998,7 @@ function onPointerDown(e: PointerEvent) {
     const targetIdx = normalizeDragTargetIndex(source!, rawTargetIdx)
 
     const trashZone = document.getElementById('trash-drop-zone')
-    if (trashZone && trashZone.classList.contains('is-drag-over-trash')) {
+    if (trashZone && isPointerOverTrash(ev.clientX, ev.clientY)) {
       trashZone.classList.remove('is-drag-over-trash')
       cleanupDragState()
 
