@@ -2,18 +2,25 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getFeed, react, push } = vi.hoisted(() => ({
+const { getFeed, react, push, replace, routeState, getPreferenceSurvey, completePreferenceSurvey } = vi.hoisted(() => ({
   getFeed: vi.fn(),
   react: vi.fn(),
   push: vi.fn(),
+  replace: vi.fn(),
+  routeState: { name: 'Swipe', query: {} as Record<string, string> },
+  getPreferenceSurvey: vi.fn(),
+  completePreferenceSurvey: vi.fn(),
 }))
 
 vi.mock('@/api/place.api', () => ({ placeApi: { getPlace: vi.fn().mockResolvedValue(null) } }))
 vi.mock('@/api/swipe.api', () => ({ swipeApi: { getFeed, react } }))
+vi.mock('@/api/onboarding.api', () => ({ onboardingApi: { getPreferenceSurvey, completePreferenceSurvey } }))
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push }),
+  useRoute: () => routeState,
+  useRouter: () => ({ push, replace }),
 }))
 
+import { useAuthStore } from '@/stores/auth.store'
 import SwipePage from './SwipePage.vue'
 
 const feedItem = {
@@ -46,6 +53,12 @@ describe('SwipePage', () => {
     getFeed.mockReset()
     react.mockReset()
     push.mockReset()
+    replace.mockReset()
+    getPreferenceSurvey.mockReset()
+    completePreferenceSurvey.mockReset()
+    routeState.name = 'Swipe'
+    routeState.query = {}
+    localStorage.clear()
   })
 
   it('loads a place, persists LIKE, and shows the completed state', async () => {
@@ -224,5 +237,74 @@ describe('SwipePage', () => {
     expect(wrapper.get('.swipe-place-placeholder').text()).toContain('해운대해수욕장')
     expect(wrapper.find('.liked-by-avatar-fallback').exists()).toBe(false)
     expect(wrapper.find('img[src=""]').exists()).toBe(false)
+  })
+
+  it('uses the shared swipe UI and submits SUPER_LIKE during first-user onboarding', async () => {
+    vi.useFakeTimers()
+    routeState.name = 'OnboardingPreferences'
+    const auth = useAuthStore()
+    auth.user = {
+      id: 'new-user',
+      email: 'new@soomgil.local',
+      displayName: '새 여행자',
+      profileImageUrl: null,
+      profileMediaFileId: null,
+      bio: null,
+      profileVisibility: 'PUBLIC',
+      status: 'ACTIVE',
+      displayLanguage: 'ko',
+      timezone: 'Asia/Seoul',
+      marketingEmailOptIn: false,
+      tripInviteEmailOptIn: true,
+      lastLoginAt: null,
+      createdAt: '2026-09-20T00:00:00Z',
+    }
+    getPreferenceSurvey.mockResolvedValue({
+      surveyVersionId: 'survey-v1',
+      code: 'initial-taste',
+      requiredPlaceCount: 1,
+      completedAt: null,
+      completed: false,
+      places: [{
+        provider: 'KTO',
+        externalPlaceId: '126508',
+        name: '해운대해수욕장',
+        address: '부산 해운대구',
+        thumbnailUrl: 'https://cdn.example.com/haeundae.jpg',
+        category: '자연',
+        description: '바다 여행지',
+        tags: ['바다'],
+        sortOrder: 1,
+      }],
+    })
+    completePreferenceSurvey.mockResolvedValue({
+      surveyVersionId: 'survey-v1',
+      completedAt: '2026-09-20T00:01:00Z',
+    })
+
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true } } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('첫 여행 취향 찾기')
+    expect(wrapper.find('.swipe-card').exists()).toBe(true)
+    expect(wrapper.find('.place-detail-panel').exists()).toBe(true)
+    expect(wrapper.find('.swipe-guide--top').exists()).toBe(true)
+    expect(wrapper.find('.preference-card').exists()).toBe(false)
+
+    const card = wrapper.get('.swipe-card')
+    card.element.dispatchEvent(new MouseEvent('pointerdown', { clientX: 0, clientY: 120, button: 0, bubbles: true }))
+    card.element.dispatchEvent(new MouseEvent('pointerup', { clientX: 0, clientY: 0, bubbles: true }))
+    await flushPromises()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+
+    expect(completePreferenceSurvey).toHaveBeenCalledWith('survey-v1', [{
+      provider: 'KTO',
+      externalPlaceId: '126508',
+      reaction: 'SUPER_LIKE',
+    }])
+    expect(replace).toHaveBeenCalledWith('/home')
+    wrapper.unmount()
+    vi.useRealTimers()
   })
 })

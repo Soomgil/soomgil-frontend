@@ -1,15 +1,140 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { placeApi } from '@/api/place.api'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import { useSwipeFeed } from '@/composables/useSwipeFeed'
-import type { SwipeAction } from '@/types/swipe'
+import { useAuthStore } from '@/stores/auth.store'
+import { useOnboardingStore } from '@/stores/onboarding.store'
+import type { SwipeFeedGateway } from '@/stores/swipe.store'
+import type { OnboardingPreferenceAnswer, OnboardingReaction } from '@/types/onboarding'
+import type { SwipeAction, SwipeFeedItem } from '@/types/swipe'
 import type { AccessibilityFlag, ParkingType } from '@/types/place'
 
 const router = useRouter()
+const route = useRoute()
+const auth = useAuthStore()
+const onboarding = useOnboardingStore()
+const onboardingMode = route.name === 'OnboardingPreferences'
+const onboardingAnswers = ref<Record<string, OnboardingReaction>>({})
+const onboardingSubmitting = ref(false)
+const onboardingSubmitError = ref<string | null>(null)
+
+function onboardingAnswerKey(provider: string, externalPlaceId: string) {
+  return `${provider}:${externalPlaceId}`
+}
+
+function onboardingDraftKey() {
+  if (!auth.user || !onboarding.survey) return ''
+  return `soomgil:onboarding-preferences:${auth.user.id}:${onboarding.survey.surveyVersionId}`
+}
+
+function restoreOnboardingDraft() {
+  const survey = onboarding.survey
+  const key = onboardingDraftKey()
+  if (!survey || !key) return
+  const allowed = new Set(survey.places.map(place => onboardingAnswerKey(place.provider, place.externalPlaceId)))
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, OnboardingReaction>
+    onboardingAnswers.value = Object.fromEntries(
+      Object.entries(parsed).filter(([answerKey, reaction]) => (
+        allowed.has(answerKey) && ['LIKE', 'NOPE', 'SUPER_LIKE'].includes(reaction)
+      )),
+    )
+  } catch {
+    onboardingAnswers.value = {}
+  }
+}
+
+function persistOnboardingDraft() {
+  const key = onboardingDraftKey()
+  if (key) localStorage.setItem(key, JSON.stringify(onboardingAnswers.value))
+}
+
+function onboardingRedirect() {
+  return typeof route.query.redirect === 'string'
+    && route.query.redirect.startsWith('/')
+    && !route.query.redirect.startsWith('//')
+    ? route.query.redirect
+    : '/home'
+}
+
+function asSwipeFeedItem(place: NonNullable<typeof onboarding.survey>['places'][number]): SwipeFeedItem {
+  return {
+    place: {
+      provider: place.provider,
+      externalPlaceId: place.externalPlaceId,
+      placeName: place.name,
+      address: place.address,
+      lat: null,
+      lng: null,
+      thumbnailUrl: place.thumbnailUrl,
+      category: place.category,
+      description: place.description ?? undefined,
+      summary: place.description ?? undefined,
+      tags: place.tags,
+      photos: place.thumbnailUrl ? [place.thumbnailUrl] : [],
+    },
+    myReaction: null,
+    likedByFollowees: [],
+  }
+}
+
+async function completeOnboarding() {
+  const survey = onboarding.survey
+  if (!auth.user || !survey || onboardingSubmitting.value) return
+  const responses: OnboardingPreferenceAnswer[] = survey.places.map(place => ({
+    provider: place.provider,
+    externalPlaceId: place.externalPlaceId,
+    reaction: onboardingAnswers.value[onboardingAnswerKey(place.provider, place.externalPlaceId)],
+  }))
+  if (responses.some(response => !response.reaction)) return
+
+  onboardingSubmitting.value = true
+  onboardingSubmitError.value = null
+  try {
+    await onboarding.complete(auth.user.id, responses)
+    localStorage.removeItem(onboardingDraftKey())
+    await router.replace(onboardingRedirect())
+  } catch {
+    onboardingSubmitError.value = '취향을 저장하지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요.'
+  } finally {
+    onboardingSubmitting.value = false
+  }
+}
+
+const onboardingGateway: SwipeFeedGateway = {
+  async getFeed() {
+    if (!auth.user) throw new Error('로그인이 필요합니다.')
+    const survey = await onboarding.load(auth.user.id)
+    if (!survey) throw new Error('취향 설문을 불러오지 못했습니다.')
+    if (survey.completed) {
+      await router.replace(onboardingRedirect())
+      return { items: [], nextSeed: null }
+    }
+    restoreOnboardingDraft()
+    const items = survey.places
+      .filter(place => !onboardingAnswers.value[onboardingAnswerKey(place.provider, place.externalPlaceId)])
+      .map(asSwipeFeedItem)
+    if (items.length === 0) void completeOnboarding()
+    return { items, nextSeed: null }
+  },
+  async react(provider, externalPlaceId, reaction) {
+    onboardingAnswers.value = {
+      ...onboardingAnswers.value,
+      [onboardingAnswerKey(provider, externalPlaceId)]: reaction,
+    }
+    persistOnboardingDraft()
+    return {
+      place: { provider, externalPlaceId },
+      reaction,
+      savedPlaceEligible: reaction !== 'NOPE',
+      updatedAt: new Date().toISOString(),
+    }
+  },
+}
 
 const {
   currentItem,
@@ -22,7 +147,17 @@ const {
   ensureLoaded,
   persistReaction,
   advance,
-} = useSwipeFeed()
+} = useSwipeFeed(onboardingMode ? onboardingGateway : undefined)
+
+const answeredCount = computed(() => Object.keys(onboardingAnswers.value).length)
+const requiredPlaceCount = computed(() => onboarding.survey?.requiredPlaceCount ?? 10)
+const interactionDisabled = computed(() => submitting.value || onboardingSubmitting.value)
+const displayError = computed(() => onboardingSubmitError.value ?? error.value)
+
+async function retry() {
+  if (onboardingSubmitError.value) await completeOnboarding()
+  else await load()
+}
 
 const currentPlace = computed(() => currentItem.value?.place ?? null)
 const currentDescription = computed(() => (
@@ -103,7 +238,7 @@ function resetCard() {
 }
 
 async function decide(type: 'like' | 'dislike' | 'superlike') {
-  if (submitting.value || isSettling.value || !currentPlace.value) return
+  if (interactionDisabled.value || isSettling.value || !currentPlace.value) return
   isSettling.value = true
   const action: SwipeAction = type === 'superlike' ? 'SUPER_LIKE' : type === 'like' ? 'LIKE' : 'NOPE'
   const saved = await persistReaction(action)
@@ -122,12 +257,13 @@ async function decide(type: 'like' | 'dislike' | 'superlike') {
     isSettling.value = false
     cardEntering.value = true
     enterTimer = setTimeout(() => { cardEntering.value = false }, reducedMotion ? 0 : 360)
+    if (onboardingMode && answeredCount.value === requiredPlaceCount.value) void completeOnboarding()
   }, reducedMotion ? 80 : 620)
 }
 
 const photoStrip = ref<HTMLElement | null>(null)
 async function selectPhoto(idx: number) {
-  if (isSettling.value || submitting.value || !galleryPhotos.value.length) return
+  if (isSettling.value || interactionDisabled.value || !galleryPhotos.value.length) return
   activePhotoIdx.value = (idx + galleryPhotos.value.length) % galleryPhotos.value.length
   await nextTick()
   const thumb = photoStrip.value?.children[activePhotoIdx.value] as HTMLElement | undefined
@@ -144,7 +280,7 @@ let startY = 0
 let dragging = false
 
 function onPointerDown(e: PointerEvent) {
-  if (e.button !== 0 || isFinished.value || submitting.value || isSettling.value) return
+  if (e.button !== 0 || isFinished.value || interactionDisabled.value || isSettling.value) return
   cardEntering.value = false
   clearTimeout(enterTimer)
   dragging = true
@@ -207,7 +343,7 @@ watch(() => currentPlace.value?.externalPlaceId, () => {
 
 onMounted(async () => {
   await ensureLoaded()
-  if (lastParams.value.legalRegionCode) await load({ limit: 10, excludeRecent: true })
+  if (!onboardingMode && lastParams.value.legalRegionCode) await load({ limit: 10, excludeRecent: true })
 })
 </script>
 
@@ -220,13 +356,16 @@ onMounted(async () => {
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">
               <span class="material-symbols-rounded" aria-hidden="true">bolt</span>
-              Travel Preferences
+              {{ onboardingMode ? 'First Taste Setup' : 'Travel Preferences' }}
             </p>
             <h1 class="page-hero__title">
-              취향 수집
+              {{ onboardingMode ? '첫 여행 취향 찾기' : '취향 수집' }}
             </h1>
             <p class="page-hero__lead">
               좋아요는 오른쪽, 다음에는 왼쪽으로 넘겨보세요. 꼭 가고 싶은 장소는 위로 밀어주세요.
+            </p>
+            <p v-if="onboardingMode" class="page-hero__progress" role="status">
+              {{ answeredCount }} / {{ requiredPlaceCount }}곳 선택
             </p>
           </div>
 
@@ -242,13 +381,13 @@ onMounted(async () => {
                 :class="{ 'is-dragging': isDragging, [swipeClass]: swipeClass }"
                 :style="{ '--overlay-opacity': overlayOpacity }"
               >
-                <LoadingState v-if="loading" />
-                <ErrorState v-else-if="error" :message="error" @retry="load()" />
+                <LoadingState v-if="loading || onboardingSubmitting" />
+                <ErrorState v-else-if="displayError" :message="displayError" @retry="retry" />
                 <!-- Finished state -->
                 <div v-else-if="isFinished" class="panel" style="text-align: center; padding: 40px">
                   <h2 style="color: var(--violet)">취향 수집 완료!</h2>
-                  <p class="lead">모든 관광지를 확인했습니다. 이제 멤버들의 선택을 기다려보세요.</p>
-                  <a class="btn primary" href="#" @click.prevent="router.push('/my-trips')" style="margin-top: 20px">내 여행 보기</a>
+                  <p class="lead">{{ onboardingMode ? '첫 추천을 위한 취향 지도를 만들었어요.' : '모든 관광지를 확인했습니다. 이제 멤버들의 선택을 기다려보세요.' }}</p>
+                  <a v-if="!onboardingMode" class="btn primary" href="#" @click.prevent="router.push('/my-trips')" style="margin-top: 20px">내 여행 보기</a>
                 </div>
 
                 <EmptyState
@@ -316,7 +455,7 @@ onMounted(async () => {
               <!-- Photo Strip -->
               <section v-if="currentPlace && galleryPhotos.length > 0" class="photo-strip-section" aria-label="관광지 추가 사진">
                 <div class="photo-strip-wrap">
-                  <button class="photo-nav prev" type="button" aria-label="이전 사진" :disabled="galleryPhotos.length < 2 || isSettling || submitting" @click="scrollPhotos(-1)">
+                  <button class="photo-nav prev" type="button" aria-label="이전 사진" :disabled="galleryPhotos.length < 2 || isSettling || interactionDisabled" @click="scrollPhotos(-1)">
                     <span class="material-symbols-rounded">chevron_left</span>
                   </button>
                   <div ref="photoStrip" class="photo-strip" data-place-photos>
@@ -328,13 +467,13 @@ onMounted(async () => {
                       type="button"
                       :aria-label="`${idx + 1}번째 사진 보기`"
                       :aria-pressed="activePhotoIdx === idx"
-                      :disabled="isSettling || submitting"
+                      :disabled="isSettling || interactionDisabled"
                       @click="selectPhoto(idx)"
                     >
                       <img :src="photo" :alt="`${currentPlace.placeName} 사진 ${idx + 1}`" />
                     </button>
                   </div>
-                  <button class="photo-nav next" type="button" aria-label="다음 사진" :disabled="galleryPhotos.length < 2 || isSettling || submitting" @click="scrollPhotos(1)">
+                  <button class="photo-nav next" type="button" aria-label="다음 사진" :disabled="galleryPhotos.length < 2 || isSettling || interactionDisabled" @click="scrollPhotos(1)">
                     <span class="material-symbols-rounded">chevron_right</span>
                   </button>
                 </div>

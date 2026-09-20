@@ -48,6 +48,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/onboarding/preferences',
+      name: 'OnboardingPreferences',
+      component: () => import('@/pages/SwipePage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/search',
       name: 'Search',
       component: () => import('@/pages/SearchResultsPage.vue'),

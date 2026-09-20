@@ -28,6 +28,7 @@ import type { MapDrawingDraft, MapDrawingStroke, MapDrawingTool } from '@/compon
 import type { MapCursorView, MapObjectLockView } from '@/components/map/MapObjectOverlay.vue'
 import { MAP_STICKERS, stickerHref } from '@/components/map/mapStickerCatalog'
 import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
+import MapSectionTour from '@/components/onboarding/MapSectionTour.vue'
 import { getAiRefreshTargets } from './routeBackendSync'
 import { useItinerary } from '@/composables/useItinerary'
 import { useMapViewport } from '@/composables/useMapViewport'
@@ -2278,6 +2279,7 @@ const isLeftSidebarOpen = ref(initialViewportWidth >= 1024)
 
 const activeRoutePanel = ref<RouteUtilityPanel>('ai')
 const isRouteUtilityCollapsed = ref(initialViewportWidth < 1440)
+const mapSectionTour = ref<InstanceType<typeof MapSectionTour> | null>(null)
 const isAiChatOpen = computed(() => activeRoutePanel.value === 'ai')
 const isTripChatOpen = computed(() => activeRoutePanel.value === 'chat')
 const isMemoOpen = computed(() => activeRoutePanel.value === 'memo')
@@ -2308,6 +2310,23 @@ function toggleLeftSidebar() {
   const willOpen = !isLeftSidebarOpen.value
   isLeftSidebarOpen.value = willOpen
   if (willOpen && isRouteOverlayLayout.value) isRouteUtilityCollapsed.value = true
+}
+
+function prepareMapTourSection(section: string) {
+  if (section === 'itinerary') {
+    isLeftSidebarOpen.value = true
+    if (isRouteOverlayLayout.value) isRouteUtilityCollapsed.value = true
+    return
+  }
+  if (section === 'collaboration') {
+    isRouteUtilityCollapsed.value = false
+    if (isRouteOverlayLayout.value) isLeftSidebarOpen.value = false
+    return
+  }
+  if (isRouteOverlayLayout.value) {
+    isLeftSidebarOpen.value = false
+    isRouteUtilityCollapsed.value = true
+  }
 }
 
 function closeResponsivePanels() {
@@ -4704,7 +4723,7 @@ function textAvatarStyle(index: unknown) {
         'is-sidebar-hidden': !isLeftSidebarOpen,
       }]">
 
-          <div class="trip-map-actions" aria-label="여행방 관리">
+          <div class="trip-map-actions" data-tour-section="trip-management" aria-label="여행방 관리">
                   <div class="avatars-group">
                     <div class="avatars">
                       <span
@@ -4746,6 +4765,9 @@ function textAvatarStyle(index: unknown) {
                     </span>
                   </div>
             <div class="trip-map-buttons">
+            <button class="map-tour-help-button" type="button" aria-label="지도 화면 안내 다시 보기" title="화면 안내" @click="mapSectionTour?.start()">
+              <span class="material-symbols-rounded" aria-hidden="true">help</span>
+            </button>
             <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
             <button
               type="button"
@@ -4791,7 +4813,7 @@ function textAvatarStyle(index: unknown) {
           </div>
           <a v-if="!isLeftSidebarOpen" href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
           <!-- ═══ SIDEBAR ═══ -->
-          <aside id="route-itinerary-sidebar" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
+          <aside id="route-itinerary-sidebar" data-tour-section="itinerary" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
             <span class="sidebar-sheet-handle" aria-hidden="true"></span>
             <button
               class="sidebar-toggle"
@@ -5052,7 +5074,7 @@ function textAvatarStyle(index: unknown) {
           ></button>
 
           <!-- ═══ MAP CANVAS ═══ -->
-          <div ref="mapCanvasRef" :class="['map-canvas', { 'navigation-guide-mode': navigationGuideMode }]" :aria-label="`${trip.title} 지도`">
+          <div ref="mapCanvasRef" data-tour-section="map" :class="['map-canvas', { 'navigation-guide-mode': navigationGuideMode }]" :aria-label="`${trip.title} 지도`">
 			<button
 				v-if="!isLeftSidebarOpen"
 				class="route-sidebar-restore"
@@ -5250,7 +5272,7 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <!-- ===== Toolbox ===== -->
-            <div class="map-tools-viewport" @scroll.passive="updateToolPopoverPositions">
+            <div class="map-tools-viewport" data-tour-section="map-tools" @scroll.passive="updateToolPopoverPositions">
               <div class="map-tools">
               <!-- Drawing tools -->
               <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" data-tool="cursor" :aria-pressed="activeTool === 'cursor'" :disabled="itinerary.mutating.value" @click="selectMapTool('cursor')">
@@ -5547,7 +5569,7 @@ function textAvatarStyle(index: unknown) {
           </aside>
 
           <!-- ═══ ROUTE UTILITY SIDEBAR ═══ -->
-          <aside id="route-utility-sidebar" :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구" :aria-hidden="isRouteUtilityCollapsed || isDetailbarOpen" :inert="isDetailbarOpen">
+          <aside id="route-utility-sidebar" data-tour-section="collaboration" :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구" :aria-hidden="isRouteUtilityCollapsed || isDetailbarOpen" :inert="isDetailbarOpen">
             <button
               class="route-utility-toggle"
               type="button"
@@ -5780,6 +5802,8 @@ function textAvatarStyle(index: unknown) {
           </div>
             </div>
           </aside>
+
+          <MapSectionTour ref="mapSectionTour" :user-id="currentUserId" @prepare="prepareMapTourSection" />
         </div>
       </section>
     <!-- ═══ TRIP SETTINGS MODAL ═══ -->
@@ -8380,6 +8404,9 @@ function textAvatarStyle(index: unknown) {
 
 <style scoped>
 .trip-map-buttons { display: flex; align-items: center; gap: 8px; }
+.map-tour-help-button { display:grid; place-items:center; width:40px; height:40px; padding:0; border:1px solid var(--line); border-radius:50%; background:var(--surface,#fff); color:#537089; cursor:pointer; }
+.map-tour-help-button:hover { border-color:#8bbbe0; background:#f1f7fc; color:#328be0; }
+.map-tour-help-button .material-symbols-rounded { font-size:20px; }
 .nearby-toggle { display:flex; align-items:center; gap:6px; min-height:40px; padding:8px 14px; border:1px solid #d7e7f3; border-radius:999px; background:#fff; color:#171717; font:inherit; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; transition:background-color .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease,transform .16s ease; }
 .nearby-toggle:hover:not(:disabled) { background:#f3faf5; border-color:#add6b8; color:#287847; transform:translateY(-1px); }
 .nearby-toggle.active { background:#edf8f0; border-color:#9dcfad; color:#257a43; box-shadow:0 5px 14px rgb(55 143 83 / 14%); }

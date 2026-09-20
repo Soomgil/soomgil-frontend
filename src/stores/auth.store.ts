@@ -11,6 +11,7 @@ import { userApi } from '@/api/user.api'
 import { clearCollaborationSessionIds } from '@/realtime/collaborationSession'
 import { setLocale } from '@/i18n'
 import { ensureStoredAccessToken } from '@/auth/accessToken'
+import { useOnboardingStore } from '@/stores/onboarding.store'
 
 /* ── OAuth 진행 중 상태 (CSRF state 검증용) ──
  * 리다이렉트 전 sessionStorage에 저장, 콜백 페이지에서 state 일치 여부 검증.
@@ -69,6 +70,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('refreshToken')
     localStorage.removeItem('tokenExpiresAt')
     clearCollaborationSessionIds()
+    useOnboardingStore().reset()
   }
 
   /** 이메일/비밀번호 로그인 → 토큰 저장 + user 채우기 */
