@@ -8,6 +8,19 @@ import type { RecommendationTab } from '@/types/swipe'
 type DiscoveryMode = 'search' | 'basic' | 'super-like'
 type DiscoveryItem = { place: Place; recommendation?: PlaceRecommendation }
 
+// 불러오지 못한 멤버 프로필 이미지는 사람 아이콘으로 대체한다(데모 환경에서 프로필 객체가 없을 때 깨짐 방지).
+const brokenAvatarIds = ref(new Set<string>())
+function markAvatarBroken(id: string) {
+  if (brokenAvatarIds.value.has(id)) return
+  brokenAvatarIds.value = new Set(brokenAvatarIds.value).add(id)
+}
+// 장소 썸네일도 못 불러오면 기본 아이콘으로 대체한다.
+const brokenPlaceImageKeys = ref(new Set<string>())
+function markPlaceImageBroken(key: string) {
+  if (brokenPlaceImageKeys.value.has(key)) return
+  brokenPlaceImageKeys.value = new Set(brokenPlaceImageKeys.value).add(key)
+}
+
 const props = withDefaults(defineProps<{
   tripId: string
   bbox: string
@@ -17,6 +30,7 @@ const props = withDefaults(defineProps<{
 })
 const emit = defineEmits<{
   select: [place: Place, recommendation?: PlaceRecommendation]
+  preview: [place: Place | null]
 }>()
 
 const mode = ref<DiscoveryMode>('basic')
@@ -189,10 +203,11 @@ watch(() => props.bbox, (bbox, previous) => {
   hasPendingMapArea.value = nextBbox !== loadedRecommendationBbox.value
   if (!hasPendingMapArea.value) return
   if (areaReloadTimer) clearTimeout(areaReloadTimer)
+  // 지도를 멈추자마자 바로 부르지 않고 몇 초 기다렸다가 이 지역 추천을 다시 불러온다(호출 과다 방지).
   areaReloadTimer = setTimeout(() => {
     areaReloadTimer = null
     void reloadCurrentArea()
-  }, 450)
+  }, 1500)
 })
 
 onUnmounted(() => {
@@ -251,9 +266,13 @@ onUnmounted(() => {
         class="discovery-result"
         :aria-busy="detailLoadingKey === placeKey(item.place)"
         @click="selectPlace(item)"
+        @mouseenter="emit('preview', item.place)"
+        @mouseleave="emit('preview', null)"
+        @focusin="emit('preview', item.place)"
+        @focusout="emit('preview', null)"
       >
         <div class="discovery-thumb">
-          <img v-if="placeImage(item.place)" :src="placeImage(item.place)" :alt="item.place.placeName" />
+          <img v-if="placeImage(item.place) && !brokenPlaceImageKeys.has(placeKey(item.place))" :src="placeImage(item.place)" :alt="item.place.placeName" @error="markPlaceImageBroken(placeKey(item.place))" />
           <span v-else class="material-symbols-rounded" aria-hidden="true">landscape</span>
         </div>
         <div class="discovery-copy">
@@ -278,7 +297,7 @@ onUnmounted(() => {
           <div v-if="item.recommendation?.matchedMembers?.length" class="discovery-match-row">
             <div class="discovery-members">
               <span v-for="member in item.recommendation.matchedMembers.slice(0, 3)" :key="member.id">
-                <img v-if="member.profileImageUrl" draggable="false" :src="member.profileImageUrl" alt="멤버 프로필" />
+                <img v-if="member.profileImageUrl && !brokenAvatarIds.has(member.id)" draggable="false" :src="member.profileImageUrl" alt="멤버 프로필" @error="markAvatarBroken(member.id)" />
                 <span v-else class="material-symbols-rounded" style="font-size: 16px;">person</span>
               </span>
             </div>

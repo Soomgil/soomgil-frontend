@@ -501,7 +501,7 @@ async function handleLogout() {
                 <article v-for="notification in notifications" :key="notification.id" class="notification-item" :class="{ 'is-read': !!notification.readAt }">
                   <button class="notification-open" :disabled="notificationBusy || notificationsLoading" @click.stop="openNotification(notification)">
                     <span class="notification-actor-column">
-                      <span class="notification-symbol"><img v-if="notification.actor?.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" /><span v-else class="material-symbols-rounded">{{ notificationIcon(notification.type) }}</span></span>
+                      <span class="notification-symbol"><img v-if="notification.actor?.profileImageUrl" :src="notification.actor.profileImageUrl" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'" /><span v-else class="material-symbols-rounded">{{ notificationIcon(notification.type) }}</span></span>
                       <span v-if="notification.actor" class="notification-actor">{{ notification.actor.displayName }}</span>
                     </span>
                     <span class="notification-copy"><strong class="notification-title">{{ notification.title }}</strong><span v-if="notification.body" class="notification-body">{{ notification.body }}</span><time :datetime="notification.createdAt">{{ notificationTime(notification.createdAt) }}</time><span v-if="!notification.readAt" class="notification-unread">읽지 않음</span></span>
@@ -517,12 +517,12 @@ async function handleLogout() {
         <!-- Profile -->
         <div class="profile-dropdown" style="position:relative;">
           <button type="button" id="header-profile-btn" class="header-profile-trigger" :aria-expanded="showProfile" aria-controls="header-profile-panel" title="내 프로필" @click.stop="toggleProfile">
-            <img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="내 프로필 사진" style="width:100%;height:100%;object-fit:cover;" />
+            <img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="내 프로필 사진" style="width:100%;height:100%;object-fit:cover;" @error="($event.target as HTMLImageElement).style.display = 'none'" />
             <template v-else>{{ auth.user?.displayName?.charAt(0) || 'U' }}</template>
           </button>
           <div id="header-profile-panel" class="header-dropdown-panel profile-menu" :class="{ 'is-open': showProfile }" aria-label="프로필 메뉴">
             <div class="profile-menu-heading">
-              <span class="profile-menu-avatar"><img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="" /><span v-else>{{ auth.user?.displayName?.charAt(0) || 'U' }}</span></span>
+              <span class="profile-menu-avatar"><img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'" /><span v-else>{{ auth.user?.displayName?.charAt(0) || 'U' }}</span></span>
               <div class="profile-menu-identity"><strong>{{ auth.user?.displayName || '사용자' }}</strong><span>{{ auth.user?.email || '이메일 미확인' }}</span></div>
             </div>
             <div class="profile-menu-links">

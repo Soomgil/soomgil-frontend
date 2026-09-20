@@ -269,7 +269,7 @@ describe('MapboxItineraryMap', () => {
     })
   })
 
-  it('겹치는 주변 장소 마커를 분산하고 클릭한 장소 ID를 그대로 전달한다', async () => {
+  it('화면에서 겹치는 주변 장소 마커는 하나만 표시하고 클릭한 장소 ID를 전달한다', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     const nearbyPlaces = [
       { id: 'KTO:near-1', provider: 'KTO' as const, externalPlaceId: 'near-1', title: '창덕궁', category: null, lat: 37.58, lng: 126.99, dayIndex: 2 },
@@ -280,14 +280,16 @@ describe('MapboxItineraryMap', () => {
     mapbox.handlers.get('style.load')?.()
     await nextTick()
 
-    const firstOptions = mapbox.Marker.mock.calls[0]![0] as { element: HTMLButtonElement; offset: [number, number] }
-    const secondOptions = mapbox.Marker.mock.calls[1]![0] as { element: HTMLButtonElement; offset: [number, number] }
-    expect(firstOptions.element.tagName).toBe('BUTTON')
-    expect(firstOptions.element.classList.contains('day-color-2')).toBe(true)
-    expect(firstOptions.offset).not.toEqual(secondOptions.offset)
+    // 같은 지점에 겹치는 두 장소는 하나의 마커만 남긴다(라벨이 겹치지 않도록).
+    const nearbyCalls = mapbox.Marker.mock.calls.filter((call) =>
+      ((call![0] as { element: HTMLElement }).element.className || '').includes('map-nearby-place-marker'))
+    expect(nearbyCalls).toHaveLength(1)
+    const options = nearbyCalls[0]![0] as { element: HTMLButtonElement }
+    expect(options.element.tagName).toBe('BUTTON')
+    expect(options.element.classList.contains('day-color-2')).toBe(true)
 
-    secondOptions.element.click()
-    expect(wrapper.emitted('selectNearbyPlace')).toEqual([['KTO', 'near-2']])
+    options.element.click()
+    expect(wrapper.emitted('selectNearbyPlace')).toEqual([['KTO', 'near-1']])
   })
 
   it('선택된 추천 관광지를 카드 마커로 표시하고 해당 위치로 이동한다', async () => {

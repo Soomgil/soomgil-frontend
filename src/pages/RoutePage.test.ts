@@ -393,6 +393,7 @@ describe('RoutePage itinerary integration', () => {
 
     expect(connectedApis.ai.getMessages).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('복구된 답변')
+    expect(wrapper.get('.ai-assistant-avatar img').attributes('src')).toContain('ai-profile.png')
   })
 
   it('AI 전송 실패 시 입력 내용을 복원해 재시도할 수 있게 한다', async () => {
@@ -1940,9 +1941,7 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
-    await wrapper.get('.nearby-toggle').trigger('click')
-    await flushPromises()
-
+    // 주변 추천은 기본으로 켜져 있어, 경로가 있으면 마운트 직후 경로 범위로 조회된다.
     expect(connectedApis.swipe.getRecommendations).toHaveBeenCalledWith('trip-1', expect.objectContaining({
       bbox: '127.365,36.335,127.405,36.375',
       tab: 'BASIC',
@@ -2030,16 +2029,16 @@ describe('RoutePage itinerary integration', () => {
     })
     await flushPromises()
 
-    await wrapper.get('.nearby-toggle').trigger('click')
-    await flushPromises()
+    // 기본으로 켜져 있으므로 경로가 있으면 마운트 직후 주변 추천이 채워진다.
     expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toHaveLength(1)
 
     await wrapper.get('.route-connector').trigger('click')
     await flushPromises()
 
+    // 경로가 사라지면 마커는 비지만(테스트 환경엔 지도 뷰포트가 없음) 추천 자체는 계속 켜둔다.
     expect(holder.state.deleteRoute).toHaveBeenCalledWith('route-1')
     expect(wrapper.getComponent(MapboxItineraryMap).props('nearbyPlaces')).toEqual([])
-    expect(wrapper.get('.nearby-toggle').attributes('aria-pressed')).toBe('false')
+    expect(wrapper.get('.nearby-toggle').attributes('aria-pressed')).toBe('true')
   })
 
   it('주변 관광지 상세를 열고 상세 패널에서 일정에 추가한다', async () => {

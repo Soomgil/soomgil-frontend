@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatUiText } from '@/i18n/ui-localizer'
 import { translateUiText } from '@/i18n/ui-localizer'
+import aiProfileImage from '@/assets/images/ai-profile.png'
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefetchMapStyles } from '@/utils/mapStyleCache'
@@ -489,6 +490,25 @@ const routeNearbyMapPlaces = computed<ItineraryMapNearbyPlace[]>(() => {
   })
 })
 const selectedRecommendationMapPlace = ref<ItineraryMapNearbyPlace | null>(null)
+// 기본 추천 리스트에서 마우스를 올린 장소를 지도에서 강조한다(지도는 이동시키지 않음).
+const hoverPreviewMapPlace = ref<ItineraryMapNearbyPlace | null>(null)
+function previewDiscoveredPlace(place: Place | null) {
+  if (!place || place.lat == null || place.lng == null) {
+    hoverPreviewMapPlace.value = null
+    return
+  }
+  hoverPreviewMapPlace.value = {
+    id: `hover:${place.provider}:${place.externalPlaceId}`,
+    provider: place.provider,
+    externalPlaceId: place.externalPlaceId,
+    title: place.placeName,
+    category: place.category ?? null,
+    lat: place.lat,
+    lng: place.lng,
+    dayIndex: mapAccentDayIndex.value,
+    image: placeGallery(place)[0] ?? '',
+  }
+}
 const tastePlaces = ref<TasteMapPlace[]>([])
 const tasteControl = ref<InstanceType<typeof MapTasteControl> | null>(null)
 function selectNearbyMapPlace(provider: string, placeId: string) {
@@ -516,7 +536,10 @@ const viewportBbox = computed(() => {
   return `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
 })
 const isJejuTrip = computed(() => trip.value.destinationName.includes('제주'))
-const placeDiscoveryBbox = computed(() => viewportBbox.value || (isJejuTrip.value ? JEJU_DISCOVERY_BBOX : ''))
+// 여행지역의 뷰포트 bbox. 사용자가 아직 지도를 움직이지 않았을 때 추천·디스커버리가 그 지역에서
+// 나오도록 하는 기본값이다. (지도 이동 전에는 viewportBbox가 비어 있다.)
+const regionViewportBbox = ref('')
+const placeDiscoveryBbox = computed(() => viewportBbox.value || regionViewportBbox.value || (isJejuTrip.value ? JEJU_DISCOVERY_BBOX : ''))
 
 const itineraryLoadError = ref(false)
 const itineraryActionsDisabled = computed(() => itinerary.loading.value || itinerary.mutating.value || itineraryLoadError.value)
@@ -540,8 +563,36 @@ async function loadTrip() {
   if (!tripId) return
   try {
     await tripStore.fetchTrip(tripId)
+    void focusTripRegion()
   } catch {
     itineraryActionError.value = '여행 정보를 불러오지 못했습니다.'
+  }
+}
+
+// 여행지역의 지도 뷰포트를 받아, 담은 장소가 없는 여행방에서 지도를 그 지역으로 옮긴다.
+// 지역 좌표가 없으면(관광 원천 장소가 없는 지역) 조용히 넘어간다.
+async function focusTripRegion() {
+  const regionCode = tripStore.currentTrip?.id === tripId
+    ? tripStore.currentTrip?.regions?.find((region) => region.code)?.code
+    : undefined
+  if (!regionCode) return
+  try {
+    const viewport = await placeApi.getRegionViewport(regionCode)
+    if (!viewport) return
+    regionViewportBbox.value = `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
+    // 아직 담은 장소가 없고 사용자가 지도를 움직이기 전이면, 지도를 여행지역으로 옮긴다.
+    if (mapStops.value.length === 0 && !mapViewport.viewport.value) {
+      itineraryMapRef.value?.focusBounds({
+        minLng: viewport.minLng,
+        minLat: viewport.minLat,
+        maxLng: viewport.maxLng,
+        maxLat: viewport.maxLat,
+      })
+    }
+    // 지역 범위를 알게 됐으니, 추천이 켜져 있으면 지도 이동을 기다리지 않고 바로 그 지역 추천을 채운다.
+    if (nearbyOn.value) void loadRouteNearbyPlaces()
+  } catch {
+    // 지역 뷰포트는 보조 정보라 실패해도 페이지 동작에 영향을 주지 않는다.
   }
 }
 
@@ -890,10 +941,7 @@ async function removeRouteLinkBetween(id1: string, id2: string) {
 	try {
     await itinerary.deleteRoute(link.id)
     itinerary.routes.value = itinerary.routes.value.filter((route) => route.id !== link.id)
-    if (!routeBbox(visibleMapRoutes.value as Array<{ geometry?: Record<string, unknown> }>)) {
-      nearbyOn.value = false
-      clearRouteNearbyPlaces()
-    }
+    // 경로가 없어져도 추천은 끄지 않는다. 경로 변경 watch가 지금 지도 영역 기준으로 다시 채운다.
 		showToast('경로 연결이 해제되었습니다', 'success')
 	} catch {
 		showToast('경로 연결을 해제하지 못했습니다.', 'error')
@@ -1015,9 +1063,13 @@ function upsertLocalRoute(route: { id: string }) {
 async function loadRouteNearbyPlaces() {
   const routes = visibleMapRoutes.value as Array<{ geometry?: Record<string, unknown> }>
   const routeCoordinates = routes.flatMap(routeCoordinatesOf)
-  const bbox = routeBbox(routes)
+  // 경로가 있으면 경로를 감싸는 범위로, 없으면 지금 지도에 보이는 영역(뷰포트)으로 추천을 받는다.
+  // 아직 지도가 한 번도 안 움직였으면 여행지역 뷰포트를 쓴다. 지도를 움직이면 그 영역의 추천이 뜬다.
+  const bbox = routeCoordinates.length > 0
+    ? routeBbox(routes)
+    : (viewportBbox.value || regionViewportBbox.value)
   if (!bbox) {
-    clearRouteNearbyPlaces('경로를 먼저 생성해 주세요.')
+    clearRouteNearbyPlaces('지도를 움직여 추천받을 지역을 정해 주세요.')
     return
   }
   const [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(Number)
@@ -1038,7 +1090,8 @@ async function loadRouteNearbyPlaces() {
     const places = response.items
       .map((recommendation: any) => recommendation.place)
       .filter((place: any) => place.lat != null && place.lng != null)
-      .filter((place: Place) => isPlaceNearRoute(place, routeCoordinates))
+      // 경로가 있을 때만 경로 근처로 좁힌다. 경로가 없으면 화면에 보이는 지역 전체에서 추천한다.
+      .filter((place: Place) => routeCoordinates.length === 0 || isPlaceNearRoute(place, routeCoordinates))
       .filter((place: any) => !scheduled.has(`${place.provider}:${place.externalPlaceId}`))
       .slice(0, 12)
     const placesWithAccessibility = await withAccessibilityForPlaces(places)
@@ -2829,12 +2882,14 @@ async function deleteTodo(id: string) {
 /* ── Map tools ── */
 const routeState = ref<'route' | 'hidden'>('route')
 const cardState = ref<'full' | 'min' | 'hidden'>('full')
-const nearbyOn = ref(false)
+// 방에 들어오면 따로 누르지 않아도 지금 지도 영역의 추천 장소가 보이도록 기본 켬으로 둔다.
+const nearbyOn = ref(true)
 const standardMapView = ref(false)
 const mapIsTilted = ref(false)
 const itineraryMapRef = ref<{
   resetOrientation: () => void
   preserveCameraOnNextStopsChange: () => void
+  focusBounds: (bounds: { minLng: number; minLat: number; maxLng: number; maxLat: number }) => void
 } | null>(null)
 watch([nearbyOn, visibleMapRoutes], async ([isOn]) => {
   if (isOn) {
@@ -2843,6 +2898,15 @@ watch([nearbyOn, visibleMapRoutes], async ([isOn]) => {
     clearRouteNearbyPlaces()
   }
 }, { immediate: true })
+// 지도를 움직이면 그 영역의 추천을 다시 받되, 이동 중 매번 부르지 않도록 몇 초 텀을 둔다.
+// (지도 moveend마다 즉시 호출하면 호출량이 과도해진다.)
+let nearbyViewportTimer: ReturnType<typeof setTimeout> | undefined
+watch(() => mapViewport.viewport.value, () => {
+  if (!nearbyOn.value) return
+  clearTimeout(nearbyViewportTimer)
+  nearbyViewportTimer = setTimeout(() => { void loadRouteNearbyPlaces() }, 1500)
+})
+onUnmounted(() => clearTimeout(nearbyViewportTimer))
 const drawingOn = ref(true)
 const isPenPopoverOpen = ref(false)
 const penSize = ref(6)
@@ -4734,7 +4798,7 @@ function textAvatarStyle(index: unknown) {
                         :class="['avatar', 'avatar-with-tooltip', { 'is-online': m.online }]"
                         :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}"
                       >
-                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" />
+                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" @error="($event.target as HTMLImageElement).style.display = 'none'" />
                         <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
                         <span v-if="m.online" class="avatar-presence-badge" aria-label="접속 중"></span>
                         <div class="avatar-tooltip">
@@ -5059,6 +5123,7 @@ function textAvatarStyle(index: unknown) {
                   :bbox="placeDiscoveryBbox"
                   :scheduled-place-keys="scheduledPlaceKeys"
                   @select="selectDiscoveredPlace"
+                  @preview="previewDiscoveredPlace"
                 />
               </div>
             </div>
@@ -5108,6 +5173,7 @@ function textAvatarStyle(index: unknown) {
               :nearby-places="routeNearbyMapPlaces"
               :taste-places="tastePlaces"
               :preview-place="selectedRecommendationMapPlace"
+              :highlight-place="hoverPreviewMapPlace"
               :drawings="mapDrawings"
               :drawing-tool="activeTool"
               :drawing-color="penColor"
@@ -5648,7 +5714,9 @@ function textAvatarStyle(index: unknown) {
                 <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
               </div>
               <div v-for="msg in aiMessages" :key="msg.id" :class="['ai-message', msg.role === 'ASSISTANT' || msg.role === 'TOOL' ? 'assistant' : 'user']">
-                <div v-if="msg.role === 'ASSISTANT' || msg.role === 'TOOL'" class="ai-message-avatar">&#10024;</div>
+                <div v-if="msg.role === 'ASSISTANT' || msg.role === 'TOOL'" class="ai-message-avatar ai-assistant-avatar">
+                  <img :src="aiProfileImage" alt="" />
+                </div>
                 <div class="ai-message-bubble" style="white-space:pre-wrap">{{ msg.content }}</div>
               </div>
               <p v-if="!conversationLoading && aiMessages.length === 0" class="text-sm text-muted">AI에게 첫 질문을 보내보세요.</p>

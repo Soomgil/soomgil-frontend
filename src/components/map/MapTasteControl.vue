@@ -63,13 +63,11 @@ watch(() => [props.tripId, props.userId], () => {
   if (enabled.value) void load()
 })
 watch(() => props.bbox, bbox => {
+  // 지도가 움직여 범위가 바뀌면(주변 여행지와 동일하게) 잠시 뒤 그 범위의 취향 장소를 다시 불러온다.
+  // 예전엔 "30% 이상 이동" 조건이 있어 조금만 움직이면 갱신되지 않아, 껐다 켜야 보이는 문제가 있었다.
   clearTimeout(refreshTimer)
-  if (!enabled.value || !bbox) return
-  const old = loadedBbox.value.split(',').map(Number)
-  const next = bbox.split(',').map(Number)
-  const span = Math.max(old[2] - old[0], old[3] - old[1], .002)
-  const changed = !loadedBbox.value || next.some((v, i) => Math.abs(v - old[i]) > span * .3)
-  if (changed) refreshTimer = setTimeout(() => void load(), 500)
+  if (!enabled.value || !bbox || bbox === loadedBbox.value) return
+  refreshTimer = setTimeout(() => void load(), 1500)
 })
 onBeforeUnmount(() => { revision++; clearTimeout(refreshTimer) })
 function select(provider: string, id: string) {
@@ -112,7 +110,7 @@ defineExpose({ select, close })
       <button type="button" role="switch" class="taste-switch-row" data-testid="taste-super" :aria-checked="superOnly" @click="superOnly = !superOnly"><span>슈퍼라이크만 보기</span><span class="taste-switch" aria-hidden="true"></span></button>
       <div v-if="error && !loading" role="alert"><p>취향 장소를 불러오지 못했습니다.</p><button class="taste-reload" @click="load">다시 시도</button></div>
       <p v-else-if="!bbox">지도를 움직여 탐색할 지역을 선택해 주세요.</p>
-      <p v-else-if="enabled && !loading && !places.length">이 지역에 표시할 선호 장소가 없어요.</p>
+      <p v-else-if="enabled && !loading && !places.length">이 지역엔 여행 멤버가 좋아한 장소가 아직 없어요. 지도를 옮기거나 ‘취향 수집’에서 좋아요를 모아 보세요.</p>
     </section>
   </div>
 </template>

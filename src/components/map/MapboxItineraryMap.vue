@@ -56,6 +56,7 @@ const props = withDefaults(defineProps<{
   nearbyPlaces?: ItineraryMapNearbyPlace[]
   tastePlaces?: ItineraryMapNearbyPlace[]
   previewPlace?: ItineraryMapNearbyPlace | null
+  highlightPlace?: ItineraryMapNearbyPlace | null
   drawings?: MapDrawingStroke[]
   drawingTool?: MapDrawingTool
   drawingColor?: string
@@ -80,6 +81,7 @@ const props = withDefaults(defineProps<{
   nearbyPlaces: () => [],
   tastePlaces: () => [],
   previewPlace: null,
+  highlightPlace: null,
   routeDisplay: 'route',
   cardDisplay: 'full',
   drawingTool: 'cursor',
@@ -120,7 +122,9 @@ const emit = defineEmits<{
   mapDragStart: []
 }>()
 
-const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
+// 여행 장소도 추천 장소도 없을 때만 쓰는 최후 기본값. 특정 도시(대전)가 아니라 전국이 보이게 한다.
+const DEFAULT_CENTER: [number, number] = [127.7669, 36.2]
+const DEFAULT_ZOOM = 6.4
 const container = ref<HTMLElement | null>(null)
 const mapError = ref('')
 const canRetry = ref(false)
@@ -138,6 +142,7 @@ let lastEmittedViewport = ''
 let lastFittedStopsKey = ''
 let wasConnectingRoute = false
 let preserveCameraForNextStopsChange = false
+let pendingFocusBounds: { minLng: number; minLat: number; maxLng: number; maxLat: number } | null = null
 
 const STANDARD_VIEW_CAMERA = { pitch: 60, bearing: -20 }
 const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16', '#f59e0b', '#64748b']
@@ -178,7 +183,25 @@ function preserveCameraOnNextStopsChange() {
   preserveCameraForNextStopsChange = true
 }
 
-defineExpose({ resetOrientation, preserveCameraOnNextStopsChange })
+// 여행지역 범위로 지도를 옮긴다. 담은 장소가 없는 여행방에서 처음 이 지역을 보여주기 위한 것.
+// 지도가 아직 준비되지 않았으면 준비된 뒤(style.load) 적용한다.
+function focusBounds(bounds: { minLng: number; minLat: number; maxLng: number; maxLat: number }) {
+  if (![bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat].every((value) => Number.isFinite(value))) return
+  if (!map || !mapboxgl || !styleReady) {
+    pendingFocusBounds = bounds
+    return
+  }
+  pendingFocusBounds = null
+  const box = new mapboxgl.LngLatBounds([bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.maxLat])
+  const camera = map.cameraForBounds(box, { padding: 64, maxZoom: 12 })
+  if (camera) {
+    map.easeTo({ ...camera, duration: 600 })
+  } else {
+    map.easeTo({ center: [(bounds.minLng + bounds.maxLng) / 2, (bounds.minLat + bounds.maxLat) / 2], zoom: 10, duration: 600 })
+  }
+}
+
+defineExpose({ resetOrientation, preserveCameraOnNextStopsChange, focusBounds })
 
 function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? `day-color-${DAY_ROUTE_COLORS.length}` : `day-color-${((dayIndex - 1) % DAY_ROUTE_COLORS.length) + 1}`
@@ -573,12 +596,14 @@ function renderStops() {
     })
   }
 
-  props.nearbyPlaces.forEach((place, index) => {
-    const ring = Math.floor(index / 8)
-    const angle = (index % 8) * (Math.PI / 4)
-    const radius = 14 + ring * 8
-    const offset: [number, number] = [Math.round(Math.cos(angle) * radius), Math.round(Math.sin(angle) * radius)]
-    markers.push(new mapbox.Marker({ element: createNearbyMarkerElement(place), anchor: 'bottom', offset })
+  // 추천 마커가 서로 겹치지 않도록, 이미 놓인 마커와 화면상 가까우면(라벨 pill 폭 고려) 건너뛴다.
+  const placedNearbyPoints: { x: number; y: number }[] = []
+  props.nearbyPlaces.forEach((place) => {
+    if (!Number.isFinite(place.lng) || !Number.isFinite(place.lat)) return
+    const point = map!.project([place.lng, place.lat])
+    if (placedNearbyPoints.some((placed) => Math.hypot(placed.x - point.x, placed.y - point.y) < 104)) return
+    placedNearbyPoints.push({ x: point.x, y: point.y })
+    markers.push(new mapbox.Marker({ element: createNearbyMarkerElement(place), anchor: 'bottom', offset: [0, -6] })
       .setLngLat([place.lng, place.lat])
       .addTo(map!))
   })
@@ -590,6 +615,17 @@ function renderStops() {
       offset: [0, -18],
     })
       .setLngLat([props.previewPlace.lng, props.previewPlace.lat])
+      .addTo(map!))
+  }
+
+  // 리스트에서 마우스를 올린 추천 장소를 지도에서 강조한다. 지도를 이동시키지 않는다(hover마다 튀지 않도록).
+  if (props.highlightPlace && Number.isFinite(props.highlightPlace.lng) && Number.isFinite(props.highlightPlace.lat)) {
+    markers.push(new mapbox.Marker({
+      element: createPreviewPlaceMarkerElement(props.highlightPlace),
+      anchor: 'bottom',
+      offset: [0, -18],
+    })
+      .setLngLat([props.highlightPlace.lng, props.highlightPlace.lat])
       .addTo(map!))
   }
 
@@ -612,11 +648,14 @@ function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
     lastFittedStopsKey = stopsKey
     return
   }
-  if (stopsKey === lastFittedStopsKey) return
-  lastFittedStopsKey = stopsKey
+  // 여행 장소가 없으면 지도를 건드리지 않는다. 초기 중심은 여행지역 뷰포트(focusBounds)가 잡고,
+  // 추천 장소(취향/주변)는 전국에 흩어져 있을 수 있어 거기에 맞추면 오히려 전국으로 줌아웃된다.
   if (props.stops.length === 0) {
     return
-  } else if (props.stops.length === 1) {
+  }
+  if (stopsKey === lastFittedStopsKey) return
+  lastFittedStopsKey = stopsKey
+  if (props.stops.length === 1) {
     map.easeTo({ center: [props.stops[0].lng, props.stops[0].lat], zoom: 11 })
   } else {
     const bounds = new mapbox.LngLatBounds()
@@ -725,7 +764,7 @@ async function initializeMap() {
       container: container.value,
       style: mapStyle.value,
       center: DEFAULT_CENTER,
-      zoom: 10,
+      zoom: DEFAULT_ZOOM,
       pitch: props.standardView ? STANDARD_VIEW_CAMERA.pitch : 0,
       bearing: props.standardView ? STANDARD_VIEW_CAMERA.bearing : 0,
     })
@@ -744,6 +783,7 @@ async function initializeMap() {
       renderStops()
       renderTasteMarkers()
       updateDrawingProjection()
+      if (pendingFocusBounds) focusBounds(pendingFocusBounds)
     })
     createdMap.once('idle', () => { emitViewport(); emitOrientation() })
     createdMap.on('error', () => {
@@ -778,7 +818,7 @@ function retry() {
   void initializeMap()
 }
 
-watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.cardDisplay, props.navigationMode], renderStops, { deep: true })
+watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.highlightPlace, props.cardDisplay, props.navigationMode], renderStops, { deep: true })
 watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
 watch(() => props.tastePlaces, renderTasteMarkers, { deep: true })
 onMounted(initializeMap)
