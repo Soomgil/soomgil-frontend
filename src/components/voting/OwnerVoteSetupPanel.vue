@@ -120,7 +120,6 @@ async function open() {
     <h1 class="vote-setup__title">
       새 투표를 시작할까요?
     </h1>
-    <p v-if="tripTitle" class="vote-setup__trip">{{ tripTitle }} · {{ knowsDays ? `${days}일` : '날짜 미정' }}</p>
     <p class="vote-setup__lead">
       투표할 지역과 하루에 방문할 장소 수를 정해 주세요.
     </p>
@@ -446,7 +445,6 @@ async function open() {
 
 .vote-setup { width:min(100%,720px); margin:0 auto; gap:7px; padding:4px 2px 2px; color:#35465a; }
 .vote-setup__title { font-size:clamp(22px,2.7vw,27px); line-height:1.35; font-weight:750; }
-.vote-setup__trip { max-width:100%; margin:0; color:#427ead; font-size:12px; font-weight:750; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .vote-setup__lead { max-width:62ch; margin:2px 0 8px; font-size:13px; line-height:1.6; }
 .vote-setup__panel { gap:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
 .vote-setup__row { border:0; border-bottom:1px solid #e5edf3; border-radius:0; padding:20px 2px; background:transparent; }

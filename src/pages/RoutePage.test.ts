@@ -267,7 +267,13 @@ describe('RoutePage itinerary integration', () => {
       items: [],
     })
 		holder.state.createDrawing.mockResolvedValue({ id: 'drawing-1' })
-    holder.votingStore = reactive({ session: null, nextScreen: 'MAP', myParticipation: null, isSubmitted: false })
+    holder.votingStore = reactive({
+      session: null,
+      nextScreen: 'MAP',
+      myParticipation: null,
+      isSubmitted: false,
+      load: vi.fn(),
+    })
     holder.tripStore = reactive({
       currentTrip: null,
       fetchTrip: vi.fn(async () => {
@@ -2812,6 +2818,34 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.findAll('.avatar.is-online')).toHaveLength(2)
     expect(wrapper.findAll('.avatar-presence-badge')).toHaveLength(2)
     expect(wrapper.text()).toContain('접속 중')
+    wrapper.unmount()
+  })
+
+  it('voting topic의 상태 변경 이벤트를 받으면 투표 상태를 다시 불러온다', async () => {
+    localStorage.setItem('accessToken', 'test-token')
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    const collaborationTransport = realtime.instances[0]
+
+    expect(collaborationTransport.subscriptions.has('/topic/trips/trip-1/voting')).toBe(true)
+    collaborationTransport.subscriptions.get('/topic/trips/trip-1/voting')?.({
+      tripId: 'trip-1',
+      sessionId: 'vote-1',
+      status: 'OPEN',
+      eventType: 'vote.session.updated',
+    })
+    await flushPromises()
+
+    expect(holder.votingStore.load).toHaveBeenCalledWith('trip-1')
     wrapper.unmount()
   })
 

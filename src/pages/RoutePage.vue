@@ -3140,7 +3140,10 @@ const collaborationTransport = new StompTransport({
 			serverUndoAvailable.value = false
 			serverRedoAvailable.value = false
 		}
-    if (reconnected) void itinerary.fetchItinerary()
+    if (reconnected) {
+      void itinerary.fetchItinerary()
+      void votingStore.load(tripId)
+    }
     if (drawingRetryIds.value.length > 0) retryDrawingSimplification()
   },
   onDisconnected: () => {
@@ -3177,7 +3180,7 @@ let conversationRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let planningRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let cursorPruneTimer: number | null = null
 
-function tripRealtimeTopic(topic: 'collaboration' | 'presence' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai') {
+function tripRealtimeTopic(topic: 'collaboration' | 'presence' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai' | 'voting') {
   return `/topic/trips/${encodeURIComponent(tripId)}/${topic}`
 }
 
@@ -3649,6 +3652,13 @@ function receivePlanningEvent(message: unknown) {
   scheduleItineraryRefresh(message)
 }
 
+function receiveVotingEvent(message: unknown) {
+  if (!isTripRealtimeEvent(message)) return
+  const event = message as { eventType?: unknown }
+  if (event.eventType !== 'vote.session.updated') return
+  void votingStore.load(tripId)
+}
+
 function receiveAiEvent(message: unknown) {
   if (!isTripRealtimeEvent(message)) return
   const aiChatMessage = extractAiMessage(message)
@@ -3675,6 +3685,7 @@ function connectTripRealtime() {
     collaborationTransport.subscribe(tripRealtimeTopic('chat'), receiveChatEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('planning'), receivePlanningEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('ai'), receiveAiEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('voting'), receiveVotingEvent),
   ]
   collaborationTransport.connect()
 }
@@ -5919,7 +5930,7 @@ function textAvatarStyle(index: unknown) {
         <button type="button" class="icon-btn vote-modal-close" aria-label="투표 창 닫기" @click="closeVoteModal">
           <span class="material-symbols-rounded">close</span>
         </button>
-        <TripVoteFlow :key="notificationVoteSessionId ?? 'current'" :trip-id="tripId" :trip-days="voteTripDays" :target-session-id="notificationVoteSessionId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
+        <TripVoteFlow :key="notificationVoteSessionId ?? 'current'" :trip-id="tripId" :trip-days="voteTripDays" :is-owner="isTripOwner" :target-session-id="notificationVoteSessionId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
       </div>
     </div>
   </AppShell>
