@@ -393,7 +393,12 @@ onUnmounted(() => {
 
             <p v-if="error" class="trip-create-error" aria-live="polite" style="color:var(--rose);">{{ error }}</p>
 
-            <section v-if="isOwner" class="management-section danger-zone" aria-labelledby="delete-trip-title">
+            <section
+              v-if="isOwner"
+              class="management-section danger-zone"
+              :class="{ 'is-confirming-delete': confirmingDelete }"
+              aria-labelledby="delete-trip-title"
+            >
               <div class="management-section-head">
                 <span class="material-symbols-rounded management-section-icon management-section-icon--danger" aria-hidden="true">delete</span>
                 <div>
@@ -653,7 +658,12 @@ onUnmounted(() => {
 
 .danger-zone .management-section-head {
   flex: 1 1 auto;
+  min-width: 0;
   margin-bottom: 0;
+}
+
+.danger-zone.is-confirming-delete {
+  flex-wrap: wrap;
 }
 
 .danger-button {
@@ -679,17 +689,28 @@ onUnmounted(() => {
 }
 
 .delete-confirmation {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
   align-items: center;
+  border-top: 1px solid #f3d9de;
+  display: grid;
+  flex: 1 0 100%;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 14px;
+  width: 100%;
 }
 
 .delete-confirmation > span {
+  min-width: 0;
   font-size: 13px;
   color: #9f1239;
   font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.delete-confirmation > button {
+  height: 40px;
+  min-width: 72px;
 }
 
 .delete-confirmation > button:not(.danger-button) {
@@ -899,6 +920,18 @@ onUnmounted(() => {
   .danger-zone {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .delete-confirmation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .delete-confirmation > span {
+    grid-column: 1 / -1;
+  }
+
+  .delete-confirmation > button {
+    width: 100%;
   }
 
   .members-tab-content {

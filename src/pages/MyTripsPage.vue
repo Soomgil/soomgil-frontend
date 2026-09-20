@@ -496,7 +496,7 @@ watch(activeFilter, loadTrips)
       <div class="modal-card trip-create-card" role="dialog" aria-modal="true" aria-labelledby="trip-create-title">
         <div class="modal-header">
           <div>
-            <p class="eyebrow">Plan Your Trip</p>
+            <p class="eyebrow">CREATE A TRIP</p>
             <h3 id="trip-create-title">새 여행 만들기</h3>
             <p class="trip-create-intro">여행 이름과 지역, 일정을 정해 새로운 여행을 시작하세요.</p>
           </div>
@@ -576,7 +576,11 @@ watch(activeFilter, loadTrips)
 .trip-intent-guide .material-symbols-rounded { font-size: 18px; }
 .trip-create-hint { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 6px 0 0; }
 .trip-create-card { max-width: 720px; width: min(100%, 720px); }
-.trip-create-intro { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 6px 0 0; }
+.trip-create-card .modal-header { align-items:flex-start; gap:16px; }
+.trip-create-card .modal-header > div { display:grid; gap:5px; min-width:0; }
+.trip-create-card .modal-header .eyebrow { color:#5d89aa; font-size:10px; font-weight:800; letter-spacing:.14em; line-height:1.4; margin:0; text-transform:uppercase; }
+.trip-create-card .modal-header h3 { color:#35465a; font-family:'Noto Serif KR',Batang,serif; font-size:23px; font-weight:600; letter-spacing:-.02em; line-height:1.4; margin:0; }
+.trip-create-intro { color:#647c92; font-size:12px; line-height:1.65; margin:0; }
 .trip-period-card { display:flex; align-items:center; gap:12px; width:100%; border:1px solid #dce9f3; border-radius:18px; background:#f8fbff; color:#304b63; padding:16px; text-align:left; cursor:pointer; font:inherit; }
 .trip-period-card:hover { border-color:#86b9df; background:#f0f7ff; }
 .period-card-copy { flex:1; min-width:0; }
