@@ -289,6 +289,10 @@ describe('여행 방 투표 화면', () => {
     await wrapper.find('[data-testid="vote-close-open"]').trigger('click')
 
     expect(wrapper.find('[data-testid="vote-close-warning"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="vote-close-modal"]').attributes('role')).toBe('dialog')
+    expect(wrapper.get('.trip-vote__modal-summary').text()).toContain('제출 완료')
+    expect(wrapper.get('.trip-vote__modal-summary').text()).toContain('미제출')
+    expect(wrapper.get('[data-testid="vote-close-cancel"]').text()).toContain('투표 계속하기')
     expect(wrapper.find('[data-testid="vote-close-confirm"]').attributes('disabled')).toBeDefined()
 
     await wrapper.find('[data-testid="vote-close-ack"]').setValue(true)

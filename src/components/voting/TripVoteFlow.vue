@@ -384,17 +384,56 @@ onUnmounted(() => {
       </template>
 
       <!-- 조기 종료 확인 -->
-      <div v-if="closeConfirmOpen" class="trip-vote__modal" data-testid="vote-close-modal">
+      <div
+        v-if="closeConfirmOpen"
+        class="trip-vote__modal"
+        data-testid="vote-close-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vote-close-title"
+      >
         <div class="trip-vote__modal-body">
-          <h2>투표를 마감할까요?</h2>
-          <p v-if="voting.hasUnvotedParticipants" class="trip-vote__modal-warning" data-testid="vote-close-warning">{{ formatUiText("아직 제출하지 않은 멤버가 {0}명 있어요. 지금 마감하면 그분들의 스티커는 반영되지 않아요.", "{0} members have not submitted. Their stickers will not count if voting closes now.", [(participantSummary?.total ?? 0) - (participantSummary?.submitted ?? 0)]) }}</p>
+          <header class="trip-vote__modal-header">
+            <span class="trip-vote__modal-icon material-symbols-rounded" aria-hidden="true">timer_off</span>
+            <div>
+              <span class="trip-vote__modal-kicker">투표 관리</span>
+              <h2 id="vote-close-title">현재 결과로 투표를 마감할까요?</h2>
+            </div>
+            <button type="button" class="trip-vote__modal-dismiss" aria-label="투표 마감 창 닫기" @click="closeConfirmOpen = false">
+              <span class="material-symbols-rounded" aria-hidden="true">close</span>
+            </button>
+          </header>
+
+          <p class="trip-vote__modal-lead">마감하면 현재까지 제출된 스티커로 선정 장소를 확정하고 일정에 반영해요.</p>
+
+          <div class="trip-vote__modal-summary" aria-label="현재 투표 현황">
+            <div>
+              <small>제출 완료</small>
+              <strong>{{ participantSummary?.submitted ?? 0 }}명</strong>
+            </div>
+            <span aria-hidden="true"></span>
+            <div>
+              <small>미제출</small>
+              <strong class="is-pending">{{ Math.max(0, (participantSummary?.total ?? 0) - (participantSummary?.submitted ?? 0)) }}명</strong>
+            </div>
+          </div>
+
+          <div v-if="voting.hasUnvotedParticipants" class="trip-vote__modal-warning" data-testid="vote-close-warning">
+            <span class="material-symbols-rounded" aria-hidden="true">info</span>
+            <p>{{ formatUiText("아직 제출하지 않은 멤버가 {0}명 있어요. 지금 마감하면 그분들의 스티커는 반영되지 않아요.", "{0} members have not submitted. Their stickers will not count if voting closes now.", [(participantSummary?.total ?? 0) - (participantSummary?.submitted ?? 0)]) }}</p>
+          </div>
+          <div v-else class="trip-vote__modal-ready">
+            <span class="material-symbols-rounded" aria-hidden="true">check_circle</span>
+            모든 멤버가 투표를 제출했어요.
+          </div>
+
           <label v-if="voting.hasUnvotedParticipants" class="trip-vote__modal-check">
             <input v-model="acknowledged" type="checkbox" data-testid="vote-close-ack" />
-            <span>확인했어요</span>
+            <span><strong>미제출 멤버의 선택이 제외됨</strong>을 확인했어요.</span>
           </label>
           <div class="trip-vote__modal-actions">
-            <button type="button" data-testid="vote-close-cancel" @click="closeConfirmOpen = false">
-              취소
+            <button type="button" class="cancel" data-testid="vote-close-cancel" @click="closeConfirmOpen = false">
+              투표 계속하기
             </button>
             <button
               type="button"
@@ -403,7 +442,8 @@ onUnmounted(() => {
               :disabled="!isOwnerCloseAllowed || voting.closing"
               @click="closeEarly"
             >
-              마감
+              <span class="material-symbols-rounded" aria-hidden="true">flag</span>
+              {{ voting.closing ? '마감 중…' : '현재 결과로 마감' }}
             </button>
           </div>
         </div>
@@ -663,8 +703,8 @@ onUnmounted(() => {
 /* 조기 종료 확인 모달 */
 .trip-vote__modal {
   align-items: center;
-  backdrop-filter: blur(4px);
-  background: rgba(10, 22, 44, 0.45);
+  backdrop-filter: blur(8px);
+  background: rgb(25 43 59 / 48%);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -674,62 +714,175 @@ onUnmounted(() => {
 }
 
 .trip-vote__modal-body {
-  background: var(--surface);
-  border-radius: 24px;
-  box-shadow: var(--shadow);
-  max-width: 420px;
-  padding: 28px 24px;
+  background: #fff;
+  border: 1px solid rgb(219 233 243 / 90%);
+  border-radius: 28px;
+  box-shadow: 0 28px 80px rgb(31 58 82 / 24%);
+  max-width: 500px;
+  overflow: hidden;
+  padding: 30px;
   width: 100%;
 }
 
-.trip-vote__modal-body h2 {
-  color: var(--ink);
-  font-size: 20px;
-  font-weight: 900;
-  margin: 0 0 12px;
+.trip-vote__modal-header {
+  align-items: flex-start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto 1fr auto;
 }
+
+.trip-vote__modal-icon {
+  align-items: center;
+  background: #fff1f3;
+  border: 1px solid #f6d7dd;
+  border-radius: 16px;
+  color: #c8576b;
+  display: flex;
+  font-size: 25px;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.trip-vote__modal-kicker {
+  color: #8a9cac;
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  margin: 1px 0 5px;
+}
+
+.trip-vote__modal-body h2 {
+  color: #30465a;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: -.035em;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.trip-vote__modal-dismiss {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: #91a1af;
+  cursor: pointer;
+  display: flex;
+  height: 36px;
+  justify-content: center;
+  padding: 0;
+  width: 36px;
+}
+
+.trip-vote__modal-dismiss:hover { background: #f1f6fa; color: #526a7e; }
+.trip-vote__modal-dismiss .material-symbols-rounded { font-size: 21px; }
+
+.trip-vote__modal-lead {
+  color: #6d8295;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 18px 0;
+}
+
+.trip-vote__modal-summary {
+  align-items: center;
+  background: linear-gradient(135deg, #f2f8fd, #f8fbfd);
+  border: 1px solid #dce9f2;
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  margin-bottom: 14px;
+  padding: 15px 18px;
+}
+
+.trip-vote__modal-summary > div { display: grid; gap: 3px; text-align: center; }
+.trip-vote__modal-summary > span { background: #d9e6ef; height: 30px; }
+.trip-vote__modal-summary small { color: #8396a7; font-size: 10px; font-weight: 800; }
+.trip-vote__modal-summary strong { color: #397ead; font-size: 20px; }
+.trip-vote__modal-summary strong.is-pending { color: #c0576a; }
+
+.trip-vote__modal-ready {
+  align-items: center;
+  background: #eff9f3;
+  border: 1px solid #d3eadb;
+  border-radius: 15px;
+  color: #3d7d56;
+  display: flex;
+  font-size: 13px;
+  font-weight: 750;
+  gap: 8px;
+  padding: 13px 14px;
+}
+
+.trip-vote__modal-ready .material-symbols-rounded { font-size: 19px; }
 
 .trip-vote__modal-warning {
-  background: rgba(255, 90, 138, 0.08);
-  border-radius: 14px;
-  color: var(--rose, #ff5a8a);
-  font-size: 14px;
+  align-items: flex-start;
+  background: #fff5f6;
+  border: 1px solid #f6dce1;
+  border-radius: 15px;
+  color: #a9495b;
+  display: flex;
+  font-size: 13px;
+  gap: 9px;
   line-height: 1.6;
   margin: 0 0 14px;
-  padding: 12px 14px;
+  padding: 13px 14px;
 }
 
+.trip-vote__modal-warning .material-symbols-rounded { flex: 0 0 auto; font-size: 19px; margin-top: 1px; }
+.trip-vote__modal-warning p { margin: 0; }
+
 .trip-vote__modal-check {
-  align-items: center;
-  color: var(--ink);
+  align-items: flex-start;
+  background: #f8fafc;
+  border: 1px solid #e2eaf0;
+  border-radius: 14px;
+  color: #657b8e;
+  cursor: pointer;
   display: flex;
-  font-size: 14px;
-  font-weight: 700;
-  gap: 8px;
-  margin-bottom: 18px;
+  font-size: 12px;
+  gap: 10px;
+  line-height: 1.5;
+  padding: 12px 13px;
 }
+
+.trip-vote__modal-check input { accent-color: #3f8dc8; flex: 0 0 auto; height: 17px; margin: 1px 0 0; width: 17px; }
+.trip-vote__modal-check strong { color: #415b70; }
 
 .trip-vote__modal-actions {
   display: flex;
   gap: 10px;
-  justify-content: flex-end;
+  margin-top: 22px;
 }
 
 .trip-vote__modal-actions button {
-  background: none;
+  align-items: center;
+  background: #eef4f8;
   border: none;
-  border-radius: 999px;
-  color: var(--muted);
+  border-radius: 14px;
+  color: #61798d;
   cursor: pointer;
+  display: inline-flex;
+  flex: 1;
   font-size: 14px;
   font-weight: 800;
-  padding: 10px 18px;
+  gap: 7px;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 16px;
 }
 
 .trip-vote__modal-actions button.confirm {
-  background: linear-gradient(135deg, var(--violet), var(--blue));
+  background: linear-gradient(135deg, #d25a6f, #bc465c);
+  box-shadow: 0 10px 22px rgb(188 70 92 / 22%);
   color: #fff;
 }
+
+.trip-vote__modal-actions button:not(:disabled):hover { transform: translateY(-1px); }
+.trip-vote__modal-actions .material-symbols-rounded { font-size: 18px; }
 
 .trip-vote__modal-actions button.confirm:disabled {
   cursor: not-allowed;
@@ -740,6 +893,13 @@ onUnmounted(() => {
   .trip-vote__panel {
     padding: 34px 20px;
   }
+  .trip-vote__modal { align-items: flex-end; padding: 12px; }
+  .trip-vote__modal-body { border-radius: 24px; padding: 24px 18px 18px; }
+  .trip-vote__modal-header { gap: 10px; }
+  .trip-vote__modal-icon { border-radius: 14px; height: 42px; width: 42px; }
+  .trip-vote__modal-body h2 { font-size: 19px; }
+  .trip-vote__modal-actions { flex-direction: column-reverse; }
+  .trip-vote__modal-actions button { width: 100%; }
 }
 
 /* 모달 안에서는 페이지 여백을 줄이고 히어로를 촘촘하게 쓴다. */
