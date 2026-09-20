@@ -371,13 +371,13 @@ describe('RoutePage itinerary integration', () => {
     expect(connectedApis.planning.getChecklists).toHaveBeenCalledWith('trip-1')
   })
 
-  it('AI history가 비어 있으면 첫 질문 안내를 표시한다', async () => {
+  it('AI history가 비어 있으면 주요 기능 온보딩을 표시한다', async () => {
     const wrapper = mount(RoutePage, {
       global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('AI에게 첫 질문을 보내보세요.')
+    expect(wrapper.text()).toContain('여행 계획, 무엇부터 도와드릴까요?')
   })
 
   it('AI history 조회 실패 후 다시 시도하여 응답을 복구한다', async () => {
@@ -3466,5 +3466,41 @@ describe('RoutePage itinerary integration', () => {
     expect(holder.state.fetchItinerary).toHaveBeenCalled()
     expect((wrapper.get('#ai-chat-input').element as HTMLInputElement).value).toBe('')
     expect(wrapper.text()).toContain('일정에 배치했어요.')
+  })
+
+  it('AI 대화가 비어 있으면 핵심 기능 온보딩과 상황별 추천 질문을 보여준다', async () => {
+    holder.state.days.value = []
+    holder.state.fetchItinerary.mockImplementation(async () => {})
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+
+    expect(wrapper.get('.ai-welcome').text()).toContain('여행 계획, 무엇부터 도와드릴까요?')
+    expect(wrapper.findAll('.ai-chat-suggestions .suggestion-chip').map((button) => button.text())).toEqual([
+      'auto_awesome 기능 안내',
+      'add 1일차 만들기',
+      'search 장소 검색',
+      'help 사용법',
+    ])
+  })
+
+  it('기능 안내의 예시를 선택하면 자동 전송하지 않고 입력창에 채운다', async () => {
+    const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
+    await flushPromises()
+
+    await wrapper.get('.suggestion-chip--guide').trigger('click')
+    expect(wrapper.get('.ai-feature-guide').text()).toContain('AI로 이런 일을 할 수 있어요')
+    expect(wrapper.get('.ai-feature-guide').text()).not.toContain('기능을 고르고 예시 문장을 사용해 보세요.')
+
+    const placeTab = wrapper.findAll('.ai-feature-guide-tabs button').find((button) => button.text().includes('장소 찾기'))
+    expect(placeTab, '장소 찾기 탭이 없다').toBeTruthy()
+    await placeTab!.trigger('click')
+
+    const example = wrapper.findAll('.ai-feature-guide-examples button').find((button) => button.text().includes('경복궁 검색해줘'))
+    expect(example, '장소 검색 예시가 없다').toBeTruthy()
+    await example!.trigger('click')
+
+    expect((wrapper.get('#ai-chat-input').element as HTMLInputElement).value).toBe('경복궁 검색해줘')
+    expect(wrapper.find('.ai-feature-guide').exists()).toBe(false)
+    expect(connectedApis.ai.sendMessage).not.toHaveBeenCalled()
   })
 })
