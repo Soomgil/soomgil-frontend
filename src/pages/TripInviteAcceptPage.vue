@@ -115,8 +115,8 @@ watch(inviteCode, () => {
         </div>
 
         <template v-else-if="state === 'success' && acceptedTrip">
-          <h1>{{ tr('함께 떠날 준비가 됐어요', 'Ready to travel together') }}</h1>
-          <p class="invite-lead">{{ tr('초대 수락 완료! 이제 여행 메이트들과 일정을 만들어 보세요.', 'Invitation accepted. Start planning with your travel mates.') }}</p>
+          <h1>{{ tr('초대 수락 완료!', 'Invitation accepted!') }}</h1>
+          <p class="invite-lead">{{ tr('이제 여행 메이트들과 일정을 만들어 보세요.', 'Start planning with your travel mates.') }}</p>
           <article class="invite-trip-card">
             <span class="invite-trip-card__pin material-symbols-rounded" aria-hidden="true">location_on</span>
             <div>
