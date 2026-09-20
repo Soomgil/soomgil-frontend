@@ -6194,7 +6194,7 @@ function textAvatarStyle(index: unknown) {
   max-height: min(88vh, 860px);
   max-width: 920px;
   overflow: auto;
-  padding: 12px 24px 24px;
+  padding: 8px 24px 24px;
   position: relative;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -6213,7 +6213,7 @@ function textAvatarStyle(index: unknown) {
   height: auto;
   max-height: min(88vh, 720px);
   max-width: 820px;
-  padding: 18px 28px 28px;
+  padding: 14px 28px 28px;
 }
 
 .vote-modal-card::-webkit-scrollbar {
@@ -8552,7 +8552,7 @@ function textAvatarStyle(index: unknown) {
 
 @media (max-width: 760px) {
   .vote-modal-overlay { padding: 12px; }
-  .vote-modal-card { height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); padding: 10px 14px 18px; }
+  .vote-modal-card { height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); padding: 8px 14px 18px; }
 }
 
 .map-sticker-help {
