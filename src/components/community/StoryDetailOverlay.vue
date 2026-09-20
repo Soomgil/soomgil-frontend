@@ -435,9 +435,6 @@ function cancelFeedDrag() {
   feedDragging.value = false;
   feedDragY.value = 0;
 }
-function focusStoryComments(e: Event) {
-  (e.currentTarget as HTMLElement).closest('.feed-layout')?.querySelector<HTMLInputElement>('.feed-comment-input-area input')?.focus();
-}
 function onKeydown(e: KeyboardEvent) {
   if (e.repeat) { e.preventDefault(); return; }
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
@@ -665,7 +662,6 @@ watch(
                       <span class="material-symbols-rounded" style="font-size: 20px">favorite</span>
                       {{ visibleStory.likes }}
                     </button>
-                    <button type="button" class="story-like-button story-comment-button" aria-label="댓글 작성" @click="focusStoryComments"><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ visibleStory.comments }}</button>
                     <button type="button" class="story-like-button" @click="retripStory(visibleStory)">
                       <span class="material-symbols-rounded" style="font-size: 20px"
                         >content_copy</span
