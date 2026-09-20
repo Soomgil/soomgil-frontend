@@ -4778,7 +4778,7 @@ function textAvatarStyle(index: unknown) {
                         :class="['avatar', 'avatar-with-tooltip', { 'is-online': m.online }]"
                         :style="!m.profileImageUrl ? { backgroundColor: 'var(--violet)' } : {}"
                       >
-                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" />
+                        <img v-if="m.profileImageUrl" :src="m.profileImageUrl" :alt="m.displayName || '멤버'" class="avatar-img" @error="($event.target as HTMLImageElement).style.display = 'none'" />
                         <template v-else>{{ (m.displayName ?? '?').charAt(0) }}</template>
                         <span v-if="m.online" class="avatar-presence-badge" aria-label="접속 중"></span>
                         <div class="avatar-tooltip">
