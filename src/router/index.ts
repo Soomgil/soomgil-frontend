@@ -50,7 +50,7 @@ const router = createRouter({
     {
       path: '/onboarding/preferences',
       name: 'OnboardingPreferences',
-      component: () => import('@/pages/OnboardingPreferencePage.vue'),
+      component: () => import('@/pages/SwipePage.vue'),
       meta: { requiresAuth: true },
     },
     {

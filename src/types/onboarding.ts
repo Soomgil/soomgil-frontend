@@ -1,6 +1,7 @@
 import type { PlaceProvider } from '@/types/place'
+import type { SwipeAction } from '@/types/swipe'
 
-export type OnboardingReaction = 'LIKE' | 'NOPE'
+export type OnboardingReaction = SwipeAction
 
 export interface OnboardingPreferencePlace {
   provider: PlaceProvider
