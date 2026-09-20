@@ -958,7 +958,7 @@ onUnmounted(() => {
  .trip-vote--embedded .trip-vote__layout > :deep(.vote-cart) { overflow:hidden; }
  .trip-vote--embedded :deep(.vote-cart__list) { flex:1; min-height:0; max-height:none; }
  .trip-vote--embedded :deep(.vote-cart__empty) { display:grid; flex:1; place-items:center; }
- .trip-vote--embedded :deep(.vote-deck__stage) { flex:1; min-height:240px; aspect-ratio:auto; }
+ .trip-vote--embedded :deep(.vote-deck__stage) { flex:0 1 auto; min-height:240px; max-height:min(42vh, 380px); aspect-ratio:16 / 9; }
 }
 @media(max-width:760px) {
  .trip-vote--embedded .trip-vote__layout { grid-template-columns:minmax(0,1fr); }
