@@ -240,9 +240,11 @@ onUnmounted(() => {
 
       <!-- 세션 없음 + 멤버 -->
       <div v-else-if="mode === 'idle'" class="trip-vote__panel trip-vote__idle" data-testid="vote-idle">
-        <span class="material-symbols-rounded trip-vote__idle-icon">how_to_vote</span>
-        <h2>진행 중인 투표가 없어요</h2>
-        <p>방장이 투표를 시작하면 여기서 스티커를 붙일 수 있어요.</p>
+        <header class="trip-vote__state-header">
+          <p class="trip-vote__state-eyebrow">VOTE STATUS</p>
+          <h2>진행 중인 투표가 없어요</h2>
+          <p class="trip-vote__state-lead">방장이 투표를 시작하면 여기서 스티커를 붙일 수 있어요.</p>
+        </header>
         <button type="button" class="trip-vote__cta" @click="goToMap()">{{ embedded ? '닫기' : '지도로 가기' }}</button>
       </div>
 
@@ -284,11 +286,11 @@ onUnmounted(() => {
 
       <!-- 진행 중 + 참여자 아님 -->
       <section v-else-if="mode === 'observer'" class="trip-vote__observer-card" data-testid="vote-observer">
-        <div class="trip-vote__observer-icon" aria-hidden="true">
-          <span class="material-symbols-rounded">hourglass_top</span>
-        </div>
-        <h2>투표가 진행 중이에요</h2>
-        <p class="trip-vote__observer-copy">이번 투표는 <strong>시작 시점의 여행 메이트</strong>들이 참여하고 있어요.<br>모두 제출하면 선정된 장소가 일정에 자동으로 반영됩니다.</p>
+        <header class="trip-vote__state-header">
+          <p class="trip-vote__state-eyebrow">VOTE IN PROGRESS</p>
+          <h2>투표가 진행 중이에요</h2>
+          <p class="trip-vote__state-lead trip-vote__observer-copy">이번 투표는 <strong>시작 시점의 여행 메이트</strong>들이 참여하고 있어요. 모두 제출하면 선정된 장소가 일정에 자동으로 반영됩니다.</p>
+        </header>
 
         <div class="trip-vote__observer-progress">
           <div class="trip-vote__observer-progress-head">
@@ -309,12 +311,11 @@ onUnmounted(() => {
 
       <!-- 제출 완료: 다른 멤버의 제출을 기다리는 진행 현황 -->
       <section v-else-if="mode === 'waiting'" class="trip-vote__waiting-card" data-testid="vote-waiting">
-        <div class="trip-vote__waiting-icon" aria-hidden="true">
-          <span class="material-symbols-rounded">how_to_vote</span>
-        </div>
-        <p class="trip-vote__waiting-kicker">MY VOTE IS IN</p>
-        <h2>내 투표를 제출했어요</h2>
-        <p class="trip-vote__waiting-copy">이제 다른 여행 메이트의 선택을 기다리고 있어요.<br>모두 제출하면 선정된 장소가 일정에 자동으로 정리됩니다.</p>
+        <header class="trip-vote__state-header">
+          <p class="trip-vote__state-eyebrow">VOTE SUBMITTED</p>
+          <h2>내 투표를 제출했어요</h2>
+          <p class="trip-vote__state-lead trip-vote__waiting-copy">이제 다른 여행 메이트의 선택을 기다리고 있어요. 모두 제출하면 선정된 장소가 일정에 자동으로 정리됩니다.</p>
+        </header>
 
         <div class="trip-vote__waiting-overview">
           <div class="trip-vote__waiting-heading">
@@ -369,6 +370,7 @@ onUnmounted(() => {
       <template v-else>
         <div class="page-hero trip-vote__hero">
           <div class="page-hero__copy">
+            <p class="trip-vote__state-eyebrow">VOTE IN PROGRESS</p>
             <h1 class="page-hero__title">
               <span class="page-hero__gradient">어디로 갈까요?</span>
             </h1>
@@ -411,17 +413,15 @@ onUnmounted(() => {
       >
         <div class="trip-vote__modal-body">
           <header class="trip-vote__modal-header">
-            <span class="trip-vote__modal-icon material-symbols-rounded" aria-hidden="true">timer_off</span>
             <div>
-              <span class="trip-vote__modal-kicker">투표 마감</span>
+              <span class="trip-vote__modal-kicker">CLOSE VOTE</span>
               <h2 id="vote-close-title">투표를 마감할까요?</h2>
+              <p class="trip-vote__modal-lead">마감하면 현재까지 제출된 스티커로 선정 장소를 확정하고 일정에 반영해요.</p>
             </div>
             <button type="button" class="trip-vote__modal-dismiss" aria-label="투표 마감 창 닫기" @click="closeConfirmOpen = false">
               <span class="material-symbols-rounded" aria-hidden="true">close</span>
             </button>
           </header>
-
-          <p class="trip-vote__modal-lead">마감하면 현재까지 제출된 스티커로 선정 장소를 확정하고 일정에 반영해요.</p>
 
           <div class="trip-vote__modal-summary" aria-label="현재 투표 현황">
             <div>
@@ -614,15 +614,17 @@ onUnmounted(() => {
   margin: 0 auto;
   max-width: 680px;
   padding: 34px 30px 24px;
-  text-align: center;
+  text-align: left;
   width: 100%;
 }
 
 .trip-vote__waiting-icon { align-items: center; background: linear-gradient(145deg, #e8f4ff, #f4f0ff); border: 1px solid #d7e8f7; border-radius: 22px; color: #397fbd; display: flex; height: 76px; justify-content: center; margin: 0 auto 14px; transform: rotate(-3deg); width: 76px; }
 .trip-vote__waiting-icon .material-symbols-rounded { font-size: 38px; transform: rotate(3deg); }
-.trip-vote__waiting-kicker { color: #647c92; font-family: Inter, 'Pretendard Variable', Pretendard, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .12em; line-height: 1.4; margin: 0 0 10px; text-transform: uppercase; }
-.trip-vote__waiting-card h2 { color: #30465b; font-size: clamp(26px, 4vw, 34px); letter-spacing: -.04em; margin: 0; }
-.trip-vote__waiting-copy { color: #71869a; font-size: 14px; line-height: 1.75; margin: 12px 0 24px; }
+.trip-vote__state-header { display:grid; gap:5px; margin:0 0 20px; padding:2px 2px 4px; text-align:left; }
+.trip-vote__state-eyebrow { color:#5d89aa; font-family:Inter,'Pretendard Variable',Pretendard,sans-serif; font-size:10px; font-weight:800; letter-spacing:.14em; line-height:1.4; margin:0; text-transform:uppercase; }
+.trip-vote__state-header h2 { color:#35465a; font-family:'Noto Serif KR',Batang,serif; font-size:23px; font-weight:600; letter-spacing:-.02em; line-height:1.4; margin:0; }
+.trip-vote__state-lead { color:#647c92; font-size:12px; line-height:1.65; margin:0; }
+.trip-vote__waiting-copy { margin:0; }
 .trip-vote__waiting-overview { background: rgb(239 247 253 / 82%); border: 1px solid #dbe9f4; border-radius: 20px; padding: 18px 20px 15px; text-align: left; }
 .trip-vote__waiting-heading { align-items: flex-end; color: #587086; display: flex; font-size: 13px; font-weight: 800; justify-content: space-between; }
 .trip-vote__waiting-heading strong { color: #347db8; font-size: 25px; line-height: 1; }
@@ -659,8 +661,7 @@ onUnmounted(() => {
 }
 
 .trip-vote__observer-icon .material-symbols-rounded { font-size: 39px; }
-.trip-vote__observer-card h2 { color: var(--ink); font-size: clamp(29px, 4vw, 36px); letter-spacing: -.045em; line-height: 1.25; margin: 0; }
-.trip-vote__observer-copy { color: var(--muted); font-size: 17px; line-height: 1.8; margin: 16px auto 26px; max-width: 550px; word-break: keep-all; }
+.trip-vote__observer-copy { max-width: 550px; word-break: keep-all; }
 .trip-vote__observer-copy strong { color: #3f607a; font-weight: 850; }
 .trip-vote__observer-progress { background: var(--surface-2); border: 1px solid var(--line); border-radius: 20px; padding: 19px 21px 16px; text-align: left; }
 .trip-vote__observer-progress-head { align-items: center; color: #5d758a; display: flex; font-size: 14px; font-weight: 800; justify-content: space-between; }
@@ -763,7 +764,7 @@ onUnmounted(() => {
   align-items: flex-start;
   display: grid;
   gap: 14px;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 1fr auto;
 }
 
 .trip-vote__modal-icon {
@@ -780,12 +781,12 @@ onUnmounted(() => {
 }
 
 .trip-vote__modal-kicker {
-  color: #647c92;
+  color: #5d89aa;
   display: block;
   font-family: Inter, 'Pretendard Variable', Pretendard, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .12em;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .14em;
   line-height: 1.4;
   margin: 1px 0 6px;
   text-transform: uppercase;
@@ -793,10 +794,11 @@ onUnmounted(() => {
 
 .trip-vote__modal-body h2 {
   color: #30465a;
-  font-size: 21px;
-  font-weight: 900;
-  letter-spacing: -.035em;
-  line-height: 1.35;
+  font-family: 'Noto Serif KR', Batang, serif;
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1.4;
   margin: 0;
 }
 
@@ -819,9 +821,9 @@ onUnmounted(() => {
 
 .trip-vote__modal-lead {
   color: #6d8295;
-  font-size: 13px;
-  line-height: 1.7;
-  margin: 18px 0;
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 4px 0 0;
 }
 
 .trip-vote__modal-summary {
@@ -939,10 +941,10 @@ onUnmounted(() => {
 /* Shared white and sky palette for every stage of the vote dialog. */
 .trip-vote--embedded { --ink:#35465a; --muted:#647c92; --surface:#fff; --surface-2:#eaf4ff; --line:#dfeaf5; --violet:#328be0; --blue:#328be0; }
 .trip-vote--embedded .trip-vote__back { align-self:flex-end; min-height:36px; padding:6px 10px; border-radius:10px; margin:0 0 8px; background:#f1f8ff; }
-.trip-vote--embedded .trip-vote__hero { padding:20px; margin-bottom:20px; border:0; border-radius:16px; background:transparent; box-shadow:none; }
-.trip-vote--embedded :deep(.page-hero__title) { font-size:28px; line-height:1.4; }
+.trip-vote--embedded .trip-vote__hero { padding:2px 2px 4px; margin-bottom:20px; border:0; border-radius:0; background:transparent; box-shadow:none; }
+.trip-vote--embedded :deep(.page-hero__title) { font-family:'Noto Serif KR',Batang,serif; font-size:23px; font-weight:600; letter-spacing:-.02em; line-height:1.4; }
 .trip-vote--embedded :deep(.page-hero__gradient) { background:none; -webkit-text-fill-color:#35465a; color:#35465a; }
-.trip-vote--embedded :deep(.page-hero__lead) { font-size:13px; line-height:1.7; }
+.trip-vote--embedded :deep(.page-hero__lead) { font-size:12px; line-height:1.65; }
 .trip-vote--embedded .trip-vote__layout { gap:20px; grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr); }
 .trip-vote--embedded .trip-vote__result-actions { position:static; padding:16px 0 0; border-top:1px solid #dfeaf5; gap:10px; }
 .trip-vote--embedded .trip-vote__cta { background:#328be0; border-radius:12px; box-shadow:none; font-size:14px; }
