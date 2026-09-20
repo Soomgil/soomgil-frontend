@@ -202,10 +202,11 @@ watch(() => props.bbox, (bbox, previous) => {
   hasPendingMapArea.value = nextBbox !== loadedRecommendationBbox.value
   if (!hasPendingMapArea.value) return
   if (areaReloadTimer) clearTimeout(areaReloadTimer)
+  // 지도를 멈추자마자 바로 부르지 않고 몇 초 기다렸다가 이 지역 추천을 다시 불러온다(호출 과다 방지).
   areaReloadTimer = setTimeout(() => {
     areaReloadTimer = null
     void reloadCurrentArea()
-  }, 450)
+  }, 6000)
 })
 
 onUnmounted(() => {
