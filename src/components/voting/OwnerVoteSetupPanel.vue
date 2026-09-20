@@ -82,15 +82,15 @@ function removeRegion(code: string) {
 function messageFor(code: string | undefined) {
   switch (code) {
     case 'VOTE_CANDIDATE_POOL_INSUFFICIENT':
-      return '고른 지역에서 후보 관광지를 충분히 찾지 못했어요. 지역을 넓히거나 하루 개수를 줄여보세요.'
+      return '이 지역에서는 후보를 충분히 찾지 못했어요. 지역을 추가하거나 하루 방문 수를 줄여보세요.'
     case 'VOTE_SESSION_ALREADY_OPEN':
       return '이미 진행 중인 투표가 있어요.'
     case 'FORBIDDEN':
       return '투표는 방장만 시작할 수 있어요.'
     case 'VALIDATION_FAILED':
-      return '지역 코드 형식이 올바르지 않아요. 지역을 다시 선택해주세요.'
+      return '지역 정보를 확인할 수 없어요. 지역을 다시 선택해 주세요.'
     default:
-      return '투표를 시작하지 못했습니다. 잠시 후 다시 시도해주세요.'
+      return '투표를 시작하지 못했어요. 잠시 후 다시 시도해 주세요.'
   }
 }
 
@@ -117,27 +117,23 @@ async function open() {
 
 <template>
   <div class="vote-setup" data-testid="vote-setup">
-    <p class="page-hero__eyebrow">
-      <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-      함께 만드는 여행
-    </p>
     <h1 class="vote-setup__title">
-      스티커 투표로 갈 곳을 함께 정해요
+      새 투표를 시작할까요?
     </h1>
+    <p v-if="tripTitle" class="vote-setup__trip">{{ tripTitle }} · {{ knowsDays ? `${days}일` : '날짜 미정' }}</p>
     <p class="vote-setup__lead">
-      지역과 여행 속도를 정하면 투표 준비가 끝나요. 마음에 드는 여행지에 스티커를 붙여 함께 골라요.
+      투표할 지역과 하루에 방문할 장소 수를 정해 주세요.
     </p>
 
-    <p v-if="tripTitle" class="vote-setup__trip">{{ tripTitle }} · {{ knowsDays ? `${days}일 여행` : '날짜 미정' }}</p>
     <div class="vote-setup__panel">
       <div class="vote-setup__row vote-setup__row--regions">
         <span class="vote-setup__row-icon vote-setup__row-icon--region" aria-hidden="true">
           <span class="material-symbols-rounded">location_on</span>
         </span>
         <div class="vote-setup__row-copy">
-          <strong><span class="vote-setup__step">01</span> 어디로 떠날까요?</strong>
-          <span>여행방에 등록한 지역이 미리 들어가 있어요. 이번 투표만 다른 지역으로 바꿀 수 있어요.</span>
-          <p v-if="regions.length === 0 && hasDestination" class="vote-setup__destination">{{ formatUiText("{0} 지역에서 후보를 찾아요.", "Find candidates in {0} areas.", [tripDestination]) }}</p>
+          <strong>투표할 지역</strong>
+          <span>여행에 설정한 지역이에요. 이번 투표에서만 바꿀 수 있어요.</span>
+          <p v-if="regions.length === 0 && hasDestination" class="vote-setup__destination">{{ formatUiText("{0}에서 후보를 찾아요.", "Find candidates in {0}.", [tripDestination]) }}</p>
           <ul v-if="regions.length > 0" class="vote-setup__chips" aria-label="선택한 지역">
             <li v-for="region in regions" :key="region.code" class="vote-setup__chip" data-testid="setup-region-chip">
               <span>{{ region.name }}</span>
@@ -154,13 +150,13 @@ async function open() {
           </ul>
           <p v-if="needsRegion" class="vote-setup__hint vote-setup__hint--warn" data-testid="setup-region-hint">
             <span class="material-symbols-rounded" aria-hidden="true">error</span>
-            지역을 하나 이상 골라주세요. 여행방에 목적지도 없어서 후보를 뽑을 수 없어요.
+            후보를 찾으려면 지역을 하나 이상 선택해 주세요.
           </p>
           <LegalRegionCombobox
             id="vote-region-search"
             v-model="regionQuery"
             name="voteRegion"
-            placeholder="지역 검색 (예: 서귀포시, 강남구)"
+            placeholder="지역 검색 (예: 서귀포시)"
             @select="addRegion($event)"
           />
         </div>
@@ -171,10 +167,10 @@ async function open() {
           <span class="material-symbols-rounded">today</span>
         </span>
         <div class="vote-setup__row-copy">
-          <strong><span class="vote-setup__step">02</span> 하루에 몇 곳 갈까요?</strong>
+          <strong>하루 방문 수</strong>
           <span v-if="knowsDays" data-testid="setup-days-note">
-            {{ formatUiText("{0}일 여행이에요. 하루 {1}곳이면 총 {2}곳을 뽑아요.", "{0} days, {1} places per day: select {2} places in total.", [days, perDay, selectionCount]) }}</span>
-          <span v-else data-testid="setup-days-note">{{ formatUiText("여행 일정이 아직 없어 {0}일로 가정했어요. 하루 {1}곳이면 총 {2}곳을 뽑아요.", "No dates set: assuming {0} days and {1} places per day, select {2} places.", [days, perDay, selectionCount]) }}</span>
+            {{ formatUiText("{0}일 동안 총 {1}곳을 선정해요.", "Select {1} places across {0} days.", [days, selectionCount]) }}</span>
+          <span v-else data-testid="setup-days-note">{{ formatUiText("여행 날짜가 없어 {0}일 기준으로 총 {1}곳을 선정해요.", "No dates set, so {1} places will be selected based on {0} days.", [days, selectionCount]) }}</span>
         </div>
         <div class="vote-setup__stepper" data-testid="setup-per-day-stepper">
           <button type="button" aria-label="하루 개수 줄이기" :disabled="perDay <= MIN_PER_DAY" data-testid="setup-per-day-minus" @click="stepPerDay(-1)">
@@ -201,7 +197,7 @@ async function open() {
           @click="open"
         >
           <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-          {{ opening ? '후보를 고르는 중…' : '투표 시작하기' }}
+          {{ opening ? '후보를 준비하는 중…' : '투표 시작' }}
         </button>
       </div>
     </div>
@@ -444,26 +440,25 @@ async function open() {
   }
 
   .vote-setup__stepper {
-    margin-left: 58px;
+    margin-left: 37px;
   }
 }
 
-.vote-setup { width:min(100%,720px); margin:0 auto; gap:8px; padding:4px 2px 2px; color:#35465a; }
-.vote-setup .page-hero__eyebrow { margin-bottom:0; font-size:10px; }
+.vote-setup { width:min(100%,720px); margin:0 auto; gap:7px; padding:4px 2px 2px; color:#35465a; }
 .vote-setup__title { font-size:clamp(22px,2.7vw,27px); line-height:1.35; font-weight:750; }
-.vote-setup__lead { max-width:62ch; margin:0; font-size:13px; line-height:1.6; }
-.vote-setup__trip { width:max-content; max-width:100%; margin:2px 0 6px; padding:5px 10px; border-radius:999px; background:#edf6fc; color:#427ead; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.vote-setup__panel { gap:12px; padding:18px; border:1px solid #dfeaf5; border-radius:20px; background:#fff; box-shadow:0 12px 32px rgb(52 94 125 / 8%); }
-.vote-setup__row { border-radius:15px; padding:16px; background:#fff; border-color:#dfeaf5; }
-.vote-setup__row--question { background:#f6faff; }
-.vote-setup__step { margin-right:6px; color:#328be0; font-size:12px; }
-.vote-setup__row-icon { width:38px; height:38px; border-radius:12px; background:#eaf4ff; color:#328be0; }
+.vote-setup__trip { max-width:100%; margin:0; color:#427ead; font-size:12px; font-weight:750; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vote-setup__lead { max-width:62ch; margin:2px 0 8px; font-size:13px; line-height:1.6; }
+.vote-setup__panel { gap:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
+.vote-setup__row { border:0; border-bottom:1px solid #e5edf3; border-radius:0; padding:20px 2px; background:transparent; }
+.vote-setup__row--question { background:transparent; }
+.vote-setup__row-icon { width:28px; height:28px; border-radius:0; background:transparent; color:#4f87ad; }
+.vote-setup__row-icon .material-symbols-rounded { font-size:22px; }
 .vote-setup__row-copy strong { font-size:14px; }
 .vote-setup__row-copy > span { font-size:12px; }
-.vote-setup__stepper { background:#fff; border-color:#d5e5f1; }
+.vote-setup__stepper { background:#f7fafc; border-color:#d8e4ec; }
 .vote-setup__stepper button { width:32px; height:32px; }
 .vote-setup__stepper strong { font-size:16px; }
-.vote-setup__footer { display:flex; justify-content:flex-end; padding:4px 0 0; }
+.vote-setup__footer { display:flex; justify-content:flex-end; padding:20px 0 0; }
 .vote-setup__cta { width:auto; min-width:164px; min-height:44px; padding:0 18px; border:1px solid #427ead; border-radius:999px; background:#427ead; box-shadow:0 5px 14px rgb(49 95 129 / 18%); font-size:13px; font-weight:700; transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
 .vote-setup__cta:hover:not(:disabled) { background:#356d99; border-color:#356d99; box-shadow:0 7px 18px rgb(49 95 129 / 24%); transform:translateY(-1px); }
 .vote-setup__cta:focus-visible { outline:2px solid #79b5e0; outline-offset:3px; }
@@ -473,11 +468,11 @@ async function open() {
  .vote-setup { gap:7px; }
  .vote-setup__title { font-size:21px; }
  .vote-setup__lead { font-size:12px; }
- .vote-setup__panel { padding:12px; gap:10px; border-radius:17px; }
- .vote-setup__row { padding:13px; gap:10px; }
- .vote-setup__row-icon { width:32px; height:32px; border-radius:10px; }
- .vote-setup__stepper { margin-left:42px; }
- .vote-setup__footer { padding-top:2px; }
+ .vote-setup__panel { padding:0; gap:0; }
+ .vote-setup__row { padding:16px 0; gap:9px; }
+ .vote-setup__row-icon { width:26px; height:26px; }
+ .vote-setup__stepper { margin-left:35px; }
+ .vote-setup__footer { padding-top:16px; }
  .vote-setup__cta { width:100%; }
 }
 .vote-setup__destination { color:#287cbd; font-size:13px; margin:4px 0; }

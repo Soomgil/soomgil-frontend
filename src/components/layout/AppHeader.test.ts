@@ -118,11 +118,17 @@ describe('AppHeader 알림 API 연동', () => {
 
   it('오늘 일정 브리핑을 실제 여행 일정 API로 표시한다', async () => {
     const wrapper = mount(AppHeader)
+    await flushPromises()
+
+    expect(wrapper.get('#header-briefing-btn').text()).toContain('1')
+    expect(wrapper.get('#header-briefing-btn').attributes('aria-label')).toContain('예정 장소 1곳')
+
     await wrapper.get('#header-briefing-btn').trigger('click')
     await flushPromises()
 
     expect(mocks.getNearestTrip).toHaveBeenCalled()
     expect(mocks.getItinerary).toHaveBeenCalledWith('trip-1')
+    expect(wrapper.get('#header-briefing-panel .inbox-heading').text()).toContain('1')
     expect(wrapper.text()).toContain('부산역')
     expect(wrapper.text()).toContain('부산 동구')
   })

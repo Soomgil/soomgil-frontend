@@ -29,10 +29,7 @@
     body {
       margin: 0;
       color: var(--ink);
-      background:
-        radial-gradient(circle at 12% 8%, rgba(0, 102, 255, .16), transparent 24rem),
-        radial-gradient(circle at 86% 12%, rgba(79, 163, 255, .15), transparent 25rem),
-        linear-gradient(180deg, #ffffff 0%, var(--bg) 54%, #ffffff 100%);
+      background: #fff url('@/assets/backgrounds/sky-watercolor-background.webp') center / cover fixed no-repeat;
       letter-spacing: -0.02em;
       line-height: 1.6;
       padding-top: 72px;
@@ -10178,6 +10175,212 @@
   border: 0;
 }
 
+/* Landing과 연결되는 밝은 종이 톤의 인증 화면 */
+.auth-modern-page {
+  min-height: 100svh;
+  padding: clamp(28px, 5vw, 64px) clamp(18px, 4vw, 48px);
+  background:
+    radial-gradient(ellipse at 15% 12%, rgb(218 237 250 / 55%), transparent 38%),
+    radial-gradient(ellipse at 88% 86%, rgb(232 241 247 / 70%), transparent 36%),
+    #f8fbff;
+}
+
+.auth-modern-card {
+  grid-template-columns: minmax(320px, .88fr) minmax(390px, 1.12fr);
+  width: min(1020px, 100%);
+  min-height: clamp(580px, 76svh, 680px);
+  border: 1px solid #dfe8ef;
+  border-radius: 28px;
+  box-shadow: 0 24px 70px rgb(53 78 101 / 13%);
+}
+
+.auth-visual-panel {
+  min-height: inherit;
+  border-radius: 28px 0 0 28px;
+  background: #dce9f1;
+}
+
+.auth-visual-image {
+  filter: saturate(.78) contrast(.94);
+}
+
+.auth-visual-content {
+  min-height: inherit;
+  padding: clamp(30px, 4vw, 46px);
+}
+
+.auth-visual-content .eyebrow {
+  color: #d9ebf6;
+  font-size: 11px;
+  letter-spacing: .12em;
+}
+
+.auth-visual-content h1 {
+  margin-bottom: 14px;
+  font-family: 'Noto Serif KR', 'Batang', serif;
+  font-size: clamp(34px, 4vw, 50px);
+  font-weight: 500;
+  letter-spacing: -.04em;
+}
+
+.auth-visual-content p:not(.eyebrow) {
+  margin-bottom: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.auth-modern-form {
+  align-content: center;
+  padding: clamp(30px, 4.2vw, 52px);
+  border-radius: 0 28px 28px 0;
+}
+
+.auth-modern-form .auth-form-head h2 {
+  color: #35465a;
+  font-family: 'Noto Serif KR', 'Batang', serif;
+  font-size: clamp(27px, 3vw, 34px);
+  font-weight: 600;
+  letter-spacing: -.035em;
+}
+
+.auth-modern-form .auth-field-wrap {
+  border-color: #dce7ee;
+  border-radius: 14px;
+  background: #fbfdff;
+}
+
+.auth-modern-form .auth-field-wrap:focus-within {
+  border-color: #6c9abb;
+  box-shadow: 0 0 0 3px rgb(72 125 181 / 10%);
+}
+
+.auth-modern-form .auth-main-action {
+  min-height: 48px;
+  border-radius: 999px;
+  background: #487db5;
+  box-shadow: 0 8px 20px rgb(72 125 181 / 18%);
+}
+
+@media (max-width: 900px) {
+  .auth-modern-page {
+    display: block;
+    min-height: 100svh;
+    padding: 28px clamp(16px, 4vw, 32px);
+  }
+
+  .auth-modern-card {
+    grid-template-columns: 1fr;
+    width: min(620px, 100%);
+    min-height: 0;
+    margin: 0 auto;
+    border-radius: 24px;
+  }
+
+  .auth-visual-panel {
+    min-height: clamp(210px, 34vw, 290px);
+    border-radius: 24px 24px 0 0;
+  }
+
+  .auth-visual-content {
+    min-height: clamp(210px, 34vw, 290px);
+    padding: 28px 32px;
+  }
+
+  .auth-visual-content h1 {
+    max-width: 430px;
+    margin-bottom: 8px;
+    font-size: clamp(30px, 6vw, 40px);
+  }
+
+  .auth-visual-content p:not(.eyebrow) {
+    max-width: 450px;
+    margin: 0;
+  }
+
+  .auth-modern-form {
+    padding: clamp(28px, 6vw, 44px);
+    border-radius: 0 0 24px 24px;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-modern-page {
+    padding: 0;
+    background: #fff;
+  }
+
+  .auth-modern-card {
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .auth-visual-panel {
+    min-height: 190px;
+    border-radius: 0;
+  }
+
+  .auth-visual-content {
+    min-height: 190px;
+    padding: 24px;
+  }
+
+  .auth-visual-content .eyebrow {
+    margin-bottom: 7px;
+  }
+
+  .auth-visual-content h1 {
+    font-size: 30px;
+  }
+
+  .auth-visual-content p:not(.eyebrow) {
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .auth-modern-form {
+    padding: 30px 22px max(34px, env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+
+  .auth-modern-form .auth-form-head h2 {
+    font-size: 27px;
+  }
+
+  .auth-form-options {
+    align-items: center;
+    flex-direction: row;
+  }
+}
+
+.auth-policy-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 6px;
+}
+
+.auth-policy-list .auth-check {
+  min-width: 0;
+  gap: 6px !important;
+  white-space: nowrap;
+}
+
+.auth-policy-list .auth-check .small {
+  margin-left: 0 !important;
+}
+
+@media (max-width: 560px) {
+  .auth-policy-list {
+    gap: 6px;
+  }
+
+  .auth-policy-list .auth-check {
+    font-size: 11px;
+  }
+}
+
 /* --- 프로필 히어로 --- */
 .mypage-hero {
   position: relative;
@@ -12407,3 +12610,208 @@ button,
 .map-taste-cluster-count { display:inline-flex; align-items:center; gap:5px; }
 .map-taste-cluster > summary .is-star .material-symbols-rounded { color:#c58a15; background:#fff5d9; }
 .map-taste-cluster-count + .map-taste-cluster-count { border-left:1px solid #e6edf3; padding-left:8px; margin-left:2px; }
+
+/* 로그인과 회원가입은 같은 프레임 크기를 사용한다. */
+@media (min-width: 901px) {
+  .auth-modern-card--split {
+    width: min(1020px, 100%);
+    height: 650px;
+    min-height: 0;
+  }
+
+  .auth-modern-card--split .auth-visual-panel,
+  .auth-modern-card--split .auth-visual-content,
+  .auth-modern-card--split .auth-modern-form {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .auth-modern-card--split .auth-modern-form {
+    overflow: visible;
+  }
+
+  .auth-visual-description--nowrap {
+    max-width: none !important;
+    white-space: nowrap;
+    font-size: 12.5px !important;
+    letter-spacing: -.035em;
+  }
+}
+
+@media (max-width: 900px) {
+  .auth-modern-card--split {
+    width: min(620px, 100%);
+    height: auto;
+    min-height: 0;
+  }
+
+  .auth-modern-card--split .auth-modern-form {
+    height: 650px;
+    min-height: 0;
+    overflow: visible;
+  }
+}
+
+.auth-modern-card--split .auth-modern-form {
+  gap: 8px;
+}
+
+.auth-back-to-login {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 2px;
+  border: 0;
+  color: #667b8d;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.auth-back-to-login .material-symbols-rounded {
+  font-size: 17px;
+}
+
+.auth-back-to-login:hover {
+  color: #487db5;
+}
+
+.auth-back-to-login:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid rgb(72 125 181 / 35%);
+  outline-offset: 2px;
+}
+
+.auth-modern-card--split .auth-form-head h2 {
+  margin-bottom: 6px;
+}
+
+.auth-modern-card--split .auth-form-head p {
+  margin-bottom: 4px;
+}
+
+.auth-modern-card--split .auth-policy-slot {
+  min-height: 62px;
+}
+
+.auth-modern-card--split .auth-terms-check {
+  margin-top: 4px !important;
+}
+
+.auth-modern-card--split .auth-terms-check > div {
+  gap: 5px !important;
+  margin-top: 6px !important;
+}
+
+.auth-modern-card--split .auth-feedback-slot {
+  height: 48px;
+}
+
+.auth-modern-card--split .auth-feedback-slot .auth-submit-error {
+  height: 48px;
+}
+
+.auth-modern-card--split .auth-feedback-slot:empty {
+  height: 0;
+  min-height: 0;
+}
+
+@media (max-width: 560px) {
+  .auth-modern-card--split .auth-modern-form {
+    height: 650px;
+    padding-top: 22px;
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
+  }
+}
+
+/* 인증 화면은 헤더를 제외한 뷰포트 안에서 완결된다. */
+.app-shell:has(.auth-modern-page) {
+  width: 100%;
+  height: calc(100svh - 72px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.auth-modern-page {
+  width: 100%;
+  height: calc(100svh - 72px);
+  min-height: 0;
+  padding: 16px 24px;
+  overflow: hidden;
+}
+
+@media (min-width: 901px) {
+  .auth-modern-card--split {
+    height: min(650px, calc(100svh - 104px));
+  }
+
+  .auth-modern-card--split .auth-modern-form {
+    padding: clamp(24px, 3.2vw, 40px);
+  }
+}
+
+@media (max-width: 900px) {
+  .auth-modern-page {
+    display: grid;
+    place-items: center;
+    padding: 12px 16px;
+  }
+
+  .auth-modern-card--split {
+    grid-template-columns: 1fr;
+    width: min(620px, 100%);
+    height: calc(100svh - 96px);
+    border-radius: 24px;
+  }
+
+  .auth-modern-card--split .auth-visual-panel {
+    display: none;
+  }
+
+  .auth-modern-card--split .auth-modern-form {
+    height: 100%;
+    padding: 20px clamp(22px, 6vw, 38px);
+    border-radius: 24px;
+  }
+
+  .auth-modern-card--split .auth-form-head h2 {
+    font-size: 25px;
+  }
+
+  .auth-modern-card--split .auth-form-head p {
+    font-size: 12px;
+  }
+
+  .auth-modern-card--split .auth-policy-slot {
+    min-height: 60px;
+  }
+
+  .auth-modern-card--split .auth-feedback-slot {
+    height: 42px;
+  }
+
+  .auth-modern-card--split .auth-feedback-slot .auth-submit-error {
+    height: 42px;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-modern-page {
+    padding: 0;
+  }
+
+  .auth-modern-card--split {
+    width: 100%;
+    height: calc(100svh - 72px);
+    border-radius: 0;
+  }
+
+  .auth-modern-card--split .auth-modern-form {
+    height: 100%;
+    padding: 16px 20px max(16px, env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+}

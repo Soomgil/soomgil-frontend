@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useAuthStore } from '@/stores/auth.store'
+
+const auth = useAuthStore()
+
 defineProps<{
   title: string
   location: string
@@ -20,14 +24,15 @@ defineEmits<{
       <div class="story-post-head-row">
         <div class="story-author">
           <div class="fc-avatar">
-            <span>나</span>
+            <img v-if="auth.user?.profileImageUrl" :src="auth.user.profileImageUrl" alt="내 프로필 사진" />
+            <span v-else>{{ auth.user?.displayName?.charAt(0) || '나' }}</span>
           </div>
           <div>
-            <strong>나</strong>
-            <span class="small muted">{{ location }}</span>
+            <strong>{{ auth.user?.displayName || '나' }}</strong>
+            <span class="story-preview-location">{{ location }}</span>
           </div>
         </div>
-        <button type="button" class="story-report-btn" aria-label="게시글 신고" title="신고" disabled>
+        <button type="button" class="story-report-btn" aria-label="게시글 신고 미리보기" disabled>
           <span class="material-symbols-rounded">campaign</span>
         </button>
       </div>
@@ -70,7 +75,7 @@ defineEmits<{
       <div class="tag-row">
         <span v-for="tag in tags" :key="tag" class="tag">{{ tag }}</span>
       </div>
-      <p class="muted">{{ summary }}</p>
+      <p class="story-preview-summary">{{ summary }}</p>
       <div class="story-action-bar">
         <button type="button" class="story-like-button" aria-pressed="false" disabled>
           <span class="material-symbols-rounded">favorite</span>
@@ -82,19 +87,11 @@ defineEmits<{
         </span>
         <button type="button" class="story-like-button" disabled>
           <span class="material-symbols-rounded">content_copy</span>
-          리트립
+          일정 가져오기
         </button>
         <button type="button" class="story-like-button" disabled>
           <span class="material-symbols-rounded">share</span>
           공유
-        </button>
-        <button type="button" class="story-like-button" disabled>
-          <span class="material-symbols-rounded">edit</span>
-          수정
-        </button>
-        <button type="button" class="story-like-button" disabled>
-          <span class="material-symbols-rounded">delete</span>
-          삭제
         </button>
       </div>
     </div>
@@ -107,23 +104,15 @@ defineEmits<{
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  height: auto;
   max-height: none;
   margin-bottom: 0;
   border: 1px solid var(--line);
-  border-radius: 28px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  border-radius: 24px;
+  overflow: hidden;
   background: #fff;
-  box-shadow: var(--soft-shadow);
+  box-shadow: 0 18px 42px rgb(53 70 90 / 14%);
   box-sizing: border-box;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.story-post-preview::-webkit-scrollbar {
-  display: none;
 }
 
 .story-post-head {
@@ -157,20 +146,29 @@ defineEmits<{
   justify-content: center;
   overflow: hidden;
   flex-shrink: 0;
-  background: var(--violet);
+  background: #487db5;
   color: #fff;
   font-weight: 800;
   font-size: 15px;
 }
+.fc-avatar img { width:100%; height:100%; object-fit:cover; }
 
 .story-author strong {
   display: block;
+  color: #35465a;
   font-size: 15px;
-  color: var(--violet);
+  font-weight: 750;
 }
 
-.story-author .small {
+.story-preview-location {
   display: block;
+  max-width: 240px;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #74899b;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .story-report-btn {
@@ -181,8 +179,8 @@ defineEmits<{
   justify-content: center;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 92, 141, 0.1);
-  color: var(--rose);
+  background: #fff0f2;
+  color: #c95f62;
   cursor: default;
   opacity: 1;
 }
@@ -219,12 +217,15 @@ defineEmits<{
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
-  background: linear-gradient(135deg, #eef3fb, #f8fbff);
+  background:
+    radial-gradient(circle at 24% 24%, rgb(132 178 210 / 16%) 0 2px, transparent 3px),
+    linear-gradient(145deg, #edf5fa, #f9fcfe);
+  background-size: 26px 26px, auto;
 }
 
 .story-post-photo-placeholder .material-symbols-rounded {
-  font-size: 40px;
-  color: var(--violet);
+  font-size: 36px;
+  color: #6f97b5;
 }
 
 .feed-photo-count {
@@ -244,14 +245,16 @@ defineEmits<{
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  padding: 24px;
+  padding: 22px 20px 20px;
 }
 
 .story-body h3 {
   margin: 0 0 10px;
-  font-size: 20px;
-  font-weight: 800;
-  line-height: 1.4;
+  font-family:inherit;
+  font-size:20px;
+  font-weight:800;
+  line-height:1.4;
+  letter-spacing:normal;
   color: var(--ink);
 }
 
@@ -259,36 +262,49 @@ defineEmits<{
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 10px;
+  margin: 0 0 10px;
 }
 
 .tag {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  min-height:24px;
+  padding:0 11px;
   border-radius: 999px;
-  background: rgba(109, 74, 255, 0.1);
-  color: var(--violet);
-  font-size: 12px;
-  font-weight: 800;
+  border: 1px solid #d7e6f0;
+  background: #edf5fa;
+  color: #4f718a;
+  font-size:12px;
+  font-weight:800;
 }
 
-.story-body p {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.7;
+.tag:hover {
+  background: #e3eff6;
+  color: #365f7d;
+}
+
+.story-preview-summary {
+  display: -webkit-box;
+  margin:0 0 14px;
+  overflow: hidden;
+  color: #647c92;
+  font-size:15px;
+  line-height:1.7;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp:4;
 }
 
 .story-action-bar {
   display: flex;
   align-items: center;
-  gap: 20px;
-  margin-top: auto;
-  padding-top: 16px;
+  justify-content: space-between;
+  gap:14px;
+  margin-top: 2px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 14px;
+  color: #111827;
+  font-size:12px;
 }
 
 .story-like-button,
@@ -298,7 +314,7 @@ defineEmits<{
   gap: 4px;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: #111827;
   font: inherit;
   font-weight: 800;
   padding: 0;
@@ -308,14 +324,10 @@ defineEmits<{
 
 .story-like-button .material-symbols-rounded,
 .story-comment-count .material-symbols-rounded {
-  font-size: 20px;
+  font-size:20px;
 }
 
-.story-like-button:first-child .material-symbols-rounded {
-  color: var(--rose);
-}
+.story-like-button .material-symbols-rounded,
+.story-comment-count .material-symbols-rounded { color:#111827; }
 
-.story-comment-count .material-symbols-rounded {
-  color: var(--violet);
-}
 </style>

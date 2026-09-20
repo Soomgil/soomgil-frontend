@@ -49,10 +49,15 @@ async function toggleResults() {
 
 <template>
   <div class="vote-result">
+    <header class="vote-result__header">
+      <p>VOTE COMPLETE</p>
+      <h2>함께 고른 여행지를 확인해보세요</h2>
+      <span>스티커를 많이 받은 순서대로 정리했어요.</span>
+    </header>
     <p v-if="!rows.length" class="vote-result__empty">아직 표시할 투표 결과가 없어요.</p>
     <ul v-else ref="resultList" class="vote-result__list" :class="{ 'is-overview': !showAll }" data-testid="result-list" aria-label="득표순 여행지">
       <li v-for="(row, index) in displayedRows" :key="row.id" class="vote-result__row"
-        :class="{ selected: row.selected, 'is-winner': !showAll && index === 0, 'is-runner-up': !showAll && index > 0 && index < 3 }" data-testid="result-row">
+        :class="{ selected: row.selected, 'is-winner': !showAll && index === 0, 'is-compact': !showAll && index > 0 }" data-testid="result-row">
         <span class="vote-result__rank">{{ index + 1 }}<span class="sr-only">위</span></span>
         <div class="vote-result__media">
           <img v-if="row.thumbnailUrl && !brokenImages.has(row.id)" :src="row.thumbnailUrl" :alt="row.name ?? '여행지'" :loading="index === 0 ? 'eager' : 'lazy'" @error="brokenImages.add(row.id)" />
@@ -77,6 +82,10 @@ async function toggleResults() {
 
 <style scoped>
 .vote-result { display:flex; flex-direction:column; gap:16px; color:#35465a; }
+.vote-result__header { display:grid; gap:5px; padding:2px 2px 4px; }
+.vote-result__header p { margin:0; color:#5d89aa; font-size:10px; font-weight:800; line-height:1.4; letter-spacing:.14em; }
+.vote-result__header h2 { margin:0; color:#35465a; font-family:'Noto Serif KR',Batang,serif; font-size:23px; font-weight:600; line-height:1.4; letter-spacing:-.02em; }
+.vote-result__header span { color:#647c92; font-size:12px; line-height:1.65; }
 .vote-result__list { display:flex; flex-direction:column; gap:10px; list-style:none; padding:0; margin:0; }
 .vote-result__row { position:relative; display:flex; align-items:center; gap:14px; padding:12px 16px; border:1px solid #e4edf5; border-radius:14px; background:#fff; }
 .vote-result__rank { flex:none; width:25px; text-align:center; color:#647c92; font-size:14px; font-weight:800; }
@@ -96,10 +105,15 @@ async function toggleResults() {
 .is-winner .vote-result__count { padding-right:22px; font-size:24px; }
 .is-winner .vote-result__name { font-size:23px; }
 .vote-result__favorite { font-size:11px; color:#647c92; }
-.is-runner-up { background:#f8fbff; padding:16px; }
-.is-runner-up .vote-result__media { width:88px; height:72px; }
-.is-runner-up .vote-result__name { font-size:17px; }
-.is-runner-up .vote-result__rank { color:#328be0; font-size:19px; }
+.is-compact { gap:10px; min-height:58px; padding:7px 12px; background:#f8fbff; }
+.is-compact .vote-result__rank { width:20px; color:#328be0; font-size:14px; }
+.is-compact .vote-result__media { width:42px; height:42px; border-radius:9px; }
+.is-compact .vote-result__body { flex-direction:row; align-items:center; gap:7px; overflow:hidden; }
+.is-compact .vote-result__name { min-width:0; overflow:hidden; font-size:14px; text-overflow:ellipsis; white-space:nowrap; }
+.is-compact .vote-result__selected { display:none; }
+.is-compact .vote-result__badge { flex:none; font-size:10px; white-space:nowrap; }
+.is-compact .vote-result__count { font-size:15px; }
+.is-compact .vote-result__count .material-symbols-rounded { font-size:15px; }
 .vote-result__all { display:flex; align-items:center; justify-content:center; gap:8px; min-height:46px; border:1px solid #c6dff4; border-radius:12px; background:#fff; color:#287cbd; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
 .vote-result__all:hover { background:#eaf4ff; }
 .vote-result__all:focus-visible { outline:3px solid #9bcdf6; outline-offset:2px; }
@@ -110,8 +124,10 @@ async function toggleResults() {
  .is-winner { padding:0 0 16px; gap:14px; }
  .is-winner .vote-result__body { padding-left:14px; }
  .is-winner .vote-result__count { padding-right:14px; }
- .is-runner-up .vote-result__media { width:64px; height:64px; }
- .is-runner-up .vote-result__name { font-size:15px; }
+ .vote-result__header h2 { font-size:20px; }
+ .is-compact { gap:7px; padding-inline:9px; }
+ .is-compact .vote-result__media { width:38px; height:38px; }
+ .is-compact .vote-result__badge { display:none; }
  .vote-result__rank { width:18px; }
  .vote-result__count { font-size:16px; }
 }

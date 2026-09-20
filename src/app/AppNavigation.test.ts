@@ -24,7 +24,7 @@ it('keeps the same header through navigation and hides it only on immersive rout
   expect(wrapper.find('.service-backdrop').exists()).toBe(true)
   await router.push('/map')
   expect(wrapper.get('header').isVisible()).toBe(false)
-  expect(wrapper.find('.service-backdrop').exists()).toBe(false)
+  expect(wrapper.find('.service-backdrop').exists()).toBe(true)
   await router.push('/home')
   expect(wrapper.get('header').isVisible()).toBe(true)
   expect(mounted).toHaveBeenCalledTimes(1)

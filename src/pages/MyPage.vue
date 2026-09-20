@@ -90,7 +90,7 @@ async function toggleSuperLikedPlace(place: Place) {
       const next = new Set(locallyUnsuperLikedKeys.value)
       next.delete(key)
       locallyUnsuperLikedKeys.value = next
-      toast.success('슈퍼라이크한 장소에 다시 추가했어요.')
+      toast.success('가고 싶은 장소에 다시 추가했어요.')
     } else {
       await swipeApi.react(place.provider, place.externalPlaceId, 'LIKE')
       try {
@@ -280,14 +280,11 @@ const shareNotice = ref('')
 async function shareProfile() {
   const url = `${window.location.origin}/mypage/${auth.user?.id ?? ''}`
   try {
-    if (navigator.share) await navigator.share({ title: `${displayName.value}님의 숨길 프로필`, url })
-    else {
-      await navigator.clipboard.writeText(url)
-      shareNotice.value = '프로필 링크를 복사했습니다.'
-      window.setTimeout(() => { shareNotice.value = '' }, 2500)
-    }
-  } catch (error) {
-    if ((error as DOMException)?.name !== 'AbortError') shareNotice.value = '공유 링크를 만들지 못했습니다.'
+    await navigator.clipboard.writeText(url)
+    shareNotice.value = '프로필 링크를 복사했습니다.'
+    window.setTimeout(() => { shareNotice.value = '' }, 2500)
+  } catch {
+    shareNotice.value = '프로필 링크를 복사하지 못했습니다.'
   }
 }
 
@@ -372,13 +369,15 @@ function handleUserClick(userId: string) {
   <AppShell paper>
     <main>
       <section class="section mypage-shell page-with-hero" aria-labelledby="mypage-title">
-        <div class="mypage-page-heading page-hero">
+        <div class="mypage-page-heading page-hero primary-page-hero account-page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">person</span> My Page</p>
             <h1 id="mypage-title" class="page-hero__title">여행으로 채운 나의 공간</h1>
             <p class="page-hero__lead">마음에 담은 장소부터 여행의 순간까지, 나의 여행 취향을 만나보세요.</p>
           </div>
-          <RouterLink to="/settings" class="account-page-link"><span class="material-symbols-rounded" aria-hidden="true">tune</span>환경 설정</RouterLink>
+          <div class="page-hero__actions">
+            <RouterLink to="/settings" class="account-page-link"><span class="material-symbols-rounded" aria-hidden="true">tune</span>환경 설정</RouterLink>
+          </div>
         </div>
 
         <!-- 프로필 히어로 영역 -->
@@ -453,11 +452,11 @@ function handleUserClick(userId: string) {
           <!-- 개인 아카이브 콘텐츠 영역 -->
           <div class="mypage-body-container">
 
-        <!-- 1. 슈퍼라이크한 장소 섹션 -->
+        <!-- 1. 가고 싶은 장소 섹션 -->
         <section class="mypage-section" aria-labelledby="section-liked-places-title">
           <div class="mypage-section-header">
             <h2 id="section-liked-places-title" class="mypage-section-title">
-              <span class="material-symbols-rounded section-icon section-icon--sky" aria-hidden="true">star</span>슈퍼라이크한 장소
+              <span class="material-symbols-rounded section-icon section-icon--sky" aria-hidden="true">star</span>가고 싶은 장소
             </h2>
             <a v-if="likedPlaces.length > 0" href="#" class="mypage-more-link" @click.prevent="likedPlacesModal.open()">모두 보기 ›</a>
           </div>
@@ -466,7 +465,7 @@ function handleUserClick(userId: string) {
             <!-- 빈 상태 -->
             <div v-if="likedPlaces.length === 0" class="mypage-empty-state">
               <span class="material-symbols-rounded mypage-empty-icon">star_border</span>
-              <p class="mypage-empty-title">아직 슈퍼라이크한 장소가 없어요</p>
+              <p class="mypage-empty-title">아직 가고 싶은 장소가 없어요</p>
               <p class="mypage-empty-desc">특히 마음에 드는 장소에 슈퍼라이크를 눌러 모아보세요.</p>
               <button type="button" class="mypage-empty-cta" @click="router.push('/search')">장소 둘러보기</button>
             </div>
@@ -517,20 +516,29 @@ function handleUserClick(userId: string) {
 
             <!-- 데이터 있을 때 -->
             <div v-else class="mypage-stories-magazine" data-mypage-stories-list>
-              <button v-for="story in myStories.slice(0, 6)" :key="story.id" type="button" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
-                <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
+              <button v-for="story in myStories.slice(0, 2)" :key="story.id" type="button" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
+                <span class="story-magazine-image-wrap">
+                  <img class="story-magazine-thumb" :src="story.image" :alt="story.title" loading="lazy" />
+                </span>
                 <span class="story-magazine-body">
                   <span class="story-magazine-title" data-no-translate>{{ story.title }}</span>
-                  <span class="story-magazine-meta">
-                    <span class="story-date" data-no-translate>{{ story.location }}</span>
-                    <span class="story-stats-row">
-                      <span>
-                        <span class="material-symbols-rounded">favorite</span> {{ story.likes }}
-                      </span>
-                      <span>
-                        <span class="material-symbols-rounded">chat_bubble</span> {{ story.comments }}
-                      </span>
+                  <span v-if="story.tags.length" class="story-magazine-tags" data-no-translate>
+                    <span v-for="tag in story.tags.slice(0, 3)" :key="tag">#{{ tag }}</span>
+                  </span>
+                  <span class="story-magazine-author">
+                    <span class="story-magazine-avatar">
+                      <img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" :alt="`${story.author} 프로필 사진`" />
+                      <span v-else>{{ story.avatar }}</span>
                     </span>
+                    <span class="story-magazine-author-copy">
+                      <strong data-no-translate>{{ story.author }}</strong>
+                      <span data-no-translate>{{ story.location }}</span>
+                    </span>
+                  </span>
+                  <span class="story-stats-row">
+                    <span><span class="material-symbols-rounded">favorite</span>{{ story.likes }}</span>
+                    <span><span class="material-symbols-rounded">chat_bubble</span>{{ story.comments }}</span>
+                    <span v-if="story.publishedAt" class="story-published-at">{{ new Date(story.publishedAt).toLocaleDateString('ko-KR') }}</span>
                   </span>
                 </span>
               </button>
@@ -661,15 +669,6 @@ function handleUserClick(userId: string) {
                   <span style="font-size: 12px; color: var(--muted);">팔로워만 볼 수 있습니다</span>
                 </div>
               </label>
-            </div>
-          </div>
-
-          <!-- 알림 설정 안내 (실제 설정은 SettingsPage의 /me/settings 사용) -->
-          <div style="margin-bottom: 28px; padding: 14px 16px; border-radius: 12px; background: rgba(0, 102, 255, 0.04); border: 1px solid rgba(0, 102, 255, 0.15); display: flex; align-items: flex-start; gap: 10px;">
-            <span class="material-symbols-rounded" style="font-size: 18px; color: var(--violet); flex-shrink: 0;">info</span>
-            <div style="font-size: 13px; color: var(--ink); line-height: 1.5;">
-              <strong style="font-weight: 800;">알림 / 마케팅 수신 설정</strong>은
-              <a href="#" style="color: var(--violet); font-weight: 700; text-decoration: underline;" @click.prevent="() => { profileEditModal.close(); router.push('/settings') }">설정 페이지</a>에서 관리합니다.
             </div>
           </div>
 
@@ -1176,14 +1175,14 @@ function handleUserClick(userId: string) {
 <style scoped>
 .keepsake-board { padding:22px; border:3px solid #d9c2a8; border-radius:22px; background-color:#ead8bd; background-image:radial-gradient(circle at 18% 24%,#fff7e985 0 1px,transparent 1.7px),radial-gradient(circle at 72% 64%,#b8916c24 0 1px,transparent 1.9px),radial-gradient(circle at 42% 78%,#fffaf08f 0 1.3px,transparent 2px),linear-gradient(115deg,#f1e2ca 0%,#e8d2b3 48%,#eedcc2 100%); background-size:15px 17px,19px 21px,25px 23px,100% 100%; box-shadow:inset 0 0 0 1px #fff9ed8c,inset 0 0 20px #9b795117,0 7px 20px #52667a12; }
 .keepsake-board .mypage-places-slider { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:24px 16px; overflow:visible; padding:12px 2px 8px; margin:0; }
-.keepsake-board .keepsake-note { --note-paper:#fff3a8; position:relative; overflow:visible; min-width:0; max-width:none; width:100%; padding:9px 8px 11px; border:0; border-radius:2px 2px 12px 2px; background:linear-gradient(145deg,#ffffff66,transparent 38%),var(--note-paper); box-shadow:2px 5px 11px #52667a1f; transform:rotate(-1.5deg); }
+.keepsake-board .keepsake-note { --note-paper:#fff1b8; position:relative; overflow:visible; min-width:0; max-width:none; width:100%; padding:9px 8px 11px; border:0; border-radius:2px 2px 12px 2px; background:linear-gradient(145deg,#ffffff66,transparent 38%),var(--note-paper); box-shadow:2px 5px 11px #35465a1f; transform:rotate(-1.5deg); }
 .keepsake-note::before { content:''; position:absolute; z-index:3; width:14px; height:14px; top:-7px; left:calc(50% - 7px); border:1px solid #b46f68; border-radius:50%; background:radial-gradient(circle at 32% 25%,#fff0e9 0 12%,#dc8d82 28%,#bd6b66 72%,#a45a58 100%); box-shadow:0 2px 4px #77544b4a,inset -1px -1px 2px #8e4c4c52; pointer-events:none; }
 .keepsake-note::after { content:''; position:absolute; z-index:-1; width:18px; height:8px; top:1px; left:calc(50% - 2px); border-radius:50%; background:#77544b26; filter:blur(2px); transform:rotate(24deg); pointer-events:none; }
-.keepsake-board .keepsake-note:nth-child(6n+2) { --note-paper:#cfeeff; transform:rotate(1.5deg); }
-.keepsake-board .keepsake-note:nth-child(6n+3) { --note-paper:#ded8ff; transform:rotate(-.8deg); }
-.keepsake-board .keepsake-note:nth-child(6n+4) { --note-paper:#d5f3dc; transform:rotate(1deg); }
-.keepsake-board .keepsake-note:nth-child(6n+5) { --note-paper:#ffd8e7; transform:rotate(-1.2deg); }
-.keepsake-board .keepsake-note:nth-child(6n) { --note-paper:#ffd9c2; transform:rotate(.7deg); }
+.keepsake-board .keepsake-note:nth-child(6n+2) { --note-paper:#cfe8f6; transform:rotate(1.5deg); }
+.keepsake-board .keepsake-note:nth-child(6n+3) { --note-paper:#d5e9d7; transform:rotate(-.8deg); }
+.keepsake-board .keepsake-note:nth-child(6n+4) { --note-paper:#f6d8c6; transform:rotate(1deg); }
+.keepsake-board .keepsake-note:nth-child(6n+5) { --note-paper:#ded9f0; transform:rotate(-1.2deg); }
+.keepsake-board .keepsake-note:nth-child(6n) { --note-paper:#eecfd4; transform:rotate(.7deg); }
 .keepsake-board .keepsake-note .place-img-wrap { height:auto; aspect-ratio:4/3; border-radius:2px; overflow:hidden; }
 .keepsake-board .keepsake-note .place-info-wrap { padding:9px 2px 0; background:transparent; }
 .keepsake-board .keepsake-note .place-title-h3 { font-family:'Noto Serif KR',serif; font-size:13px; line-height:1.45; margin:0 0 3px; }

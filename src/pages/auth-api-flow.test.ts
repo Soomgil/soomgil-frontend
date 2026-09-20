@@ -52,6 +52,20 @@ describe('인증 API 화면 흐름', () => {
     expect(reset.get('[role="status"]').text()).toContain('비밀번호가 변경')
   })
 
+  it('비밀번호 변경 안내 뒤 로그인에 실패하면 실패 안내만 표시한다', async () => {
+    mocks.route.query = { reset: '1' }
+    mocks.login.mockRejectedValueOnce({ isAxiosError: true, response: { status: 401, data: {} } })
+    const wrapper = mount(LoginPage)
+
+    await wrapper.get('input[aria-label="이메일"]').setValue('demo@example.com')
+    await wrapper.get('input[aria-label="비밀번호"]').setValue('wrong-password')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.find('[role="status"]').exists()).toBe(false)
+    expect(wrapper.get('[role="alert"]').text()).toContain('이메일 또는 비밀번호가 올바르지 않습니다.')
+  })
+
   it('인증 메일 link의 token을 자동으로 검증한다', async () => {
     mocks.route.query = { token: 'verify-token', email: 'demo@example.com' }
     mocks.verifyEmail.mockResolvedValue({ id: 'user-1', email: 'demo@example.com' })
@@ -93,11 +107,39 @@ describe('인증 API 화면 흐름', () => {
 
     expect((wrapper.get('input[aria-label="재설정 토큰"]').element as HTMLInputElement).value).toBe('reset-token')
     await wrapper.get('input[aria-label="새 비밀번호"]').setValue('New-password-123!')
+    await wrapper.get('input[aria-label="새 비밀번호 확인"]').setValue('New-password-123!')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
     expect(mocks.resetPassword).toHaveBeenCalledWith({ token: 'reset-token', newPassword: 'New-password-123!' })
     expect(wrapper.get('[role="alert"]').text()).toContain('재설정 링크가 만료')
+  })
+
+  it('요청 단계에서는 이메일 입력만 표시하고 재설정 메일 API를 호출한다', async () => {
+    mocks.requestPasswordReset.mockResolvedValue(undefined)
+    const wrapper = mount(ResetPasswordPage)
+
+    expect(wrapper.find('input[aria-label="재설정 토큰"]').exists()).toBe(false)
+    await wrapper.get('input[aria-label="이메일"]').setValue('demo@example.com')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.requestPasswordReset).toHaveBeenCalledWith('demo@example.com')
+    expect(wrapper.get('[role="status"]').text()).toContain('재설정 메일을 발송했습니다')
+  })
+
+  it('새 비밀번호 확인이 일치할 때 재설정 후 로그인으로 이동한다', async () => {
+    mocks.route.query = { token: 'reset-token' }
+    mocks.resetPassword.mockResolvedValue(undefined)
+    const wrapper = mount(ResetPasswordPage)
+
+    await wrapper.get('input[aria-label="새 비밀번호"]').setValue('New-password-123!')
+    await wrapper.get('input[aria-label="새 비밀번호 확인"]').setValue('New-password-123!')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.resetPassword).toHaveBeenCalledWith({ token: 'reset-token', newPassword: 'New-password-123!' })
+    expect(mocks.push).toHaveBeenCalledWith({ path: '/login', query: { reset: '1' } })
   })
 
   it('OAuth callback 실패를 복구 경로와 함께 안내한다', async () => {

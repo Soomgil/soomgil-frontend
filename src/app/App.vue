@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import AppFooter from '@/components/layout/AppFooter.vue'
 import ServiceBackdrop from '@/components/layout/ServiceBackdrop.vue'
 import VoteResultMapOverlay from '@/components/voting/VoteResultMapOverlay.vue'
 import { useAuthStore } from '@/stores/auth.store'
@@ -10,7 +11,11 @@ import { useUiLocalizer } from '@/i18n/ui-localizer'
 
 const route = useRoute()
 const hasServiceBackground = computed(() => !route.meta.hideLayout &&
-  /^\/(home|my-trips|swipe|community|search|mypage|settings)(\/|$)/.test(route.path))
+  /^\/(home|login|register|reset-password|auth\/reset-password|my-trips|swipe|community|search|mypage|settings)(\/|$)/.test(route.path))
+const showServiceFooter = computed(() => {
+  if (route.meta.hideLayout || route.path === '/') return false
+  return !/^\/(login|register|verify-email|reset-password|auth\/oauth)(\/|$)/.test(route.path)
+})
 const auth = useAuthStore()
 const swipe = useSwipeStore()
 useUiLocalizer()
@@ -27,9 +32,10 @@ watch(
 
 <template>
  <div class="app-layout" :class="{ 'has-service-background': hasServiceBackground }">
-  <ServiceBackdrop v-if="hasServiceBackground" />
-  <AppHeader v-show="!route.meta.hideLayout && route.path !== '/'" />
+  <ServiceBackdrop />
+  <AppHeader v-show="!route.meta.hideLayout" />
   <RouterView />
+  <AppFooter v-if="showServiceFooter" />
   <VoteResultMapOverlay />
  </div>
 </template>
@@ -38,11 +44,12 @@ watch(
 /* Header stays in normal flow so wrapped navigation reserves its real height. */
 body:has(> #app) { padding-top:0; }
 .app-layout > .topbar { position:sticky; top:0; background:#f8fbff; }
-.app-layout { position: relative; isolation: isolate; display: flow-root; }
+.app-layout { position: relative; isolation: isolate; display: flow-root; min-height: 100svh; }
 .app-layout.has-service-background .paper-shell,
 .app-layout.has-service-background .travel-paper,
 .app-layout.has-service-background .swipe-discovery,
 .app-layout.has-service-background .community-paper,
 .app-layout.has-service-background .home-canvas,
+.app-layout.has-service-background .auth-modern-page,
 .app-layout.has-service-background .search-page { background: transparent; }
 </style>

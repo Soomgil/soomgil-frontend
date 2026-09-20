@@ -216,7 +216,7 @@ onMounted(async () => {
 
     <main>
       <section class="section page-with-hero">
-        <div class="page-hero">
+        <div class="page-hero primary-page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">
               <span class="material-symbols-rounded" aria-hidden="true">bolt</span>
@@ -226,7 +226,7 @@ onMounted(async () => {
               취향 수집
             </h1>
             <p class="page-hero__lead">
-              오른쪽은 좋아요, 왼쪽은 다음에. 꼭 가고 싶은 곳은 위로 밀어주세요.
+              좋아요는 오른쪽, 다음에는 왼쪽으로 넘겨보세요. 꼭 가고 싶은 장소는 위로 밀어주세요.
             </p>
           </div>
 
@@ -675,11 +675,7 @@ onMounted(async () => {
 .swipe-discovery { --ink:#35465a; --muted:#647c92; --violet:#328be0; --blue:#328be0; --line:#dfeaf5; --surface:#fff; --surface-2:#eaf4ff; background:#f8fbff; min-height:100svh; }
 .swipe-discovery main { background:transparent; }
 .swipe-discovery .section { max-width:1200px; margin:0 auto; padding:48px 32px; }
-.swipe-discovery .page-hero { background:transparent; border:0; box-shadow:none; margin-bottom:36px; padding:0; }
-.swipe-discovery .page-hero__eyebrow { background:none; border:0; padding:0; color:#647c92; font-family:Inter,'Pretendard Variable',Pretendard,sans-serif; font-weight:700; letter-spacing:.13em; font-size:11px; }
-.swipe-discovery .page-hero__title { font-family:'Noto Serif KR','Batang','바탕',serif; font-size:40px; font-weight:500; line-height:1.5; letter-spacing:-.02em; }
 .swipe-discovery .page-hero__gradient { background:none; -webkit-text-fill-color:#35465a; color:#35465a; }
-.swipe-discovery .page-hero__lead { max-width:65ch; font-size:14px; font-weight:400; line-height:1.8; }
 .swipe-workspace-card { background:transparent; border:0; border-radius:0; padding:0; box-shadow:none; overflow:visible; }
 .swipe-layout { grid-template-columns:minmax(0,1fr) 280px; gap:40px; align-items:start; }
 .swipe-main-column { min-width:0; min-height:0; grid-template-rows:auto auto; gap:12px; }
@@ -718,8 +714,6 @@ onMounted(async () => {
 }
 @media(max-width:640px) {
  .swipe-discovery .section { padding:28px 20px; }
- .swipe-discovery .page-hero { margin-bottom:36px; }
- .swipe-discovery .page-hero__title { font-size:32px; }
  .swipe-discovery .swipe-card { grid-template-rows:280px; }
  .swipe-card img[data-place-image] { max-height:280px; }
  .swipe-body { padding:0; }
@@ -730,8 +724,6 @@ onMounted(async () => {
  .swipe-guide { gap:2px; font-size:10px; }
  .photo-strip-section { padding:0; }
 }
-.swipe-discovery .page-hero__eyebrow .material-symbols-rounded { display:none; }
-
 .swipe-guide svg { width:42px; height:28px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .swipe-guide--top svg { width:24px; height:32px; }
 .swipe-guide .sketch-echo { stroke-width:.8; opacity:.4; }

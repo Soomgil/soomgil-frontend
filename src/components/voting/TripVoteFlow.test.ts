@@ -346,7 +346,7 @@ describe('여행 방 투표 화면', () => {
     await wrapper.find('[data-testid="setup-open"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="setup-error"]').text()).toContain('후보 관광지를 충분히 찾지 못했어요')
+    expect(wrapper.find('[data-testid="setup-error"]').text()).toContain('이 지역에서는 후보를 충분히 찾지 못했어요')
   })
 
   it('종료된 세션은 결과 화면을 보여준다', async () => {
@@ -521,7 +521,7 @@ describe('여행 방 투표 화면', () => {
     const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true, targetSessionId: 'old-session' }, global: { stubs } })
     await flushPromises()
     expect(wrapper.text()).toContain('이전 투표의 해변')
-    expect(wrapper.find('.vote-result__header').exists()).toBe(false)
+    expect(wrapper.get('.vote-result__header').text()).toContain('함께 고른 여행지를 확인해보세요')
     expect(wrapper.find('[data-testid="vote-restart"]').exists()).toBe(false)
     wrapper.unmount()
   })

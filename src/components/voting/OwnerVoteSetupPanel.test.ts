@@ -56,6 +56,9 @@ describe('OwnerVoteSetupPanel', () => {
   it('여행방 지역을 투표 지역 칩으로 미리 채운다', () => {
     const wrapper = mountPanel()
 
+    expect(wrapper.get('.vote-setup__title').text()).toBe('새 투표를 시작할까요?')
+    expect(wrapper.text()).toContain('투표할 지역')
+    expect(wrapper.text()).toContain('하루 방문 수')
     const chips = wrapper.findAll('[data-testid="setup-region-chip"]')
     expect(chips).toHaveLength(1)
     expect(chips[0].text()).toContain('제주시')
@@ -123,6 +126,6 @@ describe('OwnerVoteSetupPanel', () => {
     const wrapper = mountPanel({ tripRegions: [], tripDestination: null })
 
     expect(wrapper.get('[data-testid="setup-open"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('지역을 하나 이상 골라주세요')
+    expect(wrapper.text()).toContain('후보를 찾으려면 지역을 하나 이상 선택해 주세요')
   })
 })

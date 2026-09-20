@@ -52,14 +52,14 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
   <div class="app-shell">
 
     <main class="auth-page auth-modern-page">
-      <section class="auth-card auth-modern-card">
+      <section class="auth-card auth-modern-card auth-modern-card--split">
         <div class="auth-visual-panel">
           <div
             class="auth-visual-image"
             :style="{ backgroundImage: `linear-gradient(180deg, rgba(9, 18, 34, 0.05), rgba(9, 18, 34, 0.72)), url(${heroImg})` }"
           ></div>
           <div class="auth-visual-content">
-            <p class="eyebrow">Welcome Back</p>
+            <p class="eyebrow">{{ t('login.eyebrow') }}</p>
             <h1>{{ t('login.hero') }}</h1>
             <p>{{ t('login.heroDesc') }}</p>
           </div>
@@ -88,8 +88,8 @@ async function handleOAuthLogin(provider: 'kakao' | 'google') {
           </div>
 
           <div class="auth-feedback-slot" data-testid="auth-feedback" aria-live="polite">
-            <p v-if="completionMessage" class="auth-success-message" role="status">{{ completionMessage }}</p>
             <p v-if="submitError" class="auth-submit-error" role="alert">{{ submitError }}</p>
+            <p v-else-if="completionMessage" class="auth-success-message" role="status">{{ completionMessage }}</p>
           </div>
 
           <button class="btn primary auth-main-action" type="submit" :disabled="submitting">
