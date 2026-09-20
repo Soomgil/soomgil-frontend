@@ -633,24 +633,9 @@ function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
     lastFittedStopsKey = stopsKey
     return
   }
-  // 여행 장소가 아직 없으면 그 지역의 추천 장소(취향/주변)로 지도를 맞춘다. 새로 만든 여행방이
-  // 특정 도시가 아니라 실제 여행지역을 보여주도록 하기 위함이다.
+  // 여행 장소가 없으면 지도를 건드리지 않는다. 초기 중심은 여행지역 뷰포트(focusBounds)가 잡고,
+  // 추천 장소(취향/주변)는 전국에 흩어져 있을 수 있어 거기에 맞추면 오히려 전국으로 줌아웃된다.
   if (props.stops.length === 0) {
-    const regionPlaces = [...props.tastePlaces, ...props.nearbyPlaces]
-      .filter((place) => Number.isFinite(place.lng) && Number.isFinite(place.lat))
-    const regionKey = 'region:' + regionPlaces.map((place) => `${place.lng}:${place.lat}`).sort().join('|')
-    if (regionKey === lastFittedStopsKey) return
-    lastFittedStopsKey = regionKey
-    if (regionPlaces.length === 1) {
-      map.easeTo({ center: [regionPlaces[0].lng, regionPlaces[0].lat], zoom: 11, duration: 500 })
-    } else if (regionPlaces.length > 1) {
-      const bounds = new mapbox.LngLatBounds()
-      regionPlaces.forEach((place) => bounds.extend([place.lng, place.lat]))
-      const camera = map.cameraForBounds(bounds, { padding: 80, maxZoom: 13 })
-      if (camera) {
-        map.easeTo({ ...camera, zoom: Math.max((camera.zoom ?? map.getZoom()) - 1, 0), duration: 500 })
-      }
-    }
     return
   }
   if (stopsKey === lastFittedStopsKey) return
@@ -820,11 +805,7 @@ function retry() {
 
 watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.cardDisplay, props.navigationMode], renderStops, { deep: true })
 watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
-watch(() => props.tastePlaces, () => {
-  renderTasteMarkers()
-  // 여행 장소가 없을 때는 추천(취향) 장소가 곧 여행지역이므로 지도도 그쪽으로 맞춘다.
-  if (map && mapboxgl && props.stops.length === 0) fitToStopsIfNeeded(mapboxgl)
-}, { deep: true })
+watch(() => props.tastePlaces, renderTasteMarkers, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {
   initializationSequence++

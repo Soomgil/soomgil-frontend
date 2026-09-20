@@ -569,6 +569,8 @@ async function focusTripRegion() {
         maxLat: viewport.maxLat,
       })
     }
+    // 지역 범위를 알게 됐으니, 추천이 켜져 있으면 지도 이동을 기다리지 않고 바로 그 지역 추천을 채운다.
+    if (nearbyOn.value) void loadRouteNearbyPlaces()
   } catch {
     // 지역 뷰포트는 보조 정보라 실패해도 페이지 동작에 영향을 주지 않는다.
   }
@@ -919,10 +921,7 @@ async function removeRouteLinkBetween(id1: string, id2: string) {
 	try {
     await itinerary.deleteRoute(link.id)
     itinerary.routes.value = itinerary.routes.value.filter((route) => route.id !== link.id)
-    if (!routeBbox(visibleMapRoutes.value as Array<{ geometry?: Record<string, unknown> }>)) {
-      nearbyOn.value = false
-      clearRouteNearbyPlaces()
-    }
+    // 경로가 없어져도 추천은 끄지 않는다. 경로 변경 watch가 지금 지도 영역 기준으로 다시 채운다.
 		showToast('경로 연결이 해제되었습니다', 'success')
 	} catch {
 		showToast('경로 연결을 해제하지 못했습니다.', 'error')
@@ -2863,7 +2862,8 @@ async function deleteTodo(id: string) {
 /* ── Map tools ── */
 const routeState = ref<'route' | 'hidden'>('route')
 const cardState = ref<'full' | 'min' | 'hidden'>('full')
-const nearbyOn = ref(false)
+// 방에 들어오면 따로 누르지 않아도 지금 지도 영역의 추천 장소가 보이도록 기본 켬으로 둔다.
+const nearbyOn = ref(true)
 const standardMapView = ref(false)
 const mapIsTilted = ref(false)
 const itineraryMapRef = ref<{
@@ -2884,7 +2884,7 @@ let nearbyViewportTimer: ReturnType<typeof setTimeout> | undefined
 watch(() => mapViewport.viewport.value, () => {
   if (!nearbyOn.value) return
   clearTimeout(nearbyViewportTimer)
-  nearbyViewportTimer = setTimeout(() => { void loadRouteNearbyPlaces() }, 2500)
+  nearbyViewportTimer = setTimeout(() => { void loadRouteNearbyPlaces() }, 6000)
 })
 onUnmounted(() => clearTimeout(nearbyViewportTimer))
 const drawingOn = ref(true)
