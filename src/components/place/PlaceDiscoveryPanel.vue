@@ -8,6 +8,19 @@ import type { RecommendationTab } from '@/types/swipe'
 type DiscoveryMode = 'search' | 'basic' | 'super-like'
 type DiscoveryItem = { place: Place; recommendation?: PlaceRecommendation }
 
+// 불러오지 못한 멤버 프로필 이미지는 사람 아이콘으로 대체한다(데모 환경에서 프로필 객체가 없을 때 깨짐 방지).
+const brokenAvatarIds = ref(new Set<string>())
+function markAvatarBroken(id: string) {
+  if (brokenAvatarIds.value.has(id)) return
+  brokenAvatarIds.value = new Set(brokenAvatarIds.value).add(id)
+}
+// 장소 썸네일도 못 불러오면 기본 아이콘으로 대체한다.
+const brokenPlaceImageKeys = ref(new Set<string>())
+function markPlaceImageBroken(key: string) {
+  if (brokenPlaceImageKeys.value.has(key)) return
+  brokenPlaceImageKeys.value = new Set(brokenPlaceImageKeys.value).add(key)
+}
+
 const props = withDefaults(defineProps<{
   tripId: string
   bbox: string
@@ -253,7 +266,7 @@ onUnmounted(() => {
         @click="selectPlace(item)"
       >
         <div class="discovery-thumb">
-          <img v-if="placeImage(item.place)" :src="placeImage(item.place)" :alt="item.place.placeName" />
+          <img v-if="placeImage(item.place) && !brokenPlaceImageKeys.has(placeKey(item.place))" :src="placeImage(item.place)" :alt="item.place.placeName" @error="markPlaceImageBroken(placeKey(item.place))" />
           <span v-else class="material-symbols-rounded" aria-hidden="true">landscape</span>
         </div>
         <div class="discovery-copy">
@@ -278,7 +291,7 @@ onUnmounted(() => {
           <div v-if="item.recommendation?.matchedMembers?.length" class="discovery-match-row">
             <div class="discovery-members">
               <span v-for="member in item.recommendation.matchedMembers.slice(0, 3)" :key="member.id">
-                <img v-if="member.profileImageUrl" draggable="false" :src="member.profileImageUrl" alt="멤버 프로필" />
+                <img v-if="member.profileImageUrl && !brokenAvatarIds.has(member.id)" draggable="false" :src="member.profileImageUrl" alt="멤버 프로필" @error="markAvatarBroken(member.id)" />
                 <span v-else class="material-symbols-rounded" style="font-size: 16px;">person</span>
               </span>
             </div>
