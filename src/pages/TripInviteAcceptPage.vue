@@ -46,6 +46,14 @@ const errorContent = computed(() => {
   return state.value === 'loading' || state.value === 'success' ? null : content[state.value]
 })
 
+const acceptedTripDate = computed(() => {
+  if (!acceptedTrip.value?.startDate) return null
+  const formatter = new Intl.DateTimeFormat('ko-KR', { month: 'short', day: 'numeric' })
+  const start = formatter.format(new Date(`${acceptedTrip.value.startDate}T00:00:00`))
+  if (!acceptedTrip.value.endDate || acceptedTrip.value.endDate === acceptedTrip.value.startDate) return start
+  return `${start} – ${formatter.format(new Date(`${acceptedTrip.value.endDate}T00:00:00`))}`
+})
+
 function classifyError(cause: unknown): AcceptState {
   const response = (cause as InviteProblem)?.response
   const detail = response?.data?.detail ?? ''
@@ -98,20 +106,32 @@ watch(inviteCode, () => {
 </script>
 
 <template>
-  <div class="app-shell">
-
+  <div class="app-shell invite-shell">
     <main class="invite-page">
-      <section class="invite-status" aria-live="polite">
-        <LoadingState v-if="state === 'loading'" />
+      <section class="invite-status" :class="`is-${state}`" aria-live="polite">
+        <div v-if="state === 'loading'" class="invite-loading">
+          <LoadingState />
+          <p>{{ tr('여행 초대를 확인하고 있어요', 'Checking your invitation') }}</p>
+        </div>
 
         <template v-else-if="state === 'success' && acceptedTrip">
-          <span class="invite-icon success material-symbols-rounded" aria-hidden="true">check_circle</span>
-          <p class="eyebrow">Invitation Accepted</p>
-          <h1>{{ tr('초대 수락 완료', 'Invitation accepted') }}</h1>
-          <p><strong>{{ acceptedTrip.title }}</strong> {{ tr('여행에 참여했습니다.', 'has been added to your trips.') }}</p>
+          <h1>{{ tr('함께 떠날 준비가 됐어요', 'Ready to travel together') }}</h1>
+          <p class="invite-lead">{{ tr('초대 수락 완료! 이제 여행 메이트들과 일정을 만들어 보세요.', 'Invitation accepted. Start planning with your travel mates.') }}</p>
+          <article class="invite-trip-card">
+            <span class="invite-trip-card__pin material-symbols-rounded" aria-hidden="true">location_on</span>
+            <div>
+              <small>{{ tr('참여한 여행', 'Your new trip') }}</small>
+              <strong>{{ acceptedTrip.title }}</strong>
+              <p v-if="acceptedTrip.displayDestination || acceptedTripDate">
+                <span v-if="acceptedTrip.displayDestination">{{ acceptedTrip.displayDestination }}</span>
+                <span v-if="acceptedTripDate">{{ acceptedTripDate }}</span>
+              </p>
+            </div>
+            <span class="invite-trip-card__check material-symbols-rounded" aria-hidden="true">verified</span>
+          </article>
           <div class="invite-actions">
-            <button class="btn ghost" type="button" @click="router.push({ name: 'MyTrips' })">{{ tr('내 여행', 'My trips') }}</button>
-            <button class="btn primary" type="button" data-testid="go-trip" @click="goToTrip">
+            <button class="invite-button secondary" type="button" @click="router.push({ name: 'MyTrips' })">{{ tr('내 여행 목록', 'My trips') }}</button>
+            <button class="invite-button primary" type="button" data-testid="go-trip" @click="goToTrip">
               {{ tr('여행으로 이동', 'Open trip') }}
               <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
             </button>
@@ -119,80 +139,89 @@ watch(inviteCode, () => {
         </template>
 
         <template v-else-if="errorContent">
-          <span class="invite-icon material-symbols-rounded" aria-hidden="true">{{ errorContent.icon }}</span>
-          <p class="eyebrow">Invitation</p>
           <h1>{{ errorContent.title }}</h1>
-          <p>{{ errorContent.message }}</p>
+          <p class="invite-lead">{{ errorContent.message }}</p>
           <div class="invite-actions">
-            <button v-if="state !== 'unauthorized'" class="btn ghost" type="button" @click="router.push({ name: 'MyTrips' })">{{ tr('내 여행으로 이동', 'Go to My trips') }}</button>
-            <button v-if="state === 'unauthorized'" class="btn primary" type="button" @click="goToLogin">
+            <button v-if="state !== 'unauthorized'" class="invite-button secondary" type="button" @click="router.push({ name: 'MyTrips' })">{{ tr('내 여행으로 이동', 'Go to My trips') }}</button>
+            <button v-if="state === 'unauthorized'" class="invite-button primary" type="button" @click="goToLogin">
               {{ tr('로그인하고 참여하기', 'Log in and join') }}
             </button>
-            <button v-if="state === 'error'" class="btn primary" type="button" data-testid="retry-invite" @click="acceptInvite">
+            <button v-if="state === 'error'" class="invite-button primary" type="button" data-testid="retry-invite" @click="acceptInvite">
               {{ tr('다시 시도', 'Try again') }}
             </button>
           </div>
         </template>
+        <footer class="invite-footer"><span class="material-symbols-rounded" aria-hidden="true">lock</span>{{ tr('초대 링크는 안전하게 처리됩니다.', 'Your invitation link is handled securely.') }}</footer>
       </section>
     </main>
   </div>
 </template>
 
 <style scoped>
+.invite-shell {
+  background: transparent;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
 .invite-page {
   align-items: center;
   display: flex;
   justify-content: center;
-  min-height: calc(100vh - 80px);
+  min-height: 100vh;
   padding: 48px 20px;
+  position: relative;
 }
 
 .invite-status {
-  max-width: 560px;
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid rgb(211 228 239 / 90%);
+  border-radius: 32px;
+  box-shadow: 0 30px 90px rgb(58 91 119 / 16%);
+  max-width: 610px;
+  overflow: hidden;
+  padding: 26px 46px 24px;
+  position: relative;
   text-align: center;
   width: 100%;
+  z-index: 1;
 }
 
-.invite-status h1 {
-  font-size: 42px;
-  letter-spacing: 0;
-  margin: 10px 0 12px;
-  overflow-wrap: anywhere;
-}
-
-.invite-status > p:not(.eyebrow) {
-  color: #6b7280;
-  line-height: 1.7;
-  margin: 0;
-}
-
-.invite-icon {
-  color: #be123c;
-  font-size: 64px;
-  margin-bottom: 18px;
-}
-
-.invite-icon.success {
-  color: #047857;
-}
+.invite-loading { color: #6d8497; padding: 42px 0 64px; }
+.invite-loading p { font-size: 14px; margin: 20px 0 0; }
+.invite-status h1 { color: #30465a; font-size: clamp(30px, 5vw, 42px); letter-spacing: -.05em; line-height: 1.18; margin: 8px 0 12px; overflow-wrap: anywhere; }
+.invite-lead { color: #6e8295; font-size: 14px; line-height: 1.7; margin: 0 auto; max-width: 440px; }
+.invite-trip-card { align-items: center; background: linear-gradient(135deg, #f2f8fd, #f7fbf8); border: 1px solid #dae8f2; border-radius: 20px; display: grid; gap: 14px; grid-template-columns: auto 1fr auto; margin: 26px 0 0; padding: 17px 18px; text-align: left; }
+.invite-trip-card__pin { align-items: center; background: #fff; border-radius: 14px; box-shadow: 0 6px 16px rgb(61 110 147 / 10%); color: #4e91c5; display: flex; height: 46px; justify-content: center; width: 46px; }
+.invite-trip-card div { display: grid; gap: 3px; min-width: 0; }
+.invite-trip-card small { color: #8497a8; font-size: 10px; font-weight: 800; }
+.invite-trip-card strong { color: #354d62; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.invite-trip-card p { color: #75899a; display: flex; flex-wrap: wrap; font-size: 11px; gap: 12px; margin: 0; }
+.invite-trip-card__check { color: #56a276; font-size: 23px; }
 
 .invite-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   justify-content: center;
-  margin-top: 30px;
+  margin-top: 24px;
 }
 
-@media (max-width: 480px) {
-  .invite-status h1 {
-    font-size: 32px;
-  }
+.invite-button { align-items: center; border: 0; border-radius: 14px; cursor: pointer; display: inline-flex; font-size: 14px; font-weight: 800; gap: 7px; justify-content: center; min-height: 48px; padding: 0 21px; transition: box-shadow .18s ease, transform .18s ease; }
+.invite-button:hover { transform: translateY(-2px); }
+.invite-button.primary { background: #3f8dc8; box-shadow: 0 10px 24px rgb(63 141 200 / 24%); color: #fff; }
+.invite-button.secondary { background: #eef5fa; color: #5e778d; }
+.invite-button .material-symbols-rounded { font-size: 18px; }
+.invite-footer { align-items: center; border-top: 1px solid #e7eef3; color: #98a6b2; display: flex; font-size: 10px; gap: 5px; justify-content: center; margin-top: 26px; padding-top: 17px; }
+.invite-footer .material-symbols-rounded { font-size: 13px; }
 
-  .invite-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
+@media (max-width: 480px) {
+  .invite-page { align-items: stretch; padding: 18px 12px; }
+  .invite-status { border-radius: 24px; display: flex; flex-direction: column; justify-content: center; padding: 24px 20px 20px; }
+  .invite-trip-card { grid-template-columns: auto 1fr; }
+  .invite-trip-card__check { display: none; }
+  .invite-actions { align-items: stretch; flex-direction: column; }
+  .invite-button { width: 100%; }
 }
 </style>
 

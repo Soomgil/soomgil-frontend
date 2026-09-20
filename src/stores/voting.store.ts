@@ -171,11 +171,13 @@ export const useVotingStore = defineStore('voting', () => {
     }
   }
 
-  /** 종료된 세션의 결과를 불러온다. 진행 중이거나 세션이 없으면 아무것도 하지 않는다. */
-  async function loadResult() {
-    if (!tripId.value || !session.value || session.value.status !== 'COMPLETED') return null
+  /** 종료된 세션의 결과를 불러온다. 제출 직후 current-session이 비어도 명시한 세션은 조회할 수 있다. */
+  async function loadResult(targetSessionId?: string) {
+    if (!tripId.value) return null
+    const sessionId = targetSessionId ?? session.value?.id
+    if (!sessionId || (!targetSessionId && session.value?.status !== 'COMPLETED')) return null
     try {
-      result.value = await votingApi.getResult(tripId.value, session.value.id)
+      result.value = await votingApi.getResult(tripId.value, sessionId)
       return result.value
     } catch {
       return null

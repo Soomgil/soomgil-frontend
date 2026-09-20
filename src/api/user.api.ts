@@ -10,7 +10,7 @@ import type {
 import type { PagedItems } from '@/types/api'
 import { mapBackendUser } from '@/types/auth'
 import type { Place } from '@/types/place'
-import type { UserPreferenceAnalysis } from '@/types/user'
+import type { PublicUserProfile, UserPreferenceAnalysis } from '@/types/user'
 import { mapPlace } from './place.api'
 
 export const userApi = {
@@ -89,8 +89,14 @@ export const userApi = {
     return res.data
   },
   /** 특정 사용자 프로필 조회 (GET /users/{userId}) */
-  getUserProfile: async (userId: string): Promise<import('@/types/user').PublicUserProfile> => {
-    const res = await http.get<import('@/types/user').PublicUserProfile>(`/users/${userId}`)
-    return res.data
+  getUserProfile: async (userId: string): Promise<PublicUserProfile> => {
+    type BackendPublicUserProfile = Omit<PublicUserProfile, 'superLikedPlaces'> & {
+      superLikedPlaces: Array<{ place: Parameters<typeof mapPlace>[0] }>
+    }
+    const res = await http.get<BackendPublicUserProfile>(`/users/${userId}`)
+    return {
+      ...res.data,
+      superLikedPlaces: (res.data.superLikedPlaces ?? []).map(saved => mapPlace(saved.place)),
+    }
   },
 }

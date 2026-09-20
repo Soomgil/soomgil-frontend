@@ -1,4 +1,5 @@
 import type { User } from './auth'
+import type { Place } from './place'
 
 /** auth.User와 동일하지만 마이페이지용 확장 필드 포함 */
 export interface UserProfile extends User {
@@ -18,6 +19,8 @@ export interface PublicUserProfile {
   followedByMe: boolean | null
   followStatus: string | null
   profileVisibility: 'PUBLIC' | 'PRIVATE'
+  superLikedPlaces: Place[]
+  preferences: UserPreferenceAnalysis | null
 }
 
 export interface UserStats {
