@@ -964,7 +964,7 @@ onUnmounted(() => {
  .trip-vote--embedded .trip-vote__layout { grid-template-columns:minmax(0,1fr); }
 }
 
-.trip-vote--embedded { padding-top:18px; }
+.trip-vote.trip-vote--embedded.page-with-hero { padding:24px 4px 4px !important; }
 .trip-vote__restart { display:flex; margin:14px 0 0 auto; padding:6px 8px; min-height:36px; border:0; background:transparent; font-size:12px; }
 @media(max-width:520px) {
  .trip-vote--embedded .trip-vote__result-actions { display:grid; grid-template-columns:1fr; padding:10px 0; gap:6px; }
