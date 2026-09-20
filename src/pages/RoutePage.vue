@@ -6181,7 +6181,6 @@ function textAvatarStyle(index: unknown) {
 }
 
 .vote-modal-card {
-  height: min(88vh, 860px);
   max-height: min(88vh, 860px);
   max-width: 920px;
   overflow: auto;
@@ -6190,6 +6189,11 @@ function textAvatarStyle(index: unknown) {
   scrollbar-width: none;
   -ms-overflow-style: none;
   width: 100%;
+}
+
+.vote-modal-card:has(.trip-vote--voting) {
+  height: auto;
+  max-height: min(84vh, 720px);
 }
 
 /* 안내·대기 상태는 콘텐츠 높이에 맞춰 불필요한 빈 공간을 남기지 않는다. */
