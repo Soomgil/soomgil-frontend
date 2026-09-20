@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import OnboardingHeader from '@/components/layout/OnboardingHeader.vue'
 import ServiceBackdrop from '@/components/layout/ServiceBackdrop.vue'
 import VoteResultMapOverlay from '@/components/voting/VoteResultMapOverlay.vue'
 import { useAuthStore } from '@/stores/auth.store'
@@ -9,6 +10,7 @@ import { useSwipeStore } from '@/stores/swipe.store'
 import { useUiLocalizer } from '@/i18n/ui-localizer'
 
 const route = useRoute()
+const isPreferenceOnboarding = computed(() => route.name === 'OnboardingPreferences')
 const hasServiceBackground = computed(() => !route.meta.hideLayout &&
   /^\/(home|my-trips|swipe|community|search|mypage|settings)(\/|$)/.test(route.path))
 const auth = useAuthStore()
@@ -28,7 +30,8 @@ watch(
 <template>
  <div class="app-layout" :class="{ 'has-service-background': hasServiceBackground }">
   <ServiceBackdrop v-if="hasServiceBackground" />
-  <AppHeader v-show="!route.meta.hideLayout && route.path !== '/'" />
+  <AppHeader v-show="!route.meta.hideLayout && route.path !== '/' && !isPreferenceOnboarding" />
+  <OnboardingHeader v-if="isPreferenceOnboarding" />
   <RouterView />
   <VoteResultMapOverlay />
  </div>

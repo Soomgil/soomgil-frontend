@@ -46,6 +46,7 @@ function restoreOnboardingDraft() {
   } catch {
     onboardingAnswers.value = {}
   }
+  onboarding.setAnsweredPlaceCount(Object.keys(onboardingAnswers.value).length)
 }
 
 function persistOnboardingDraft() {
@@ -126,6 +127,7 @@ const onboardingGateway: SwipeFeedGateway = {
       ...onboardingAnswers.value,
       [onboardingAnswerKey(provider, externalPlaceId)]: reaction,
     }
+    onboarding.setAnsweredPlaceCount(Object.keys(onboardingAnswers.value).length)
     persistOnboardingDraft()
     return {
       place: { provider, externalPlaceId },
@@ -363,9 +365,6 @@ onMounted(async () => {
             </h1>
             <p class="page-hero__lead">
               오른쪽은 좋아요, 왼쪽은 다음에. 꼭 가고 싶은 곳은 위로 밀어주세요.
-            </p>
-            <p v-if="onboardingMode" class="page-hero__progress" role="status">
-              {{ answeredCount }} / {{ requiredPlaceCount }}곳 선택
             </p>
           </div>
 
