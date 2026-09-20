@@ -28,7 +28,8 @@ const props = withDefaults(defineProps<{
   embedded?: boolean
   targetSessionId?: string | null
   tripDays?: number | null
-}>(), { embedded: false, tripDays: null })
+  isOwner?: boolean
+}>(), { embedded: false, tripDays: null, isOwner: false })
 const emit = defineEmits<{
   /** 흐름을 닫는다. showResult가 true면 방금 끝난 투표 결과를 지도에서 보여 달라는 뜻이다. */
   close: [showResult: boolean]
@@ -39,7 +40,8 @@ const emit = defineEmits<{
 const tripId = computed(() => props.tripId)
 const loadedTripDays = ref<number | null>(null)
 const setupTripDays = computed(() => props.tripDays ?? loadedTripDays.value)
-const isOwner = ref(false)
+const apiOwner = ref(false)
+const isOwner = computed(() => props.isOwner || apiOwner.value)
 const tripTitle = ref('')
 const tripRegions = ref<LegalRegion[]>([])
 const tripDestination = ref<string | null>(null)
@@ -173,16 +175,21 @@ watch(
 )
 
 onMounted(async () => {
-  // 새로고침 직후에는 토큰만 있고 user가 비어 있을 수 있다. 방장 판별에 필요하므로 먼저 복원한다.
-  if (auth.isAuthenticated && !auth.user) {
-    try { await auth.fetchUser() } catch { /* user 조회 실패 시 방장 기능만 숨긴다 */ }
-  }
+  // 부모가 이미 확인한 방장 여부와 라우터 가드가 채운 투표 상태를 즉시 사용한다.
+  // 새로고침 등 캐시가 없는 경우에만 각 API를 병렬로 보완 조회한다.
+  const restoreUser = auth.isAuthenticated && !auth.user
+    ? auth.fetchUser().catch(() => null)
+    : Promise.resolve(auth.user)
+  const loadVoting = voting.tripId === tripId.value
+    ? Promise.resolve()
+    : voting.load(tripId.value)
   const [, trip] = await Promise.all([
-    voting.load(tripId.value),
+    loadVoting,
     tripApi.getTrip(tripId.value).catch(() => null),
+    restoreUser,
   ])
   if (trip) {
-    isOwner.value = trip.ownerUserId != null && trip.ownerUserId === auth.user?.id
+    apiOwner.value = trip.ownerUserId != null && trip.ownerUserId === auth.user?.id
     tripTitle.value = trip.title ?? ''
     tripRegions.value = trip.regions ?? []
     tripDestination.value = trip.displayDestination ?? null
@@ -932,7 +939,7 @@ onUnmounted(() => {
 /* Shared white and sky palette for every stage of the vote dialog. */
 .trip-vote--embedded { --ink:#35465a; --muted:#647c92; --surface:#fff; --surface-2:#eaf4ff; --line:#dfeaf5; --violet:#328be0; --blue:#328be0; }
 .trip-vote--embedded .trip-vote__back { align-self:flex-end; min-height:36px; padding:6px 10px; border-radius:10px; margin:0 0 8px; background:#f1f8ff; }
-.trip-vote--embedded .trip-vote__hero { padding:20px; margin-bottom:20px; border-radius:16px; background:#f1f8ff; border:1px solid #dfeaf5; box-shadow:none; }
+.trip-vote--embedded .trip-vote__hero { padding:20px; margin-bottom:20px; border:0; border-radius:16px; background:transparent; box-shadow:none; }
 .trip-vote--embedded :deep(.page-hero__title) { font-size:28px; line-height:1.4; }
 .trip-vote--embedded :deep(.page-hero__gradient) { background:none; -webkit-text-fill-color:#35465a; color:#35465a; }
 .trip-vote--embedded :deep(.page-hero__lead) { font-size:13px; line-height:1.7; }
