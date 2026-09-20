@@ -207,7 +207,7 @@ watch(() => props.bbox, (bbox, previous) => {
   areaReloadTimer = setTimeout(() => {
     areaReloadTimer = null
     void reloadCurrentArea()
-  }, 3000)
+  }, 1500)
 })
 
 onUnmounted(() => {

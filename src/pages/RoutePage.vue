@@ -2903,7 +2903,7 @@ let nearbyViewportTimer: ReturnType<typeof setTimeout> | undefined
 watch(() => mapViewport.viewport.value, () => {
   if (!nearbyOn.value) return
   clearTimeout(nearbyViewportTimer)
-  nearbyViewportTimer = setTimeout(() => { void loadRouteNearbyPlaces() }, 3000)
+  nearbyViewportTimer = setTimeout(() => { void loadRouteNearbyPlaces() }, 1500)
 })
 onUnmounted(() => clearTimeout(nearbyViewportTimer))
 const drawingOn = ref(true)
