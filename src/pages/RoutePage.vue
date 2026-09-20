@@ -1044,9 +1044,13 @@ function upsertLocalRoute(route: { id: string }) {
 async function loadRouteNearbyPlaces() {
   const routes = visibleMapRoutes.value as Array<{ geometry?: Record<string, unknown> }>
   const routeCoordinates = routes.flatMap(routeCoordinatesOf)
-  const bbox = routeBbox(routes)
+  // 경로가 있으면 경로를 감싸는 범위로, 없으면 지금 지도에 보이는 영역(뷰포트)으로 추천을 받는다.
+  // 아직 지도가 한 번도 안 움직였으면 여행지역 뷰포트를 쓴다. 지도를 움직이면 그 영역의 추천이 뜬다.
+  const bbox = routeCoordinates.length > 0
+    ? routeBbox(routes)
+    : (viewportBbox.value || regionViewportBbox.value)
   if (!bbox) {
-    clearRouteNearbyPlaces('경로를 먼저 생성해 주세요.')
+    clearRouteNearbyPlaces('지도를 움직여 추천받을 지역을 정해 주세요.')
     return
   }
   const [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(Number)
@@ -1067,7 +1071,8 @@ async function loadRouteNearbyPlaces() {
     const places = response.items
       .map((recommendation: any) => recommendation.place)
       .filter((place: any) => place.lat != null && place.lng != null)
-      .filter((place: Place) => isPlaceNearRoute(place, routeCoordinates))
+      // 경로가 있을 때만 경로 근처로 좁힌다. 경로가 없으면 화면에 보이는 지역 전체에서 추천한다.
+      .filter((place: Place) => routeCoordinates.length === 0 || isPlaceNearRoute(place, routeCoordinates))
       .filter((place: any) => !scheduled.has(`${place.provider}:${place.externalPlaceId}`))
       .slice(0, 12)
     const placesWithAccessibility = await withAccessibilityForPlaces(places)
@@ -2873,6 +2878,15 @@ watch([nearbyOn, visibleMapRoutes], async ([isOn]) => {
     clearRouteNearbyPlaces()
   }
 }, { immediate: true })
+// 지도를 움직이면 그 영역의 추천을 다시 받되, 이동 중 매번 부르지 않도록 몇 초 텀을 둔다.
+// (지도 moveend마다 즉시 호출하면 호출량이 과도해진다.)
+let nearbyViewportTimer: ReturnType<typeof setTimeout> | undefined
+watch(() => mapViewport.viewport.value, () => {
+  if (!nearbyOn.value) return
+  clearTimeout(nearbyViewportTimer)
+  nearbyViewportTimer = setTimeout(() => { void loadRouteNearbyPlaces() }, 2500)
+})
+onUnmounted(() => clearTimeout(nearbyViewportTimer))
 const drawingOn = ref(true)
 const isPenPopoverOpen = ref(false)
 const penSize = ref(6)
