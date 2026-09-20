@@ -106,6 +106,78 @@
 .mypage-story-magazine-item .story-stats-row > span { display: inline-flex; align-items: center; gap: 3px; }
 .mypage-story-magazine-item .story-stats-row .material-symbols-rounded { font-size: 14px; }
 @media(prefers-reduced-motion: reduce) { .mypage-story-magazine-item { transition: none; } }
+.preference-panel .pref-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 22px;
+}
+.preference-panel .pref-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 11px;
+  border: 1px solid #e0ecf4;
+  border-radius: 999px;
+  background: #f2f8fc;
+  color: #567994;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.preference-panel .pref-style-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.preference-panel .pref-style-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid #e7eff5;
+  border-radius: 14px;
+  background: #fff;
+}
+.preference-panel .pref-style-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 3px;
+}
+.preference-panel .taste-rank {
+  color: #91aabd;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.preference-panel .pref-style-label {
+  color: #35465a;
+  font-size: 12px;
+  font-weight: 700;
+}
+.preference-panel .pref-style-percent {
+  margin-left: auto;
+  color: var(--taste-ink, #527f9f);
+  font-size: 12px;
+  font-weight: 800;
+}
+.preference-panel .pref-style-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf3f8;
+}
+.preference-panel .pref-style-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--taste-fill, #a8bdcc);
+  transition: width .4s ease;
+}
+.preference-panel .pref-style-bar.is-first { border-color: #c6ded1; background: #f0f7f2; }
+.preference-panel .pref-style-bar.is-second { border-color: #ddd6eb; background: #f6f3fa; }
+.preference-panel .is-first .pref-style-label,
+.preference-panel .is-first .taste-rank,
+.preference-panel .is-second .pref-style-label,
+.preference-panel .is-second .taste-rank { color: var(--taste-ink, #527f9f); }
 .settings-layout { grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); gap: 24px; }
 .settings-summary, .settings-cards-group {
   background: white; border: 1px solid #dfeaf2; backdrop-filter: none;
