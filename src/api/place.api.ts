@@ -95,10 +95,26 @@ export function mapPlace(dto: PlaceSummaryDto | PlaceDetailDto): Place {
   }
 }
 
+export interface RegionViewport {
+  centerLat: number
+  centerLng: number
+  minLat: number
+  minLng: number
+  maxLat: number
+  maxLng: number
+  placeCount: number
+}
+
 export const placeApi = {
   async search(params: PlaceSearchParams = {}): Promise<PagedItems<Place>> {
     const response = await http.get<PagedPlaceDto>('/places/search', { params })
     return { items: response.data.items.map(mapPlace), page: response.data.page }
+  },
+
+  // 여행지역의 지도 뷰포트. 좌표가 있는 관광 원천 장소가 없으면 204 → null.
+  async getRegionViewport(legalRegionCode: string): Promise<RegionViewport | null> {
+    const response = await http.get<RegionViewport | ''>('/places/region-viewport', { params: { legalRegionCode } })
+    return response.status === 204 || !response.data ? null : response.data
   },
 
   async getPlace(provider: PlaceProvider, externalPlaceId: string, includeInfo = true): Promise<Place> {

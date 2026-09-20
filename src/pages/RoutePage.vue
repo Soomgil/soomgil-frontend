@@ -516,7 +516,10 @@ const viewportBbox = computed(() => {
   return `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
 })
 const isJejuTrip = computed(() => trip.value.destinationName.includes('제주'))
-const placeDiscoveryBbox = computed(() => viewportBbox.value || (isJejuTrip.value ? JEJU_DISCOVERY_BBOX : ''))
+// 여행지역의 뷰포트 bbox. 사용자가 아직 지도를 움직이지 않았을 때 추천·디스커버리가 그 지역에서
+// 나오도록 하는 기본값이다. (지도 이동 전에는 viewportBbox가 비어 있다.)
+const regionViewportBbox = ref('')
+const placeDiscoveryBbox = computed(() => viewportBbox.value || regionViewportBbox.value || (isJejuTrip.value ? JEJU_DISCOVERY_BBOX : ''))
 
 const itineraryLoadError = ref(false)
 const itineraryActionsDisabled = computed(() => itinerary.loading.value || itinerary.mutating.value || itineraryLoadError.value)
@@ -540,8 +543,34 @@ async function loadTrip() {
   if (!tripId) return
   try {
     await tripStore.fetchTrip(tripId)
+    void focusTripRegion()
   } catch {
     itineraryActionError.value = '여행 정보를 불러오지 못했습니다.'
+  }
+}
+
+// 여행지역의 지도 뷰포트를 받아, 담은 장소가 없는 여행방에서 지도를 그 지역으로 옮긴다.
+// 지역 좌표가 없으면(관광 원천 장소가 없는 지역) 조용히 넘어간다.
+async function focusTripRegion() {
+  const regionCode = tripStore.currentTrip?.id === tripId
+    ? tripStore.currentTrip?.regions?.find((region) => region.code)?.code
+    : undefined
+  if (!regionCode) return
+  try {
+    const viewport = await placeApi.getRegionViewport(regionCode)
+    if (!viewport) return
+    regionViewportBbox.value = `${viewport.minLng},${viewport.minLat},${viewport.maxLng},${viewport.maxLat}`
+    // 아직 담은 장소가 없고 사용자가 지도를 움직이기 전이면, 지도를 여행지역으로 옮긴다.
+    if (mapStops.value.length === 0 && !mapViewport.viewport.value) {
+      itineraryMapRef.value?.focusBounds({
+        minLng: viewport.minLng,
+        minLat: viewport.minLat,
+        maxLng: viewport.maxLng,
+        maxLat: viewport.maxLat,
+      })
+    }
+  } catch {
+    // 지역 뷰포트는 보조 정보라 실패해도 페이지 동작에 영향을 주지 않는다.
   }
 }
 
@@ -2835,6 +2864,7 @@ const mapIsTilted = ref(false)
 const itineraryMapRef = ref<{
   resetOrientation: () => void
   preserveCameraOnNextStopsChange: () => void
+  focusBounds: (bounds: { minLng: number; minLat: number; maxLng: number; maxLat: number }) => void
 } | null>(null)
 watch([nearbyOn, visibleMapRoutes], async ([isOn]) => {
   if (isOn) {

@@ -120,7 +120,9 @@ const emit = defineEmits<{
   mapDragStart: []
 }>()
 
-const DEFAULT_CENTER: [number, number] = [127.3845, 36.3504]
+// 여행 장소도 추천 장소도 없을 때만 쓰는 최후 기본값. 특정 도시(대전)가 아니라 전국이 보이게 한다.
+const DEFAULT_CENTER: [number, number] = [127.7669, 36.2]
+const DEFAULT_ZOOM = 6.4
 const container = ref<HTMLElement | null>(null)
 const mapError = ref('')
 const canRetry = ref(false)
@@ -138,6 +140,7 @@ let lastEmittedViewport = ''
 let lastFittedStopsKey = ''
 let wasConnectingRoute = false
 let preserveCameraForNextStopsChange = false
+let pendingFocusBounds: { minLng: number; minLat: number; maxLng: number; maxLat: number } | null = null
 
 const STANDARD_VIEW_CAMERA = { pitch: 60, bearing: -20 }
 const DAY_ROUTE_COLORS = ['#0066ff', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#84cc16', '#f59e0b', '#64748b']
@@ -178,7 +181,25 @@ function preserveCameraOnNextStopsChange() {
   preserveCameraForNextStopsChange = true
 }
 
-defineExpose({ resetOrientation, preserveCameraOnNextStopsChange })
+// 여행지역 범위로 지도를 옮긴다. 담은 장소가 없는 여행방에서 처음 이 지역을 보여주기 위한 것.
+// 지도가 아직 준비되지 않았으면 준비된 뒤(style.load) 적용한다.
+function focusBounds(bounds: { minLng: number; minLat: number; maxLng: number; maxLat: number }) {
+  if (![bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat].every((value) => Number.isFinite(value))) return
+  if (!map || !mapboxgl || !styleReady) {
+    pendingFocusBounds = bounds
+    return
+  }
+  pendingFocusBounds = null
+  const box = new mapboxgl.LngLatBounds([bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.maxLat])
+  const camera = map.cameraForBounds(box, { padding: 64, maxZoom: 12 })
+  if (camera) {
+    map.easeTo({ ...camera, duration: 600 })
+  } else {
+    map.easeTo({ center: [(bounds.minLng + bounds.maxLng) / 2, (bounds.minLat + bounds.maxLat) / 2], zoom: 10, duration: 600 })
+  }
+}
+
+defineExpose({ resetOrientation, preserveCameraOnNextStopsChange, focusBounds })
 
 function dayClass(dayIndex: number) {
   return dayIndex <= 0 ? `day-color-${DAY_ROUTE_COLORS.length}` : `day-color-${((dayIndex - 1) % DAY_ROUTE_COLORS.length) + 1}`
@@ -612,11 +633,29 @@ function fitToStopsIfNeeded(mapbox: typeof import('mapbox-gl').default) {
     lastFittedStopsKey = stopsKey
     return
   }
+  // 여행 장소가 아직 없으면 그 지역의 추천 장소(취향/주변)로 지도를 맞춘다. 새로 만든 여행방이
+  // 특정 도시가 아니라 실제 여행지역을 보여주도록 하기 위함이다.
+  if (props.stops.length === 0) {
+    const regionPlaces = [...props.tastePlaces, ...props.nearbyPlaces]
+      .filter((place) => Number.isFinite(place.lng) && Number.isFinite(place.lat))
+    const regionKey = 'region:' + regionPlaces.map((place) => `${place.lng}:${place.lat}`).sort().join('|')
+    if (regionKey === lastFittedStopsKey) return
+    lastFittedStopsKey = regionKey
+    if (regionPlaces.length === 1) {
+      map.easeTo({ center: [regionPlaces[0].lng, regionPlaces[0].lat], zoom: 11, duration: 500 })
+    } else if (regionPlaces.length > 1) {
+      const bounds = new mapbox.LngLatBounds()
+      regionPlaces.forEach((place) => bounds.extend([place.lng, place.lat]))
+      const camera = map.cameraForBounds(bounds, { padding: 80, maxZoom: 13 })
+      if (camera) {
+        map.easeTo({ ...camera, zoom: Math.max((camera.zoom ?? map.getZoom()) - 1, 0), duration: 500 })
+      }
+    }
+    return
+  }
   if (stopsKey === lastFittedStopsKey) return
   lastFittedStopsKey = stopsKey
-  if (props.stops.length === 0) {
-    return
-  } else if (props.stops.length === 1) {
+  if (props.stops.length === 1) {
     map.easeTo({ center: [props.stops[0].lng, props.stops[0].lat], zoom: 11 })
   } else {
     const bounds = new mapbox.LngLatBounds()
@@ -725,7 +764,7 @@ async function initializeMap() {
       container: container.value,
       style: mapStyle.value,
       center: DEFAULT_CENTER,
-      zoom: 10,
+      zoom: DEFAULT_ZOOM,
       pitch: props.standardView ? STANDARD_VIEW_CAMERA.pitch : 0,
       bearing: props.standardView ? STANDARD_VIEW_CAMERA.bearing : 0,
     })
@@ -744,6 +783,7 @@ async function initializeMap() {
       renderStops()
       renderTasteMarkers()
       updateDrawingProjection()
+      if (pendingFocusBounds) focusBounds(pendingFocusBounds)
     })
     createdMap.once('idle', () => { emitViewport(); emitOrientation() })
     createdMap.on('error', () => {
@@ -780,7 +820,11 @@ function retry() {
 
 watch(() => [props.stops, props.nearbyPlaces, props.previewPlace, props.cardDisplay, props.navigationMode], renderStops, { deep: true })
 watch(() => [props.routes, props.routeDisplay], renderRoutes, { deep: true })
-watch(() => props.tastePlaces, renderTasteMarkers, { deep: true })
+watch(() => props.tastePlaces, () => {
+  renderTasteMarkers()
+  // 여행 장소가 없을 때는 추천(취향) 장소가 곧 여행지역이므로 지도도 그쪽으로 맞춘다.
+  if (map && mapboxgl && props.stops.length === 0) fitToStopsIfNeeded(mapboxgl)
+}, { deep: true })
 onMounted(initializeMap)
 onBeforeUnmount(() => {
   initializationSequence++
