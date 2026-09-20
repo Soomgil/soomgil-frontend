@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatUiText } from '@/i18n/ui-localizer'
 import { translateUiText } from '@/i18n/ui-localizer'
+import aiProfileImage from '@/assets/images/ai-profile.png'
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { prefetchMapStyles } from '@/utils/mapStyleCache'
@@ -5713,7 +5714,9 @@ function textAvatarStyle(index: unknown) {
                 <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
               </div>
               <div v-for="msg in aiMessages" :key="msg.id" :class="['ai-message', msg.role === 'ASSISTANT' || msg.role === 'TOOL' ? 'assistant' : 'user']">
-                <div v-if="msg.role === 'ASSISTANT' || msg.role === 'TOOL'" class="ai-message-avatar">&#10024;</div>
+                <div v-if="msg.role === 'ASSISTANT' || msg.role === 'TOOL'" class="ai-message-avatar ai-assistant-avatar">
+                  <img :src="aiProfileImage" alt="" />
+                </div>
                 <div class="ai-message-bubble" style="white-space:pre-wrap">{{ msg.content }}</div>
               </div>
               <p v-if="!conversationLoading && aiMessages.length === 0" class="text-sm text-muted">AI에게 첫 질문을 보내보세요.</p>

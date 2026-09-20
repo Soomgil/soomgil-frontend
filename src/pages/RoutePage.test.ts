@@ -393,6 +393,7 @@ describe('RoutePage itinerary integration', () => {
 
     expect(connectedApis.ai.getMessages).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('복구된 답변')
+    expect(wrapper.get('.ai-assistant-avatar img').attributes('src')).toContain('ai-profile.png')
   })
 
   it('AI 전송 실패 시 입력 내용을 복원해 재시도할 수 있게 한다', async () => {
