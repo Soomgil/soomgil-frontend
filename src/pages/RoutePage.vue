@@ -6915,8 +6915,10 @@ function textAvatarStyle(index: unknown) {
   overflow-y: hidden;
   cursor: grab;
   touch-action: pan-y;
-  scrollbar-width: thin;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
+.route-utility-sidebar .ai-chat-suggestions::-webkit-scrollbar { display: none; }
 .route-utility-sidebar .ai-chat-suggestions.is-dragging,
 .route-utility-sidebar .ai-feature-guide-tabs.is-dragging {
   cursor: grabbing;
@@ -7034,12 +7036,13 @@ function textAvatarStyle(index: unknown) {
 .route-utility-sidebar .ai-feature-guide-tabs {
   display: flex;
   gap: 6px;
-  padding: 0 34px 10px 16px;
+  padding: 0 34px 10px 20px;
   overflow-x: auto;
   cursor: grab;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
   touch-action: pan-y;
+  -ms-overflow-style: none;
   scrollbar-width: none;
 }
 .route-utility-sidebar .ai-feature-guide-tabs::-webkit-scrollbar { display: none; }
