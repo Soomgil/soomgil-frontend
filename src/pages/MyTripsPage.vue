@@ -348,14 +348,14 @@ watch(activeFilter, loadTrips)
 
     <main>
       <section class="section my-trips-dashboard page-with-hero">
-        <div class="travel-page-head page-hero">
+        <div class="travel-page-head page-hero primary-page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">
               <span class="material-symbols-rounded" aria-hidden="true">luggage</span>
               MY TRAVEL COLLECTION
             </p>
             <h1 class="page-hero__title">내 여행</h1>
-            <p class="page-hero__lead">떠날 날의 설렘부터, 오래 남을 풍경까지.</p>
+            <p class="page-hero__lead">친구들과 장소를 고르고 일정을 정리하며, 여행의 모든 과정을 함께 완성해보세요.</p>
           </div>
 
         </div>
@@ -912,11 +912,6 @@ watch(activeFilter, loadTrips)
 
 .travel-paper { --ink: #35465A; --muted: #647C92; --line: #EAF4FF; --surface-2: #EAF4FF; background: #F8FBFF; min-height: 100vh; }
 .travel-paper .my-trips-dashboard { max-width: 1200px; margin: auto; padding: 48px 32px; background: transparent; }
-.travel-paper .travel-page-head { background: transparent; border: 0; box-shadow: none; padding: 0; margin-bottom: 36px; min-height: 0; }
-.travel-paper .page-hero__eyebrow { background: none; border: 0; padding: 0; color: #647C92; font-size: 11px; letter-spacing: .13em; }
-.travel-paper .page-hero__eyebrow .material-symbols-rounded { display: none; }
-.travel-paper .page-hero__title { font-family: 'Noto Serif KR', Batang, serif; font-size: 40px; font-weight: 500; color: #35465A; }
-.travel-paper .page-hero__lead { color: #647C92; font-size: 14px; }
 .travel-paper .trip-list-section { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
 .travel-paper .trip-list-head > div:first-child { display: none; }
 .travel-paper .trip-list-head { display: block; border-bottom: 1px solid #EAF4FF; padding-bottom: 16px; }
@@ -946,7 +941,7 @@ watch(activeFilter, loadTrips)
 .trip-options { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid #DFEAF5; border-radius: 50%; background: transparent; color: #427EAD; cursor: pointer; }
 .travel-paper .timeline-card-open, .travel-paper .timeline-card-vote { color: #427EAD; background: transparent; border-color: #DFEAF5; }
 @media(max-width:1024px) { .travel-paper .my-trips-timeline { grid-template-columns: repeat(2,minmax(0,1fr)); } }
-@media(max-width:600px) { .travel-paper .my-trips-dashboard { padding: 28px 20px; } .travel-paper .my-trips-timeline { grid-template-columns: 1fr; } .trip-search-actions { width: 100%; gap: 8px; } .travel-paper .trip-search { width: auto; flex: 1; } .travel-paper .trip-create-button { padding: 10px 12px; font-size: 12px; } .travel-paper .trip-create-button .material-symbols-rounded { display: none; } .travel-paper .page-hero__title { font-size: 32px; } }
+@media(max-width:600px) { .travel-paper .my-trips-dashboard { padding: 28px 20px; } .travel-paper .my-trips-timeline { grid-template-columns: 1fr; } .trip-search-actions { width: 100%; gap: 8px; } .travel-paper .trip-search { width: auto; flex: 1; } .travel-paper .trip-create-button { padding: 10px 12px; font-size: 12px; } .travel-paper .trip-create-button .material-symbols-rounded { display: none; } }
 
 .travel-paper .timeline-card { background: #fff; border: 1px solid #EAF4FF; border-radius: 16px; overflow: hidden; }
 .travel-paper .timeline-card-header, .travel-paper .timeline-card-info { margin-left: 18px; margin-right: 18px; }

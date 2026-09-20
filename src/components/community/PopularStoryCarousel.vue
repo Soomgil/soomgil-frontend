@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 interface Story {
   id: string; title: string; summary: string; image: string; author: string
   authorProfileImageUrl: string | null; avatar: string; likes: number; comments: number
+  tags: string[]
 }
 const { tr } = useLocale()
 const props = defineProps<{ stories: Story[]; fallbackImage: string }>()
@@ -39,7 +40,9 @@ onBeforeUnmount(() => clearInterval(timer))
           <img v-if="story.image !== fallbackImage && !failedImages.has(story.image)" :src="story.image" :alt="story.title" @error="failedImages.add(story.image)" />
           <span v-else class="material-symbols-rounded" aria-hidden="true">auto_stories</span>
         </div>
-        <span class="photo-caption" data-no-translate>{{ tr(`${story.author}의 여행 한 장`, `A moment from ${story.author}`) }}</span>
+        <span v-if="story.tags.length" class="photo-caption" data-no-translate>
+          <span v-for="tag in story.tags" :key="tag">{{ tag.startsWith('#') ? tag : `#${tag}` }}</span>
+        </span>
       </button>
       <div class="featured-copy">
 
@@ -67,7 +70,8 @@ onBeforeUnmount(() => clearInterval(timer))
 .featured-photo { aspect-ratio: 4/3; overflow: hidden; background: #eaf4ff; display: grid; place-items: center; animation: photo-arrive .35s ease-out; }
 .featured-photo img { width: 100%; height: 100%; object-fit: cover; }
 .featured-photo > span { font-size: 56px; color: #8aaac7; }
-.photo-caption { display: block; padding-top: 18px; font-size: 14px; }
+.photo-caption { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; padding: 16px 4px 0; color: #60778c; font-size: 13px; font-weight: 600; line-height: 1.5; letter-spacing: .01em; text-align: center; }
+.featured-polaroid:hover .photo-caption { color: #3f6f98; }
 .featured-label { margin: 0 0 4px; color: #647c92; font-size: 11px; letter-spacing: .14em; font-weight: 700; }
 .popular-heading h2 { margin: 0; color: #427ead; font-family: 'Noto Serif KR',Batang,serif; font-size: 26px; font-weight: 500; line-height: 1.45; letter-spacing: -.02em; }
 .featured-copy h3 { font-family: 'Noto Serif KR',serif; font-size: clamp(24px,2.6vw,34px); line-height: 1.5; color: #35465a; margin: 14px 0; overflow-wrap: anywhere; }

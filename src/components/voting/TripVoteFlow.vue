@@ -23,7 +23,12 @@ const toast = useToast()
  * 여행 방 투표 흐름 전체(시작 설정 → 스티커 → 대기 → 결과).
  * 지도 위 모달에서 사용한다. 이동은 직접 하지 않고 `close`로 알린다.
  */
-const props = withDefaults(defineProps<{ tripId: string; embedded?: boolean; targetSessionId?: string | null }>(), { embedded: false })
+const props = withDefaults(defineProps<{
+  tripId: string
+  embedded?: boolean
+  targetSessionId?: string | null
+  tripDays?: number | null
+}>(), { embedded: false, tripDays: null })
 const emit = defineEmits<{
   /** 흐름을 닫는다. showResult가 true면 방금 끝난 투표 결과를 지도에서 보여 달라는 뜻이다. */
   close: [showResult: boolean]
@@ -32,7 +37,8 @@ const emit = defineEmits<{
 }>()
 
 const tripId = computed(() => props.tripId)
-const tripDays = ref<number | null>(null)
+const loadedTripDays = ref<number | null>(null)
+const setupTripDays = computed(() => props.tripDays ?? loadedTripDays.value)
 const isOwner = ref(false)
 const tripTitle = ref('')
 const tripRegions = ref<LegalRegion[]>([])
@@ -165,7 +171,7 @@ onMounted(async () => {
     tripTitle.value = trip.title ?? ''
     tripRegions.value = trip.regions ?? []
     tripDestination.value = trip.displayDestination ?? null
-    tripDays.value = countTripDays(trip.startDate ?? null, trip.endDate ?? null)
+    loadedTripDays.value = countTripDays(trip.startDate ?? null, trip.endDate ?? null)
   }
   targetLoading.value = false
   if (historical.value) {
@@ -206,7 +212,7 @@ onUnmounted(() => {
         :trip-title="tripTitle"
         :trip-regions="tripRegions"
         :trip-destination="tripDestination"
-        :trip-days="tripDays"
+        :trip-days="setupTripDays"
         @opened="handleSessionOpened"
       />
 
@@ -645,13 +651,12 @@ onUnmounted(() => {
 .trip-vote--embedded :deep(.page-hero__gradient) { background:none; -webkit-text-fill-color:#35465a; color:#35465a; }
 .trip-vote--embedded :deep(.page-hero__lead) { font-size:13px; line-height:1.7; }
 .trip-vote--embedded .trip-vote__layout { gap:20px; grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr); }
-.trip-vote--embedded .trip-vote__result-actions { position:sticky; bottom:-20px; padding:16px 0; background:#fff; border-top:1px solid #dfeaf5; z-index:4; gap:10px; }
+.trip-vote--embedded .trip-vote__result-actions { position:static; padding:16px 0 0; border-top:1px solid #dfeaf5; gap:10px; }
 .trip-vote--embedded .trip-vote__cta { background:#328be0; border-radius:12px; box-shadow:none; font-size:14px; }
 .trip-vote--embedded .trip-vote__cta--ai { background:#eaf4ff; color:#287cbd; border:1px solid #c6dff4; }
 .trip-vote--embedded :deep(.vote-cart) { border-radius:16px; box-shadow:none; }
 @media(max-width:760px) {
  .trip-vote--embedded .trip-vote__layout { grid-template-columns:minmax(0,1fr); }
- .trip-vote--embedded .trip-vote__result-actions { bottom:-16px; }
 }
 
 .trip-vote--embedded { padding-top:34px; }

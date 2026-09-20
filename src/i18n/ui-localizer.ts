@@ -79,6 +79,7 @@ const manualTranslations: Readonly<Record<string, string>> = {
   '상세 위치 미정': 'Location details unavailable',
   '슈퍼라이크': 'Super Like',
   '슈퍼라이크한 장소': 'Super Liked places',
+  '가고 싶은 장소': 'Places I want to visit',
   'AI 추천 받기': 'Get AI recommendations',
   'AI 동선 최적화': 'Optimize route with AI',
   '어떤 여행을 찾고 계신가요?': 'What kind of trip are you looking for?',

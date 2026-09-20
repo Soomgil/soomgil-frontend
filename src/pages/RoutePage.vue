@@ -201,6 +201,15 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
+const voteTripDays = computed(() => {
+  const scheduledDays = dayPlans.value.filter(day => day.groupType !== 'UNSCHEDULED')
+  if (scheduledDays.length > 0) return scheduledDays.length
+
+  const start = trip.value.startDate ? new Date(`${trip.value.startDate}T00:00:00`) : null
+  const end = trip.value.endDate ? new Date(`${trip.value.endDate}T00:00:00`) : start
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1)
+})
 const mapPresenceMembers = computed(() => [...trip.value.members].sort((left, right) => {
   if (left.online === right.online) return 0
   return left.online ? -1 : 1
@@ -278,11 +287,17 @@ function closeVoteModal() {
 function goTripVote() {
 	openVoteModal()
 }
-/** 결과 화면에서 넘어온 선정 장소로 AI 배치 프롬프트를 채우고 AI 패널을 연다. */
-function arrangeSelectedPlacesWithAi(names: string[]) {
+/** 결과 화면에서 넘어온 선정 장소를 AI에게 즉시 보내고 변경된 일정을 동기화한다. */
+async function arrangeSelectedPlacesWithAi(names: string[]) {
 	closeVoteModal()
 	aiMessage.value = buildVoteArrangePrompt(names)
-	togglePanel('ai')
+	activeRoutePanel.value = 'ai'
+	isRouteUtilityCollapsed.value = false
+	if (isRouteOverlayLayout.value) isLeftSidebarOpen.value = false
+	activeConversation.value = 'ai'
+	await loadConversations()
+	await nextTick()
+	await sendAiMessage()
 }
 // 진입 시 제출하지 않은 투표가 있으면 모달을 한 번 자동으로 띄운다. 닫으면 강제로 다시 열지 않고 경고만 남긴다.
 let autoOpenedVote = false
@@ -4753,20 +4768,7 @@ function textAvatarStyle(index: unknown) {
             <button class="map-tour-help-button" type="button" aria-label="지도 화면 안내 다시 보기" title="화면 안내" @click="mapSectionTour?.start()">
               <span class="material-symbols-rounded" aria-hidden="true">help</span>
             </button>
-                  <div v-if="showVoteAction" class="trip-vote-control">
-                  <button
-                    type="button"
-                    :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
-                    :aria-describedby="votePending && !voteModalOpen && !voteHintDismissed ? 'vote-pending-card' : undefined"
-                    @click="goTripVote"
-                  >
-                    <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-                    <span>{{ voteActionLabel }}</span>
-                  </button>
-                    <button v-if="votePending && !voteModalOpen && !voteHintDismissed" id="vote-pending-card" class="vote-pending-card" data-testid="vote-pending-card" type="button" aria-label="투표가 진행 중이에요, 안내 닫기" @click="voteHintDismissed = true">
-                      <strong>투표가 진행 중이에요</strong>
-                    </button>
-                  </div>
+            <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
             <button
               type="button"
               :class="['nearby-toggle', { active: nearbyOn }]"
@@ -4777,15 +4779,27 @@ function textAvatarStyle(index: unknown) {
               <span class="material-symbols-rounded" aria-hidden="true">travel_explore</span>
               주변 여행지
             </button>
-            <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
-            <TripSettingsButton label="관리" variant="chip" @click="() => openTripManagement()" />
+            <div v-if="showVoteAction" class="trip-vote-control">
+              <button
+                type="button"
+                :class="['trip-vote-button', { 'trip-vote-button--alert': votePending }]"
+                :aria-describedby="votePending && !voteModalOpen && !voteHintDismissed ? 'vote-pending-card' : undefined"
+                @click="goTripVote"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
+                <span>{{ voteActionLabel }}</span>
+              </button>
+              <button v-if="votePending && !voteModalOpen && !voteHintDismissed" id="vote-pending-card" class="vote-pending-card" data-testid="vote-pending-card" type="button" aria-label="투표가 진행 중이에요, 안내 닫기" @click="voteHintDismissed = true">
+                <strong>투표가 진행 중이에요</strong>
+              </button>
+            </div>
             <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
               <button ref="mapThemeButton" type="button" class="map-theme-button" :aria-expanded="mapThemeOpen" aria-controls="map-theme-options" @click="mapThemeOpen = !mapThemeOpen">
-                <span class="material-symbols-rounded" aria-hidden="true">palette</span><span>지도 테마</span>
+                <span class="material-symbols-rounded" aria-hidden="true">palette</span><span>테마</span>
               </button>
               <div v-if="mapThemeOpen" id="map-theme-options" class="map-theme-popover">
                 <fieldset>
-                  <legend>지도 테마</legend>
+                  <legend>테마</legend>
                   <label v-for="theme in MAP_THEMES" :key="theme.value" :class="{ selected: mapTheme === theme.value }" @pointerdown.prevent @click.prevent="selectMapTheme(theme.value)">
                     <span class="map-theme-swatch" :style="{ background: theme.color }" aria-hidden="true"></span>
                     <span>{{ theme.label }}</span>
@@ -4794,6 +4808,7 @@ function textAvatarStyle(index: unknown) {
                 </fieldset>
               </div>
             </div>
+            <TripSettingsButton label="관리" variant="chip" @click="() => openTripManagement()" />
             </div>
           </div>
           <a v-if="!isLeftSidebarOpen" href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
@@ -4815,7 +4830,16 @@ function textAvatarStyle(index: unknown) {
               <div class="trip-sidebar-summary">
                 <a v-show="!isSearchPanelOpen" href="/my-trips" class="trip-sidebar-back"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
                 <h1 data-no-translate class="trip-sidebar-title" :title="trip.title">{{ trip.title }}</h1>
-                <p class="trip-sidebar-meta"><span v-if="trip.destinationName">{{ trip.destinationName }} · </span>{{ trip.dateRangeText }} · {{ trip.durationText }}</p>
+                <div class="trip-sidebar-meta">
+                  <div v-if="trip.destinationName" class="trip-sidebar-meta__row">
+                    <span class="material-symbols-rounded" aria-hidden="true">location_on</span>
+                    <span>{{ trip.destinationName }}</span>
+                  </div>
+                  <div v-if="trip.dateRangeText || trip.durationText" class="trip-sidebar-meta__row">
+                    <span class="material-symbols-rounded" aria-hidden="true">calendar_month</span>
+                    <span>{{ trip.dateRangeText }}<template v-if="trip.dateRangeText && trip.durationText"> · </template>{{ trip.durationText }}</span>
+                  </div>
+                </div>
               </div>
               <!-- Day tabs -->
               <div class="day-tabs-container">
@@ -5812,7 +5836,7 @@ function textAvatarStyle(index: unknown) {
         <button type="button" class="icon-btn vote-modal-close" aria-label="투표 창 닫기" @click="closeVoteModal">
           <span class="material-symbols-rounded">close</span>
         </button>
-        <TripVoteFlow :key="notificationVoteSessionId ?? 'current'" :trip-id="tripId" :target-session-id="notificationVoteSessionId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
+        <TripVoteFlow :key="notificationVoteSessionId ?? 'current'" :trip-id="tripId" :trip-days="voteTripDays" :target-session-id="notificationVoteSessionId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
       </div>
     </div>
   </AppShell>
@@ -8335,7 +8359,10 @@ function textAvatarStyle(index: unknown) {
 @media(max-width:767px) { .route-page-section .sidebar-content { padding-top: 40px; } .route-back-link { left: 12px; top: 10px; } }
 
 .trip-sidebar-title { margin: 0 0 6px; font-size: 16px; line-height: 1.5; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.trip-sidebar-meta { margin: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.trip-sidebar-meta { display:grid; gap:5px; margin:0; padding-bottom:14px; border-bottom:1px solid var(--line); color:var(--muted); font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+.trip-sidebar-meta__row { display:flex; align-items:flex-start; gap:6px; min-width:0; }
+.trip-sidebar-meta__row .material-symbols-rounded { flex:0 0 auto; margin-top:1px; color:#7890a3; font-size:16px; }
+.trip-sidebar-meta__row > span:last-child { min-width:0; }
 .trip-map-actions .avatars-group { display: flex; align-items: center; gap: 5px; margin: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface, #fff); }
 .trip-map-actions .avatar { width: 28px; height: 28px; }
 .trip-map-actions .avatar:focus .avatar-tooltip { opacity: 1; visibility: visible; }

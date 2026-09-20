@@ -855,10 +855,9 @@
 /* 내 여행기 */
 .mypage-stories-magazine {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  padding: 16px;
-  margin: -16px;
+  align-items: stretch;
 }
 
 .mypage-story-magazine-item {
@@ -866,55 +865,54 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 16px;
-  padding: 16px;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 24px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  min-width: 0;
+  padding: 8px 8px 0;
+  border: 1px solid #e3eaf0;
+  border-radius: 3px;
+  color: inherit;
+  background: #fff;
+  box-shadow: 0 3px 7px rgba(53, 70, 90, 0.03), 0 12px 26px rgba(53, 70, 90, 0.04);
   cursor: pointer;
-  transition:
-    all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   overflow: hidden;
+  text-align: left;
 }
 
-.mypage-story-magazine-item::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 24px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 100%);
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
+.mypage-story-magazine-item:nth-child(odd) {
+  transform: rotate(-0.35deg);
+}
+
+.mypage-story-magazine-item:nth-child(even) {
+  transform: rotate(0.35deg);
 }
 
 .mypage-story-magazine-item:hover {
-  background: #ffffff;
-  border-color: rgba(124, 58, 237, 0.3);
-  box-shadow: 0 16px 32px rgba(124, 58, 237, 0.12), 0 4px 16px rgba(0, 0, 0, 0.08);
-  transform: translateY(-4px);
+  border-color: #d8e3ec;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(53, 70, 90, 0.09);
+  transform: translateY(-3px) rotate(0);
 }
 
-.mypage-story-magazine-item:hover::before {
-  opacity: 1;
+.story-magazine-image-wrap {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 1px;
+  background: #f0f6fc;
 }
 
 .story-magazine-thumb {
+  display: block;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  height: auto;
-  border-radius: 16px;
+  height: 100%;
   object-fit: cover;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
-  transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.5s ease;
+  transform: none;
+  transition: none;
 }
 
 .mypage-story-magazine-item:hover .story-magazine-thumb {
-  transform: scale(1.05) rotate(1deg);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  transform: none;
 }
 
 .story-magazine-body {
@@ -922,9 +920,8 @@
   flex-grow: 1;
   min-width: 0;
   flex-direction: column;
-  gap: 12px;
-  padding: 0 4px 4px;
-  z-index: 1;
+  gap: 7px;
+  padding: 12px 6px 14px;
 }
 
 .story-magazine-title {
@@ -932,66 +929,107 @@
   margin: 0;
   overflow: hidden;
   color: var(--ink);
-  font-size: 1.05rem;
-  font-weight: 800;
-  line-height: 1.4;
+  font-family: 'Noto Serif KR', Batang, serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
   letter-spacing: -0.02em;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  transition: color 0.3s ease;
 }
 
-.mypage-story-magazine-item:hover .story-magazine-title {
-  color: var(--violet);
-}
-
-.story-magazine-meta {
+.story-magazine-tags {
   display: flex;
-  flex-direction: column;
-  margin-top: auto;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 0.85rem;
+  min-width: 0;
+  gap: 5px;
+  overflow: hidden;
+  color: #4e7898;
+  font-size: 10px;
+  font-weight: 700;
 }
 
-.story-date {
-  color: var(--ink);
-  font-weight: 700;
+.story-magazine-tags > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-magazine-author {
   display: flex;
   align-items: center;
-  gap: 4px;
+  min-width: 0;
+  margin-top: auto;
+  gap: 8px;
+  padding-top: 5px;
 }
 
-.story-date::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
+.story-magazine-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  overflow: hidden;
   border-radius: 50%;
-  background-color: var(--violet);
+  color: #647c92;
+  background: #eaf4ff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.story-magazine-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.story-magazine-author-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.story-magazine-author-copy strong,
+.story-magazine-author-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-magazine-author-copy strong {
+  color: #35465a;
+  font-size: 11px;
+}
+
+.story-magazine-author-copy > span {
+  color: #7b8e9d;
+  font-size: 10px;
 }
 
 .story-stats-row {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
+  color: #111827;
+  font-size: 10px;
 }
 .story-stats-row span {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
+  color: inherit;
   font-weight: 600;
-  color: var(--gray-500, #6b7280);
 }
 
 .story-stats-row .material-symbols-rounded {
-  font-size: 16px;
-  color: var(--gray-400, #9ca3af);
-  transition: color 0.3s ease;
+  color: #111827;
+  font-size: 14px;
 }
 
-.mypage-story-magazine-item:hover .story-stats-row .material-symbols-rounded {
-  color: var(--violet);
+.story-stats-row .story-published-at {
+  margin-left: auto;
+  color: #647c92;
+  font-weight: 500;
 }
 
 /* 분석 통계 */
@@ -1294,7 +1332,19 @@
   }
 
   .mypage-stories-magazine {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .mypage-stories-magazine {
+    grid-template-columns: 1fr;
+  }
+
+  .mypage-story-magazine-item,
+  .mypage-story-magazine-item:nth-child(odd),
+  .mypage-story-magazine-item:nth-child(even) {
+    transform: none;
   }
 }
 
@@ -1569,30 +1619,6 @@
 /* ==========================================
    분석 통계 및 여행 취향 위젯 고도화 스타일
    ========================================== */
-
-.mypage-page-heading.page-hero.page-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 32px;
-}
-
-.mypage-page-heading.page-hero .page-hero__title {
-  max-width: none;
-  margin: 0 0 18px;
-  font-size: clamp(32px, 4.2vw, 52px);
-}
-
-@media (max-width: 640px) {
-  .mypage-page-heading.page-hero.page-hero {
-    align-items: flex-start;
-    gap: 20px;
-  }
-
-  .mypage-page-heading.page-hero .page-hero__title {
-    font-size: clamp(28px, 8vw, 38px);
-  }
-}
 
 /* 1. 내 여행 지도 애니메이션 & 호버 피드백 */
 @keyframes pinPulse {

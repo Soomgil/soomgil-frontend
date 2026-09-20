@@ -144,7 +144,8 @@ const router = createRouter({
       component: () => import('@/pages/NotFoundPage.vue'),
     },
   ],
-  scrollBehavior() {
+  scrollBehavior(to) {
+    if (to.hash) return { el: to.hash, top: 72, behavior: 'smooth' }
     return { top: 0 }
   },
 })

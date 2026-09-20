@@ -25,6 +25,7 @@ export function communityPostToStory(post: CommunityPostSummary): Story {
     image: post.coverMedia?.servingUrl ?? post.coverMedia?.publicUrl ?? fallbackImage(post.id),
     likes: post.likeCount ?? 0,
     comments: post.commentCount ?? 0,
+    publishedAt: post.publishedAt,
     tags: post.hashtags ?? [],
     summary: post.summary ?? '',
     content: post.summary ?? '',

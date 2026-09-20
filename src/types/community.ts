@@ -152,6 +152,11 @@ export interface CreateCommunityPostRequest {
   hashtags?: string[]
 }
 
+export type UpdateCommunityPostRequest = Partial<Pick<
+  CreateCommunityPostRequest,
+  'visibility' | 'title' | 'summary' | 'coverMediaFileId' | 'mediaFileIds' | 'hashtags'
+>>
+
 export interface ReportReason {
   code: ReportReasonCode
   displayName: string
@@ -218,6 +223,7 @@ export interface Story {
   image: string
   likes: number
   comments: number
+  publishedAt?: string
   tags: string[]
   summary: string
   content: string

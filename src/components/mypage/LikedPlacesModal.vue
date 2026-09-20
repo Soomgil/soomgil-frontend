@@ -33,7 +33,7 @@ watch(totalPages, count => { page.value = Math.min(page.value, count) })
 </script>
 
 <template>
-  <div class="story-overlay" role="dialog" aria-modal="true" aria-label="슈퍼라이크한 장소 모두 보기">
+  <div class="story-overlay" role="dialog" aria-modal="true" aria-label="가고 싶은 장소 모두 보기">
     <div class="story-overlay-backdrop" @click="$emit('close')"></div>
     <div class="story-overlay-panel saved-board-panel">
       <button class="story-overlay-close" type="button" aria-label="닫기" @click="$emit('close')">
@@ -43,7 +43,7 @@ watch(totalPages, count => { page.value = Math.min(page.value, count) })
       <div class="saved-board-content">
         <div class="saved-board-heading">
           <h2 class="mypage-section-title">
-            <span class="material-symbols-rounded section-icon section-icon--sky" aria-hidden="true">star</span>슈퍼라이크한 장소
+            <span class="material-symbols-rounded section-icon section-icon--sky" aria-hidden="true">star</span>가고 싶은 장소
           </h2>
         </div>
         <form class="saved-board-search" role="search" @submit.prevent="search">
@@ -95,12 +95,12 @@ watch(totalPages, count => { page.value = Math.min(page.value, count) })
 .saved-board-search .material-symbols-rounded { font-size:19px; }
 .saved-note-board { flex:1; overflow-y:auto; min-height:0; padding:22px 18px; border:3px solid #d9c2a8; border-radius:18px; background-color:#ead8bd; background-image:radial-gradient(circle at 18% 24%,#fff7e985 0 1px,transparent 1.7px),radial-gradient(circle at 72% 64%,#b8916c24 0 1px,transparent 1.9px),radial-gradient(circle at 42% 78%,#fffaf08f 0 1.3px,transparent 2px),linear-gradient(115deg,#f1e2ca 0%,#e8d2b3 48%,#eedcc2 100%); background-size:15px 17px,19px 21px,25px 23px,100% 100%; box-shadow:inset 0 0 0 1px #fff9ed8c,inset 0 0 20px #9b795117; scrollbar-width:thin; }
 .saved-note-board .mypage-places-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:22px 15px; }
-.saved-note-board .mypage-place-card { --note-paper:#fff3a8; min-width:0; padding:9px 7px 10px; position:relative; overflow:visible; border:0; border-radius:2px 2px 11px 2px; background:linear-gradient(145deg,#ffffff66,transparent 38%),var(--note-paper); box-shadow:2px 5px 9px #314a6217; transform:rotate(-1.5deg); }
-.saved-note-board .mypage-place-card:nth-child(6n+2) { --note-paper:#cfeeff; transform:rotate(1.5deg); }
-.saved-note-board .mypage-place-card:nth-child(6n+3) { --note-paper:#ded8ff; transform:rotate(-.8deg); }
-.saved-note-board .mypage-place-card:nth-child(6n+4) { --note-paper:#d5f3dc; transform:rotate(1deg); }
-.saved-note-board .mypage-place-card:nth-child(6n+5) { --note-paper:#ffd8e7; transform:rotate(-1.2deg); }
-.saved-note-board .mypage-place-card:nth-child(6n) { --note-paper:#ffd9c2; transform:rotate(.7deg); }
+.saved-note-board .mypage-place-card { --note-paper:#fff1b8; min-width:0; padding:9px 7px 10px; position:relative; overflow:visible; border:0; border-radius:2px 2px 11px 2px; background:linear-gradient(145deg,#ffffff66,transparent 38%),var(--note-paper); box-shadow:2px 5px 9px #35465a1f; transform:rotate(-1.5deg); }
+.saved-note-board .mypage-place-card:nth-child(6n+2) { --note-paper:#cfe8f6; transform:rotate(1.5deg); }
+.saved-note-board .mypage-place-card:nth-child(6n+3) { --note-paper:#d5e9d7; transform:rotate(-.8deg); }
+.saved-note-board .mypage-place-card:nth-child(6n+4) { --note-paper:#f6d8c6; transform:rotate(1deg); }
+.saved-note-board .mypage-place-card:nth-child(6n+5) { --note-paper:#ded9f0; transform:rotate(-1.2deg); }
+.saved-note-board .mypage-place-card:nth-child(6n) { --note-paper:#eecfd4; transform:rotate(.7deg); }
 .saved-note-board .mypage-place-card::before { content:''; position:absolute; z-index:2; width:40px; height:14px; top:-7px; left:calc(50% - 20px); background:#ffffffa8; border:1px solid #ffffff66; transform:rotate(-5deg); pointer-events:none; }
 .saved-note-board .place-img-wrap { height:auto; aspect-ratio:4/3; overflow:hidden; border-radius:2px; }
 .saved-note-board .place-img-wrap img { width:100%; height:100%; object-fit:cover; }

@@ -105,29 +105,37 @@ async function handleRegister() {
   <div class="app-shell">
 
     <main class="auth-page auth-modern-page">
-      <section class="auth-card auth-modern-card">
+      <section class="auth-card auth-modern-card auth-modern-card--split">
         <div class="auth-visual-panel">
           <div
             class="auth-visual-image"
             :style="{ backgroundImage: `linear-gradient(180deg, rgba(9, 18, 34, 0.04), rgba(9, 18, 34, 0.72)), url(${heroImg})` }"
           ></div>
           <div class="auth-visual-content">
-            <p class="eyebrow">Create Account</p>
+            <p class="eyebrow">{{ t('register.eyebrow') }}</p>
             <h1>{{ t('register.hero') }}</h1>
-            <p>{{ t('register.heroDesc') }}</p>
+            <p class="auth-visual-description--nowrap">{{ t('register.heroDesc') }}</p>
           </div>
         </div>
 
         <form class="auth-form auth-modern-form" aria-label="회원가입" @submit.prevent="handleRegister">
+          <button
+            v-if="!isOAuthOnboarding"
+            class="auth-back-to-login"
+            type="button"
+            @click="router.push('/login')"
+          >
+            <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>
+            {{ t('register.backToLogin') }}
+          </button>
+
           <div class="auth-form-head">
             <h2>{{ isOAuthOnboarding ? '가입 완료' : t('auth.register') }}</h2>
-            <p>{{ isOAuthOnboarding ? '소셜 로그인을 위해 닉네임과 필수 약관에 동의해주세요.' : t('register.desc') }}</p>
+            <p>{{ isOAuthOnboarding ? '닉네임을 정하고 필수 약관에 동의하면 바로 시작할 수 있어요.' : t('register.desc') }}</p>
           </div>
 
           <template v-if="!isOAuthOnboarding">
             <OAuthButtons mode="signup" :disabled="submitting" @select="handleOAuthLogin" />
-
-            <div class="divider"><span>{{ t('register.emailOption') }}</span></div>
           </template>
 
           <label>
@@ -147,12 +155,12 @@ async function handleRegister() {
           </template>
 
           <div class="auth-policy-slot">
-            <div v-if="policies.length" class="auth-terms-check" style="margin-top: 12px;">
+            <div v-if="policies.length" class="auth-terms-check">
               <label class="auth-check">
                 <input type="checkbox" :checked="allAccepted" @change="toggleAll(($event.target as HTMLInputElement).checked)">
                 <strong>{{ t('register.allTerms') }}</strong>
               </label>
-              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+              <div class="auth-policy-list">
                 <label v-for="p in policies" :key="p.id" class="auth-check">
                   <input
                     type="checkbox"
@@ -179,8 +187,6 @@ async function handleRegister() {
           <button class="btn primary auth-main-action" type="submit" :disabled="submitting || !allAccepted">
             <span class="material-symbols-rounded">arrow_forward</span>{{ isOAuthOnboarding ? '동의하고 시작하기' : t('register.submit') }}
           </button>
-
-          <p v-if="!isOAuthOnboarding" class="small muted auth-switch">{{ t('register.hasAccount') }} <a href="#" @click.prevent="router.push('/login')">{{ t('auth.login') }}</a></p>
         </form>
       </section>
     </main>

@@ -15,6 +15,8 @@ import type {
 } from "@/types/community";
 import { useToast } from "@/composables/useToast";
 import { useAuthStore } from "@/stores/auth.store";
+import StoryWriteModal from "@/components/community/StoryWriteModal.vue";
+import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 
 export interface StoryView {
   id: string;
@@ -114,6 +116,9 @@ function toStoryView(post: CommunityPostSummary | CommunityPostDetail): StoryVie
 }
 
 const selectedPost = ref<CommunityPostDetail | null>(null);
+const editingPost = ref<CommunityPostDetail | null>(null);
+const pendingDeleteStory = ref<StoryView | null>(null);
+const deletingStory = ref(false);
 const photoDirection = ref(1);
 const photoTransitioning = ref(false);
 const storyPhotoIndexes = ref<Record<string, number>>({});
@@ -290,28 +295,43 @@ function closeCommentMenuSoon() {
 }
 
 async function editStory(story: StoryView) {
-  const title = window.prompt(translateUiText("여행기 제목"), story.title)?.trim();
-  if (!title) return;
-  const summary = window.prompt(translateUiText("여행기 소개"), story.summary)?.trim() ?? story.summary;
   try {
-    const updated = await communityApi.updatePost(story.id, { title, summary });
-    selectedPost.value = updated;
-    toast.success("여행기를 수정했습니다.");
-    emit("changed");
+    editingPost.value = selectedPost.value?.id === story.id
+      ? selectedPost.value
+      : await communityApi.getPost(story.id);
   } catch {
-    toast.error("여행기를 수정하지 못했습니다.");
+    toast.error("수정할 여행기를 불러오지 못했습니다.");
   }
 }
 
-async function deleteStory(story: StoryView) {
-  if (!window.confirm(translateUiText("여행기를 삭제할까요?"))) return;
+function closeEditor() {
+  editingPost.value = null;
+}
+
+function handlePostUpdated(post: CommunityPostDetail) {
+  selectedPost.value = post;
+  editingPost.value = null;
+  emit("changed");
+}
+
+function deleteStory(story: StoryView) {
+  pendingDeleteStory.value = story;
+}
+
+async function confirmDeleteStory() {
+  const story = pendingDeleteStory.value;
+  if (!story || deletingStory.value) return;
+  deletingStory.value = true;
   try {
     await communityApi.deletePost(story.id);
+    pendingDeleteStory.value = null;
     toast.success("여행기를 삭제했습니다.");
     emit("changed");
     emit("close");
   } catch {
     toast.error("여행기를 삭제하지 못했습니다.");
+  } finally {
+    deletingStory.value = false;
   }
 }
 
@@ -650,7 +670,7 @@ watch(
                       <span class="material-symbols-rounded" style="font-size: 20px"
                         >content_copy</span
                       >
-                      리트립
+                      일정 가져오기
                     </button>
                     <button type="button" class="story-like-button" @click="shareStory(visibleStory)">
                       <span class="material-symbols-rounded" style="font-size: 20px">share</span>
@@ -933,6 +953,24 @@ watch(
         </div>
       </div>
     </div>
+
+    <StoryWriteModal
+      v-if="editingPost"
+      :post="editingPost"
+      @close="closeEditor"
+      @updated="handlePostUpdated"
+    />
+    <ConfirmDialog
+      v-if="pendingDeleteStory"
+      title="여행기를 삭제할까요?"
+      message="삭제한 여행기는 다시 복구할 수 없습니다. 그래도 삭제하시겠어요?"
+      confirm-label="삭제하기"
+      cancel-label="취소"
+      tone="danger"
+      :busy="deletingStory"
+      @cancel="pendingDeleteStory = null"
+      @confirm="confirmDeleteStory"
+    />
   </div>
 </template>
 
@@ -1061,8 +1099,22 @@ watch(
   margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid var(--line);
-  color: var(--muted);
+  color: #111827;
   font-size: 14px;
+}
+
+.story-overlay .tag-row .tag {
+  min-height: 24px;
+  padding: 0 11px;
+  border: 1px solid #d7e6f0;
+  border-radius: 999px;
+  background: #edf5fa;
+  color: #4f718a;
+}
+
+.story-overlay .tag-row .tag:hover {
+  background: #e3eff6;
+  color: #365f7d;
 }
 .story-overlay .story-feed-window {
   position: relative;
@@ -1509,6 +1561,7 @@ watch(
 }
 .story-report-btn .material-symbols-rounded {
   font-size: 20px;
+  color: #c95f62;
 }
 .story-like-button {
   display: inline-flex;
@@ -1517,11 +1570,17 @@ watch(
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: #111827;
   cursor: pointer;
 }
-.story-like-button.active,
-.story-like-button:hover {
+.story-action-bar .story-like-button .material-symbols-rounded {
+  color: #111827;
+}
+.story-like-button:hover,
+.story-like-button.active {
+  color: #111827;
+}
+.story-action-bar .story-heart-button.active .material-symbols-rounded {
   color: var(--rose);
 }
 
