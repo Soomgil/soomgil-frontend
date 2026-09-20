@@ -7064,6 +7064,7 @@ function textAvatarStyle(index: unknown) {
   scroll-snap-align: start;
   white-space: nowrap;
 }
+.route-utility-sidebar .ai-feature-guide-tabs button:first-child { margin-left: 6px; }
 .route-utility-sidebar .ai-feature-guide-tabs button.active {
   border-color: rgba(var(--route-accent-rgb), 0.22);
   background: rgba(var(--route-accent-rgb), 0.09);
