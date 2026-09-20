@@ -47,6 +47,7 @@ function restoreOnboardingDraft() {
   } catch {
     onboardingAnswers.value = {}
   }
+  onboarding.setAnsweredPlaceCount(Object.keys(onboardingAnswers.value).length)
 }
 
 function persistOnboardingDraft() {
@@ -127,6 +128,7 @@ const onboardingGateway: SwipeFeedGateway = {
       ...onboardingAnswers.value,
       [onboardingAnswerKey(provider, externalPlaceId)]: reaction,
     }
+    onboarding.setAnsweredPlaceCount(Object.keys(onboardingAnswers.value).length)
     persistOnboardingDraft()
     return {
       place: { provider, externalPlaceId },
@@ -385,9 +387,6 @@ onMounted(async () => {
             </h1>
             <p class="page-hero__lead">
               좋아요는 오른쪽, 다음에는 왼쪽으로 넘겨보세요. 꼭 가고 싶은 장소는 위로 밀어주세요.
-            </p>
-            <p v-if="onboardingMode" class="page-hero__progress" role="status">
-              {{ answeredCount }} / {{ requiredPlaceCount }}곳 선택
             </p>
             <button v-if="currentPlace" type="button" class="swipe-help-btn" data-testid="swipe-help" @click="openTutorial">
               <span class="material-symbols-rounded" aria-hidden="true">help</span>

@@ -8,6 +8,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const loadedForUserId = ref<string | null>(null)
+  const answeredPlaceCount = ref(0)
 
   const completed = computed(() => survey.value?.completed === true)
 
@@ -44,7 +45,23 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     survey.value = null
     loadedForUserId.value = null
     error.value = null
+    answeredPlaceCount.value = 0
   }
 
-  return { survey, loading, error, completed, load, ensureStatus, complete, reset }
+  function setAnsweredPlaceCount(count: number) {
+    answeredPlaceCount.value = Math.max(0, count)
+  }
+
+  return {
+    survey,
+    loading,
+    error,
+    completed,
+    answeredPlaceCount,
+    load,
+    ensureStatus,
+    complete,
+    setAnsweredPlaceCount,
+    reset,
+  }
 })

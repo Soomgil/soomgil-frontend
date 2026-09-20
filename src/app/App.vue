@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import OnboardingHeader from '@/components/layout/OnboardingHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import ServiceBackdrop from '@/components/layout/ServiceBackdrop.vue'
 import VoteResultMapOverlay from '@/components/voting/VoteResultMapOverlay.vue'
@@ -10,6 +11,7 @@ import { useSwipeStore } from '@/stores/swipe.store'
 import { useUiLocalizer } from '@/i18n/ui-localizer'
 
 const route = useRoute()
+const isPreferenceOnboarding = computed(() => route.name === 'OnboardingPreferences')
 const hasServiceBackground = computed(() => !route.meta.hideLayout &&
   /^\/(home|login|register|reset-password|auth\/reset-password|my-trips|trip-invites|swipe|community|search|mypage|settings)(\/|$)/.test(route.path))
 const showServiceFooter = computed(() => {
@@ -33,7 +35,8 @@ watch(
 <template>
  <div class="app-layout" :class="{ 'has-service-background': hasServiceBackground }">
   <ServiceBackdrop />
-  <AppHeader v-show="!route.meta.hideLayout" />
+  <AppHeader v-show="!route.meta.hideLayout && route.path !== '/' && !isPreferenceOnboarding" />
+  <OnboardingHeader v-if="isPreferenceOnboarding" />
   <RouterView />
   <AppFooter v-if="showServiceFooter" class="service-footer" />
   <VoteResultMapOverlay />
