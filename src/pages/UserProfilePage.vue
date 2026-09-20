@@ -392,7 +392,7 @@ function openCommunityStory(storyId: string) { selectedStoryId.value = storyId }
                     <p class="pref-empty-desc">공개된 취향 데이터가 준비되면 이곳에 표시됩니다.</p>
                   </div>
                   <template v-else>
-                    <div class="pref-tag-list" data-no-translate>
+                    <div v-if="travelPreferences.tags.length" class="pref-tag-list" data-no-translate>
                       <span v-for="tag in travelPreferences.tags" :key="tag" class="pref-tag-chip">#{{ tag }}</span>
                     </div>
                     <div class="pref-style-list">
@@ -403,7 +403,7 @@ function openCommunityStory(storyId: string) { selectedStoryId.value = storyId }
                           <span class="pref-style-percent">{{ style.percent }}%</span>
                         </div>
                         <div class="pref-style-track">
-                          <div class="pref-style-fill" :style="{ width: Math.max(0, Math.min(100, style.percent)) + '%' }"></div>
+                          <div class="pref-style-fill" :style="{ width: Math.max(0, Math.min(100, style.percent)) + '%', background: 'var(--taste-fill, #a8bdcc)' }"></div>
                         </div>
                       </div>
                     </div>
