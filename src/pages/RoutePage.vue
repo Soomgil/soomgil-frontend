@@ -1759,8 +1759,6 @@ function onPointerDown(e: PointerEvent) {
   const stopRect = stop.getBoundingClientRect()
   const offsetY = e.clientY - stopRect.top
   void containerRect
-  let latestClientX = e.clientX
-  let latestClientY = e.clientY
   let autoScrollFrame: number | null = null
   let movedDuringDrag = false
   let dragStarted = false
@@ -1908,20 +1906,17 @@ function onPointerDown(e: PointerEvent) {
     }
 
     if (autoScrollFrame !== null) return
+    const scrollClientY = clientY
     const step = () => {
       const before = dragContainer.scrollTop
       dragContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, dragContainer.scrollTop + scrollDelta))
-      if (dragContainer.scrollTop !== before) applyDragPosition(latestClientY)
+      if (dragContainer.scrollTop !== before) applyDragPosition(scrollClientY)
       autoScrollFrame = null
-      updateAutoScroll(latestClientX, latestClientY)
     }
     autoScrollFrame = requestAnimationFrame(step)
   }
 
   function onPointerMove(ev: PointerEvent) {
-    latestClientX = ev.clientX
-    latestClientY = ev.clientY
-
     const dx = ev.clientX - e.clientX
     const dy = ev.clientY - e.clientY
     if (!dragStarted && Math.abs(dx) <= 4 && Math.abs(dy) <= 4) return
