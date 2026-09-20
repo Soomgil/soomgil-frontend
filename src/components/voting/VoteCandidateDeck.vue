@@ -221,7 +221,7 @@ function imageUrl(candidate: TripVoteCandidate | null) {
 
 .vote-deck__stage {
   position: relative;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
   border-radius: 24px;
   overflow: hidden;
   background: var(--surface-2);

@@ -11246,21 +11246,6 @@
   gap: 4px;
 }
 
-/* 체크리스트 프로그레스 바 */
-.panel-progress-container {
-  height: 6px;
-  background: rgba(0, 0, 0, 0.05);
-  width: 100%;
-  position: relative;
-}
-
-.panel-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #10b981, #059669);
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  width: 0%;
-}
-
 /* 체크리스트 바디 및 푸터 */
 .todo-body {
   flex: 1;
