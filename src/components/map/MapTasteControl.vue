@@ -63,13 +63,11 @@ watch(() => [props.tripId, props.userId], () => {
   if (enabled.value) void load()
 })
 watch(() => props.bbox, bbox => {
+  // 지도가 움직여 범위가 바뀌면(주변 여행지와 동일하게) 3초 뒤 그 범위의 취향 장소를 다시 불러온다.
+  // 예전엔 "30% 이상 이동" 조건이 있어 조금만 움직이면 갱신되지 않아, 껐다 켜야 보이는 문제가 있었다.
   clearTimeout(refreshTimer)
-  if (!enabled.value || !bbox) return
-  const old = loadedBbox.value.split(',').map(Number)
-  const next = bbox.split(',').map(Number)
-  const span = Math.max(old[2] - old[0], old[3] - old[1], .002)
-  const changed = !loadedBbox.value || next.some((v, i) => Math.abs(v - old[i]) > span * .3)
-  if (changed) refreshTimer = setTimeout(() => void load(), 3000)
+  if (!enabled.value || !bbox || bbox === loadedBbox.value) return
+  refreshTimer = setTimeout(() => void load(), 3000)
 })
 onBeforeUnmount(() => { revision++; clearTimeout(refreshTimer) })
 function select(provider: string, id: string) {
