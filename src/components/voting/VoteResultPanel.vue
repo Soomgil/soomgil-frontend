@@ -57,7 +57,15 @@ async function toggleResults() {
     <p v-if="!rows.length" class="vote-result__empty">아직 표시할 투표 결과가 없어요.</p>
     <ul v-else ref="resultList" class="vote-result__list" :class="{ 'is-overview': !showAll }" data-testid="result-list" aria-label="득표순 여행지">
       <li v-for="(row, index) in displayedRows" :key="row.id" class="vote-result__row"
-        :class="{ selected: row.selected, 'is-winner': !showAll && index === 0, 'is-compact': !showAll && index > 0 }" data-testid="result-row">
+        :class="{
+          selected: row.selected,
+          'is-top-three': !showAll && index < 3,
+          'is-winner': !showAll && index === 0,
+          'is-runner-up': !showAll && index > 0 && index < 3,
+          'is-second': !showAll && index === 1,
+          'is-third': !showAll && index === 2,
+          'is-compact': !showAll && index > 0,
+        }" data-testid="result-row">
         <span class="vote-result__rank">{{ index + 1 }}<span class="sr-only">위</span></span>
         <div class="vote-result__media">
           <img v-if="row.thumbnailUrl && !brokenImages.has(row.id)" :src="row.thumbnailUrl" :alt="row.name ?? '여행지'" :loading="index === 0 ? 'eager' : 'lazy'" @error="brokenImages.add(row.id)" />
@@ -73,7 +81,7 @@ async function toggleResults() {
         <span class="vote-result__count" data-testid="result-sticker-count"><span class="material-symbols-rounded" aria-hidden="true">favorite</span>{{ row.stickerCount }}<small>개</small></span>
       </li>
     </ul>
-    <button v-if="rows.length" type="button" class="vote-result__all" data-testid="result-toggle-all" @click="toggleResults">
+    <button v-if="rows.length > 5" type="button" class="vote-result__all" data-testid="result-toggle-all" @click="toggleResults">
       {{ showAll ? '주요 결과로 돌아가기' : `전체 투표 결과 보기 (${rows.length}곳)` }}
       <span class="material-symbols-rounded" aria-hidden="true">{{ showAll ? 'arrow_back' : 'arrow_forward' }}</span>
     </button>
@@ -114,6 +122,11 @@ async function toggleResults() {
 .is-compact .vote-result__badge { flex:none; font-size:10px; white-space:nowrap; }
 .is-compact .vote-result__count { font-size:15px; }
 .is-compact .vote-result__count .material-symbols-rounded { font-size:15px; }
+.is-runner-up { border-color:#c6dff4; background:linear-gradient(135deg,#f3f9ff,#fff); box-shadow:0 5px 16px rgb(50 139 224 / 9%); }
+.is-runner-up .vote-result__rank { display:grid; place-items:center; width:28px; height:28px; border-radius:9px; font-size:15px; }
+.is-second .vote-result__rank { background:#e5eef5; color:#527188; }
+.is-third .vote-result__rank { background:#f4e9df; color:#9a6848; }
+.is-runner-up .vote-result__name { color:#2f536f; font-weight:800; }
 .vote-result__all { display:flex; align-items:center; justify-content:center; gap:8px; min-height:46px; border:1px solid #c6dff4; border-radius:12px; background:#fff; color:#287cbd; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
 .vote-result__all:hover { background:#eaf4ff; }
 .vote-result__all:focus-visible { outline:3px solid #9bcdf6; outline-offset:2px; }

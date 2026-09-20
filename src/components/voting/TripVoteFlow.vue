@@ -58,6 +58,8 @@ async function loadTargetResult() {
 }
 const closeConfirmOpen = ref(false)
 const acknowledged = ref(false)
+/** 마감 API가 결과를 반환한 직후 current-session 응답이 비어도 결과 화면을 유지한다. */
+const completedInCurrentView = ref(false)
 
 const candidates = computed(() => voting.session?.candidates ?? [])
 const participantSummary = computed(() => voting.session?.participantSummary ?? null)
@@ -77,6 +79,7 @@ const mode = computed(() => {
   if (targetLoading.value) return 'loading'
   if (targetError.value) return 'error'
   if (historical.value && historicalResult.value) return 'completed'
+  if (completedInCurrentView.value && voting.result) return 'completed'
   if (voting.loading && !voting.session) return 'loading'
   if (voting.error && !voting.session) return 'error'
   const session = voting.session
@@ -99,7 +102,9 @@ async function submit() {
 
 async function closeEarly() {
   try {
-    await voting.closeEarly(true)
+    const result = await voting.closeEarly(true)
+    completedInCurrentView.value = Boolean(result)
+    voting.stopPolling()
     closeConfirmOpen.value = false
     toast.success('투표를 마감했어요.')
   } catch {
@@ -134,6 +139,7 @@ function arrangeWithAi() {
 }
 
 async function handleSessionOpened() {
+  completedInCurrentView.value = false
   restartRequested.value = false
   toast.success('투표를 시작하고 멤버들에게 알림을 보냈어요.')
   await voting.load(tripId.value)
@@ -191,7 +197,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <section class="section page-with-hero trip-vote" :class="{ 'trip-vote--embedded': embedded }">
+    <section class="section page-with-hero trip-vote" :class="{ 'trip-vote--embedded': embedded, 'trip-vote--voting': mode === 'vote' }">
       <button v-if="!embedded" type="button" class="trip-vote__back" data-testid="vote-back" @click="goToMap()">
         <span class="material-symbols-rounded" aria-hidden="true">{{ embedded ? 'close' : 'arrow_back' }}</span>
         {{ embedded ? '닫기' : '지도로 가기' }}
@@ -236,7 +242,7 @@ onUnmounted(() => {
             type="button"
             class="trip-vote__ghost trip-vote__restart"
             data-testid="vote-restart"
-            @click="restartRequested = true"
+            @click="completedInCurrentView = false; restartRequested = true"
           >
             <span class="material-symbols-rounded" aria-hidden="true">restart_alt</span>
             새 투표 시작하기
@@ -257,7 +263,6 @@ onUnmounted(() => {
             <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
             AI에게 일정 배치 맡기기
           </button>
-
         </div>
       </div>
 
@@ -273,10 +278,6 @@ onUnmounted(() => {
       <template v-else>
         <div class="page-hero trip-vote__hero">
           <div class="page-hero__copy">
-            <p class="page-hero__eyebrow">
-              <span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span>
-              Trip Vote
-            </p>
             <h1 class="page-hero__title">
               <span class="page-hero__gradient">어디로 갈까요?</span>
             </h1>
@@ -655,6 +656,16 @@ onUnmounted(() => {
 .trip-vote--embedded .trip-vote__cta { background:#328be0; border-radius:12px; box-shadow:none; font-size:14px; }
 .trip-vote--embedded .trip-vote__cta--ai { background:#eaf4ff; color:#287cbd; border:1px solid #c6dff4; }
 .trip-vote--embedded :deep(.vote-cart) { border-radius:16px; box-shadow:none; }
+@media(min-width:761px) {
+ .trip-vote--embedded.trip-vote--voting { height:100%; min-height:0; overflow:hidden; }
+ .trip-vote--embedded .trip-vote__layout { align-items:stretch; flex:1; min-height:0; }
+ .trip-vote--embedded .trip-vote__layout > :deep(.vote-deck),
+ .trip-vote--embedded .trip-vote__layout > :deep(.vote-cart) { height:100%; min-height:0; }
+ .trip-vote--embedded .trip-vote__layout > :deep(.vote-cart) { overflow:hidden; }
+ .trip-vote--embedded :deep(.vote-cart__list) { flex:1; min-height:0; max-height:none; }
+ .trip-vote--embedded :deep(.vote-cart__empty) { display:grid; flex:1; place-items:center; }
+ .trip-vote--embedded :deep(.vote-deck__stage) { flex:1; min-height:240px; aspect-ratio:auto; }
+}
 @media(max-width:760px) {
  .trip-vote--embedded .trip-vote__layout { grid-template-columns:minmax(0,1fr); }
 }

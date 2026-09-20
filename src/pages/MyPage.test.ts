@@ -147,6 +147,7 @@ describe('MyPage super likes', () => {
     await flushPromises()
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(`${window.location.origin}/mypage/user-1`)
-    expect(wrapper.text()).toContain('프로필 링크를 복사했습니다.')
+    expect(toast.success).toHaveBeenCalledWith('프로필 링크를 복사했습니다.')
+    expect(wrapper.text()).not.toContain('프로필 링크를 복사했습니다.')
   })
 })

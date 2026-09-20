@@ -355,7 +355,6 @@ onMounted(async () => {
         <div class="page-hero primary-page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">
-              <span class="material-symbols-rounded" aria-hidden="true">bolt</span>
               {{ onboardingMode ? 'First Taste Setup' : 'Travel Preferences' }}
             </p>
             <h1 class="page-hero__title">

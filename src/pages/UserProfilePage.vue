@@ -14,6 +14,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import LikedPlacesModal from '@/components/mypage/LikedPlacesModal.vue'
 import MyStoriesModal from '@/components/mypage/MyStoriesModal.vue'
 import FollowListModal from '@/components/common/FollowListModal.vue'
+import StoryDetailOverlay from '@/components/community/StoryDetailOverlay.vue'
 import type { Place } from '@/types/place'
 import { useToast } from '@/composables/useToast'
 
@@ -42,32 +43,6 @@ const followButtonLabel = computed(() => {
 
 // 이 사용자가 공개한 슈퍼라이크 장소 (전용 API 연동 전까지 빈 배열)
 const likedPlaces = ref<Place[]>([])
-
-// Search
-const placeSearchQuery = ref('')
-const filteredPlaces = computed(() => {
-  if (!placeSearchQuery.value.trim()) return likedPlaces.value
-  const q = placeSearchQuery.value.trim().toLowerCase()
-  return likedPlaces.value.filter((p) =>
-    p.placeName.toLowerCase().includes(q) ||
-    (p.address ?? '').toLowerCase().includes(q) ||
-    (p.tags ?? []).some(t => t.toLowerCase().includes(q))
-  )
-})
-
-// Places slider
-const placesSliderRef = ref<HTMLElement | null>(null)
-function scrollPlaces(direction: 'prev' | 'next') {
-  if (!placesSliderRef.value) return
-  const slider = placesSliderRef.value
-  const card = slider.querySelector('.mypage-place-card--slider') as HTMLElement | null
-  if (!card) return
-  const cardWidth = card.offsetWidth + 18 // card width + gap
-  slider.scrollBy({
-    left: direction === 'next' ? cardWidth : -cardWidth,
-    behavior: 'smooth',
-  })
-}
 
 // Follow state
 const isFollowing = ref(false)
@@ -101,13 +76,10 @@ async function shareProfile() {
   if (!user.value) return
   const url = `${window.location.origin}/mypage/${userId.value}`
   try {
-    if (navigator.share) await navigator.share({ title: `${user.value.displayName}님의 숨길 프로필`, url })
-    else {
-      await navigator.clipboard.writeText(url)
-      toast.success('프로필 링크를 복사했습니다.')
-    }
-  } catch (error) {
-    if ((error as DOMException)?.name !== 'AbortError') toast.error('프로필을 공유하지 못했습니다.')
+    await navigator.clipboard.writeText(url)
+    toast.success('프로필 링크를 복사했습니다.')
+  } catch {
+    toast.error('프로필 링크를 복사하지 못했습니다.')
   }
 }
 
@@ -195,30 +167,29 @@ function handleUserClick(userId: string) {
   router.push(`/mypage/${userId}`)
 }
 
-function openCommunityStory(storyId: string) {
-  router.push({ path: '/community', query: { story: storyId } })
-}
+const selectedStoryId = ref<string | null>(null)
+function openCommunityStory(storyId: string) { selectedStoryId.value = storyId }
 </script>
 
 <template>
-  <AppShell>
+  <AppShell paper>
     <main v-if="userLoading" style="display: flex; align-items: center; justify-content: center; min-height: 50vh;">
       <span class="material-symbols-rounded" style="font-size: 40px; color: var(--violet);">progress_activity</span>
     </main>
     <main v-else-if="user">
       <section class="section mypage-shell page-with-hero" aria-labelledby="user-profile-title">
-        <div class="mypage-page-heading page-hero">
+        <div class="mypage-page-heading page-hero primary-page-hero account-page-hero">
           <div class="page-hero__copy">
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-              <button type="button" style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" @click="router.back()">
-                <span class="material-symbols-rounded" style="font-size: 20px; color: var(--ink);">arrow_back</span>
-              </button>
-              <p class="page-hero__eyebrow" style="margin-bottom: 0;"><span class="material-symbols-rounded" aria-hidden="true">person</span> Profile</p>
-            </div>
-            <h1 id="user-profile-title" class="page-hero__title"><span class="page-hero__gradient">{{ formatUiText("{0}님의 여행 프로필", "{0}’s travel profile", [user.displayName]) }}</span>을 살펴보세요</h1>
+            <p class="page-hero__eyebrow">Profile</p>
+            <h1 id="user-profile-title" class="page-hero__title" data-no-translate>{{ user.displayName }}님의 여행 공간</h1>
             <p class="page-hero__lead">
               {{ canViewProfileDetails ? '공개된 여행기와 관심 장소를 통해 이 여행자의 취향과 여정을 확인할 수 있습니다.' : '비공개 프로필입니다. 팔로우가 승인되면 상세 콘텐츠를 볼 수 있습니다.' }}
             </p>
+          </div>
+          <div class="page-hero__actions">
+            <button type="button" class="account-page-link user-profile-back" @click="router.back()">
+              <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>돌아가기
+            </button>
           </div>
         </div>
 
@@ -312,36 +283,26 @@ function openCommunityStory(storyId: string) {
               <section class="mypage-section" aria-labelledby="section-liked-places-title">
                 <div class="mypage-section-header">
                   <h2 id="section-liked-places-title" class="mypage-section-title">
-                    <span class="material-symbols-rounded section-icon section-icon--rose" aria-hidden="true">star</span>슈퍼라이크한 장소
+                    <span class="material-symbols-rounded section-icon section-icon--sky" aria-hidden="true">star</span>슈퍼라이크한 장소
                   </h2>
-                  <div v-if="likedPlaces.length > 0" class="mypage-header-search-row">
-                    <div class="mypage-search-inline">
-                      <span class="material-symbols-rounded">search</span>
-                      <input type="search" v-model="placeSearchQuery" placeholder="장소명, 지역, 태그로 검색" />
-                    </div>
-                    <span class="mypage-search-count">{{ formatUiText("{0}곳", "{0} places", [filteredPlaces.length]) }}</span>
-                    <a href="#" class="mypage-more-link" @click.prevent="likedPlacesModal.open()">모두 보기 ›</a>
-                  </div>
+                  <a v-if="likedPlaces.length > 0" href="#" class="mypage-more-link" @click.prevent="likedPlacesModal.open()">모두 보기 ›</a>
                 </div>
 
                 <div class="mypage-section-content liked-places-layout">
                   <!-- 빈 상태 -->
-                  <div v-if="likedPlaces.length === 0" class="mypage-empty-state" style="width: 100%;">
+                  <div v-if="likedPlaces.length === 0" class="mypage-empty-state">
                     <span class="material-symbols-rounded mypage-empty-icon">star</span>
                     <p class="mypage-empty-title">공개된 슈퍼라이크 장소가 없어요</p>
                     <p class="mypage-empty-desc">이 사용자가 공개한 관심 장소가 준비되면 여기에 표시됩니다.</p>
                   </div>
 
-                  <!-- 데이터 있을 때 슬라이더 -->
-                  <div v-else class="mypage-places-slider-wrapper">
-                    <button v-if="likedPlaces.length > 3" type="button" class="places-slider-btn prev" aria-label="이전 장소" @click="scrollPlaces('prev')">
-                      <span class="material-symbols-rounded">chevron_left</span>
-                    </button>
-                    <div class="mypage-places-slider" ref="placesSliderRef">
-                      <div v-for="place in filteredPlaces" :key="place.externalPlaceId" class="mypage-place-card mypage-place-card--slider">
+                  <!-- 데이터 있을 때 보드 -->
+                  <div v-else class="mypage-places-slider-wrapper keepsake-board">
+                    <div class="mypage-places-slider">
+                      <div v-for="place in likedPlaces.slice(0, 10)" :key="place.externalPlaceId" class="mypage-place-card mypage-place-card--slider keepsake-note">
                         <div class="place-img-wrap">
                           <img :src="(place.thumbnailUrl ?? '')" :alt="place.placeName" />
-                          <span class="place-heart-btn" aria-label="슈퍼라이크한 장소">
+                          <span class="place-super-like-btn" aria-label="슈퍼라이크한 장소">
                             <span class="material-symbols-rounded">star</span>
                           </span>
                         </div>
@@ -355,9 +316,6 @@ function openCommunityStory(storyId: string) {
                         </div>
                       </div>
                     </div>
-                    <button v-if="likedPlaces.length > 3" type="button" class="places-slider-btn next" aria-label="다음 장소" @click="scrollPlaces('next')">
-                      <span class="material-symbols-rounded">chevron_right</span>
-                    </button>
                   </div>
                 </div>
               </section>
@@ -371,7 +329,7 @@ function openCommunityStory(storyId: string) {
                 </div>
 
                 <!-- 빈 상태 -->
-                <div v-if="userStories.length === 0" class="mypage-empty-state">
+                <div v-if="userStories.length === 0" class="mypage-empty-state profile-empty-card">
                   <span class="material-symbols-rounded mypage-empty-icon">auto_stories</span>
                   <p class="mypage-empty-title">작성한 여행기가 없어요</p>
                   <p class="mypage-empty-desc">여행에서 만난 순간들을 기록으로 남겨보세요.</p>
@@ -379,25 +337,32 @@ function openCommunityStory(storyId: string) {
 
                 <!-- 데이터 있을 때 -->
                 <div v-else class="mypage-stories-magazine" data-mypage-stories-list>
-                  <div v-for="story in userStories" :key="story.id" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
-                    <img class="story-magazine-thumb" :src="story.image" :alt="story.title" />
-                    <div class="story-magazine-body">
-                      <h3 class="story-magazine-title">
-                        <span data-no-translate>{{ story.title }}</span>
-                      </h3>
-                      <div class="story-magazine-meta">
-                        <span data-no-translate class="story-date">{{ story.location }}</span>
-                        <div class="story-stats-row">
-                          <span>
-                            <span class="material-symbols-rounded">favorite</span> {{ story.likes }}
-                          </span>
-                          <span>
-                            <span class="material-symbols-rounded">chat_bubble</span> {{ story.comments }}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <button v-for="story in userStories.slice(0, 2)" :key="story.id" type="button" class="mypage-story-magazine-item" @click="openCommunityStory(story.id)">
+                    <span class="story-magazine-image-wrap">
+                      <img class="story-magazine-thumb" :src="story.image" :alt="story.title" loading="lazy" />
+                    </span>
+                    <span class="story-magazine-body">
+                      <span class="story-magazine-title" data-no-translate>{{ story.title }}</span>
+                      <span v-if="story.tags.length" class="story-magazine-tags" data-no-translate>
+                        <span v-for="tag in story.tags.slice(0, 3)" :key="tag">#{{ tag }}</span>
+                      </span>
+                      <span class="story-magazine-author">
+                        <span class="story-magazine-avatar">
+                          <img v-if="story.authorProfileImageUrl" :src="story.authorProfileImageUrl" :alt="`${story.author} 프로필 사진`" />
+                          <span v-else>{{ story.avatar }}</span>
+                        </span>
+                        <span class="story-magazine-author-copy">
+                          <strong data-no-translate>{{ story.author }}</strong>
+                          <span data-no-translate>{{ story.location }}</span>
+                        </span>
+                      </span>
+                      <span class="story-stats-row">
+                        <span><span class="material-symbols-rounded">favorite</span>{{ story.likes }}</span>
+                        <span><span class="material-symbols-rounded">chat_bubble</span>{{ story.comments }}</span>
+                        <span v-if="story.publishedAt" class="story-published-at">{{ new Date(story.publishedAt).toLocaleDateString('ko-KR') }}</span>
+                      </span>
+                    </span>
+                  </button>
                 </div>
                 </article>
 
@@ -408,7 +373,7 @@ function openCommunityStory(storyId: string) {
                     </h2>
                   </div>
                   <p class="preference-intro">데이터 기반 여행 스타일</p>
-                  <div class="pref-empty" role="status">
+                  <div class="pref-empty mypage-empty-state profile-empty-card" role="status">
                     <span class="material-symbols-rounded pref-empty-icon">explore</span>
                     <p class="pref-empty-title">아직 분석된 취향이 없어요</p>
                     <p class="pref-empty-desc">공개된 취향 데이터가 준비되면 이곳에 표시됩니다.</p>
@@ -434,6 +399,13 @@ function openCommunityStory(storyId: string) {
     <!-- Modals -->
     <LikedPlacesModal v-if="likedPlacesModal.isOpen.value" :places="likedPlaces" @close="likedPlacesModal.close()" />
     <MyStoriesModal v-if="myStoriesModal.isOpen.value" :stories="userStories" @close="myStoriesModal.close()" @story-click="openCommunityStory" />
+    <StoryDetailOverlay
+      v-if="selectedStoryId"
+      :stories="userStories"
+      :initial-story-id="selectedStoryId"
+      @close="selectedStoryId = null"
+      @changed="loadUserProfile"
+    />
     <FollowListModal v-if="followersModal.isOpen.value" title="팔로워" :users="userFollowers" :followingIds="followingIds" @close="followersModal.close()" @user-click="handleUserClick" />
     <FollowListModal v-if="followingModal.isOpen.value" title="팔로잉" :users="userFollowing" :followingIds="followingIds" @close="followingModal.close()" @user-click="handleUserClick" />
   </AppShell>
@@ -883,4 +855,29 @@ function openCommunityStory(storyId: string) {
     max-width: 92%;
   }
 }
+</style>
+
+<style scoped src="@/styles/account-theme.css"></style>
+
+<style scoped>
+.user-profile-back { cursor: pointer; font-family: inherit; }
+.keepsake-board { padding:22px; border:3px solid #d9c2a8; border-radius:22px; background-color:#ead8bd; background-image:radial-gradient(circle at 18% 24%,#fff7e985 0 1px,transparent 1.7px),radial-gradient(circle at 72% 64%,#b8916c24 0 1px,transparent 1.9px),radial-gradient(circle at 42% 78%,#fffaf08f 0 1.3px,transparent 2px),linear-gradient(115deg,#f1e2ca 0%,#e8d2b3 48%,#eedcc2 100%); background-size:15px 17px,19px 21px,25px 23px,100% 100%; box-shadow:inset 0 0 0 1px #fff9ed8c,inset 0 0 20px #9b795117,0 7px 20px #52667a12; }
+.keepsake-board .mypage-places-slider { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:24px 16px; overflow:visible; padding:12px 2px 8px; margin:0; }
+.keepsake-board .keepsake-note { --note-paper:#fff1b8; position:relative; overflow:visible; min-width:0; max-width:none; width:100%; padding:9px 8px 11px; border:0; border-radius:2px 2px 12px 2px; background:linear-gradient(145deg,#ffffff66,transparent 38%),var(--note-paper); box-shadow:2px 5px 11px #35465a1f; transform:rotate(-1.5deg); }
+.keepsake-note::before { content:''; position:absolute; z-index:3; width:14px; height:14px; top:-7px; left:calc(50% - 7px); border:1px solid #b46f68; border-radius:50%; background:radial-gradient(circle at 32% 25%,#fff0e9 0 12%,#dc8d82 28%,#bd6b66 72%,#a45a58 100%); box-shadow:0 2px 4px #77544b4a,inset -1px -1px 2px #8e4c4c52; pointer-events:none; }
+.keepsake-note::after { content:''; position:absolute; z-index:-1; width:18px; height:8px; top:1px; left:calc(50% - 2px); border-radius:50%; background:#77544b26; filter:blur(2px); transform:rotate(24deg); pointer-events:none; }
+.keepsake-board .keepsake-note:nth-child(6n+2) { --note-paper:#cfe8f6; transform:rotate(1.5deg); }
+.keepsake-board .keepsake-note:nth-child(6n+3) { --note-paper:#d5e9d7; transform:rotate(-.8deg); }
+.keepsake-board .keepsake-note:nth-child(6n+4) { --note-paper:#f6d8c6; transform:rotate(1deg); }
+.keepsake-board .keepsake-note:nth-child(6n+5) { --note-paper:#ded9f0; transform:rotate(-1.2deg); }
+.keepsake-board .keepsake-note:nth-child(6n) { --note-paper:#eecfd4; transform:rotate(.7deg); }
+.keepsake-board .keepsake-note .place-img-wrap { height:auto; aspect-ratio:4/3; border-radius:2px; overflow:hidden; }
+.keepsake-board .keepsake-note .place-info-wrap { padding:9px 2px 0; background:transparent; }
+.keepsake-board .keepsake-note .place-title-h3 { font-family:'Noto Serif KR',serif; font-size:13px; line-height:1.45; margin:0 0 3px; }
+.keepsake-board .keepsake-note .place-region-category { display:block; font-size:10px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; color:#647c92; }
+.keepsake-board .keepsake-note .place-desc-text,.keepsake-board .keepsake-note .place-tag-row { display:none; }
+.keepsake-board .keepsake-note .place-super-like-btn { width:27px; height:27px; top:5px; right:5px; pointer-events:none; }
+@media(max-width:1100px) { .keepsake-board .mypage-places-slider { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(max-width:820px) { .keepsake-board .mypage-places-slider { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:600px) { .keepsake-board { padding:18px 14px; }.keepsake-board .mypage-places-slider { grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px 12px; } }
 </style>

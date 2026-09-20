@@ -29,7 +29,7 @@
     body {
       margin: 0;
       color: var(--ink);
-      background: #fff url('@/assets/backgrounds/sky-watercolor-background.webp') center / cover fixed no-repeat;
+      background: #fff;
       letter-spacing: -0.02em;
       line-height: 1.6;
       padding-top: 72px;

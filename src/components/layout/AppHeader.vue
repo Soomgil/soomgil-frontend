@@ -31,7 +31,14 @@ const serviceNavItems = computed(() => [
   { label: t('nav.community'), key: 'community', path: '/community' },
 ])
 
-const isLandingPage = computed(() => route.path === '/')
+/**
+ * 라우터의 최초 비동기 가드가 끝나기 전에는 route가 임시로 `/`를 가리킨다.
+ * 이때 실제 브라우저 경로가 서비스 화면이면 랜딩 헤더를 노출하지 않는다.
+ */
+const initialBrowserPath = typeof window === 'undefined' ? route.path : window.location.pathname
+const isLandingPage = computed(() => (
+  route.name === 'Landing' || (route.name == null && initialBrowserPath === '/')
+))
 const isRouteWorkspace = computed(() => route.path.startsWith('/trips/') && route.path.endsWith('/route'))
 const currentNavItems = computed(() => isLandingPage.value ? landingNavItems.value : serviceNavItems.value)
 const landingActiveNavKey = ref('')
@@ -128,7 +135,8 @@ const briefingTitle = ref('')
 const briefingDate = ref('')
 const briefingDay = ref<number | null>(null)
 const briefingIsToday = ref(false)
-const briefingCount = computed(() => briefingItems.value.length)
+/** 헤더 브리핑이 안내하는 가장 가까운 여행 한 건의 알림 개수. */
+const briefingCount = computed(() => briefingTripId.value ? 1 : 0)
 const koreaDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'short' }).format(new Date(`${value}T12:00:00+09:00`))
@@ -183,8 +191,10 @@ async function loadBriefing() {
     const itinerary = await itineraryApi.getItinerary(nearest.id)
     if (version !== sessionVersion) return
     const today = koreaDate()
-    const day = itinerary.days.filter(item => item.groupType === 'DAY' && item.date && item.date >= today)
-      .sort((a, b) => a.date!.localeCompare(b.date!) || a.sortOrder - b.sortOrder)[0]
+    const upcomingDays = itinerary.days
+      .filter(item => item.groupType === 'DAY' && item.date && item.date >= today)
+      .sort((a, b) => a.date!.localeCompare(b.date!) || a.sortOrder - b.sortOrder)
+    const day = upcomingDays.find(item => item.items.length > 0) ?? upcomingDays[0]
     if (!day) {
       briefingItems.value = []
       briefingTripId.value = null
@@ -458,7 +468,7 @@ async function handleLogout() {
 
         <!-- 일정과 알림은 같은 여행 수첩 스타일로 표시한다. -->
         <div class="briefing-dropdown">
-          <button type="button" id="header-briefing-btn" class="inbox-trigger" :aria-label="`오늘 일정 브리핑, 예정 장소 ${briefingCount}곳`" :aria-expanded="showBriefing" aria-controls="header-briefing-panel" title="오늘 일정 브리핑" @click.stop="toggleBriefing">
+          <button type="button" id="header-briefing-btn" class="inbox-trigger" :aria-label="`오늘 일정 브리핑, 예정 여행 ${briefingCount}개`" :aria-expanded="showBriefing" aria-controls="header-briefing-panel" title="오늘 일정 브리핑" @click.stop="toggleBriefing">
             <span class="material-symbols-rounded">event_note</span>
             <span v-if="briefingCount" class="inbox-badge">{{ briefingCount > 99 ? '99+' : briefingCount }}</span>
           </button>
@@ -639,7 +649,7 @@ async function handleLogout() {
 .briefing-dropdown,.notifications-dropdown { position:relative; }
 .inbox-trigger { position:relative; display:grid; place-items:center; width:40px; height:40px; padding:0; border:1px solid transparent; border-radius:50%; color:#427ead; background:#eaf4ff; cursor:pointer; transition:background .2s; }
 .inbox-trigger:hover,.inbox-trigger[aria-expanded=true] { background:#dceeff; border-color:#bdd8ed; }
-.inbox-badge { position:absolute; top:-3px; right:-5px; min-width:18px; height:18px; padding:0 4px; border:2px solid #f8fbff; border-radius:20px; background:#427ead; color:white; font-size:10px; font-weight:800; line-height:14px; }
+.inbox-badge { position:absolute; top:-3px; right:-5px; z-index:2; display:grid; place-items:center; min-width:18px; height:18px; padding:0 4px; border:2px solid #f8fbff; border-radius:20px; background:#427ead; color:white; font-size:10px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1; }
 #header-briefing-panel.inbox-panel,#header-notif-panel.inbox-panel { position:absolute; top:52px; right:0; width:380px !important; padding:0 !important; max-height:min(680px,calc(100dvh - 110px)); overflow:auto; scrollbar-width:thin; z-index:110; background:white; border:1px solid #dfeaf5; border-radius:22px; box-shadow:0 20px 70px #35465a24; color:#35465a; text-align:left; animation:inbox-in .18s ease-out; }
 .inbox-heading { display:flex; align-items:center; justify-content:space-between; padding:22px 22px 16px; background:linear-gradient(140deg,#f0f8ff,#fff); border-bottom:1px solid #eaf0f6; }
 .inbox-body { background:#fff; }

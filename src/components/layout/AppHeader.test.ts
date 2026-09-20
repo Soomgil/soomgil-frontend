@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
+  route: { path: '/home', name: 'Home' as string | undefined },
   getNotifications: vi.fn(),
   markAsRead: vi.fn(),
   markAllAsRead: vi.fn(),
@@ -12,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ path: '/home' }),
+  useRoute: () => mocks.route,
   useRouter: () => ({ push: mocks.push }),
 }))
 vi.mock('@/stores/auth.store', () => ({
@@ -51,6 +52,8 @@ describe('AppHeader 알림 API 연동', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-06-22T16:00:00Z'))
     vi.clearAllMocks()
+    mocks.route.path = '/home'
+    mocks.route.name = 'Home'
     mocks.getNotifications.mockImplementation(async (params) => params?.unreadOnly ? { ...page([]), page: { ...page([]).page, totalElements: 32 } } : page([]))
     mocks.getNearestTrip.mockResolvedValue({ id: 'trip-1', title: '부산 여행' })
     mocks.getItinerary.mockResolvedValue({
@@ -65,6 +68,23 @@ describe('AppHeader 알림 API 연동', () => {
     expect(swipeLink).toBeDefined()
     await swipeLink!.trigger('click')
     expect(mocks.push).toHaveBeenCalledWith('/swipe')
+  })
+
+  it('서비스 URL의 초기 라우트가 미확정이어도 랜딩 헤더를 노출하지 않는다', () => {
+    const previousUrl = window.location.href
+    try {
+      window.history.replaceState({}, '', '/my-trips')
+      mocks.route.path = '/'
+      mocks.route.name = undefined
+
+      const wrapper = mount(AppHeader)
+
+      expect(wrapper.classes()).not.toContain('landing-header')
+      expect(wrapper.findAll('nav a[data-nav-key]')).toHaveLength(4)
+      wrapper.unmount()
+    } finally {
+      window.history.replaceState({}, '', previousUrl)
+    }
   })
 
   it('선택 메뉴의 접근성 상태와 장식용 이동 알약을 제공한다', () => {
@@ -121,7 +141,7 @@ describe('AppHeader 알림 API 연동', () => {
     await flushPromises()
 
     expect(wrapper.get('#header-briefing-btn').text()).toContain('1')
-    expect(wrapper.get('#header-briefing-btn').attributes('aria-label')).toContain('예정 장소 1곳')
+    expect(wrapper.get('#header-briefing-btn').attributes('aria-label')).toContain('예정 여행 1개')
 
     await wrapper.get('#header-briefing-btn').trigger('click')
     await flushPromises()
@@ -132,6 +152,48 @@ describe('AppHeader 알림 API 연동', () => {
     expect(wrapper.text()).toContain('부산역')
     expect(wrapper.text()).toContain('부산 동구')
   })
+
+  it('다가오는 여행을 장소 수와 무관하게 한 건의 알림으로 표시한다', async () => {
+    mocks.getItinerary.mockResolvedValue({ days: [
+      { id: 'day-1', groupType: 'DAY', date: '2026-06-24', sortOrder: 1, items: [] },
+      { id: 'day-2', groupType: 'DAY', date: '2026-06-25', dayNumber: 2, sortOrder: 2, items: [
+        { id: 'item-1', placeName: '감천문화마을', address: '부산 사하구', sortOrder: 1 },
+        { id: 'item-2', placeName: '송도해수욕장', address: '부산 서구', sortOrder: 2 },
+      ] },
+      { id: 'day-3', groupType: 'DAY', date: '2026-06-26', dayNumber: 3, sortOrder: 3, items: [
+        { id: 'item-3', placeName: '광안리', address: '부산 수영구', sortOrder: 1 },
+      ] },
+    ] })
+    const wrapper = mount(AppHeader)
+    await flushPromises()
+
+    expect(wrapper.get('#header-briefing-btn .inbox-badge').text()).toBe('1')
+
+    await wrapper.get('#header-briefing-btn').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('#header-briefing-panel .inbox-heading').text()).toContain('1')
+    expect(wrapper.get('#header-briefing-panel').text()).toContain('감천문화마을')
+    wrapper.unmount()
+  })
+
+  it('브리핑 본문에 일정이 보이면 배지와 제목에도 같은 개수를 표시한다', async () => {
+    mocks.getItinerary.mockResolvedValue({ days: [
+      { id: 'day-1', groupType: 'DAY', date: '2026-06-24', dayNumber: 1, sortOrder: 1, items: [
+        { id: 'item-1', placeName: 'test', address: null, sortOrder: 1 },
+      ] },
+    ] })
+    const wrapper = mount(AppHeader)
+    await flushPromises()
+
+    expect(wrapper.get('#header-briefing-btn .inbox-badge').text()).toBe('1')
+
+    await wrapper.get('#header-briefing-btn').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('#header-briefing-panel .briefing-timeline').text()).toContain('test')
+    expect(wrapper.get('#header-briefing-panel .inbox-count').text()).toBe('1')
+    wrapper.unmount()
+  })
+
   it('패널을 열기 전 전체 미읽음 개수를 표시한다', async () => {
     const wrapper = mount(AppHeader)
     await flushPromises()
@@ -181,6 +243,8 @@ describe('AppHeader 알림 API 연동', () => {
     const wrapper = mount(AppHeader)
     await wrapper.get('#header-briefing-btn').trigger('click')
     await flushPromises()
+    expect(wrapper.get('#header-briefing-btn .inbox-badge').text()).toBe('1')
+    expect(wrapper.get('#header-briefing-panel .inbox-count').text()).toBe('1')
     expect(wrapper.get('#header-briefing-panel').text()).toContain('다가오는 여행')
     expect(wrapper.get('#header-briefing-panel').text()).toContain('아직 방문할 장소를 정하지 않았어요')
     wrapper.unmount()
