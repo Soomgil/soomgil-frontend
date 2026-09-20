@@ -2532,15 +2532,17 @@ function startHorizontalDrag(event: PointerEvent) {
   const container = event.currentTarget as HTMLElement
   if (container.scrollWidth <= container.clientWidth) return
   horizontalDragState = { container, pointerId: event.pointerId, startX: event.clientX, scrollLeft: container.scrollLeft, moved: false }
-  container.setPointerCapture(event.pointerId)
-  container.classList.add('is-dragging')
 }
 
 function moveHorizontalDrag(event: PointerEvent) {
   const state = horizontalDragState
   if (!state || state.pointerId !== event.pointerId || state.container !== event.currentTarget) return
   const distance = event.clientX - state.startX
-  if (Math.abs(distance) > 4) state.moved = true
+  if (Math.abs(distance) > 4 && !state.moved) {
+    state.moved = true
+    state.container.setPointerCapture(event.pointerId)
+    state.container.classList.add('is-dragging')
+  }
   if (!state.moved) return
   event.preventDefault()
   state.container.scrollLeft = state.scrollLeft - distance
