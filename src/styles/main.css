@@ -84,7 +84,7 @@
   flex-wrap: wrap;
 }
 
-/* Primary service pages share one exact hero-copy rhythm. */
+/* 마이페이지 eyebrow를 기준으로 주요 서비스 페이지의 타이포그래피를 통일한다. */
 .page-hero.primary-page-hero.primary-page-hero {
   display: block !important;
   margin: 0 0 36px !important;
@@ -112,7 +112,7 @@
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
-  letter-spacing: .13em;
+  letter-spacing: .12em;
   text-transform: uppercase;
 }
 

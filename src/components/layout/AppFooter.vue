@@ -22,17 +22,23 @@ const router = useRouter()
   position: relative;
   z-index: 1;
   width: 100%;
-  padding: 0 max(32px, calc((100% - 1240px) / 2));
+  max-width: 100vw;
+  padding: 0 clamp(16px, 4vw, 32px);
+  overflow: hidden;
   color: #7b8e9d;
-  background: rgb(248 251 255 / 92%);
+  background: #fff;
 }
 
 .app-footer-inner {
-  min-height: 112px;
+  width: 100%;
+  max-width: 1240px;
+  min-width: 0;
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 28px;
+  padding: 34px 0 48px;
   border-top: 1px solid #dfe8ef;
 }
 
@@ -50,17 +56,19 @@ const router = useRouter()
 
 .app-footer p,
 .app-footer small {
+  min-width: 0;
   margin: 0;
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .app-footer p {
   text-align: center;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .app-footer {
-    padding: 0 20px;
+    padding: 0 24px;
   }
 
   .app-footer-inner {
@@ -68,12 +76,16 @@ const router = useRouter()
     grid-template-columns: 1fr;
     justify-items: center;
     gap: 10px;
-    padding: 28px 0 max(34px, env(safe-area-inset-bottom));
+    padding: 30px 0 max(44px, env(safe-area-inset-bottom));
     text-align: center;
   }
 
   .app-footer-brand img {
     width: 64px;
   }
+}
+
+@media (max-width: 560px) {
+  .app-footer { padding-inline: 16px; }
 }
 </style>

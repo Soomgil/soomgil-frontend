@@ -35,7 +35,7 @@ watch(
   <ServiceBackdrop />
   <AppHeader v-show="!route.meta.hideLayout" />
   <RouterView />
-  <AppFooter v-if="showServiceFooter" />
+  <AppFooter v-if="showServiceFooter" class="service-footer" />
   <VoteResultMapOverlay />
  </div>
 </template>
@@ -52,4 +52,5 @@ body:has(> #app) { padding-top:0; }
 .app-layout.has-service-background .home-canvas,
 .app-layout.has-service-background .auth-modern-page,
 .app-layout.has-service-background .search-page { background: transparent; }
+.app-layout > .service-footer { margin-top: clamp(72px, 8vw, 112px); }
 </style>

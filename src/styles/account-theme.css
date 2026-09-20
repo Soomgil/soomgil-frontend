@@ -78,6 +78,12 @@
 .section-icon { color: #5c98c4; }
 .mypage-more-link { white-space: nowrap; font-size: 13px; font-weight: 700; }
 .mypage-empty-state { background: #f7fbff; border-color: #deebf4; }
+.profile-bottom-col .profile-empty-card {
+  flex: 1;
+  width: 100%;
+  min-height: 220px;
+  box-sizing: border-box;
+}
 .mypage-place-card { border: 1px solid #e3edf5; border-radius: 18px; overflow: hidden; }
 .mypage-stories-magazine { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
 .mypage-story-magazine-item {
@@ -156,5 +162,3 @@
   .settings-item-card--toggle .settings-item__info { flex-basis: 0; }
   .settings-item-card--toggle .settings-item__control { margin-left: 0; }
 }
-
-.mypage-shell .page-hero__eyebrow .material-symbols-rounded { display:none; }

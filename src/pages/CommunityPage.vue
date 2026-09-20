@@ -28,7 +28,7 @@ import { useLocale } from "@/i18n";
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
-const { locale } = useLocale();
+const { locale, tr } = useLocale();
 const auth = useAuthStore();
 
 interface StoryView {
@@ -564,9 +564,6 @@ function cancelFeedDrag() {
   feedDragging.value = false;
   feedDragY.value = 0;
 }
-function focusStoryComments(e: Event) {
-  (e.currentTarget as HTMLElement).closest('.feed-layout')?.querySelector<HTMLInputElement>('.feed-comment-input-area input')?.focus();
-}
 function onKeydown(e: KeyboardEvent) {
   if (e.repeat) { e.preventDefault(); return; }
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
@@ -630,7 +627,6 @@ watch(
         <div class="page-hero primary-page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">
-              <span class="material-symbols-rounded">explore</span>
               Trip Community
             </p>
             <h1 class="page-hero__title">{{ locale === 'en' ? 'Travel stories' : '여행 이야기' }}</h1>
@@ -748,18 +744,12 @@ watch(
                   </div>
                   <div class="story-tile-footer">
                     <span class="story-tile-stat">
-                      <span class="material-symbols-rounded">favorite</span>
-                      {{ story.likes }}
+                      <span class="material-symbols-rounded" aria-hidden="true">favorite</span>
+                      {{ tr('좋아요', 'Likes') }} {{ story.likes }}
                     </span>
                     <span class="story-tile-stat">
-                      <span class="material-symbols-rounded">chat_bubble</span>
-                      {{ story.comments }}
-                    </span>
-                    <span
-                      class="story-tile-stat story-tile-stat-end"
-                      aria-hidden="true"
-                    >
-                      {{ new Date(story.publishedAt).toLocaleDateString("ko-KR") }}
+                      <span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>
+                      {{ tr('댓글', 'Comments') }} {{ story.comments }}
                     </span>
                   </div>
                 </div>
@@ -938,7 +928,6 @@ watch(
                         <span class="material-symbols-rounded" style="font-size: 20px">favorite</span>
                         {{ visibleStory.likes }}
                       </button>
-                      <button type="button" class="story-like-button story-comment-button" aria-label="댓글 작성" @click="focusStoryComments"><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ visibleStory.comments }}</button>
                       <button type="button" class="story-like-button" @click="retripStory(visibleStory)">
                         <span class="material-symbols-rounded" style="font-size: 20px"
                           >content_copy</span
@@ -1943,31 +1932,19 @@ watch(
 .story-tile-footer {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px solid rgba(227, 234, 244, 0.9);
-  color: var(--muted);
+  gap: 16px;
+  margin-top: 14px;
+  color: #71889c;
+  font-size: 12px;
 }
 .story-tile-stat {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 700;
+  gap: 6px;
 }
 .story-tile-stat .material-symbols-rounded {
   font-size: 16px;
-  color: var(--violet);
-}
-.story-tile-stat:first-child .material-symbols-rounded {
-  color: var(--rose);
-}
-.story-tile-stat-end {
-  margin-left: auto;
-}
-.story-tile-stat-end .material-symbols-rounded {
-  color: var(--muted);
+  color: inherit;
 }
 
 /* ===== Pagination (평범한 숫자 방식) ===== */
@@ -2816,7 +2793,7 @@ watch(
 .community-paper .story-tile-title { color: #35465A; font-size: 19px; font-weight: 600; line-height: 1.5; }
 .community-paper .story-tile-summary { color: #647C92; font-size: 13px; line-height: 1.75; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .community-paper .story-tile-avatar { background: #EAF4FF; color: #647C92; }
-.community-paper .story-tile-footer { border-top: 1px solid #EAF4FF; color: #647C92; }
+.community-paper .story-tile-footer { border-top: 0; color: #71889C; }
 .community-paper .tag-soft { min-height:24px; padding:0 10px; border:1px solid #d7e6f0; border-radius:999px; background:#edf5fa; color:#4f718a; font-weight:650; }
 .community-paper .tag-soft:hover { background:#e3eff6; color:#365f7d; }
 .community-paper .pg-btn { background: transparent; border-color: transparent; color: #647C92; box-shadow: none; }
@@ -2852,9 +2829,7 @@ watch(
 .community-paper .story-tile-author-name { min-width:0; }
 .community-paper .story-tile-author-name strong { font-size:11px; }
 .community-paper .story-tile-author-name .small { display:none; }
-.community-paper .story-tile-footer { order:4; padding-top:4px; border:0; color:#111827; font-size:10px; gap:10px; }
-.community-paper .story-tile-footer .material-symbols-rounded { color:#111827; }
-.community-paper .story-tile-stat .material-symbols-rounded { font-size:14px; }
+.community-paper .story-tile-footer { order:4; }
 .community-paper .story-tile-like { width:32px; height:32px; top:10px; right:10px; box-shadow:0 2px 8px #35465a14; }
 .community-paper .story-card-grid--list { grid-template-columns:1fr; gap:16px; padding:0; }
 .community-paper .story-card-grid--list .story-tile { display:grid; grid-template-columns:180px minmax(0,1fr); padding:10px; transform:none; border-radius:4px; box-shadow:0 4px 16px #35465a08; }
@@ -2878,8 +2853,6 @@ watch(
   .community-paper .story-card-grid--list .story-tile-body { padding:3px 2px 3px 0; gap:8px; }
   .community-paper .story-card-grid--list .story-tile-title { font-size:15px; }
   .community-paper .story-card-grid--list .story-tile-summary { display:none; }
-  .community-paper .story-card-grid--list .story-tile-footer { flex-wrap:wrap; gap:5px 8px; }
-  .community-paper .story-card-grid--list .story-tile-stat-end { flex-basis:100%; margin-left:0; }
   .community-paper .story-card-grid--list .story-photo-placeholder { font-size:9px; text-align:center; padding:6px; }
   .community-paper .story-card-grid--list .story-tile-like { top:6px; right:6px; width:28px; height:28px; }
 }
@@ -2905,8 +2878,6 @@ watch(
 .community-paper .story-tile-summary { -webkit-line-clamp:1; }
 .community-paper .story-tile-tags { flex-wrap:nowrap; overflow:hidden; max-height:24px; }
 .community-paper .story-tile-tags .tag { white-space:nowrap; }
-.community-paper .story-tile-footer { gap:8px; }
-.community-paper .story-tile-stat { font-size:10px; }
 .community-paper .story-card-grid--list { grid-template-columns:1fr; max-width:900px; margin-inline:auto; gap:12px; }
 .community-paper .story-card-grid--list .story-tile { grid-template-columns:144px minmax(0,1fr); gap:18px; padding:10px; border-radius:14px; transform:none; }
 .community-paper .story-card-grid--list .story-tile-image-wrap { height:144px; min-height:0; aspect-ratio:1; border-radius:5px; }
@@ -2915,8 +2886,7 @@ watch(
 .community-paper .story-card-grid--list .story-tile-summary { grid-column:1 / -1; -webkit-line-clamp:2; }
 .community-paper .story-card-grid--list .story-tile-tags { grid-column:1 / -1; min-width:0; }
 .community-paper .story-card-grid--list .story-tile-author { align-self:end; margin:0; padding:0; }
-.community-paper .story-card-grid--list .story-tile-footer { align-self:end; margin:0; padding:0; flex-wrap:nowrap; }
-.community-paper .story-card-grid--list .story-tile-stat-end { flex-basis:auto; margin-left:8px; }
+.community-paper .story-card-grid--list .story-tile-footer { align-self:end; flex-wrap:nowrap; }
 @media(max-width:1100px) { .community-paper .story-card-grid:not(.story-card-grid--list) { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:760px) {
  .community-paper .story-card-grid:not(.story-card-grid--list) { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
@@ -2925,8 +2895,7 @@ watch(
  .community-paper .story-card-grid--list .story-tile-body { display:flex; padding:2px 0; gap:5px; }
  .community-paper .story-card-grid--list .story-tile-title { font-size:15px; -webkit-line-clamp:2; }
  .community-paper .story-card-grid--list .story-tile-author { align-self:start; margin-top:auto; }
- .community-paper .story-card-grid--list .story-tile-footer { align-self:stretch; gap:6px; }
- .community-paper .story-card-grid--list .story-tile-stat-end { margin-left:auto; }
+ .community-paper .story-card-grid--list .story-tile-footer { align-self:stretch; }
 }
 @media(max-width:480px) {
  .community-paper .story-card-grid:not(.story-card-grid--list) { gap:14px 10px; }
@@ -2935,7 +2904,6 @@ watch(
  .community-paper .story-tile-title { font-size:14px; }
  .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-summary,
  .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-tags { display:none; }
- .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-stat-end { display:none; }
  .community-paper .story-card-grid--list .story-tile { grid-template-columns:96px minmax(0,1fr); padding:8px; gap:10px; }
  .community-paper .story-card-grid--list .story-tile-image-wrap { height:118px; }
 }

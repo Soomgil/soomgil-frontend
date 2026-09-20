@@ -276,15 +276,13 @@ async function saveProfile() {
   }
 }
 
-const shareNotice = ref('')
 async function shareProfile() {
   const url = `${window.location.origin}/mypage/${auth.user?.id ?? ''}`
   try {
     await navigator.clipboard.writeText(url)
-    shareNotice.value = '프로필 링크를 복사했습니다.'
-    window.setTimeout(() => { shareNotice.value = '' }, 2500)
+    toast.success('프로필 링크를 복사했습니다.')
   } catch {
-    shareNotice.value = '프로필 링크를 복사하지 못했습니다.'
+    toast.error('프로필 링크를 복사하지 못했습니다.')
   }
 }
 
@@ -371,7 +369,7 @@ function handleUserClick(userId: string) {
       <section class="section mypage-shell page-with-hero" aria-labelledby="mypage-title">
         <div class="mypage-page-heading page-hero primary-page-hero account-page-hero">
           <div class="page-hero__copy">
-            <p class="page-hero__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">person</span> My Page</p>
+            <p class="page-hero__eyebrow">My Page</p>
             <h1 id="mypage-title" class="page-hero__title">여행으로 채운 나의 공간</h1>
             <p class="page-hero__lead">마음에 담은 장소부터 여행의 순간까지, 나의 여행 취향을 만나보세요.</p>
           </div>
@@ -442,7 +440,6 @@ function handleUserClick(userId: string) {
                     <span class="material-symbols-rounded">share</span>공유하기
                   </button>
                 </div>
-                <p v-if="shareNotice" class="mypage-share-notice" role="status">{{ shareNotice }}</p>
               </div>
             </div>
           </div>
@@ -507,7 +504,7 @@ function handleUserClick(userId: string) {
             </div>
 
             <!-- 빈 상태 -->
-            <div v-if="myStories.length === 0" class="mypage-empty-state">
+            <div v-if="myStories.length === 0" class="mypage-empty-state profile-empty-card">
               <span class="material-symbols-rounded mypage-empty-icon">auto_stories</span>
               <p class="mypage-empty-title">작성한 여행기가 없어요</p>
               <p class="mypage-empty-desc">여행에서 만난 순간들을 기록으로 남겨보세요.</p>
@@ -553,7 +550,7 @@ function handleUserClick(userId: string) {
               </h2>
             </div>
 
-            <div v-if="preferenceStatus !== 'ready'" class="pref-empty" role="status">
+            <div v-if="preferenceStatus !== 'ready'" class="pref-empty mypage-empty-state profile-empty-card" role="status">
               <span class="material-symbols-rounded pref-empty-icon">hourglass_top</span>
               <p class="pref-empty-title">분석 결과를 기다리고 있어요</p>
               <p class="pref-empty-desc">
@@ -705,7 +702,6 @@ function handleUserClick(userId: string) {
 }
 .place-image-placeholder { width: 100%; height: 100%; display: grid; place-items: center; background: linear-gradient(135deg, #eef2ff, #f8fafc); color: var(--muted); }
 .place-image-placeholder .material-symbols-rounded { font-size: 36px; }
-.mypage-share-notice { margin: 8px 0 0; color: var(--violet); font-size: 12px; font-weight: 800; text-align: right; }
 .mypage-visibility-badge { display: inline-flex; align-items: center; gap: 4px; width: fit-content; margin-top: 7px; padding: 4px 9px; border-radius: 999px; background: rgba(124, 58, 237, .08); color: var(--violet); font-size: 11px; font-weight: 850; }
 .mypage-visibility-badge .material-symbols-rounded { font-size: 14px; }
 .mypage-empty-state--inline {

@@ -4811,7 +4811,7 @@ function textAvatarStyle(index: unknown) {
             <TripSettingsButton label="관리" variant="chip" @click="() => openTripManagement()" />
             </div>
           </div>
-          <a v-if="!isLeftSidebarOpen" href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
+          <a v-if="!isLeftSidebarOpen" href="/my-trips" class="route-back-link" aria-label="내 여행으로 돌아가기" @click.prevent="router.push('/my-trips')"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
           <!-- ═══ SIDEBAR ═══ -->
           <aside id="route-itinerary-sidebar" data-tour-section="itinerary" :class="['sidebar', { 'is-hidden': !isLeftSidebarOpen }]" aria-label="여행 일정">
             <span class="sidebar-sheet-handle" aria-hidden="true"></span>
@@ -4828,7 +4828,7 @@ function textAvatarStyle(index: unknown) {
             </button>
             <div class="sidebar-content">
               <div class="trip-sidebar-summary">
-                <a v-show="!isSearchPanelOpen" href="/my-trips" class="trip-sidebar-back"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
+                <a v-show="!isSearchPanelOpen" href="/my-trips" class="trip-sidebar-back" @click.prevent="router.push('/my-trips')"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>내 여행</a>
                 <h1 data-no-translate class="trip-sidebar-title" :title="trip.title">{{ trip.title }}</h1>
                 <div class="trip-sidebar-meta">
                   <div v-if="trip.destinationName" class="trip-sidebar-meta__row">
@@ -5867,6 +5867,7 @@ function textAvatarStyle(index: unknown) {
 }
 
 .vote-modal-card {
+  height: min(88vh, 860px);
   max-height: min(88vh, 860px);
   max-width: 920px;
   overflow: auto;
@@ -8005,7 +8006,7 @@ function textAvatarStyle(index: unknown) {
 
 @media (max-width: 760px) {
   .vote-modal-overlay { padding: 12px; }
-  .vote-modal-card { max-height: calc(100dvh - 24px); padding: 10px 14px 18px; }
+  .vote-modal-card { height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); padding: 10px 14px 18px; }
 }
 
 .map-sticker-help {

@@ -351,7 +351,6 @@ watch(activeFilter, loadTrips)
         <div class="travel-page-head page-hero primary-page-hero">
           <div class="page-hero__copy">
             <p class="page-hero__eyebrow">
-              <span class="material-symbols-rounded" aria-hidden="true">luggage</span>
               MY TRAVEL COLLECTION
             </p>
             <h1 class="page-hero__title">내 여행</h1>

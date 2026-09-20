@@ -333,6 +333,17 @@ describe('RoutePage itinerary integration', () => {
     vi.unstubAllGlobals()
   })
 
+  it('내 여행으로 돌아갈 때 전체 새로고침 없이 라우터로 이동한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+
+    await wrapper.get('.trip-sidebar-back').trigger('click')
+
+    expect(routing.push).toHaveBeenCalledWith('/my-trips')
+  })
+
   it('지도 화면 진입 시 AI·메모·체크리스트를 백엔드에서 불러온다', async () => {
     mount(RoutePage, {
       global: {
