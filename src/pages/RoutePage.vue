@@ -1874,7 +1874,7 @@ function onPointerDown(e: PointerEvent) {
     if (!trashZone) return false
     const trashRect = trashZone.getBoundingClientRect()
     return clientX >= trashRect.left && clientX <= trashRect.right
-      && clientY >= trashRect.top && clientY <= trashRect.bottom
+      && clientY >= trashRect.top
   }
 
   function updateAutoScroll(clientX: number, clientY: number) {
@@ -1892,9 +1892,11 @@ function onPointerDown(e: PointerEvent) {
     let scrollDelta = 0
 
     if (distanceToBottom < edgeSize && dragContainer.scrollTop < maxScrollTop) {
-      scrollDelta = Math.ceil(((edgeSize - distanceToBottom) / edgeSize) * 18)
+      const intensity = Math.min(1, Math.max(0, (edgeSize - distanceToBottom) / edgeSize))
+      scrollDelta = Math.ceil(intensity * 18)
     } else if (distanceToTop < edgeSize && dragContainer.scrollTop > 0) {
-      scrollDelta = -Math.ceil(((edgeSize - distanceToTop) / edgeSize) * 18)
+      const intensity = Math.min(1, Math.max(0, (edgeSize - distanceToTop) / edgeSize))
+      scrollDelta = -Math.ceil(intensity * 18)
     }
 
     if (scrollDelta === 0) {
