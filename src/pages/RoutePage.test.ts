@@ -812,6 +812,53 @@ describe('RoutePage itinerary integration', () => {
 		expect(itineraryEl.classList.contains('dragging-stop')).toBe(false)
 	})
 
+	it('삭제 영역으로 드래그하면 자동 스크롤을 멈추고 기존 위치를 복원한다', async () => {
+		const requestFrame = vi.fn(() => 1)
+		vi.stubGlobal('requestAnimationFrame', requestFrame)
+		vi.stubGlobal('cancelAnimationFrame', vi.fn())
+		const wrapper = mount(RoutePage, {
+			global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+		})
+		await flushPromises()
+
+		const itineraryEl = wrapper.get('[data-sidebar-itinerary]').element as HTMLElement
+		Object.defineProperty(itineraryEl, 'clientHeight', { configurable: true, value: 160 })
+		Object.defineProperty(itineraryEl, 'scrollHeight', { configurable: true, value: 600 })
+		itineraryEl.scrollTop = 80
+		vi.spyOn(itineraryEl, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 0, top: 0, left: 0, right: 320, bottom: 160, width: 320, height: 160,
+			toJSON: () => ({}),
+		} as DOMRect)
+
+		const stop = wrapper.get('.stop')
+		vi.spyOn(stop.element, 'getBoundingClientRect').mockReturnValue({
+			x: 12, y: 124, top: 124, left: 12, right: 300, bottom: 164, width: 288, height: 40,
+			toJSON: () => ({}),
+		} as DOMRect)
+		const trashZone = wrapper.get('#trash-drop-zone')
+		const nativeGetElementById = document.getElementById.bind(document)
+		const getElementById = vi.spyOn(document, 'getElementById').mockImplementation((id) => (
+			id === 'trash-drop-zone' ? trashZone.element as HTMLElement : nativeGetElementById(id)
+		))
+		vi.spyOn(trashZone.element, 'getBoundingClientRect').mockReturnValue({
+			x: 0, y: 120, top: 120, left: 0, right: 320, bottom: 180, width: 320, height: 60,
+			toJSON: () => ({}),
+		} as DOMRect)
+		requestFrame.mockClear()
+
+		stop.find('.stop-num').element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 40, clientY: 130 }))
+		stop.element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 150 }))
+		expect(trashZone.classes()).toContain('is-drag-over-trash')
+		expect(requestFrame).not.toHaveBeenCalled()
+
+		stop.element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 150 }))
+		await flushPromises()
+
+		expect(holder.state.deleteItem).toHaveBeenCalledWith('item-1')
+		expect(itineraryEl.scrollTop).toBe(80)
+		getElementById.mockRestore()
+	})
+
 	it('드래그 임계값 전의 클릭 움직임은 일차·여행 카드·연결 그룹의 스크롤과 재정렬을 발생시키지 않는다', async () => {
 		vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
 			callback(0)

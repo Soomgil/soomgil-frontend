@@ -41,8 +41,18 @@ const followButtonLabel = computed(() => {
   return isPrivateProfile.value ? '팔로우 요청' : '팔로우'
 })
 
-// 이 사용자가 공개한 슈퍼라이크 장소 (전용 API 연동 전까지 빈 배열)
 const likedPlaces = ref<Place[]>([])
+const travelPreferences = computed(() => {
+  const preferences = user.value?.preferences
+  if (!preferences?.topCategories?.length) return null
+  return {
+    tags: preferences.preferredTags ?? [],
+    styles: [...preferences.topCategories]
+      .sort((a, b) => b.percentage - a.percentage)
+      .map(category => ({ label: category.category, percent: category.percentage })),
+    insight: preferences.travelStyle,
+  }
+})
 
 // Follow state
 const isFollowing = ref(false)
@@ -119,6 +129,8 @@ async function loadUserProfile() {
       return
     }
 
+    likedPlaces.value = fetched.superLikedPlaces ?? []
+
     const postPage = await communityApi.getPosts({ page: 0, size: 100 })
     userStories.value = postPage.items
       .filter((post) => post.publishedBy?.id === userId.value)
@@ -142,6 +154,7 @@ async function loadUserProfile() {
     console.error('Failed to load user profile:', err)
     user.value = null
     userStories.value = []
+    likedPlaces.value = []
   } finally {
     userLoading.value = false
   }
@@ -372,12 +385,29 @@ function openCommunityStory(storyId: string) { selectedStoryId.value = storyId }
                       <span class="material-symbols-rounded section-icon section-icon--violet" aria-hidden="true">explore</span>여행 취향
                     </h2>
                   </div>
-                  <p class="preference-intro">데이터 기반 여행 스타일</p>
-                  <div class="pref-empty mypage-empty-state profile-empty-card" role="status">
+                  <p v-if="travelPreferences" class="preference-intro" data-no-translate>{{ travelPreferences.insight }}</p>
+                  <div v-if="!travelPreferences" class="pref-empty mypage-empty-state profile-empty-card" role="status">
                     <span class="material-symbols-rounded pref-empty-icon">explore</span>
                     <p class="pref-empty-title">아직 분석된 취향이 없어요</p>
                     <p class="pref-empty-desc">공개된 취향 데이터가 준비되면 이곳에 표시됩니다.</p>
                   </div>
+                  <template v-else>
+                    <div class="pref-tag-list" data-no-translate>
+                      <span v-for="tag in travelPreferences.tags" :key="tag" class="pref-tag-chip">#{{ tag }}</span>
+                    </div>
+                    <div class="pref-style-list">
+                      <div v-for="(style, index) in travelPreferences.styles" :key="style.label" class="pref-style-bar" :style="{ '--taste-fill': ['#7eaa97', '#aaa0c8', '#d3ae85', '#8eafbd', '#c59eac'][index % 5], '--taste-ink': ['#426c59', '#70658e', '#896845', '#526f7c', '#855e6c'][index % 5] }" :class="{ 'is-first': index === 0, 'is-second': index === 1 }">
+                        <div class="pref-style-header">
+                          <span class="taste-rank" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span>
+                          <span class="pref-style-label" data-no-translate>{{ style.label }}</span>
+                          <span class="pref-style-percent">{{ style.percent }}%</span>
+                        </div>
+                        <div class="pref-style-track">
+                          <div class="pref-style-fill" :style="{ width: Math.max(0, Math.min(100, style.percent)) + '%' }"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
                 </article>
               </section>
 

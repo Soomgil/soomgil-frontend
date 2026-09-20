@@ -34,6 +34,8 @@ function buildRouter() {
         meta: { requiresAuth: true },
       },
       { path: '/trips/:tripId/route', name: 'Route', component: blank, meta: { requiresAuth: true } },
+	  { path: '/mypage', name: 'MyPage', component: blank, meta: { requiresAuth: true } },
+	  { path: '/mypage/:userId', name: 'UserProfile', component: blank },
     ],
   })
   applyGuards(router)
@@ -74,4 +76,15 @@ describe('가입 취향 설문 진입 가드', () => {
     expect(router.currentRoute.value.name).toBe('OnboardingPreferences')
     expect(router.currentRoute.value.query.redirect).toBe('/home')
   })
+
+	it('내 사용자 ID의 공개 프로필 주소는 내 마이페이지 주소로 정규화한다', async () => {
+		mocks.ensureStatus.mockResolvedValue(true)
+		const router = buildRouter()
+
+		await router.push('/mypage/user-1')
+
+		expect(router.currentRoute.value.name).toBe('MyPage')
+		expect(router.currentRoute.value.fullPath).toBe('/mypage')
+		expect(mocks.ensureStatus).toHaveBeenCalledWith('user-1')
+	})
 })

@@ -51,6 +51,11 @@ describe('TripInviteAcceptPage', () => {
 
     expect(store.acceptInvite).toHaveBeenCalledWith('JOIN-ME')
     expect(wrapper.text()).toContain('초대 수락 완료')
+    expect(wrapper.find('.invite-brand').exists()).toBe(false)
+    expect(wrapper.find('.invite-icon-wrap').exists()).toBe(false)
+    expect(wrapper.find('.invite-eyebrow').exists()).toBe(false)
+    expect(wrapper.find('.invite-trip-card').text()).toContain(trip.title)
+    expect(wrapper.find('.invite-trip-card').text()).toContain(trip.displayDestination)
 
     await wrapper.get('[data-testid="go-trip"]').trigger('click')
     expect(routerPush).toHaveBeenCalledWith({ name: 'Route', params: { tripId: trip.id } })

@@ -1853,6 +1853,19 @@ function onPointerDown(e: PointerEvent) {
   }
 
   function updateAutoScroll(clientY: number) {
+    const trashZone = document.getElementById('trash-drop-zone')
+    if (trashZone) {
+      const trashRect = trashZone.getBoundingClientRect()
+      const dragRect = stop.getBoundingClientRect()
+      const isOverTrash = dragRect.bottom >= trashRect.top && dragRect.top <= trashRect.bottom &&
+        dragRect.right >= trashRect.left && dragRect.left <= trashRect.right
+      if (isOverTrash) {
+        if (autoScrollFrame !== null) cancelAnimationFrame(autoScrollFrame)
+        autoScrollFrame = null
+        return
+      }
+    }
+
     const currentContainerRect = dragContainer.getBoundingClientRect()
     const edgeSize = Math.min(96, Math.max(48, currentContainerRect.height * 0.18))
     const distanceToBottom = currentContainerRect.bottom - clientY
@@ -1975,11 +1988,13 @@ function onPointerDown(e: PointerEvent) {
 
       if (source!.type === 'separator') {
         const day = dayPlans.value[source!.dayIdx]
-        if (day) removeDay(day)
+        if (day) await removeDay(day)
       } else {
         const item = dayPlans.value[source!.dayIdx]?.items[source!.itemIdx]
-        if (item) removeItineraryItem(item)
+        if (item) await removeItineraryItem(item)
       }
+      await nextTick()
+      restoreItineraryScroll(initialScrollTop)
       releasePendingItineraryScroll(initialScrollTop)
       return
     }
@@ -5944,6 +5959,21 @@ function textAvatarStyle(index: unknown) {
   scrollbar-width: none;
   -ms-overflow-style: none;
   width: 100%;
+}
+
+/* 안내·대기 상태는 콘텐츠 높이에 맞춰 불필요한 빈 공간을 남기지 않는다. */
+.vote-modal-card:has([data-testid="vote-observer"]),
+.vote-modal-card:has([data-testid="vote-waiting"]) {
+  height: auto;
+  max-height: min(88vh, 760px);
+  max-width: 760px;
+}
+
+.vote-modal-card:has([data-testid="vote-setup"]) {
+  height: auto;
+  max-height: min(88vh, 720px);
+  max-width: 820px;
+  padding: 18px 28px 28px;
 }
 
 .vote-modal-card::-webkit-scrollbar {
