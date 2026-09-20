@@ -36,7 +36,7 @@ const emit = defineEmits<{
       @click="emit('select', 'kakao')"
     >
       <span class="kakao-provider-icon" aria-hidden="true"></span>
-      <span class="kakao-provider-label">카카오 로그인</span>
+      <span class="kakao-provider-label">{{ mode === 'signup' ? '카카오 계정으로 가입' : '카카오 계정으로 로그인' }}</span>
     </button>
   </div>
 </template>
@@ -45,39 +45,39 @@ const emit = defineEmits<{
 .oauth-provider-stack {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  min-height: 98px;
+  align-items: stretch;
+  gap: 7px;
+  min-height: 91px;
 }
 
 .oauth-provider-button {
   display: flex;
   width: 100%;
   min-width: 0;
-  height: 48px;
+  height: 42px;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  border-radius: 8px;
+  padding: 0 18px;
+  border-radius: 999px;
   cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, box-shadow .2s ease, transform .2s ease;
 }
 
 .oauth-provider-button.google {
   position: relative;
-  border: 1px solid #747775;
+  border: 1px solid #d7e2e9;
   background: #fff;
-  color: #1f1f1f;
+  color: #425b6e;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .google-provider-icon {
   position: absolute;
-  left: 16%;
-  width: 20px;
-  height: 20px;
-  transform: translateX(-50%);
+  left: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .google-provider-label {
@@ -89,24 +89,23 @@ const emit = defineEmits<{
 
 .oauth-provider-button.kakao {
   position: relative;
-  border: 0;
+  border: 1px solid #fee500;
   background: #fee500;
   color: rgba(0, 0, 0, 0.85);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .kakao-provider-icon {
   position: absolute;
-  left: 16%;
-  width: 24px;
-  height: 24px;
+  left: 18px;
+  width: 22px;
+  height: 22px;
   background-image: url('/images/oauth/kakao-login.png');
   background-repeat: no-repeat;
   background-position: -14px -12px;
   background-size: 320px 48px;
-  transform: translateX(-50%);
 }
 
 .kakao-provider-label {
@@ -117,13 +116,24 @@ const emit = defineEmits<{
 }
 
 .oauth-provider-button:hover:not(:disabled) {
-  filter: brightness(0.97);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(66, 91, 110, 0.1);
+}
+
+.oauth-provider-button.google:hover:not(:disabled) {
+  border-color: #b9cbd7;
+  background: #fafdff;
+}
+
+.oauth-provider-button.kakao:hover:not(:disabled) {
+  border-color: #ead300;
+  background: #f4dc00;
 }
 
 .oauth-provider-button:focus-visible {
   outline: 3px solid rgba(37, 99, 235, 0.32);
   outline-offset: 2px;
-  border-radius: 12px;
+  border-radius: 999px;
 }
 
 .oauth-provider-button:disabled {

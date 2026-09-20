@@ -333,6 +333,17 @@ describe('RoutePage itinerary integration', () => {
     vi.unstubAllGlobals()
   })
 
+  it('내 여행으로 돌아갈 때 전체 새로고침 없이 라우터로 이동한다', async () => {
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+
+    await wrapper.get('.trip-sidebar-back').trigger('click')
+
+    expect(routing.push).toHaveBeenCalledWith('/my-trips')
+  })
+
   it('지도 화면 진입 시 AI·메모·체크리스트를 백엔드에서 불러온다', async () => {
     mount(RoutePage, {
       global: {
@@ -3349,20 +3360,31 @@ describe('RoutePage itinerary integration', () => {
     expect(routing.push).not.toHaveBeenCalled()
   })
 
-  it('결과에서 AI 배치를 맡기면 모달을 닫고 AI 패널에 프롬프트를 채운다', async () => {
+  it('결과에서 AI 배치를 맡기면 모달을 닫고 AI 요청을 즉시 전송한 뒤 일정을 동기화한다', async () => {
     holder.votingStore.session = { status: 'OPEN' }
     holder.votingStore.myParticipation = { status: 'NOT_STARTED' }
     holder.votingStore.isSubmitted = false
+    connectedApis.ai.sendMessage.mockResolvedValue({
+      message: { id: 'ai-arranged', role: 'ASSISTANT', requester: null, content: '일정에 배치했어요.', toolCallId: 'tool-1', createdAt: '2026-06-22T00:00:01Z' },
+      toolCalls: [{ id: 'tool-1', toolName: 'moveItineraryItem', executionPolicy: 'REVERSIBLE_WRITE', status: 'SUCCEEDED', versionBefore: 3, versionAfter: 4, undoRedoAvailable: true, errorCode: null }],
+      itineraryVersion: 4,
+      undoAvailable: true,
+      redoAvailable: false,
+    })
     const wrapper = mount(RoutePage, { global: { stubs: voteStubs } })
     await flushPromises()
+    holder.state.fetchItinerary.mockClear()
 
     await wrapper.get('[data-testid="vote-flow-ai"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-modal"]').exists()).toBe(false)
-    const input = wrapper.get('#ai-chat-input').element as HTMLInputElement
-    expect(input.value).toContain('성산일출봉')
-    expect(input.value).toContain('만장굴')
-    expect(input.value).toContain('배치')
+    expect(connectedApis.ai.sendMessage).toHaveBeenCalledWith('trip-1', expect.objectContaining({
+      content: expect.stringMatching(/성산일출봉.*만장굴.*실제 배치/s),
+      baseVersion: expect.anything(),
+    }))
+    expect(holder.state.fetchItinerary).toHaveBeenCalled()
+    expect((wrapper.get('#ai-chat-input').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.text()).toContain('일정에 배치했어요.')
   })
 })

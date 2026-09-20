@@ -85,6 +85,18 @@ describe('커뮤니티 API 화면 연동', () => {
     expect(wrapper.text()).toContain('서울 골목 여행')
   })
 
+  it('최신 여행기 통계를 인기 여행기와 같은 아이콘 및 문구로 표시한다', async () => {
+    const wrapper = mount(CommunityPage, { global: { stubs } })
+    await flushPromises()
+
+    const stats = wrapper.findAll('.story-tile-footer .story-tile-stat')
+    expect(stats).toHaveLength(2)
+    expect(stats[0].text()).toContain('favorite')
+    expect(stats[0].text()).toContain('좋아요 3')
+    expect(stats[1].text()).toContain('chat_bubble')
+    expect(stats[1].text()).toContain('댓글 0')
+  })
+
   it('CommunityPage에서 여행기 상세와 댓글을 API로 조회한다', async () => {
     const wrapper = mount(CommunityPage, { global: { stubs } })
     await flushPromises()
@@ -93,6 +105,7 @@ describe('커뮤니티 API 화면 연동', () => {
 
     expect(mocks.communityApi.getPost).toHaveBeenCalledWith('post-1')
     expect(mocks.communityApi.getComments).toHaveBeenCalledWith('post-1')
+    expect(wrapper.find('.story-comment-button').exists()).toBe(false)
   })
 
   it('CommunityPage 상세 모달의 좋아요를 API에 반영한다', async () => {

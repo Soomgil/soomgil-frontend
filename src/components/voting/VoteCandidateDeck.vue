@@ -285,11 +285,11 @@ function imageUrl(candidate: TripVoteCandidate | null) {
   gap: 5px;
   padding: 7px 14px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--violet), var(--blue));
+  background: var(--rose, #ff5c8d);
   color: #fff;
   font-size: 13px;
   font-weight: 800;
-  box-shadow: 0 8px 20px rgba(0, 102, 255, 0.35);
+  box-shadow: 0 8px 20px rgba(255, 92, 141, 0.35);
 }
 
 .vote-deck__badge .material-symbols-rounded {
@@ -426,7 +426,7 @@ function imageUrl(candidate: TripVoteCandidate | null) {
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding: 4px 4px 8px;
+  padding: 4px;
   scrollbar-width: thin;
 }
 

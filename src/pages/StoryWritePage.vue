@@ -10,6 +10,11 @@ import { tripApi } from '@/api/trip.api'
 import type { TripSummary } from '@/types/trip'
 import type { MediaFile } from '@/types/media'
 import { useToast } from '@/composables/useToast'
+import {
+  COMMUNITY_POST_HASHTAG_MAX_COUNT,
+  COMMUNITY_POST_HASHTAG_NAME_MAX,
+  COMMUNITY_POST_SUMMARY_MAX,
+} from '@/constants/community'
 
 const router = useRouter()
 const toast = useToast()
@@ -47,6 +52,8 @@ const previewTags = computed(() => {
   const tagsText = tagsInput.value.trim() || ''
   return tagsText.split(/\s+/).filter((t) => t.startsWith('#'))
 })
+const hasInvalidTags = computed(() => previewTags.value.length > COMMUNITY_POST_HASHTAG_MAX_COUNT
+  || previewTags.value.some((tag) => tag.replace(/^#/, '').length > COMMUNITY_POST_HASHTAG_NAME_MAX))
 
 // Markdown toolbar actions
 function insertMarkdown(prefix: string, suffix: string, placeholder: string) {
@@ -57,7 +64,12 @@ function insertMarkdown(prefix: string, suffix: string, placeholder: string) {
   const selected = content.value.substring(start, end) || placeholder
   const before = content.value.substring(0, start)
   const after = content.value.substring(end)
-  content.value = before + prefix + selected + suffix + after
+  const nextContent = before + prefix + selected + suffix + after
+  if (nextContent.length > COMMUNITY_POST_SUMMARY_MAX) {
+    toast.info(`본문은 최대 ${COMMUNITY_POST_SUMMARY_MAX.toLocaleString()}자까지 작성할 수 있습니다.`)
+    return
+  }
+  content.value = nextContent
   setTimeout(() => {
     textarea.focus()
     textarea.setSelectionRange(start + prefix.length, start + prefix.length + selected.length)
@@ -72,6 +84,10 @@ async function handlePublish() {
   const trip = myTrips.value.find((item) => item.id === selectedTripId.value)
   if (!trip || !title.value.trim() || selectedMedia.value.length === 0) {
     toast.info('여행계획, 제목, 사진을 한 장 이상 선택해주세요.')
+    return
+  }
+  if (hasInvalidTags.value) {
+    toast.info(`태그는 최대 ${COMMUNITY_POST_HASHTAG_MAX_COUNT}개, 태그 하나는 최대 ${COMMUNITY_POST_HASHTAG_NAME_MAX}자까지 입력할 수 있습니다.`)
     return
   }
   publishing.value = true
@@ -195,7 +211,10 @@ onMounted(async () => {
                     </div>
                   </div>
                   <div class="form-group" style="display: grid; gap: 10px;">
-                    <label for="story-tags" style="font-weight: 800; font-size: 15px; color: var(--ink);">태그</label>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                      <label for="story-tags" style="font-weight: 800; font-size: 15px; color: var(--ink);">태그</label>
+                      <span class="small muted">{{ previewTags.length }}/{{ COMMUNITY_POST_HASHTAG_MAX_COUNT }}개</span>
+                    </div>
                     <div class="form-group-icon-wrap">
                       <span class="material-symbols-rounded">tag</span>
                       <input id="story-tags" class="field" v-model="tagsInput">
@@ -206,7 +225,7 @@ onMounted(async () => {
                 <div class="form-group" style="display: grid; gap: 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <label for="story-content" style="font-weight: 800; font-size: 15px; color: var(--ink);">본문</label>
-                    <span class="small muted" style="font-weight: 750;">{{ formatUiText("글자 수: {0}자", "Characters: {0}", [charCount]) }}</span>
+                    <span class="small muted" style="font-weight: 750;">{{ charCount.toLocaleString() }}/{{ COMMUNITY_POST_SUMMARY_MAX.toLocaleString() }}자</span>
                   </div>
                   <div style="position: relative; border: 1.5px solid rgba(227, 234, 244, 0.9); border-radius: 20px; background: #fff; overflow: hidden; box-shadow: var(--soft-shadow);">
                     <div class="editor-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1.5px solid rgba(227, 234, 244, 0.9); background: #fbfcfe;">
@@ -223,7 +242,7 @@ onMounted(async () => {
                         Markdown 지원
                       </div>
                     </div>
-                    <textarea id="story-content" data-content-editor class="field text-area" style="border: 0 !important; border-radius: 0 !important; box-shadow: none !important; min-height: 300px; padding: 20px;" v-model="content"></textarea>
+                    <textarea id="story-content" data-content-editor class="field text-area" style="border: 0 !important; border-radius: 0 !important; box-shadow: none !important; min-height: 300px; padding: 20px;" v-model="content" :maxlength="COMMUNITY_POST_SUMMARY_MAX"></textarea>
                   </div>
                 </div>
 

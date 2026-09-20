@@ -2,7 +2,7 @@
 import { createFeedWheelGate } from "@/utils/feedWheelGate";
 import { formatUiText } from '@/i18n/ui-localizer'
 import { translateUiText } from '@/i18n/ui-localizer'
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { communityApi } from "@/api/community.api";
 import { userApi } from "@/api/user.api";
@@ -17,6 +17,7 @@ import AppShell from "@/components/layout/AppShell.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import ErrorState from "@/components/common/ErrorState.vue";
 import LoadingState from "@/components/common/LoadingState.vue";
+import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PopularStoryCarousel from "@/components/community/PopularStoryCarousel.vue";
 import StoryWriteModal from "@/components/community/StoryWriteModal.vue";
 import { useModal } from "@/composables/useModal";
@@ -27,7 +28,7 @@ import { useLocale } from "@/i18n";
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
-const { locale } = useLocale();
+const { locale, tr } = useLocale();
 const auth = useAuthStore();
 
 interface StoryView {
@@ -62,6 +63,9 @@ const brokenStoryImages = ref(new Set<string>());
 function markStoryImageBroken(id: string) { brokenStoryImages.value = new Set(brokenStoryImages.value).add(id); }
 const selectedPost = ref<CommunityPostDetail | null>(null);
 const storyWriteModal = useModal();
+const editingPost = ref<CommunityPostDetail | null>(null);
+const pendingDeleteStory = ref<StoryView | null>(null);
+const deletingStory = ref(false);
 
 function getProfileImage(userId: string): Promise<string | null> {
   const cached = profileImageRequests.get(userId);
@@ -292,7 +296,13 @@ function openWriter() {
     void router.push({ name: "Login", query: { redirect: "/community" } });
     return;
   }
+  editingPost.value = null;
   storyWriteModal.open();
+}
+
+function closeWriter() {
+  storyWriteModal.close();
+  editingPost.value = null;
 }
 
 const overlayComment = ref("");
@@ -361,33 +371,59 @@ async function deleteComment(commentId: string) {
 }
 
 async function editStory(story: StoryView) {
-  const title = window.prompt(translateUiText("여행기 제목"), story.title)?.trim();
-  if (!title) return;
-  const summary = window.prompt(translateUiText("여행기 소개"), story.summary)?.trim() ?? story.summary;
   try {
-    const updated = await communityApi.updatePost(story.id, { title, summary });
-    const index = posts.value.findIndex((post) => post.id === story.id);
-    if (index >= 0) posts.value[index] = updated;
-    selectedPost.value = updated;
-    toast.success("여행기를 수정했습니다.");
+    editingPost.value = selectedPost.value?.id === story.id
+      ? selectedPost.value
+      : await communityApi.getPost(story.id);
+    selectedPost.value = null;
+    storyWriteModal.open();
   } catch {
-    toast.error("여행기를 수정하지 못했습니다.");
+    toast.error("수정할 여행기를 불러오지 못했습니다.");
   }
 }
 
-async function deleteStory(story: StoryView) {
-  if (!window.confirm(translateUiText("여행기를 삭제할까요?"))) return;
+function deleteStory(story: StoryView) {
+  pendingDeleteStory.value = story;
+}
+
+async function confirmDeleteStory() {
+  const story = pendingDeleteStory.value;
+  if (!story || deletingStory.value) return;
+  deletingStory.value = true;
   try {
     await communityApi.deletePost(story.id);
     posts.value = posts.value.filter((post) => post.id !== story.id);
+    pendingDeleteStory.value = null;
     closeModal();
     toast.success("여행기를 삭제했습니다.");
   } catch {
     toast.error("여행기를 삭제하지 못했습니다.");
+  } finally {
+    deletingStory.value = false;
   }
 }
 
 const likingPostIds = ref(new Set<string>());
+const likeAnimatingPostIds = ref(new Set<string>());
+const likeAnimationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function playCardLikeAnimation(postId: string) {
+  const previousTimer = likeAnimationTimers.get(postId);
+  if (previousTimer) clearTimeout(previousTimer);
+  likeAnimatingPostIds.value = new Set(likeAnimatingPostIds.value).add(postId);
+  likeAnimationTimers.set(postId, setTimeout(() => {
+    const next = new Set(likeAnimatingPostIds.value);
+    next.delete(postId);
+    likeAnimatingPostIds.value = next;
+    likeAnimationTimers.delete(postId);
+  }, 700));
+}
+
+onUnmounted(() => {
+  likeAnimationTimers.forEach(clearTimeout);
+  likeAnimationTimers.clear();
+});
+
 async function toggleStoryLike(story: StoryView) {
   if (likingPostIds.value.has(story.id)) return;
   likingPostIds.value = new Set(likingPostIds.value).add(story.id);
@@ -405,6 +441,7 @@ async function toggleStoryLike(story: StoryView) {
       selectedPost.value.likedByMe = result.liked;
       selectedPost.value.likeCount = result.likeCount;
     }
+    if (result.liked) playCardLikeAnimation(story.id);
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } }).response?.status;
     toast.error(
@@ -441,9 +478,16 @@ async function shareStory(story: StoryView) {
 }
 
 function handlePostPublished(_post: CommunityPostDetail) {
-  storyWriteModal.close();
+  closeWriter();
   currentPage.value = 1;
   void loadPosts();
+}
+
+function handlePostUpdated(post: CommunityPostDetail) {
+  const index = posts.value.findIndex((item) => item.id === post.id);
+  if (index >= 0) posts.value[index] = post;
+  selectedPost.value = post;
+  closeWriter();
 }
 const scrollGuideVisible = ref(true);
 const visibleStoryIdx = ref(0);
@@ -520,9 +564,6 @@ function cancelFeedDrag() {
   feedDragging.value = false;
   feedDragY.value = 0;
 }
-function focusStoryComments(e: Event) {
-  (e.currentTarget as HTMLElement).closest('.feed-layout')?.querySelector<HTMLInputElement>('.feed-comment-input-area input')?.focus();
-}
 function onKeydown(e: KeyboardEvent) {
   if (e.repeat) { e.preventDefault(); return; }
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
@@ -583,14 +624,13 @@ watch(
   <AppShell paper>
     <main class="community-paper">
       <section class="section community-page page-with-hero">
-        <div class="community-hero-header">
-          <div class="community-hero-text">
-            <p class="eyebrow community-hero-eyebrow">
-              <span class="material-symbols-rounded">explore</span>
+        <div class="page-hero primary-page-hero">
+          <div class="page-hero__copy">
+            <p class="page-hero__eyebrow">
               Trip Community
             </p>
-            <h1 class="community-hero-title">{{ locale === 'en' ? 'Travel stories' : '여행 이야기' }}</h1>
-            <p class="lead community-hero-lead">다른 여행자의 발자취에서 다음 여행을 발견하세요.</p>
+            <h1 class="page-hero__title">{{ locale === 'en' ? 'Travel stories' : '여행 이야기' }}</h1>
+            <p class="page-hero__lead">다른 여행자의 기록에서 마음에 드는 장소와 새로운 여행의 영감을 찾아보세요.</p>
           </div>
         </div>
 
@@ -602,7 +642,7 @@ watch(
           title="아직 공개된 여행기가 없어요"
           description="다녀온 여행을 기록하고 다른 여행자들과 나눠보세요."
           action-label="첫 여행기 작성하기"
-          @action="storyWriteModal.open()"
+          @action="openWriter"
         />
 
         <div v-if="!loading && !loadError && stories.length" class="community-content-container">
@@ -664,7 +704,7 @@ watch(
                   <button
                     type="button"
                     class="story-tile-like"
-                    :class="{ active: story.likedByMe }"
+                    :class="{ active: story.likedByMe, 'heart-animate': likeAnimatingPostIds.has(story.id) }"
                     :disabled="likingPostIds.has(story.id)"
                     :aria-pressed="story.likedByMe"
                     aria-label="좋아요"
@@ -704,18 +744,12 @@ watch(
                   </div>
                   <div class="story-tile-footer">
                     <span class="story-tile-stat">
-                      <span class="material-symbols-rounded">favorite</span>
-                      {{ story.likes }}
+                      <span class="material-symbols-rounded" aria-hidden="true">favorite</span>
+                      {{ tr('좋아요', 'Likes') }} {{ story.likes }}
                     </span>
                     <span class="story-tile-stat">
-                      <span class="material-symbols-rounded">chat_bubble</span>
-                      {{ story.comments }}
-                    </span>
-                    <span
-                      class="story-tile-stat story-tile-stat-end"
-                      aria-hidden="true"
-                    >
-                      {{ new Date(story.publishedAt).toLocaleDateString("ko-KR") }}
+                      <span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>
+                      {{ tr('댓글', 'Comments') }} {{ story.comments }}
                     </span>
                   </div>
                 </div>
@@ -894,12 +928,11 @@ watch(
                         <span class="material-symbols-rounded" style="font-size: 20px">favorite</span>
                         {{ visibleStory.likes }}
                       </button>
-                      <button type="button" class="story-like-button story-comment-button" aria-label="댓글 작성" @click="focusStoryComments"><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ visibleStory.comments }}</button>
                       <button type="button" class="story-like-button" @click="retripStory(visibleStory)">
                         <span class="material-symbols-rounded" style="font-size: 20px"
                           >content_copy</span
                         >
-                        리트립
+                        일정 가져오기
                       </button>
                       <button type="button" class="story-like-button" @click="shareStory(visibleStory)">
                         <span class="material-symbols-rounded" style="font-size: 20px">share</span>
@@ -1188,8 +1221,21 @@ watch(
     <!-- Story write modal -->
     <StoryWriteModal
       v-if="storyWriteModal.isOpen.value"
-      @close="storyWriteModal.close()"
+      :post="editingPost"
+      @close="closeWriter"
       @published="handlePostPublished"
+      @updated="handlePostUpdated"
+    />
+    <ConfirmDialog
+      v-if="pendingDeleteStory"
+      title="여행기를 삭제할까요?"
+      message="삭제한 여행기는 다시 복구할 수 없습니다. 그래도 삭제하시겠어요?"
+      confirm-label="삭제하기"
+      cancel-label="취소"
+      tone="danger"
+      :busy="deletingStory"
+      @cancel="pendingDeleteStory = null"
+      @confirm="confirmDeleteStory"
     />
   </AppShell>
 </template>
@@ -1764,6 +1810,29 @@ watch(
 .story-tile-like.active .material-symbols-rounded {
   font-variation-settings: "FILL" 1;
 }
+.story-tile-like.heart-animate .material-symbols-rounded {
+  animation: community-card-heart-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.story-tile-like.heart-animate::after {
+  content: "♥";
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  margin-left: -5px;
+  color: #f16c8b;
+  pointer-events: none;
+  animation: community-card-heart-float 0.65s ease-out forwards;
+}
+@keyframes community-card-heart-pop {
+  0% { transform: scale(0.65); }
+  45% { transform: scale(1.4) rotate(-12deg); }
+  75% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+@keyframes community-card-heart-float {
+  from { opacity: 0.9; transform: translateY(0) scale(0.7); }
+  to { opacity: 0; transform: translateY(-28px) scale(1.25); }
+}
 .story-tile-like:disabled {
   opacity: 0.6;
   cursor: progress;
@@ -1863,31 +1932,19 @@ watch(
 .story-tile-footer {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px solid rgba(227, 234, 244, 0.9);
-  color: var(--muted);
+  gap: 16px;
+  margin-top: 14px;
+  color: #71889c;
+  font-size: 12px;
 }
 .story-tile-stat {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 700;
+  gap: 6px;
 }
 .story-tile-stat .material-symbols-rounded {
   font-size: 16px;
-  color: var(--violet);
-}
-.story-tile-stat:first-child .material-symbols-rounded {
-  color: var(--rose);
-}
-.story-tile-stat-end {
-  margin-left: auto;
-}
-.story-tile-stat-end .material-symbols-rounded {
-  color: var(--muted);
+  color: inherit;
 }
 
 /* ===== Pagination (평범한 숫자 방식) ===== */
@@ -2061,8 +2118,22 @@ watch(
   margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid var(--line);
-  color: var(--muted);
+  color: #111827;
   font-size: 14px;
+}
+
+.story-overlay .tag-row .tag {
+  min-height: 24px;
+  padding: 0 11px;
+  border: 1px solid #d7e6f0;
+  border-radius: 999px;
+  background: #edf5fa;
+  color: #4f718a;
+}
+
+.story-overlay .tag-row .tag:hover {
+  background: #e3eff6;
+  color: #365f7d;
 }
 .story-overlay .story-feed-window {
   position: relative;
@@ -2511,6 +2582,7 @@ watch(
 }
 .story-report-btn .material-symbols-rounded {
   font-size: 20px;
+  color: #c95f62;
 }
 .story-like-button {
   display: inline-flex;
@@ -2519,11 +2591,17 @@ watch(
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: #111827;
   cursor: pointer;
 }
-.story-like-button.active,
-.story-like-button:hover {
+.story-action-bar .story-like-button .material-symbols-rounded {
+  color: #111827;
+}
+.story-like-button:hover,
+.story-like-button.active {
+  color: #111827;
+}
+.story-action-bar .story-heart-button.active .material-symbols-rounded {
   color: var(--rose);
 }
 
@@ -2715,8 +2793,9 @@ watch(
 .community-paper .story-tile-title { color: #35465A; font-size: 19px; font-weight: 600; line-height: 1.5; }
 .community-paper .story-tile-summary { color: #647C92; font-size: 13px; line-height: 1.75; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .community-paper .story-tile-avatar { background: #EAF4FF; color: #647C92; }
-.community-paper .story-tile-footer { border-top: 1px solid #EAF4FF; color: #647C92; }
-.community-paper .tag-soft { background: #EAF4FF; border-color: transparent; color: #647C92; font-weight: 400; }
+.community-paper .story-tile-footer { border-top: 0; color: #71889C; }
+.community-paper .tag-soft { min-height:24px; padding:0 10px; border:1px solid #d7e6f0; border-radius:999px; background:#edf5fa; color:#4f718a; font-weight:650; }
+.community-paper .tag-soft:hover { background:#e3eff6; color:#365f7d; }
 .community-paper .pg-btn { background: transparent; border-color: transparent; color: #647C92; box-shadow: none; }
 .community-paper .pg-btn.active { background: #EAF4FF; color: #427EAD; }
 .community-empty { padding: 32px 0; color: #647C92; }
@@ -2750,8 +2829,7 @@ watch(
 .community-paper .story-tile-author-name { min-width:0; }
 .community-paper .story-tile-author-name strong { font-size:11px; }
 .community-paper .story-tile-author-name .small { display:none; }
-.community-paper .story-tile-footer { order:4; padding-top:4px; border:0; font-size:10px; gap:10px; }
-.community-paper .story-tile-stat .material-symbols-rounded { font-size:14px; }
+.community-paper .story-tile-footer { order:4; }
 .community-paper .story-tile-like { width:32px; height:32px; top:10px; right:10px; box-shadow:0 2px 8px #35465a14; }
 .community-paper .story-card-grid--list { grid-template-columns:1fr; gap:16px; padding:0; }
 .community-paper .story-card-grid--list .story-tile { display:grid; grid-template-columns:180px minmax(0,1fr); padding:10px; transform:none; border-radius:4px; box-shadow:0 4px 16px #35465a08; }
@@ -2759,7 +2837,7 @@ watch(
 .community-paper .story-card-grid--list .story-tile-image-wrap { width:100%; height:100%; min-height:176px; aspect-ratio:1; }
 .community-paper .story-card-grid--list .story-tile-body { padding:8px 16px; gap:8px; }
 .community-paper .story-card-grid--list .story-tile-title { font-size:19px; }
-.community-paper .story-card-grid--list .story-tile-tags { display:none; }
+.community-paper .story-card-grid--list .story-tile-tags { display:flex; }
 .community-paper .story-card-grid--list .story-tile-author { padding-top:2px; }
 @media(max-width:1000px) { .community-paper .story-card-grid--list { grid-template-columns:1fr; } }
 @media(max-width:600px) {
@@ -2775,12 +2853,15 @@ watch(
   .community-paper .story-card-grid--list .story-tile-body { padding:3px 2px 3px 0; gap:8px; }
   .community-paper .story-card-grid--list .story-tile-title { font-size:15px; }
   .community-paper .story-card-grid--list .story-tile-summary { display:none; }
-  .community-paper .story-card-grid--list .story-tile-footer { flex-wrap:wrap; gap:5px 8px; }
-  .community-paper .story-card-grid--list .story-tile-stat-end { flex-basis:100%; margin-left:0; }
   .community-paper .story-card-grid--list .story-photo-placeholder { font-size:9px; text-align:center; padding:6px; }
   .community-paper .story-card-grid--list .story-tile-like { top:6px; right:6px; width:28px; height:28px; }
 }
-@media(prefers-reduced-motion:reduce) { .community-paper .story-tile,.story-view-toggle button { transition:none; } }
+@media(prefers-reduced-motion:reduce) {
+  .community-paper .story-tile,
+  .story-view-toggle button { transition:none; }
+  .story-tile-like.heart-animate .material-symbols-rounded { animation:none; }
+  .story-tile-like.heart-animate::after { display:none; }
+}
 
 /* Share the featured polaroid paper surface in both card layouts. */
 .community-paper { --community-card-paper:#fff; --community-card-opacity:1; }
@@ -2797,17 +2878,15 @@ watch(
 .community-paper .story-tile-summary { -webkit-line-clamp:1; }
 .community-paper .story-tile-tags { flex-wrap:nowrap; overflow:hidden; max-height:24px; }
 .community-paper .story-tile-tags .tag { white-space:nowrap; }
-.community-paper .story-tile-footer { gap:8px; }
-.community-paper .story-tile-stat { font-size:10px; }
 .community-paper .story-card-grid--list { grid-template-columns:1fr; max-width:900px; margin-inline:auto; gap:12px; }
 .community-paper .story-card-grid--list .story-tile { grid-template-columns:144px minmax(0,1fr); gap:18px; padding:10px; border-radius:14px; transform:none; }
 .community-paper .story-card-grid--list .story-tile-image-wrap { height:144px; min-height:0; aspect-ratio:1; border-radius:5px; }
-.community-paper .story-card-grid--list .story-tile-body { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto 1fr; gap:8px 16px; padding:8px 8px 4px 0; }
+.community-paper .story-card-grid--list .story-tile-body { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto auto 1fr; gap:8px 16px; padding:8px 8px 4px 0; }
 .community-paper .story-card-grid--list .story-tile-title { grid-column:1 / -1; font-size:17px; -webkit-line-clamp:1; }
 .community-paper .story-card-grid--list .story-tile-summary { grid-column:1 / -1; -webkit-line-clamp:2; }
+.community-paper .story-card-grid--list .story-tile-tags { grid-column:1 / -1; min-width:0; }
 .community-paper .story-card-grid--list .story-tile-author { align-self:end; margin:0; padding:0; }
-.community-paper .story-card-grid--list .story-tile-footer { align-self:end; margin:0; padding:0; flex-wrap:nowrap; }
-.community-paper .story-card-grid--list .story-tile-stat-end { flex-basis:auto; margin-left:8px; }
+.community-paper .story-card-grid--list .story-tile-footer { align-self:end; flex-wrap:nowrap; }
 @media(max-width:1100px) { .community-paper .story-card-grid:not(.story-card-grid--list) { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:760px) {
  .community-paper .story-card-grid:not(.story-card-grid--list) { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
@@ -2816,8 +2895,7 @@ watch(
  .community-paper .story-card-grid--list .story-tile-body { display:flex; padding:2px 0; gap:5px; }
  .community-paper .story-card-grid--list .story-tile-title { font-size:15px; -webkit-line-clamp:2; }
  .community-paper .story-card-grid--list .story-tile-author { align-self:start; margin-top:auto; }
- .community-paper .story-card-grid--list .story-tile-footer { align-self:stretch; gap:6px; }
- .community-paper .story-card-grid--list .story-tile-stat-end { margin-left:auto; }
+ .community-paper .story-card-grid--list .story-tile-footer { align-self:stretch; }
 }
 @media(max-width:480px) {
  .community-paper .story-card-grid:not(.story-card-grid--list) { gap:14px 10px; }
@@ -2826,7 +2904,6 @@ watch(
  .community-paper .story-tile-title { font-size:14px; }
  .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-summary,
  .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-tags { display:none; }
- .community-paper .story-card-grid:not(.story-card-grid--list) .story-tile-stat-end { display:none; }
  .community-paper .story-card-grid--list .story-tile { grid-template-columns:96px minmax(0,1fr); padding:8px; gap:10px; }
  .community-paper .story-card-grid--list .story-tile-image-wrap { height:118px; }
 }

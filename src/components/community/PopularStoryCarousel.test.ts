@@ -2,12 +2,14 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import PopularStoryCarousel from './PopularStoryCarousel.vue'
 
-const stories = ['바다', '하늘', '숲'].map((title, i) => ({ id: String(i), title, summary: `${title} 여행 이야기`, image: `/photo-${i}.jpg`, author: '여행자', authorProfileImageUrl: null, avatar: '여', likes: 3, comments: 1 }))
+const stories = ['바다', '하늘', '숲'].map((title, i) => ({ id: String(i), title, summary: `${title} 여행 이야기`, image: `/photo-${i}.jpg`, author: '여행자', authorProfileImageUrl: null, avatar: '여', likes: 3, comments: 1, tags: ['주말여행', title] }))
 afterEach(() => vi.useRealTimers())
 describe('PopularStoryCarousel', () => {
   it('shows one photo with its summary, wraps navigation and opens the selected story', async () => {
     const wrapper = mount(PopularStoryCarousel, { props: { stories, fallbackImage: '/fallback.jpg' } })
     expect(wrapper.findAll('.featured-polaroid')).toHaveLength(1)
+    expect(wrapper.get('.photo-caption').text()).toContain('#주말여행')
+    expect(wrapper.get('.photo-caption').text()).toContain('#바다')
     await wrapper.get('[aria-label="이전 인기 게시물"]').trigger('click')
     expect(wrapper.get('h3').text()).toBe('숲')
     expect(wrapper.get('.featured-summary').text()).toBe('숲 여행 이야기')

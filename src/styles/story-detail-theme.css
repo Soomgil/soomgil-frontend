@@ -11,8 +11,9 @@
 .story-overlay .feed-layout .story-body h3 { font-family:'Noto Serif KR',Batang,serif; color:#344e65; line-height:1.5; }
 .story-overlay .feed-layout .story-body p { line-height:1.85; overflow-wrap:anywhere; }
 .story-overlay .feed-layout .story-action-bar { flex-wrap:wrap; gap:8px; margin-top:20px; padding-top:16px; }
-.story-overlay .feed-layout .story-like-button { min-height:40px; padding:8px 12px; border:1px solid #dfe7ee; border-radius:999px; background:#fff; color:#487db5; }
-.story-overlay .feed-layout .story-like-button:hover,.story-overlay .feed-layout .story-like-button.active { background:#e5f2fc; color:#396a9e; }
+.story-overlay .feed-layout .story-like-button { min-height:40px; padding:8px 12px; border:1px solid #dfe7ee; border-radius:999px; background:#fff; color:#111827; }
+.story-overlay .feed-layout .story-like-button .material-symbols-rounded { color:#111827; }
+.story-overlay .feed-layout .story-like-button:hover,.story-overlay .feed-layout .story-like-button.active { background:#f5f6f7; color:#111827; }
 .story-overlay .feed-layout .feed-sidebar { width:100%; height:100%; max-height:none; margin:0; padding:0; min-height:0; align-self:stretch; }
 .story-overlay .feed-layout .feed-comment-widget.widget-card { height:100%; max-height:none; margin:0; padding:0; border:1px solid #e1ebf3; border-radius:20px; background:#f8fbfe; box-shadow:none; display:flex; flex-direction:column; }
 .story-overlay .feed-layout .feed-comment-widget.widget-card:hover { transform:none; box-shadow:none; }
@@ -55,8 +56,8 @@
 .story-overlay .feed-layout .story-body > p { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:13px !important; }
 .story-overlay .feed-layout .tag-row { max-height:28px; overflow:hidden; margin-bottom:6px !important; }
 .story-overlay .feed-layout .story-action-bar { margin-top:10px; padding-top:10px; gap:6px; }
-.story-overlay .feed-layout .story-report-btn { border:1px solid #dfe7ee; border-radius:999px; min-width:44px; min-height:36px; padding:6px 12px; background:#fff; color:#487db5; }
-.story-overlay .feed-layout .story-heart-button.active { color:#e34868; border-color:#f1bbca; background:#fff0f4; }
+.story-overlay .feed-layout .story-report-btn { border:1px solid #efd3d5; border-radius:999px; min-width:44px; min-height:36px; padding:6px 12px; background:#fff; color:#c95f62; }
+.story-overlay .feed-layout .story-heart-button.active { color:#111827; border-color:#f1bbca; background:#fff0f4; }
 .story-overlay .feed-layout .story-heart-button.active .material-symbols-rounded { color:#e34868; font-variation-settings:'FILL' 1; animation:story-heart-pop .5s cubic-bezier(.22,1,.36,1); }
 .story-overlay .feed-layout .story-heart-button { position:relative; }
 .story-overlay .feed-layout .story-heart-button.active::after { content:'♥'; position:absolute; top:0; left:15px; color:#f16c8b; pointer-events:none; animation:story-heart-float .65s ease-out forwards; }

@@ -11,6 +11,7 @@ import type {
   PagedCommunityComment,
   ReportReason,
   CommunityPostShareToken,
+  UpdateCommunityPostRequest,
 } from '@/types/community'
 
 export interface CommunityPostQuery {
@@ -41,7 +42,7 @@ export const communityApi = {
     return response.data
   },
 
-  async updatePost(postId: string, data: Partial<CreateCommunityPostRequest>): Promise<CommunityPostDetail> {
+  async updatePost(postId: string, data: UpdateCommunityPostRequest): Promise<CommunityPostDetail> {
     const response = await http.patch<CommunityPostDetail>(`/stories/${postId}`, data)
     return response.data
   },

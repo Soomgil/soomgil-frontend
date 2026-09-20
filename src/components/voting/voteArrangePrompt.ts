@@ -5,5 +5,5 @@
 export function buildVoteArrangePrompt(names: string[]) {
   const list = names.filter(Boolean)
   const head = list.length > 0 ? `투표로 뽑힌 ${list.length}곳(${list.join(', ')})` : '투표로 뽑힌 장소들'
-  return `${head}이 일차 미정에 들어가 있어. 여행 날짜별로 이동 동선과 영업시간을 고려해 적절히 배치해 줘.`
+  return `${head}이 일차 미정에 들어가 있어. 이동 동선과 영업시간을 고려해서 여행 날짜별 일차로 실제 배치해 줘. 설명만 하지 말고 일정에 바로 반영해 줘.`
 }

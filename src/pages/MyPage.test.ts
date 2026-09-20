@@ -69,6 +69,10 @@ function mountPage() {
 describe('MyPage super likes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    })
     auth.isAuthenticated = true
     auth.fetchUser.mockResolvedValue(undefined)
     userApi.getSavedPlaces.mockResolvedValue([place])
@@ -86,7 +90,7 @@ describe('MyPage super likes', () => {
     const wrapper = mountPage()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('슈퍼라이크한 장소')
+    expect(wrapper.text()).toContain('가고 싶은 장소')
     expect(wrapper.text()).not.toContain('좋아요한 장소')
 
     const button = wrapper.get('button[aria-label="슈퍼라이크 취소"]')
@@ -108,18 +112,18 @@ describe('MyPage super likes', () => {
   it('does not show a place count beside the close control in the all-super-likes modal', () => {
     const wrapper = mount(LikedPlacesModal, { props: { places: [place] } })
 
-    expect(wrapper.text()).toContain('슈퍼라이크한 장소')
+    expect(wrapper.text()).toContain('가고 싶은 장소')
     expect(wrapper.text()).not.toContain('1곳')
   })
 
-  it('previews six keyboard-accessible story cards and retains the complete story list', async () => {
+  it('previews two keyboard-accessible story cards and retains the complete story list', async () => {
     communityApi.getPosts.mockResolvedValue({
       items: Array.from({ length: 8 }, (_, index) => ({ id: `story-${index}`, title: `여행 ${index}`, hashtags: ['서울'] })),
       page: { totalElements: 8 },
     })
     const wrapper = mountPage()
     await flushPromises()
-    expect(wrapper.findAll('button.mypage-story-magazine-item')).toHaveLength(6)
+    expect(wrapper.findAll('button.mypage-story-magazine-item')).toHaveLength(2)
     expect(wrapper.find('.story-magazine-title').attributes('data-no-translate')).toBeDefined()
     await wrapper.find('.profile-bottom-col .mypage-more-link').trigger('click')
     expect(wrapper.findComponent(MyStoriesModal).props('stories')).toHaveLength(8)
@@ -131,5 +135,19 @@ describe('MyPage super likes', () => {
     await flushPromises()
     expect(userApi.getSavedPlaces).toHaveBeenCalledOnce()
     expect(communityApi.getPosts).toHaveBeenCalledOnce()
+  })
+
+  it('copies the profile link when the share button is clicked', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+
+    const shareButton = wrapper.findAll('button').find((button) => button.text().includes('공유하기'))
+    expect(shareButton).toBeDefined()
+    await shareButton!.trigger('click')
+    await flushPromises()
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(`${window.location.origin}/mypage/user-1`)
+    expect(toast.success).toHaveBeenCalledWith('프로필 링크를 복사했습니다.')
+    expect(wrapper.text()).not.toContain('프로필 링크를 복사했습니다.')
   })
 })

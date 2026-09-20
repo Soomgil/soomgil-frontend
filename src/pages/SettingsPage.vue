@@ -127,13 +127,15 @@ async function saveSettings() {
 <template>
   <AppShell paper>
     <div class="settings-page profile-settings-page page-with-hero max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <header class="page-hero">
+      <header class="page-hero primary-page-hero account-page-hero">
         <div class="page-hero__copy">
           <p class="page-hero__eyebrow">Settings</p>
           <h1 class="page-hero__title">나에게 맞는 여행 환경</h1>
           <p class="page-hero__lead">언어와 공개 범위, 여행 초대 수신을 한곳에서 관리하세요.</p>
         </div>
-        <RouterLink to="/mypage" class="account-page-link">내 프로필 보기 <span aria-hidden="true">↗</span></RouterLink>
+        <div class="page-hero__actions">
+          <RouterLink to="/mypage" class="account-page-link">내 프로필 보기 <span aria-hidden="true">↗</span></RouterLink>
+        </div>
       </header>
       <!-- 로딩 상태 알림 -->
       <div v-if="loading" class="settings-loading-card">

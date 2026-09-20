@@ -1,471 +1,80 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import '@/styles/scroll-explore.css'
 import logoImg from '@/assets/images/soomgil_logo_extract.png'
+import AppFooter from '@/components/layout/AppFooter.vue'
 
 const router = useRouter()
-
-/* ── Scroll reveal observer ──────────────────────────── */
-let revealObserver: IntersectionObserver | null = null
-
-onMounted(() => {
-  // Parallax
-  const parallaxBg = document.querySelector('.parallax-bg') as HTMLElement | null
-  if (parallaxBg) {
-    const onScroll = () => {
-      parallaxBg.style.transform = `translateY(${window.pageYOffset * 0.5}px)`
-    }
-    window.addEventListener('scroll', onScroll)
-    onUnmounted(() => window.removeEventListener('scroll', onScroll))
-  }
-
-  // Reveal on scroll
-  revealObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('active')
-        }
-      })
-    },
-    { threshold: 0.1 },
-  )
-  document.querySelectorAll('.reveal').forEach((el) => {
-    revealObserver!.observe(el)
-  })
-})
-
-onUnmounted(() => {
-  revealObserver?.disconnect()
-})
-
 const heroImg = '/images/랜딩페이지/korea_hero.png'
 const jejuImg = '/images/랜딩페이지/jeju.png'
 const daejeonImg = '/images/랜딩페이지/daejeon.png'
 const jeonjuImg = '/images/랜딩페이지/jeonju.png'
 const gyeongjuImg = '/images/랜딩페이지/gyeongju.png'
-const busanImg = '/images/랜딩페이지/busan.png'
-const aiImg = '/images/랜딩페이지/ai_simple.png'
-const mapBgImg = '/images/랜딩페이지/map_bg.png'
-
-const galleryCards = [
-  { img: heroImg, title: '달빛 아래 걷는 조선의 밤', desc: '경복궁에서 덕수궁까지 이어지는 고궁 산책' },
-  { img: jejuImg, title: '푸른 바다를 품은 제주 드라이브', desc: '성산일출봉과 섭지코지를 잇는 감성 루트' },
-  { img: daejeonImg, title: '빛으로 물든 대전의 밤', desc: '엑스포 다리와 갑천이 선사하는 화려한 야경' },
-  { img: jeonjuImg, title: '느리게 걷는 전주 한옥마을', desc: '전통의 숨결 속에서 만나는 여유로운 하루' },
-  { img: gyeongjuImg, title: '과거와 현재가 만나는 경주', desc: '황리단길 골목 사이로 즐기는 힙한 주말' },
-  { img: busanImg, title: '낭만 가득한 부산의 밤바다', desc: '광안대교를 바라보며 즐기는 해운대의 밤' },
+const journeys = [
+  { image: jejuImg, region: '제주', title: '바다를 따라 걷는 동쪽 제주' },
+  { image: jeonjuImg, region: '전주', title: '느리게 머무는 한옥마을의 하루' },
+  { image: gyeongjuImg, region: '경주', title: '오래된 도시에서 만난 새로운 취향' },
 ]
+let revealObserver: IntersectionObserver | null = null
+onMounted(() => {
+  revealObserver = new IntersectionObserver(
+    (entries) => entries.forEach((entry) => entry.isIntersecting && entry.target.classList.add('is-visible')),
+    { threshold: 0.12 },
+  )
+  document.querySelectorAll('.landing-reveal').forEach((element) => revealObserver?.observe(element))
+})
+onUnmounted(() => revealObserver?.disconnect())
 </script>
 
 <template>
-  <div class="app-shell">
-    <main>
-      <!-- Hero Section with Korean Parallax -->
-      <section class="hero-section" id="home">
-        <div
-          class="parallax-bg"
-          :style="{ backgroundImage: `url(${heroImg})` }"
-        ></div>
-        <div class="hero-overlay"></div>
-        <div class="hero-content">
-          <!-- Brand Logo -->
-          <div class="hero-logo" style="margin-bottom: 12px">
-            <img
-              :src="logoImg"
-              alt="Soomgil Logo"
-              style="
-                width: 300px;
-                height: auto;
-                filter: drop-shadow(0 0 20px rgba(0, 209, 255, 0.4));
-              "
-            />
-          </div>
-          <p class="eyebrow">함께 만들고 함께 즐기는 실시간 여행 플래너</p>
-          <h1>함께 그리는 설렘,<br /><span class="gradient-text">여행의 모든 순간</span></h1>
-          <p class="lead">
-            가장 가고 싶은 곳을 고르고, 친구들과 실시간으로 일정을 짜보세요.<br />
-            <br />
-            숨길이 당신의 상상을 완벽한 여행 경로로 만들어 드립니다.
-          </p>
-          <div class="hero-cta" style="margin-top: 32px; display: flex; gap: 20px">
-            <a class="btn-premium" href="#" @click.prevent="router.push('/login')">시작하기</a>
-            <a
-              class="btn ghost large"
-              href="#features"
-              style="border-radius: 999px; padding: 18px 42px"
-              >기능 둘러보기</a
-            >
+  <div class="landing-page">
+    <main id="top">
+      <section class="landing-hero landing-hero--classic">
+        <div class="landing-hero-background" :style="{ backgroundImage: `url(${heroImg})` }"></div>
+        <div class="landing-hero-shade"></div>
+        <div class="landing-classic-content landing-reveal is-visible">
+          <img class="landing-classic-logo" :src="logoImg" alt="Soomgil" />
+          <p class="landing-classic-kicker">함께 고르고, 함께 만드는 여행</p>
+          <h1>함께 그리는 설렘,<br /><em>여행의 모든 순간</em></h1>
+          <p class="landing-classic-lead">각자의 취향을 모아 가고 싶은 장소를 고르고,<br />실시간으로 하나의 여행 일정을 완성해보세요.</p>
+          <div class="landing-classic-actions">
+            <button class="landing-button landing-button--classic" type="button" @click="router.push('/register')">함께 여행 만들기 <span class="material-symbols-rounded">arrow_forward</span></button>
+            <a class="landing-button landing-button--classic-ghost" href="#how">기능 둘러보기 <span class="material-symbols-rounded">south</span></a>
           </div>
         </div>
       </section>
 
-      <!-- Features Reveal Section -->
-      <section class="features-section" id="features">
-        <div class="container">
-          <!-- Feature 01: Swipe -->
-          <div class="feature-step reveal" data-step="01">
-            <div class="step-content">
-              <span class="step-num">01</span>
-              <h2>서로의 취향을 확인하는<br />가장 쉬운 방법</h2>
-              <p>
-                맛집부터 숨은 명소까지,<br />
-                취향에 맞는 장소를 가볍게 스와이프하세요.<br />
-                <br />
-                우리 그룹이 가장 선호하는 장소들을<br />
-                한눈에 확인할 수 있습니다.
-              </p>
-              <div class="keyword-tags">
-                <span class="keyword-tag"><i class="material-symbols-rounded">thumbs_up_down</i> 틴더형 스와이프</span>
-                <span class="keyword-tag"><i class="material-symbols-rounded">group</i> 실시간 취향 매칭</span>
-                <span class="keyword-tag"><i class="material-symbols-rounded">bar_chart</i> 투표 불필요</span>
-              </div>
-            </div>
-            <div class="step-visual">
-              <div class="glass-card">
-                <img :src="jejuImg" alt="Jeju" />
-                <div class="card-badges">
-                  <span class="badge liked"
-                    ><i class="material-symbols-rounded">favorite</i> 민지님이 좋아함</span
-                  >
-                  <span class="badge premium"
-                    ><i class="material-symbols-rounded">star</i> 지훈님의 슈퍼라이크</span
-                  >
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Feature 02: Real-time Collab -->
-          <div class="feature-step reveal" data-step="02">
-            <div class="step-visual">
-              <div
-                class="collab-map"
-                :style="{
-                  backgroundImage: `url(${mapBgImg})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }"
-              >
-                <!-- Clean Pins -->
-                <div class="pin p1" style="top: 35%; left: 30%">1</div>
-                <div class="pin p2" style="top: 55%; left: 60%; background: var(--blue)">2</div>
-                <div
-                  class="path-line"
-                  style="
-                    width: 40%;
-                    top: 48%;
-                    left: 32%;
-                    transform: rotate(20deg);
-                    opacity: 0.7;
-                    border-top-style: dashed;
-                    border-top-width: 3px;
-                  "
-                ></div>
-
-                <!-- Single Clean Cursor -->
-                <div class="collab-cursor" style="--color: var(--violet); top: 40%; left: 45%">
-                  <div class="cursor-pointer"></div>
-                  <div class="cursor-label">민지님이 수정 중</div>
-                </div>
-              </div>
-            </div>
-            <div class="step-content">
-              <span class="step-num">02</span>
-              <h2>지도 위에서 펼쳐지는<br />실시간 공동 작업</h2>
-              <p>
-                복잡한 단톡방 대화는 이제 그만.<br />
-                <br />
-                지도 위에서 친구들의 움직임을 실시간으로 확인하며<br />
-                최적의 동선을 함께 설계하세요.
-              </p>
-              <div class="keyword-tags">
-                <span class="keyword-tag"><i class="material-symbols-rounded">sync</i> 실시간 동기화</span>
-                <span class="keyword-tag"><i class="material-symbols-rounded">map</i> 지도 기반 UI</span>
-                <span class="keyword-tag"><i class="material-symbols-rounded">mouse</i> 다중 커서 협업</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Feature 03: AI Route Optimization -->
-          <div class="feature-step reveal" data-step="03">
-            <div class="step-content">
-              <span class="step-num">03</span>
-              <h2>똑똑한 AI가 완성하는<br />맞춤형 여행 코스</h2>
-              <p>
-                장소 간 거리와 이동 시간을<br />
-                고민할 필요 없습니다.<br />
-                <br />
-                AI가 그룹의 선호도를 분석하여<br />
-                가장 효율적이고 즐거운 경로를 제안합니다.
-              </p>
-              <div class="keyword-tags">
-                <span class="keyword-tag"><i class="material-symbols-rounded">bolt</i> AI 동선 최적화</span>
-                <span class="keyword-tag"><i class="material-symbols-rounded">timer</i> 이동 시간 최소화</span>
-                <span class="keyword-tag"><i class="material-symbols-rounded">route</i> 맞춤형 코스 제안</span>
-              </div>
-            </div>
-            <div class="step-visual">
-              <div class="glass-card" style="padding: 10px; border-radius: 24px">
-                <img
-                  :src="aiImg"
-                  alt="AI Optimized Route"
-                  style="border-radius: 16px"
-                />
-              </div>
-            </div>
-          </div>
+      <section id="how" class="landing-process landing-reveal">
+        <div class="landing-section-heading"><p>ONE TRIP, TOGETHER</p><h2>여행 계획, 이제 함께 한곳에서</h2><span>메신저에 흩어진 의견을 찾지 않아도 돼요. 장소 선택부터 일정과 동선까지 하나의 여행 공간에서 이어집니다.</span></div>
+        <div class="landing-process-grid">
+          <article><span class="landing-step-number">01</span><div class="landing-step-icon landing-step-icon--rose"><span class="material-symbols-rounded">favorite</span></div><h3>가고 싶은 곳을 함께 골라요</h3><p>좋아요와 슈퍼라이크로 각자의 취향을 표현하고, 모두가 기대하는 장소를 찾아보세요.</p><div class="landing-taste-demo"><span>한라산</span><b><i class="material-symbols-rounded">favorite</i> 4</b></div></article>
+          <article><span class="landing-step-number">02</span><div class="landing-step-icon"><span class="material-symbols-rounded">edit_location_alt</span></div><h3>한눈에 일정을 정리해요</h3><p>친구들과 같은 지도를 보며 장소를 배치하고, 날짜별 일정과 방문 순서를 함께 정해요.</p><div class="landing-day-demo"><span>1일차</span><i></i><span>2일차</span><i></i><span>3일차</span></div></article>
+          <article><span class="landing-step-number">03</span><div class="landing-step-icon landing-step-icon--green"><span class="material-symbols-rounded">route</span></div><h3>이동하기 좋은 순서로 완성해요</h3><p>AI가 장소 사이의 거리와 이동 시간을 살펴보고 더 자연스러운 여행 동선을 제안해요.</p><div class="landing-route-demo"><span>A</span><i></i><span>B</span><i></i><span>C</span></div></article>
         </div>
       </section>
 
-      <!-- Horizontal Gallery Section (Infinite Marquee) -->
-      <section class="horizontal-section" id="templates">
-        <div class="horizontal-header">
-          <span class="step-num" style="align-self: center;">04</span>
-          <h2>검증된 여행 전문가들의<br />추천 루트</h2>
-          <p style="color: var(--muted); font-size: 16px; line-height: 1.6; margin-top: 8px;">
-            어디서부터 계획할지 막막하신가요?<br />
-            검증된 여행 전문가들과 크리에이터들이 엄선한<br />
-            완벽한 여행 템플릿을 클릭 한 번으로 가져와 시작하세요.
-          </p>
-        </div>
-        <div class="horizontal-scroll-container">
-          <div class="marquee-wrapper">
-            <div class="gallery-track">
-              <article v-for="card in galleryCards" :key="card.title" class="gallery-card">
-                <img :src="card.img" :alt="card.title" />
-                <div class="gallery-info">
-                  <h3>{{ card.title }}</h3>
-                  <p>{{ card.desc }}</p>
-                </div>
-              </article>
-            </div>
-            <!-- Duplicate Track for Seamless Infinite Scrolling -->
-            <div class="gallery-track" aria-hidden="true">
-              <article v-for="card in galleryCards" :key="'dup-' + card.title" class="gallery-card">
-                <img :src="card.img" :alt="card.title" />
-                <div class="gallery-info">
-                  <h3>{{ card.title }}</h3>
-                  <p>{{ card.desc }}</p>
-                </div>
-              </article>
-            </div>
-          </div>
-        </div>
+      <section id="stories" class="landing-stories landing-reveal">
+        <div class="landing-stories-copy"><p>TRAVEL INSPIRATION</p><h2>마음에 드는 여행을<br />내 일정으로 시작해 보세요.</h2><span>다른 여행자의 코스를 둘러보고 ‘일정 가져오기’를 누르면 나만의 새 여행으로 이어집니다.</span><button class="landing-button landing-button--outline" type="button" @click="router.push('/login')">여행 이야기 둘러보기 <span class="material-symbols-rounded">arrow_forward</span></button></div>
+        <div class="landing-story-grid"><article v-for="journey in journeys" :key="journey.title"><img :src="journey.image" :alt="journey.title" /><div><span>{{ journey.region }}</span><h3>{{ journey.title }}</h3><p><span class="material-symbols-rounded">library_add</span> 일정 가져오기</p></div></article></div>
       </section>
 
-      <!-- Final CTA -->
-      <section class="cta-section" id="login">
-        <div class="cta-content reveal">
-          <p class="eyebrow">새로운 여행의 시작</p>
-          <h2>더 나은 여행을 위한 첫걸음,<br/>지금 시작하세요</h2>
-          <p>간편한 초대 링크로 친구들을 부르고,<br/>잊지 못할 추억을 함께 계획해보세요.</p>
-          <div style="margin-top: 40px">
-            <a class="btn-premium" href="#" @click.prevent="router.push('/login')">지금 무료로 시작하기</a>
-          </div>
-        </div>
-      </section>
-
-      <!-- Footer -->
-      <footer class="landing-footer">
-        <div class="landing-footer-inner">
-          <div class="landing-footer-logo">
-            <img :src="logoImg" alt="Soomgil Logo" style="width:64px; height:auto; filter: grayscale(1); opacity: 0.5;" />
-          </div>
-          <strong style="display:block; font-size:18px; margin-bottom:8px;">Soomgil</strong>
-          <p class="muted" style="font-size:14px;">함께 고르고, 함께 계획하고, 함께 떠나는 여행 협업 서비스</p>
-          <p style="margin-top:24px; font-size:12px; color:var(--muted);">© 2026 Soomgil. All rights reserved.</p>
-        </div>
-      </footer>
+      <section class="landing-final landing-reveal" :style="{ '--final-image': `url(${daejeonImg})` }"><div><p>설레는 여행은 함께 계획하는 순간부터 시작돼요</p><h2>다음 여행을 숨길에서 함께 만들어 볼까요?</h2><button class="landing-button landing-button--light landing-button--large" type="button" @click="router.push('/register')">첫 여행 만들기 <span class="material-symbols-rounded">arrow_forward</span></button></div></section>
     </main>
+
+    <AppFooter />
   </div>
 </template>
 
 <style scoped>
-/* CTA Section & Premium Button Design (Modern Minimal Dark Card) */
-.cta-section {
-  padding: 80px 20px 120px;
-  text-align: center;
-  background: transparent;
-  position: relative;
-}
-
-.cta-content {
-  position: relative;
-  max-width: 960px;
-  margin: 0 auto;
-  background: linear-gradient(to bottom, rgba(17, 19, 26, 0.5), rgba(17, 19, 26, 0.9)), url('@/assets/images/랜딩페이지/busan.png') no-repeat center center / cover;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 40px;
-  padding: 80px 40px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
-  overflow: hidden;
-  z-index: 1;
-}
-
-.cta-section .eyebrow {
-  color: var(--lavender);
-  font-weight: 700;
-  letter-spacing: 2px;
-  margin-bottom: 16px;
-  display: block;
-  font-size: 14px;
-  text-transform: uppercase;
-}
-
-.cta-section h2 {
-  font-size: 46px;
-  font-weight: 800;
-  line-height: 1.3;
-  margin-bottom: 24px;
-  color: #ffffff;
-  letter-spacing: -0.02em;
-}
-
-.cta-section p:not(.eyebrow) {
-  font-size: 18px;
-  color: rgba(255, 255, 255, 0.6);
-  line-height: 1.6;
-  margin-bottom: 0;
-  max-width: 520px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-/* Global Premium Button (Hero Section) */
-.btn-premium {
-  display: inline-block;
-  background: linear-gradient(135deg, var(--violet), var(--blue));
-  color: #fff !important;
-  border: none;
-  padding: 18px 48px;
-  font-size: 18px;
-  font-weight: 800;
-  border-radius: 100px;
-  text-decoration: none;
-  box-shadow: 0 10px 30px rgba(0, 102, 255, 0.3);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-}
-
-.btn-premium:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 16px 40px rgba(0, 102, 255, 0.4);
-}
-
-/* CTA Section Button (White style for Dark Card) */
-.cta-section .btn-premium {
-  background: #ffffff;
-  color: var(--violet) !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
-}
-
-.cta-section .btn-premium:hover {
-  background: #f4f9ff;
-  color: var(--violet) !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
-}
-
-@media (max-width: 1024px) {
-  .feature-step {
-    flex-direction: column !important;
-    gap: 40px !important;
-  }
-  .feature-step .step-visual {
-    order: -1;
-  }
-}
-@media (max-width: 768px) {
-  .cta-section { padding: 40px 16px 80px; }
-  .cta-content { padding: 56px 24px; border-radius: 32px; }
-  .cta-section h2 { font-size: 32px; }
-  .cta-section p:not(.eyebrow) { font-size: 16px; }
-  .btn-premium { padding: 16px 32px; font-size: 16px; }
-  .hero-logo img { width: 200px !important; }
-  .hero-section { min-height: 100vh; }
-  .gallery-card { width: 300px; height: 380px; }
-}
-@media (max-width: 480px) {
-  .hero-logo img { width: 160px !important; }
-  .gallery-card { width: 260px; height: 340px; }
-}
-
-/* Enhanced Collab Mockup Styles */
-.collab-map {
-  position: relative;
-  height: 400px;
-  background: #e0e7ff;
-  border-radius: 32px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.collab-cursor {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  pointer-events: none;
-  z-index: 10;
-  transition: all 0.5s ease;
-}
-.cursor-pointer {
-  width: 14px;
-  height: 14px;
-  background: var(--color);
-  clip-path: polygon(0 0, 100% 50%, 40% 60%, 0 100%);
-}
-.cursor-label {
-  background: var(--color);
-  color: white;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-/* Feature Keyword Tags */
-.keyword-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 24px;
-}
-.keyword-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: rgba(0, 102, 255, 0.08);
-  color: var(--violet);
-  border-radius: 100px;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  transition: all 0.2s ease;
-}
-.keyword-tag:hover {
-  background: rgba(0, 102, 255, 0.15);
-  transform: translateY(-2px);
-}
-.keyword-tag .material-symbols-rounded {
-  font-size: 18px;
-}
-
-/* Footer */
-.landing-footer {
-  padding: 60px 20px;
-  text-align: center;
-  background: var(--bg);
-  border-top: 1px solid var(--line);
-}
-.landing-footer-inner {
-  max-width: 480px;
-  margin: 0 auto;
-}
-.landing-footer-logo {
-  margin-bottom: 20px;
-}
+.landing-page{--ink:#35465a;--muted:#6d8091;--blue:#487db5;--blue-dark:#356993;--line:#dfe8ef;color:var(--ink);background:#f8fbff;min-height:100vh;overflow-x:clip;overflow-y:visible}.landing-page button,.landing-page a{font:inherit}.landing-nav{position:relative;z-index:20;width:min(1240px,calc(100% - 64px));height:82px;margin:auto;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:24px}.landing-brand{display:inline-flex;align-items:center;color:var(--ink);text-decoration:none;font-size:19px;font-weight:900;letter-spacing:-.035em}.landing-brand img{display:block;width:150px;height:auto}.landing-nav nav{display:flex;gap:34px}.landing-nav nav a{color:#617588;text-decoration:none;font-size:14px;font-weight:650}.landing-nav-actions{justify-self:end;display:flex;gap:8px}.landing-button{min-height:40px;padding:0 18px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--ink);font-size:13px;font-weight:750;cursor:pointer;transition:.2s}.landing-button:hover{transform:translateY(-1px)}.landing-button--primary{color:#fff;background:var(--blue);box-shadow:0 8px 22px rgb(72 125 181/18%)}.landing-button--primary:hover{background:var(--blue-dark)}.landing-button--quiet{color:#5d7386}.landing-button--quiet:hover{background:#edf5fb}.landing-button--large{min-height:50px;padding:0 24px;font-size:14px}.landing-button .material-symbols-rounded{font-size:19px}
+.landing-hero{position:relative;width:min(1240px,calc(100% - 64px));min-height:720px;margin:auto;display:grid;grid-template-columns:minmax(0,.9fr) minmax(520px,1.1fr);align-items:center;gap:70px;padding:64px 0 100px}.landing-hero:before{content:'';position:absolute;width:680px;height:680px;right:-230px;top:-100px;border-radius:50%;background:radial-gradient(circle,#e6f2fb,transparent 68%)}.landing-hero-copy,.landing-hero-visual{position:relative;z-index:1}.landing-kicker,.landing-section-heading>p,.landing-stories-copy>p{margin:0 0 18px;color:var(--blue);font-size:12px;font-weight:800;letter-spacing:.11em}.landing-kicker{display:flex;align-items:center;gap:9px}.landing-kicker span{width:24px;height:1px;background:var(--blue)}.landing-hero h1{margin:0;color:var(--ink);font-family:'Noto Serif KR','Batang',serif;font-size:clamp(42px,4.7vw,66px);font-weight:500;line-height:1.25;letter-spacing:-.045em;word-break:keep-all}.landing-hero h1 em{color:var(--blue);font-style:normal}.landing-lead{max-width:570px;margin:28px 0 0;color:var(--muted);font-size:17px;line-height:1.85;word-break:keep-all}.landing-hero-actions{display:flex;align-items:center;gap:20px;margin-top:34px}.landing-text-link{display:inline-flex;align-items:center;gap:5px;color:#607b90;text-decoration:none;font-size:13px;font-weight:700}.landing-text-link .material-symbols-rounded{font-size:17px}.landing-benefits{display:flex;flex-wrap:wrap;gap:18px;margin:30px 0 0;padding:0;list-style:none;color:#6b8092;font-size:12px;font-weight:650}.landing-benefits li{display:flex;align-items:center;gap:5px}.landing-benefits .material-symbols-rounded{color:#75a7c8;font-size:17px}
+.landing-hero-visual{min-height:560px;display:grid;place-items:center}.landing-photo-wash{position:absolute;inset:3% -12% -4% 14%;background-size:cover;background-position:center;opacity:.18;filter:saturate(.65);clip-path:polygon(8% 4%,94% 0,100% 82%,83% 98%,4% 91%,0 18%)}.landing-map-card{position:relative;width:min(610px,100%);border:1px solid #d9e5ee;border-radius:26px;background:rgba(255,255,255,.96);box-shadow:0 30px 80px rgb(47 87 119/16%);overflow:hidden;transform:rotate(1.5deg)}.landing-map-topbar,.landing-map-footer{height:58px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 20px}.landing-map-topbar>div:first-child{display:flex;align-items:center;gap:8px;font-size:13px}.landing-map-dot{width:8px;height:8px;border-radius:50%;background:#67ae8b;box-shadow:0 0 0 4px #e8f5ef}.landing-avatars{display:flex}.landing-avatars span,.landing-avatars b{width:28px;height:28px;margin-left:-6px;display:grid;place-items:center;border:2px solid #fff;border-radius:50%;color:#fff;background:#7fa9c7;font-size:9px}.landing-avatars span:nth-child(2){background:#d89083}.landing-avatars span:nth-child(3){background:#718a78}.landing-avatars b{color:#63798b;background:#eef4f8}.landing-map-canvas{position:relative;height:390px;background-color:#eaf2f5;background-size:cover;background-position:center;overflow:hidden}.landing-route-line{position:absolute;left:22%;top:42%;width:55%;height:110px;border:3px solid #5f91b5;border-left-color:transparent;border-bottom-color:transparent;border-radius:50%;transform:rotate(10deg)}.landing-pin{position:absolute;width:32px;height:32px;display:grid;place-items:center;border:3px solid #fff;border-radius:50%;color:#fff;background:#487db5;box-shadow:0 5px 12px rgb(53 89 117/25%);font-size:11px;font-weight:800}.landing-pin--one{left:20%;top:33%}.landing-pin--two{left:52%;top:47%;background:#d98175}.landing-pin--three{right:18%;top:26%;background:#69a187}.landing-place-card{position:absolute;z-index:3;left:20px;bottom:22px;width:245px;display:grid;grid-template-columns:78px 1fr;gap:12px;padding:8px;border:1px solid #dbe7ef;border-radius:16px;background:rgba(255,255,255,.95);box-shadow:0 12px 28px rgb(55 84 105/16%)}.landing-place-card img{width:78px;height:78px;border-radius:11px;object-fit:cover}.landing-place-card div{display:flex;flex-direction:column;justify-content:center}.landing-place-card small{color:#71899b;font-size:9px}.landing-place-card strong{margin:3px 0;font-size:14px}.landing-place-card span{color:#d06e65;font-size:10px;font-weight:700}.landing-live-cursor{position:absolute;z-index:4;right:16%;top:57%;display:flex;color:#487db5}.landing-live-cursor>span{font-size:26px;transform:rotate(-20deg)}.landing-live-cursor b{margin:18px 0 0 -4px;padding:5px 8px;border-radius:7px;background:#487db5;color:#fff;font-size:9px;white-space:nowrap}.landing-map-footer{color:#718698;font-size:10px}.landing-map-footer span{display:flex;align-items:center;gap:6px}.landing-map-footer i{width:6px;height:6px;border-radius:50%;background:#67ae8b}.landing-map-footer button{padding:6px 11px;border:0;border-radius:999px;background:#edf5fa;color:#487594;font:inherit;font-size:9px;font-weight:800}
+.landing-process{padding:118px max(32px,calc((100vw - 1240px)/2));background:#fff}.landing-section-heading{max-width:650px;margin:0 auto 58px;text-align:center}.landing-section-heading h2,.landing-stories h2,.landing-final h2{margin:0;color:var(--ink);font-family:'Noto Serif KR','Batang',serif;font-size:clamp(32px,4vw,48px);font-weight:500;letter-spacing:-.04em}.landing-section-heading>span{display:block;margin-top:16px;color:var(--muted);font-size:15px}.landing-process-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.landing-process-grid article{position:relative;min-height:340px;padding:32px;border:1px solid var(--line);border-radius:24px;background:#fbfdff;overflow:hidden}.landing-step-number{position:absolute;right:24px;top:24px;color:#b5c4cf}.landing-step-icon{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;color:#487db5;background:#eaf3fa}.landing-step-icon--rose{color:#c96c6c;background:#faecec}.landing-step-icon--green{color:#568b70;background:#eaf5ef}.landing-process-grid h3{margin:24px 0 10px;font-size:20px}.landing-process-grid p{margin:0;color:var(--muted);font-size:13px;line-height:1.75}.landing-taste-demo,.landing-day-demo,.landing-route-demo{position:absolute;left:32px;right:32px;bottom:28px;height:52px;display:flex;align-items:center;border:1px solid #e1eaf0;border-radius:14px;background:#fff}.landing-taste-demo{justify-content:space-between;padding:0 15px;color:#526d82;font-size:12px}.landing-taste-demo b{display:flex;align-items:center;gap:4px;color:#cb6c70}.landing-taste-demo i{font-size:15px}.landing-day-demo,.landing-route-demo{justify-content:center;padding:0 14px;gap:8px}.landing-day-demo span{padding:7px 10px;border-radius:999px;background:#eef5fa;color:#517b99;font-size:10px}.landing-day-demo i{width:18px;border-top:1px dashed #9eb5c5}.landing-route-demo span{width:26px;height:26px;display:grid;place-items:center;border-radius:50%;background:#6895b5;color:#fff;font-size:9px}.landing-route-demo i{flex:1;height:2px;background:#cbdde8}
+.landing-stories{width:min(1240px,calc(100% - 64px));margin:auto;padding:130px 0;display:grid;grid-template-columns:340px 1fr;align-items:center;gap:76px}.landing-stories-copy>span{display:block;margin:20px 0 28px;color:var(--muted);font-size:14px;line-height:1.75}.landing-button--outline{border-color:#cadce9;background:#fff;color:#476f8c}.landing-story-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}.landing-story-grid article{overflow:hidden;border:1px solid var(--line);border-radius:20px;background:#fff;box-shadow:0 14px 35px rgb(63 93 116/8%)}.landing-story-grid article:nth-child(2){margin-top:34px}.landing-story-grid img{width:100%;height:250px;display:block;object-fit:cover}.landing-story-grid article>div{padding:18px}.landing-story-grid article>div>span{color:#68849a;font-size:10px;font-weight:800}.landing-story-grid h3{min-height:48px;margin:6px 0 14px;font-family:'Noto Serif KR','Batang',serif;font-size:16px;font-weight:500}.landing-story-grid p{display:flex;align-items:center;gap:5px;margin:0;color:#4d7c9e;font-size:10px;font-weight:750}.landing-story-grid p span{font-size:15px}
+.landing-final{position:relative;width:min(1240px,calc(100% - 64px));min-height:390px;margin:0 auto 100px;display:grid;place-items:center;overflow:hidden;border-radius:30px;background:linear-gradient(90deg,rgba(42,65,82,.88),rgba(42,65,82,.62)),var(--final-image) center/cover;color:#fff;text-align:center}.landing-final:after{content:'';position:absolute;inset:14px;border:1px solid rgba(255,255,255,.2);border-radius:22px}.landing-final>div{position:relative;z-index:1;padding:50px 24px}.landing-final p{margin:0 0 12px;color:#d6e5ee;font-size:13px}.landing-final h2{max-width:720px;color:#fff}.landing-button--light{margin-top:30px;background:#fff;color:#3d6e91}.landing-reveal{opacity:0;transform:translateY(24px);transition:.8s}.landing-reveal.is-visible{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.landing-reveal{opacity:1;transform:none;transition:none}}@media(max-width:1050px){.landing-nav{grid-template-columns:1fr auto}.landing-nav nav{display:none}.landing-hero{grid-template-columns:1fr;gap:30px;padding-top:56px}.landing-hero-copy{max-width:700px;text-align:center;margin:auto}.landing-kicker,.landing-hero-actions,.landing-benefits{justify-content:center}.landing-lead{margin-left:auto;margin-right:auto}.landing-hero-visual{width:min(680px,100%);margin:auto}.landing-process-grid{grid-template-columns:1fr;max-width:720px;margin:auto}.landing-process-grid article{min-height:285px}.landing-stories{grid-template-columns:1fr;gap:46px}.landing-stories-copy{text-align:center;max-width:640px;margin:auto}.landing-story-grid{max-width:850px;margin:auto}}@media(max-width:720px){.landing-nav,.landing-hero,.landing-stories,.landing-final,.landing-footer{width:min(100% - 32px,1240px)}.landing-nav{height:70px}.landing-brand span,.landing-nav-actions .landing-button--quiet{display:none}.landing-hero{min-height:auto;padding:56px 0 76px}.landing-hero h1{font-size:clamp(37px,11vw,50px)}.landing-lead{font-size:15px}.landing-hero-actions{flex-direction:column}.landing-benefits{gap:10px 14px}.landing-hero-visual{min-height:410px}.landing-map-card{transform:none}.landing-map-canvas{height:300px}.landing-place-card{width:215px;grid-template-columns:64px 1fr}.landing-place-card img{width:64px;height:70px}.landing-live-cursor{right:8%}.landing-process{padding:82px 16px}.landing-process-grid article{padding:26px}.landing-taste-demo,.landing-day-demo,.landing-route-demo{left:26px;right:26px}.landing-story-grid{grid-template-columns:1fr}.landing-story-grid article:nth-child(2){margin-top:0}.landing-story-grid img{height:230px}.landing-final{min-height:340px;margin-bottom:70px}.landing-footer{grid-template-columns:1fr;text-align:center}.landing-footer .landing-brand{justify-content:center}.landing-footer .landing-brand span{display:inline}.landing-footer p{text-align:center}}
+.landing-hero--classic{width:100%;min-height:calc(100svh - 72px);padding:72px 24px 86px;display:grid;grid-template-columns:1fr;place-items:center;text-align:center;isolation:isolate;overflow:hidden}.landing-hero--classic:before{display:none}.landing-hero-background,.landing-hero-shade{position:absolute;inset:0}.landing-hero-background{z-index:-2;background-position:center;background-size:cover;transform:scale(1.02);filter:brightness(.82) saturate(1.08) contrast(1.06)}.landing-hero-shade{z-index:-1;background:linear-gradient(180deg,rgba(7,18,29,.58),rgba(8,21,34,.86))}.landing-classic-content{width:min(920px,100%);display:flex;flex-direction:column;align-items:center;color:#fff}.landing-classic-logo{width:clamp(190px,20vw,300px);height:auto;margin-bottom:14px}.landing-classic-kicker{margin:0 0 16px;color:#d5e9f6;font-size:13px;font-weight:750;letter-spacing:.1em}.landing-hero--classic h1{margin:0;color:#fff;font-size:clamp(46px,6.6vw,82px);font-weight:600;line-height:1.16;text-shadow:0 4px 24px rgb(0 0 0/18%)}.landing-hero--classic h1 em{color:#d9effc;font-style:normal}.landing-classic-lead{margin:28px 0 0;color:rgba(255,255,255,.8);font-size:17px;line-height:1.8;word-break:keep-all}.landing-classic-actions{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:34px}.landing-button--classic,.landing-button--classic-ghost{min-height:52px;padding:0 26px;font-size:14px}.landing-button--classic{background:#fff;color:#3f7195;box-shadow:0 12px 30px rgb(0 0 0/20%)}.landing-button--classic:hover{background:#f1f7fb}.landing-button--classic-ghost{border-color:rgba(255,255,255,.48);color:#fff;background:rgba(255,255,255,.08);text-decoration:none;backdrop-filter:blur(8px)}.landing-button--classic-ghost:hover{background:rgba(255,255,255,.16)}
+.landing-hero-background{filter:none}
+@media(max-width:720px){.landing-hero--classic{width:100%;min-height:calc(100svh - 72px);padding:54px 20px 64px}.landing-classic-logo{width:180px}.landing-hero--classic h1{font-size:clamp(40px,12vw,56px)}.landing-classic-lead{font-size:14px}.landing-classic-lead br{display:none}.landing-classic-actions{width:min(330px,100%);flex-direction:column}.landing-button--classic,.landing-button--classic-ghost{width:100%}}
+@media(max-width:720px){.landing-nav .landing-brand span{display:inline}.landing-brand{font-size:18px}}
 </style>

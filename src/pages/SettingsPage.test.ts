@@ -51,9 +51,10 @@ describe('SettingsPage', () => {
 
     expect(wrapper.text()).not.toContain('불러오는 중')
     
-    const selects = wrapper.findAll('select')
-    expect((selects[0].element as HTMLSelectElement).value).toBe('ko')
-    expect(selects[0].findAll('option').map((option) => option.attributes('value'))).toEqual(['ko', 'en'])
+    const languageButtons = wrapper.findAll('.settings-language-btn')
+    expect(languageButtons.map((button) => button.text())).toEqual(['한국어', '영어'])
+    expect(languageButtons[0].attributes('aria-pressed')).toBe('true')
+    expect(languageButtons[1].attributes('aria-pressed')).toBe('false')
     expect(wrapper.text()).not.toContain('타임존')
     expect(wrapper.text()).not.toContain('마케팅 이메일 수신')
     expect(wrapper.text()).not.toContain('알림 설정')
