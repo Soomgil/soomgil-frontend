@@ -594,12 +594,14 @@ function renderStops() {
     })
   }
 
-  props.nearbyPlaces.forEach((place, index) => {
-    const ring = Math.floor(index / 8)
-    const angle = (index % 8) * (Math.PI / 4)
-    const radius = 14 + ring * 8
-    const offset: [number, number] = [Math.round(Math.cos(angle) * radius), Math.round(Math.sin(angle) * radius)]
-    markers.push(new mapbox.Marker({ element: createNearbyMarkerElement(place), anchor: 'bottom', offset })
+  // 추천 마커가 서로 겹치지 않도록, 이미 놓인 마커와 화면상 가까우면(라벨 pill 폭 고려) 건너뛴다.
+  const placedNearbyPoints: { x: number; y: number }[] = []
+  props.nearbyPlaces.forEach((place) => {
+    if (!Number.isFinite(place.lng) || !Number.isFinite(place.lat)) return
+    const point = map!.project([place.lng, place.lat])
+    if (placedNearbyPoints.some((placed) => Math.hypot(placed.x - point.x, placed.y - point.y) < 104)) return
+    placedNearbyPoints.push({ x: point.x, y: point.y })
+    markers.push(new mapbox.Marker({ element: createNearbyMarkerElement(place), anchor: 'bottom', offset: [0, -6] })
       .setLngLat([place.lng, place.lat])
       .addTo(map!))
   })
