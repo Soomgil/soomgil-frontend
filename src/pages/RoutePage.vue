@@ -2981,10 +2981,6 @@ const currentTodos = computed(() => (activeChecklist.value?.items ?? []).map((it
 		.filter((status) => status.isCompleted)
 		.map((status) => status.user),
 })))
-const completedCount = computed(() => currentTodos.value.filter(t => t.done).length)
-const totalCount = computed(() => currentTodos.value.length)
-const progressPercent = computed(() => totalCount.value === 0 ? 0 : Math.round((completedCount.value / totalCount.value) * 100))
-
 async function loadChecklists() {
   if (!tripId) return
   todoLoading.value = true
@@ -6089,11 +6085,6 @@ function textAvatarStyle(index: unknown) {
                 :class="['panel-tab-tag', { 'active-todo': activeTodoDay === tag }]"
                 @click="activeTodoDay = tag">{{ tag }}</button>
             </div>
-            <div class="panel-progress-container">
-              <div class="panel-progress-bar" id="todo-progress-bar" style="width:0%">
-                <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
-              </div>
-            </div>
             <div class="panel-body todo-body">
               <p v-if="todoError" class="text-sm" style="color:var(--rose)">{{ todoError }}</p>
               <p v-else-if="todoLoading && currentTodos.length === 0" class="text-sm text-muted">불러오는 중…</p>
@@ -6854,8 +6845,7 @@ function textAvatarStyle(index: unknown) {
   background: #fff;
 }
 .route-utility-sidebar .ai-chat-suggestions,
-.route-utility-sidebar .memo-toolbar,
-.route-utility-sidebar .panel-progress-container {
+.route-utility-sidebar .memo-toolbar {
   flex: 0 0 auto;
   background: #fff;
 }
@@ -6901,8 +6891,7 @@ function textAvatarStyle(index: unknown) {
   color: var(--route-accent);
 }
 .route-utility-sidebar .ai-chat-suggestions,
-.route-utility-sidebar .memo-toolbar,
-.route-utility-sidebar .panel-progress-container {
+.route-utility-sidebar .memo-toolbar {
   padding: 12px 16px;
   border-top: 1px solid rgba(15, 23, 42, 0.06);
   background: rgba(255, 255, 255, 0.62);
@@ -7036,7 +7025,7 @@ function textAvatarStyle(index: unknown) {
 .route-utility-sidebar .ai-feature-guide-tabs {
   display: flex;
   gap: 6px;
-  padding: 0 34px 10px 20px;
+  padding: 0 34px 10px 26px;
   overflow-x: auto;
   cursor: grab;
   overscroll-behavior-x: contain;
@@ -7044,6 +7033,7 @@ function textAvatarStyle(index: unknown) {
   touch-action: pan-y;
   -ms-overflow-style: none;
   scrollbar-width: none;
+  scroll-padding-inline-start: 26px;
 }
 .route-utility-sidebar .ai-feature-guide-tabs::-webkit-scrollbar { display: none; }
 .route-utility-sidebar .ai-feature-guide-tabs button {
@@ -7064,7 +7054,6 @@ function textAvatarStyle(index: unknown) {
   scroll-snap-align: start;
   white-space: nowrap;
 }
-.route-utility-sidebar .ai-feature-guide-tabs button:first-child { margin-left: 6px; }
 .route-utility-sidebar .ai-feature-guide-tabs button.active {
   border-color: rgba(var(--route-accent-rgb), 0.22);
   background: rgba(var(--route-accent-rgb), 0.09);
@@ -8047,10 +8036,6 @@ function textAvatarStyle(index: unknown) {
 .memo-footer-left { display:flex;align-items:center;gap:12px; }
 .memo-char-count { font-size:12px;color:var(--muted); }
 .text-danger-btn { color:var(--rose)!important;background:transparent!important;border:none!important;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;padding:0; }
-.panel-progress-bar { height:6px;background:var(--line);border-radius:3px;overflow:hidden; }
-.panel-progress-bar .progress-fill { height:100%;background:linear-gradient(90deg,var(--violet),var(--blue,#00d1ff));border-radius:3px;transition:width .3s; }
-.panel-progress-container { padding:0 20px 16px; }
-
 /* Modals */
 .modal-tab-content { display:none; }
 .modal-tab-content.active { display:block; }
