@@ -567,7 +567,7 @@ onUnmounted(() => {
   box-shadow: var(--soft-shadow);
   margin: 0 auto;
   max-width: 620px;
-  padding: 46px 32px;
+  padding: 28px 32px 32px;
   text-align: center;
   width: 100%;
 }
@@ -613,7 +613,7 @@ onUnmounted(() => {
 .trip-vote__waiting-card {
   margin: 0 auto;
   max-width: 680px;
-  padding: 34px 30px 24px;
+  padding: 14px 30px 24px;
   text-align: left;
   width: 100%;
 }
@@ -642,7 +642,7 @@ onUnmounted(() => {
 .trip-vote__observer-card {
   margin: 0 auto;
   max-width: 680px;
-  padding: 34px 36px 26px;
+  padding: 14px 36px 26px;
   text-align: center;
   width: 100%;
 }
@@ -672,12 +672,12 @@ onUnmounted(() => {
 .trip-vote__observer-cta .material-symbols-rounded { font-size: 19px; }
 
 @media (max-width: 600px) {
-  .trip-vote__waiting-card { padding: 24px 4px 12px; }
+  .trip-vote__waiting-card { padding: 12px 4px; }
   .trip-vote__waiting-summary { grid-template-columns: 1fr; }
   .trip-vote__waiting-summary > div { justify-content: center; }
   .trip-vote__waiting-actions { align-items: stretch; flex-direction: column; }
   .trip-vote__waiting-actions .trip-vote__ghost { width: 100%; }
-  .trip-vote__observer-card { padding: 24px 4px 14px; }
+  .trip-vote__observer-card { padding: 12px 4px 14px; }
   .trip-vote__observer-copy { font-size: 15px; line-height: 1.75; }
   .trip-vote__observer-copy br { display: none; }
   .trip-vote__observer-progress { padding: 17px 16px 14px; }
@@ -756,7 +756,7 @@ onUnmounted(() => {
   box-shadow: 0 28px 80px rgb(31 58 82 / 24%);
   max-width: 500px;
   overflow: hidden;
-  padding: 30px;
+  padding: 24px 30px 30px;
   width: 100%;
 }
 
@@ -964,7 +964,7 @@ onUnmounted(() => {
  .trip-vote--embedded .trip-vote__layout { grid-template-columns:minmax(0,1fr); }
 }
 
-.trip-vote--embedded { padding-top:34px; }
+.trip-vote--embedded { padding-top:18px; }
 .trip-vote__restart { display:flex; margin:14px 0 0 auto; padding:6px 8px; min-height:36px; border:0; background:transparent; font-size:12px; }
 @media(max-width:520px) {
  .trip-vote--embedded .trip-vote__result-actions { display:grid; grid-template-columns:1fr; padding:10px 0; gap:6px; }
