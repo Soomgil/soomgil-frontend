@@ -57,7 +57,6 @@ async function loadTargetResult() {
   finally { targetLoading.value = false }
 }
 const closeConfirmOpen = ref(false)
-const acknowledged = ref(false)
 /** 마감 API가 결과를 반환한 직후 current-session 응답이 비어도 결과 화면을 유지한다. */
 const completedInCurrentView = ref(false)
 /** 제출 성공 뒤 세션 응답이 잠시 비어도 방장의 새 투표 화면으로 돌아가지 않게 한다. */
@@ -65,7 +64,6 @@ const submittedInCurrentView = ref(false)
 
 const candidates = computed(() => voting.session?.candidates ?? [])
 const participantSummary = computed(() => voting.session?.participantSummary ?? null)
-const isOwnerCloseAllowed = computed(() => !voting.hasUnvotedParticipants || acknowledged.value)
 
 /**
  * 화면 모드.
@@ -278,12 +276,33 @@ onUnmounted(() => {
       </div>
 
       <!-- 진행 중 + 참여자 아님 -->
-      <div v-else-if="mode === 'observer'" class="trip-vote__panel trip-vote__idle" data-testid="vote-observer">
-        <span class="material-symbols-rounded trip-vote__idle-icon">hourglass_top</span>
+      <section v-else-if="mode === 'observer'" class="trip-vote__observer-card" data-testid="vote-observer">
+        <span class="trip-vote__status-pill">
+          <span class="trip-vote__status-dot" aria-hidden="true"></span>
+          투표 진행 중
+        </span>
+        <div class="trip-vote__observer-icon" aria-hidden="true">
+          <span class="material-symbols-rounded">hourglass_top</span>
+        </div>
         <h2>투표가 진행 중이에요</h2>
-        <p>이번 투표는 시작 시점의 멤버들이 참여하고 있어요. 결과는 일정에 자동으로 반영됩니다.</p>
-        <button type="button" class="trip-vote__cta" @click="goToMap()">{{ embedded ? '닫기' : '지도로 가기' }}</button>
-      </div>
+        <p class="trip-vote__observer-copy">이번 투표는 <strong>시작 시점의 여행 메이트</strong>들이 참여하고 있어요.<br>모두 제출하면 선정된 장소가 일정에 자동으로 반영됩니다.</p>
+
+        <div class="trip-vote__observer-progress">
+          <div class="trip-vote__observer-progress-head">
+            <span>멤버 제출 현황</span>
+            <strong>{{ participantSummary?.submitted ?? 0 }} / {{ participantSummary?.total ?? 0 }}명</strong>
+          </div>
+          <div class="trip-vote__waiting-progress" role="progressbar" aria-label="투표 제출 진행률" :aria-valuenow="participantSummary?.submitted ?? 0" aria-valuemin="0" :aria-valuemax="participantSummary?.total ?? 0">
+            <div class="trip-vote__waiting-bar" :style="{ width: `${participantSummary && participantSummary.total > 0 ? (participantSummary.submitted / participantSummary.total) * 100 : 0}%` }" />
+          </div>
+          <p><span class="material-symbols-rounded" aria-hidden="true">notifications_active</span>결과가 확정되면 여행방에서 바로 확인할 수 있어요.</p>
+        </div>
+
+        <button type="button" class="trip-vote__cta trip-vote__observer-cta" @click="goToMap()">
+          <span class="material-symbols-rounded" aria-hidden="true">map</span>
+          {{ embedded ? '지도로 돌아가기' : '지도로 가기' }}
+        </button>
+      </section>
 
       <!-- 제출 완료: 다른 멤버의 제출을 기다리는 진행 현황 -->
       <section v-else-if="mode === 'waiting'" class="trip-vote__waiting-card" data-testid="vote-waiting">
@@ -396,8 +415,8 @@ onUnmounted(() => {
           <header class="trip-vote__modal-header">
             <span class="trip-vote__modal-icon material-symbols-rounded" aria-hidden="true">timer_off</span>
             <div>
-              <span class="trip-vote__modal-kicker">투표 관리</span>
-              <h2 id="vote-close-title">현재 결과로 투표를 마감할까요?</h2>
+              <span class="trip-vote__modal-kicker">투표 마감</span>
+              <h2 id="vote-close-title">투표를 마감할까요?</h2>
             </div>
             <button type="button" class="trip-vote__modal-dismiss" aria-label="투표 마감 창 닫기" @click="closeConfirmOpen = false">
               <span class="material-symbols-rounded" aria-hidden="true">close</span>
@@ -420,17 +439,13 @@ onUnmounted(() => {
 
           <div v-if="voting.hasUnvotedParticipants" class="trip-vote__modal-warning" data-testid="vote-close-warning">
             <span class="material-symbols-rounded" aria-hidden="true">info</span>
-            <p>{{ formatUiText("아직 제출하지 않은 멤버가 {0}명 있어요. 지금 마감하면 그분들의 스티커는 반영되지 않아요.", "{0} members have not submitted. Their stickers will not count if voting closes now.", [(participantSummary?.total ?? 0) - (participantSummary?.submitted ?? 0)]) }}</p>
+            <p>{{ formatUiText("아직 제출하지 않은 멤버가 {0}명 있어요.", "{0} members have not submitted yet.", [(participantSummary?.total ?? 0) - (participantSummary?.submitted ?? 0)]) }}</p>
           </div>
           <div v-else class="trip-vote__modal-ready">
             <span class="material-symbols-rounded" aria-hidden="true">check_circle</span>
             모든 멤버가 투표를 제출했어요.
           </div>
 
-          <label v-if="voting.hasUnvotedParticipants" class="trip-vote__modal-check">
-            <input v-model="acknowledged" type="checkbox" data-testid="vote-close-ack" />
-            <span><strong>미제출 멤버의 선택이 제외됨</strong>을 확인했어요.</span>
-          </label>
           <div class="trip-vote__modal-actions">
             <button type="button" class="cancel" data-testid="vote-close-cancel" @click="closeConfirmOpen = false">
               투표 계속하기
@@ -439,7 +454,7 @@ onUnmounted(() => {
               type="button"
               class="confirm"
               data-testid="vote-close-confirm"
-              :disabled="!isOwnerCloseAllowed || voting.closing"
+              :disabled="voting.closing"
               @click="closeEarly"
             >
               <span class="material-symbols-rounded" aria-hidden="true">flag</span>
@@ -641,12 +656,55 @@ onUnmounted(() => {
 .trip-vote__waiting-summary strong { color: #40566a; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trip-vote__waiting-actions { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
 
+.trip-vote__observer-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  box-shadow: 0 24px 64px rgb(57 103 143 / 14%);
+  margin: 18px auto 0;
+  max-width: 680px;
+  padding: 42px 46px 36px;
+  text-align: center;
+  width: 100%;
+}
+
+.trip-vote__observer-icon {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  color: var(--blue);
+  display: flex;
+  height: 78px;
+  justify-content: center;
+  margin: 24px auto 18px;
+  width: 78px;
+}
+
+.trip-vote__observer-icon .material-symbols-rounded { font-size: 39px; }
+.trip-vote__observer-card h2 { color: var(--ink); font-size: clamp(29px, 4vw, 36px); letter-spacing: -.045em; line-height: 1.25; margin: 0; }
+.trip-vote__observer-copy { color: var(--muted); font-size: 17px; line-height: 1.8; margin: 16px auto 26px; max-width: 550px; word-break: keep-all; }
+.trip-vote__observer-copy strong { color: #3f607a; font-weight: 850; }
+.trip-vote__observer-progress { background: var(--surface-2); border: 1px solid var(--line); border-radius: 20px; padding: 19px 21px 16px; text-align: left; }
+.trip-vote__observer-progress-head { align-items: center; color: #5d758a; display: flex; font-size: 14px; font-weight: 800; justify-content: space-between; }
+.trip-vote__observer-progress-head strong { color: #347db8; font-size: 19px; }
+.trip-vote__observer-progress > p { align-items: center; color: #6b8194; display: flex; font-size: 13px; gap: 7px; margin: 12px 0 0; }
+.trip-vote__observer-progress > p .material-symbols-rounded { color: #5798ca; font-size: 18px; }
+.trip-vote__observer-cta { gap: 8px; margin-top: 24px; min-height: 50px; padding-inline: 24px; }
+.trip-vote__observer-cta .material-symbols-rounded { font-size: 19px; }
+
 @media (max-width: 600px) {
   .trip-vote__waiting-card { margin-top: 4px; padding: 30px 18px 22px; }
   .trip-vote__waiting-summary { grid-template-columns: 1fr; }
   .trip-vote__waiting-summary > div { justify-content: center; }
   .trip-vote__waiting-actions { align-items: stretch; flex-direction: column; }
   .trip-vote__waiting-actions .trip-vote__ghost { width: 100%; }
+  .trip-vote__observer-card { margin-top: 4px; padding: 30px 20px 24px; }
+  .trip-vote__observer-copy { font-size: 15px; line-height: 1.75; }
+  .trip-vote__observer-copy br { display: none; }
+  .trip-vote__observer-progress { padding: 17px 16px 14px; }
+  .trip-vote__observer-progress > p { align-items: flex-start; }
+  .trip-vote__observer-cta { width: 100%; }
 }
 
 .trip-vote__cta {
@@ -834,23 +892,6 @@ onUnmounted(() => {
 
 .trip-vote__modal-warning .material-symbols-rounded { flex: 0 0 auto; font-size: 19px; margin-top: 1px; }
 .trip-vote__modal-warning p { margin: 0; }
-
-.trip-vote__modal-check {
-  align-items: flex-start;
-  background: #f8fafc;
-  border: 1px solid #e2eaf0;
-  border-radius: 14px;
-  color: #657b8e;
-  cursor: pointer;
-  display: flex;
-  font-size: 12px;
-  gap: 10px;
-  line-height: 1.5;
-  padding: 12px 13px;
-}
-
-.trip-vote__modal-check input { accent-color: #3f8dc8; flex: 0 0 auto; height: 17px; margin: 1px 0 0; width: 17px; }
-.trip-vote__modal-check strong { color: #415b70; }
 
 .trip-vote__modal-actions {
   display: flex;

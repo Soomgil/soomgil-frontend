@@ -282,7 +282,20 @@ describe('여행 방 투표 화면', () => {
     expect(wrapper.text()).toContain('일정 자동 반영')
   })
 
-  it('미투표자가 있으면 확인 전에는 마감 버튼이 비활성이다', async () => {
+  it('투표 참여 대상이 아닌 멤버에게 큰 안내와 제출 현황을 보여준다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue(
+      state({ nextScreen: 'WAITING', myParticipation: null }),
+    )
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="vote-observer"]').classes()).toContain('trip-vote__observer-card')
+    expect(wrapper.get('.trip-vote__observer-copy').text()).toContain('시작 시점의 여행 메이트')
+    expect(wrapper.get('[data-testid="vote-observer"] [role="progressbar"]').attributes('aria-valuenow')).toBe('1')
+    expect(wrapper.get('.trip-vote__observer-cta').text()).toContain('지도로 돌아가기')
+  })
+
+  it('미투표자가 있으면 인원을 안내하고 바로 마감할 수 있다', async () => {
     const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
@@ -293,9 +306,8 @@ describe('여행 방 투표 화면', () => {
     expect(wrapper.get('.trip-vote__modal-summary').text()).toContain('제출 완료')
     expect(wrapper.get('.trip-vote__modal-summary').text()).toContain('미제출')
     expect(wrapper.get('[data-testid="vote-close-cancel"]').text()).toContain('투표 계속하기')
-    expect(wrapper.find('[data-testid="vote-close-confirm"]').attributes('disabled')).toBeDefined()
-
-    await wrapper.find('[data-testid="vote-close-ack"]').setValue(true)
+    expect(wrapper.get('[data-testid="vote-close-warning"] p').text()).toBe('아직 제출하지 않은 멤버가 2명 있어요.')
+    expect(wrapper.find('[data-testid="vote-close-ack"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="vote-close-confirm"]').attributes('disabled')).toBeUndefined()
   })
 
@@ -312,7 +324,6 @@ describe('여행 방 투표 화면', () => {
     await flushPromises()
 
     await wrapper.find('[data-testid="vote-close-open"]').trigger('click')
-    await wrapper.find('[data-testid="vote-close-ack"]').setValue(true)
     await wrapper.find('[data-testid="vote-close-confirm"]').trigger('click')
     await flushPromises()
 

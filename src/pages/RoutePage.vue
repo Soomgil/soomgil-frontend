@@ -5961,6 +5961,14 @@ function textAvatarStyle(index: unknown) {
   width: 100%;
 }
 
+/* 안내·대기 상태는 콘텐츠 높이에 맞춰 불필요한 빈 공간을 남기지 않는다. */
+.vote-modal-card:has([data-testid="vote-observer"]),
+.vote-modal-card:has([data-testid="vote-waiting"]) {
+  height: auto;
+  max-height: min(88vh, 760px);
+  max-width: 760px;
+}
+
 .vote-modal-card::-webkit-scrollbar {
   display: none;
   width: 0;
