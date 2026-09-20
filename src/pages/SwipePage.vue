@@ -6,6 +6,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import { useSwipeFeed } from '@/composables/useSwipeFeed'
+import SwipeIntroTour from '@/components/onboarding/SwipeIntroTour.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useOnboardingStore } from '@/stores/onboarding.store'
 import type { SwipeFeedGateway } from '@/stores/swipe.store'
@@ -341,6 +342,28 @@ watch(() => currentPlace.value?.externalPlaceId, () => {
   }).catch(()=>{ /* 목록의 기존 정보는 유지하고 다음 상세 요청에서 재시도한다. */ })
 }, { immediate: true })
 
+/* ── 사용법 안내(인터랙션 가이드) ──────────────────────
+ * 다른 페이지(RoutePage의 MapSectionTour)와 같은 스포트라이트 투어 방식.
+ * 실제 카드/방향 화살표를 하나씩 비추며 설명한다. '사용법 보기' 버튼으로 다시 열 수 있다. */
+const introTour = ref<InstanceType<typeof SwipeIntroTour> | null>(null)
+function openTutorial() { introTour.value?.start() }
+
+/* ── 키보드 방향키로 선택 ──────────────────────────────
+ * → 좋아요, ← 다음에, ↑ 꼭 가고 싶어요. 입력창 포커스/조합키일 땐 무시한다.
+ * 투어가 켜져 있으면 투어가 방향키(capture 단계)를 먼저 소비하므로 여기선 건너뛴다(defaultPrevented). */
+function onKeydown(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+  const target = e.target as HTMLElement | null
+  if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
+  if (!currentPlace.value || isFinished.value || loading.value) return
+  if (e.key === 'ArrowRight') { e.preventDefault(); void decide('like') }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); void decide('dislike') }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); void decide('superlike') }
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+
 onMounted(async () => {
   await ensureLoaded()
   if (!onboardingMode && lastParams.value.legalRegionCode) await load({ limit: 10, excludeRecent: true })
@@ -366,6 +389,10 @@ onMounted(async () => {
             <p v-if="onboardingMode" class="page-hero__progress" role="status">
               {{ answeredCount }} / {{ requiredPlaceCount }}곳 선택
             </p>
+            <button v-if="currentPlace" type="button" class="swipe-help-btn" data-testid="swipe-help" @click="openTutorial">
+              <span class="material-symbols-rounded" aria-hidden="true">help</span>
+              사용법 보기
+            </button>
           </div>
 
         </div>
@@ -399,16 +426,40 @@ onMounted(async () => {
                 />
 
                 <template v-else>
-                  <div class="swipe-guide swipe-guide--top" aria-hidden="true">
+                  <button
+                    type="button"
+                    class="swipe-guide swipe-guide--top"
+                    data-swipe-tour="superlike"
+                    data-testid="swipe-superlike"
+                    aria-label="꼭 가고 싶어요 (위 방향키)"
+                    :disabled="interactionDisabled || isSettling"
+                    @click="decide('superlike')"
+                  >
                     <span>꼭 가고 싶어요</span>
-                    <svg viewBox="0 0 28 42"><path d="M14 37 Q17 23 13 6 M5 15 Q11 10 13 6 Q18 10 23 15" /><path class="sketch-echo" d="M12 36 Q14 22 12 8" /></svg>
-                  </div>
-                  <div class="swipe-guide swipe-guide--left" aria-hidden="true">
-                    <svg viewBox="0 0 44 28"><path d="M39 15 Q25 10 6 14 M15 5 Q11 10 6 14 Q10 18 16 23" /><path class="sketch-echo" d="M37 17 Q23 13 8 15" /></svg><span>다음에</span>
-                  </div>
-                  <div class="swipe-guide swipe-guide--right" aria-hidden="true">
-                    <svg viewBox="0 0 44 28"><path d="M5 14 Q22 18 38 13 M29 5 Q33 10 38 13 Q34 18 28 23" /><path class="sketch-echo" d="M7 12 Q22 15 36 12" /></svg><span>좋아요</span>
-                  </div>
+                    <svg viewBox="0 0 28 42" aria-hidden="true"><path d="M14 37 Q17 23 13 6 M5 15 Q11 10 13 6 Q18 10 23 15" /><path class="sketch-echo" d="M12 36 Q14 22 12 8" /></svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="swipe-guide swipe-guide--left"
+                    data-swipe-tour="nope"
+                    data-testid="swipe-nope"
+                    aria-label="다음에 (왼쪽 방향키)"
+                    :disabled="interactionDisabled || isSettling"
+                    @click="decide('dislike')"
+                  >
+                    <svg viewBox="0 0 44 28" aria-hidden="true"><path d="M39 15 Q25 10 6 14 M15 5 Q11 10 6 14 Q10 18 16 23" /><path class="sketch-echo" d="M37 17 Q23 13 8 15" /></svg><span>다음에</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="swipe-guide swipe-guide--right"
+                    data-swipe-tour="like"
+                    data-testid="swipe-like"
+                    aria-label="좋아요 (오른쪽 방향키)"
+                    :disabled="interactionDisabled || isSettling"
+                    @click="decide('like')"
+                  >
+                    <svg viewBox="0 0 44 28" aria-hidden="true"><path d="M5 14 Q22 18 38 13 M29 5 Q33 10 38 13 Q34 18 28 23" /><path class="sketch-echo" d="M7 12 Q22 15 36 12" /></svg><span>좋아요</span>
+                  </button>
 
                   <div v-if="swipeClass" class="swipe-success" :class="swipeClass" role="status">
                     <span class="material-symbols-rounded swipe-success-icon" aria-hidden="true">{{ decision === 'SUPER' ? 'star' : decision === 'LIKE' ? 'favorite' : 'air' }}</span>
@@ -428,6 +479,7 @@ onMounted(async () => {
                     v-if="currentPlace"
                     :key="`${currentPlace.provider}:${currentPlace.externalPlaceId}`"
                     class="swipe-card"
+                    data-swipe-tour="card"
                     :data-decision="decision"
                     :class="[swipeClass, { 'is-dragging': isDragging, 'is-entering': cardEntering }]"
                     :style="{ transform: cardTransform || undefined, '--release-transform': cardTransform || 'none', '--overlay-opacity': overlayOpacity }"
@@ -449,6 +501,7 @@ onMounted(async () => {
                     </div>
                   </article>
                 </template>
+
               </div>
 
               <!-- Photo Strip -->
@@ -552,6 +605,12 @@ onMounted(async () => {
         </div>
       </section>
     </main>
+
+    <SwipeIntroTour
+      ref="introTour"
+      :user-id="auth.user?.id ?? null"
+      :ready="!!currentPlace && !isFinished && !loading"
+    />
   </div>
 </template>
 
@@ -817,7 +876,7 @@ onMounted(async () => {
 .swipe-workspace-card { background:transparent; border:0; border-radius:0; padding:0; box-shadow:none; overflow:visible; }
 .swipe-layout { grid-template-columns:minmax(0,1fr) 280px; gap:40px; align-items:start; }
 .swipe-main-column { min-width:0; min-height:0; grid-template-rows:auto auto; gap:12px; }
-.swipe-stage { min-height:0; padding:64px 64px 20px; }
+.swipe-stage { min-height:0; padding:80px 64px 20px; }
 .swipe-discovery .swipe-card { width:100%; aspect-ratio:auto; grid-template-rows:420px; border:1px solid #eaf4ff; border-radius:16px; background:#fff; box-shadow:none; }
 .swipe-card:not(.is-dragging):not(.swiped-like):not(.swiped-dislike):not(.swiped-superlike) { transform:none; }
 .swipe-card img[data-place-image] { position:relative; inset:auto; grid-row:1; width:100%; height:100%; object-fit:cover; }
@@ -842,10 +901,26 @@ onMounted(async () => {
 .photo-thumb { height:64px; border-radius:8px; box-shadow:none; }
 .photo-nav { background:transparent; box-shadow:none; }
 .photo-nav:hover { background:#eaf4ff; }
-.swipe-guide { position:absolute; z-index:2; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none; color:#647c92; font-size:11px; font-weight:500; }
+/* 방향 안내는 이제 클릭 가능한 버튼이다. 위치용 transform은 각 모디파이어가 갖고 있으므로
+   hover 강조는 transform 대신 내부 svg 스케일/배경색으로 준다(위치가 틀어지지 않도록). */
+.swipe-guide { position:absolute; z-index:2; display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 10px; border:0; border-radius:14px; background:transparent; color:#647c92; font:inherit; font-size:11px; font-weight:600; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:color .16s ease, background-color .16s ease; }
+.swipe-guide svg { transition:transform .18s cubic-bezier(.2,.8,.2,1); }
+.swipe-guide:hover:not(:disabled) svg { transform:scale(1.16); }
+.swipe-guide:active:not(:disabled) svg { transform:scale(.94); }
+.swipe-guide:focus-visible { outline:3px solid #a9d2ff; outline-offset:2px; }
+.swipe-guide:disabled { cursor:default; opacity:.4; }
 .swipe-guide--top { top:4px; left:50%; transform:translateX(-50%); color:#427ead; }
 .swipe-guide--left { left:4px; top:calc(50% + 22px); transform:translateY(-50%) rotate(-5deg); }
 .swipe-guide--right { right:4px; top:calc(50% + 22px); transform:translateY(-50%) rotate(5deg); color:#427ead; }
+.swipe-guide--right:hover:not(:disabled) { background:rgba(236,114,150,.1); color:#b34e73; }
+.swipe-guide--top:hover:not(:disabled) { background:rgba(234,179,67,.14); color:#a47726; }
+.swipe-guide--left:hover:not(:disabled) { background:rgba(50,139,224,.09); color:#2f78c4; }
+
+.swipe-help-btn { display:inline-flex; align-items:center; gap:6px; margin-top:14px; padding:8px 14px; border:1px solid #cfe4f6; border-radius:999px; background:#fff; color:#427ead; font:inherit; font-size:13px; font-weight:700; cursor:pointer; transition:background-color .16s ease, border-color .16s ease, transform .16s ease; }
+.swipe-help-btn:hover { background:#eaf4ff; border-color:#9cc9ef; transform:translateY(-1px); }
+.swipe-help-btn:focus-visible { outline:3px solid #a9d2ff; outline-offset:2px; }
+.swipe-help-btn .material-symbols-rounded { font-size:18px; }
+
 @media(max-width:900px) {
  .swipe-layout { grid-template-columns:minmax(0,1fr); gap:28px; }
  .place-detail-panel { padding:20px !important; }
@@ -855,7 +930,7 @@ onMounted(async () => {
  .swipe-discovery .swipe-card { grid-template-rows:280px; }
  .swipe-card img[data-place-image] { max-height:280px; }
  .swipe-body { padding:0; }
- .swipe-stage { padding:60px 32px 16px; }
+ .swipe-stage { padding:74px 32px 16px; }
  .swipe-body h2 { font-size:23px !important; }
  .swipe-guide--left { left:0; }
  .swipe-guide--right { right:0; }
@@ -863,7 +938,8 @@ onMounted(async () => {
  .photo-strip-section { padding:0; }
 }
 .swipe-guide svg { width:42px; height:28px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-.swipe-guide--top svg { width:24px; height:32px; }
+.swipe-guide--top { padding-top:0; padding-bottom:2px; gap:3px; }
+.swipe-guide--top svg { width:22px; height:26px; }
 .swipe-guide .sketch-echo { stroke-width:.8; opacity:.4; }
 .place-detail-panel .swipe-body .meta-row { justify-content:flex-start; }
 .place-detail-panel .swipe-body .meta-row span span:last-child { white-space:normal; overflow-wrap:anywhere; }
@@ -926,5 +1002,6 @@ onMounted(async () => {
  .swipe-success { animation:none; }
  .swipe-breeze, .swipe-celebration { display:none; }
  .swipe-success .swipe-success-icon { animation:none; }
+ .swipe-guide svg { transition:none; }
 }
 </style>
