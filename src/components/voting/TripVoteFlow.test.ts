@@ -277,7 +277,8 @@ describe('여행 방 투표 화면', () => {
 
     expect(wrapper.find('[data-testid="vote-waiting"]').exists()).toBe(true)
     expect(wrapper.find('[role="progressbar"]').attributes('aria-valuenow')).toBe('1')
-    expect(wrapper.text()).toContain('투표 진행 중')
+    expect(wrapper.find('.trip-vote__status-pill').exists()).toBe(false)
+    expect(wrapper.text()).toContain('내 투표를 제출했어요')
     expect(wrapper.text()).toContain('남은 인원')
     expect(wrapper.text()).toContain('일정 자동 반영')
   })
@@ -290,6 +291,7 @@ describe('여행 방 투표 화면', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="vote-observer"]').classes()).toContain('trip-vote__observer-card')
+    expect(wrapper.find('.trip-vote__status-pill').exists()).toBe(false)
     expect(wrapper.get('.trip-vote__observer-copy').text()).toContain('시작 시점의 여행 메이트')
     expect(wrapper.get('[data-testid="vote-observer"] [role="progressbar"]').attributes('aria-valuenow')).toBe('1')
     expect(wrapper.get('.trip-vote__observer-cta').text()).toContain('지도로 돌아가기')

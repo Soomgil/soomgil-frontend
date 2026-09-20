@@ -277,10 +277,6 @@ onUnmounted(() => {
 
       <!-- 진행 중 + 참여자 아님 -->
       <section v-else-if="mode === 'observer'" class="trip-vote__observer-card" data-testid="vote-observer">
-        <span class="trip-vote__status-pill">
-          <span class="trip-vote__status-dot" aria-hidden="true"></span>
-          투표 진행 중
-        </span>
         <div class="trip-vote__observer-icon" aria-hidden="true">
           <span class="material-symbols-rounded">hourglass_top</span>
         </div>
@@ -306,11 +302,6 @@ onUnmounted(() => {
 
       <!-- 제출 완료: 다른 멤버의 제출을 기다리는 진행 현황 -->
       <section v-else-if="mode === 'waiting'" class="trip-vote__waiting-card" data-testid="vote-waiting">
-        <div class="trip-vote__waiting-glow" aria-hidden="true"></div>
-        <span class="trip-vote__status-pill">
-          <span class="trip-vote__status-dot" aria-hidden="true"></span>
-          투표 진행 중
-        </span>
         <div class="trip-vote__waiting-icon" aria-hidden="true">
           <span class="material-symbols-rounded">how_to_vote</span>
         </div>
@@ -613,33 +604,16 @@ onUnmounted(() => {
 }
 
 .trip-vote__waiting-card {
-  isolation: isolate;
-  margin: 18px auto 0;
+  margin: 0 auto;
   max-width: 680px;
-  overflow: hidden;
-  padding: 42px 42px 32px;
-  position: relative;
+  padding: 34px 30px 24px;
   text-align: center;
   width: 100%;
 }
 
-.trip-vote__waiting-card::before {
-  background: linear-gradient(145deg, rgb(255 255 255 / 98%), rgb(244 250 255 / 96%));
-  border: 1px solid #dceaf5;
-  border-radius: 28px;
-  box-shadow: 0 24px 64px rgb(57 103 143 / 14%);
-  content: '';
-  inset: 0;
-  position: absolute;
-  z-index: -2;
-}
-
-.trip-vote__waiting-glow { background: radial-gradient(circle, rgb(99 179 237 / 24%) 0%, transparent 68%); height: 260px; position: absolute; right: -100px; top: -120px; width: 260px; z-index: -1; }
-.trip-vote__status-pill { align-items: center; background: #edf8f1; border: 1px solid #c8e7d2; border-radius: 999px; color: #2f7b4d; display: inline-flex; font-size: 12px; font-weight: 800; gap: 7px; letter-spacing: .02em; padding: 7px 12px; }
-.trip-vote__status-dot { background: #43a96b; border-radius: 50%; box-shadow: 0 0 0 4px rgb(67 169 107 / 14%); height: 7px; width: 7px; }
-.trip-vote__waiting-icon { align-items: center; background: linear-gradient(145deg, #e8f4ff, #f4f0ff); border: 1px solid #d7e8f7; border-radius: 22px; color: #397fbd; display: flex; height: 76px; justify-content: center; margin: 22px auto 14px; transform: rotate(-3deg); width: 76px; }
+.trip-vote__waiting-icon { align-items: center; background: linear-gradient(145deg, #e8f4ff, #f4f0ff); border: 1px solid #d7e8f7; border-radius: 22px; color: #397fbd; display: flex; height: 76px; justify-content: center; margin: 0 auto 14px; transform: rotate(-3deg); width: 76px; }
 .trip-vote__waiting-icon .material-symbols-rounded { font-size: 38px; transform: rotate(3deg); }
-.trip-vote__waiting-kicker { color: #7a91a5; font-size: 11px; font-weight: 900; letter-spacing: .16em; margin: 0 0 8px; }
+.trip-vote__waiting-kicker { color: #647c92; font-family: Inter, 'Pretendard Variable', Pretendard, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .12em; line-height: 1.4; margin: 0 0 10px; text-transform: uppercase; }
 .trip-vote__waiting-card h2 { color: #30465b; font-size: clamp(26px, 4vw, 34px); letter-spacing: -.04em; margin: 0; }
 .trip-vote__waiting-copy { color: #71869a; font-size: 14px; line-height: 1.75; margin: 12px 0 24px; }
 .trip-vote__waiting-overview { background: rgb(239 247 253 / 82%); border: 1px solid #dbe9f4; border-radius: 20px; padding: 18px 20px 15px; text-align: left; }
@@ -657,13 +631,9 @@ onUnmounted(() => {
 .trip-vote__waiting-actions { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
 
 .trip-vote__observer-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 28px;
-  box-shadow: 0 24px 64px rgb(57 103 143 / 14%);
-  margin: 18px auto 0;
+  margin: 0 auto;
   max-width: 680px;
-  padding: 42px 46px 36px;
+  padding: 34px 36px 26px;
   text-align: center;
   width: 100%;
 }
@@ -677,7 +647,7 @@ onUnmounted(() => {
   display: flex;
   height: 78px;
   justify-content: center;
-  margin: 24px auto 18px;
+  margin: 0 auto 18px;
   width: 78px;
 }
 
@@ -694,12 +664,12 @@ onUnmounted(() => {
 .trip-vote__observer-cta .material-symbols-rounded { font-size: 19px; }
 
 @media (max-width: 600px) {
-  .trip-vote__waiting-card { margin-top: 4px; padding: 30px 18px 22px; }
+  .trip-vote__waiting-card { padding: 24px 4px 12px; }
   .trip-vote__waiting-summary { grid-template-columns: 1fr; }
   .trip-vote__waiting-summary > div { justify-content: center; }
   .trip-vote__waiting-actions { align-items: stretch; flex-direction: column; }
   .trip-vote__waiting-actions .trip-vote__ghost { width: 100%; }
-  .trip-vote__observer-card { margin-top: 4px; padding: 30px 20px 24px; }
+  .trip-vote__observer-card { padding: 24px 4px 14px; }
   .trip-vote__observer-copy { font-size: 15px; line-height: 1.75; }
   .trip-vote__observer-copy br { display: none; }
   .trip-vote__observer-progress { padding: 17px 16px 14px; }
@@ -803,12 +773,15 @@ onUnmounted(() => {
 }
 
 .trip-vote__modal-kicker {
-  color: #8a9cac;
+  color: #647c92;
   display: block;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: .14em;
-  margin: 1px 0 5px;
+  font-family: Inter, 'Pretendard Variable', Pretendard, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  line-height: 1.4;
+  margin: 1px 0 6px;
+  text-transform: uppercase;
 }
 
 .trip-vote__modal-body h2 {
