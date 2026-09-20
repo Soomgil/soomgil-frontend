@@ -314,12 +314,9 @@ describe('여행 방 투표 화면', () => {
     const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
-    // 하루 3곳 → 4곳. 2박 3일이므로 선정 12 · 후보 24 · 스티커 6을 제안한다.
+    // 하루 3곳 → 4곳. 2박 3일이므로 내부 정책으로 선정 12 · 후보 24 · 스티커 6을 계산한다.
     await wrapper.find('[data-testid="setup-per-day-plus"]').trigger('click')
     expect(wrapper.find('[data-testid="setup-per-day-count"]').text()).toBe('4')
-    expect(wrapper.find('[data-testid="setup-selection-count"]').text()).toBe('12')
-    expect(wrapper.find('[data-testid="setup-candidate-count"]').text()).toBe('24')
-    expect(wrapper.find('[data-testid="setup-sticker-count"]').text()).toBe('6')
 
     await wrapper.find('[data-testid="setup-open"]').trigger('click')
     await flushPromises()
@@ -398,7 +395,7 @@ describe('여행 방 투표 화면', () => {
     expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(true)
   })
 
-  it('머무는 동안 투표가 끝나면 완료를 부모 모달에 알린다', async () => {
+  it('머무는 동안 투표가 끝나면 모달을 닫지 않고 결과를 바로 보여준다', async () => {
     mocks.votingApi.getCurrentSession
       .mockResolvedValueOnce(state({ nextScreen: 'WAITING', myParticipation: participation({ status: 'SUBMITTED' }) }))
       .mockResolvedValue(state({
@@ -410,13 +407,15 @@ describe('여행 방 투표 화면', () => {
     const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await vi.runOnlyPendingTimersAsync()
 
-    // polling 1회 후 COMPLETED 전환 → 지도 이동
+    // polling 1회 후 COMPLETED 전환 → 같은 모달에서 결과 표시
     await vi.advanceTimersByTimeAsync(5000)
     await vi.runOnlyPendingTimersAsync()
     vi.useRealTimers()
     await flushPromises()
 
-    expect(wrapper.emitted('close')).toEqual([[true]])
+    expect(wrapper.find('[data-testid="vote-result"]').exists()).toBe(true)
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(mocks.votingApi.getResult).toHaveBeenCalledWith('trip-1', 'session-1')
   })
   it('설정 패널에 여행방 지역과 목적지를 넘긴다', async () => {
     mocks.votingApi.getCurrentSession.mockResolvedValue(
@@ -504,7 +503,7 @@ describe('여행 방 투표 화면', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="vote-setup"]').text()).toContain('3일')
-    expect(wrapper.get('[data-testid="setup-selection-count"]').text()).toBe('9')
+    expect(wrapper.find('[data-testid="setup-selection-count"]').exists()).toBe(false)
   })
   it('과거 투표 알림은 현재 진행 중 투표 대신 해당 세션 결과를 조회한다', async () => {
     mocks.votingApi.getResult.mockRejectedValue(new Error('unavailable'))
@@ -522,7 +521,7 @@ describe('여행 방 투표 화면', () => {
     const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true, targetSessionId: 'old-session' }, global: { stubs } })
     await flushPromises()
     expect(wrapper.text()).toContain('이전 투표의 해변')
-    expect(wrapper.text()).toContain('방장이 마감했어요')
+    expect(wrapper.find('.vote-result__header').exists()).toBe(false)
     expect(wrapper.find('[data-testid="vote-restart"]').exists()).toBe(false)
     wrapper.unmount()
   })

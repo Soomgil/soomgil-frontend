@@ -49,6 +49,7 @@ import type { CollaborationCommandEvent, DrawingPreviewEvent, TripPresenceEvent,
 import type { LngLat } from '@/types/geo'
 import type { AccessibilityFlag, ParkingType, Place, PlaceAccessibility, PlaceProvider, PlaceRecommendation } from '@/types/place'
 import type { ItineraryDay, MapDrawing, MapObjectTransform, MapStickerCode, ReorderItineraryInput } from '@/types/itinerary'
+import type { SwipeAction } from '@/types/swipe'
 
 /* ── RoutePage 내부 전용 타입 ── */
 type RouteStop = RouteStopViewModel
@@ -200,6 +201,11 @@ const trip = computed(() => {
   }
 })
 const dayPlans = ref<DayPlan[]>([])
+const mapPresenceMembers = computed(() => [...trip.value.members].sort((left, right) => {
+  if (left.online === right.online) return 0
+  return left.online ? -1 : 1
+}))
+const hiddenMapPresenceMembers = computed(() => mapPresenceMembers.value.slice(4))
 
 /* ── 여행 방 투표 진입 ──
  * 투표 세션 상태는 라우터 가드(ensureGate)가 이 여행에 진입할 때 이미 voting store에 채워 둔다.
@@ -307,7 +313,6 @@ const routeNearbyPlaces = ref<Place[]>([])
 const routeNearbyLoading = ref(false)
 const routeNearbyError = ref('')
 const savedPlaceKeys = ref(new Set<string>())
-const savingPlaceKeys = ref(new Set<string>())
 let accessibilityRequestRevision = 0
 let routePlaceRequestRevision = 0
 let routeNearbyRequestRevision = 0
@@ -473,6 +478,9 @@ const tastePlaces = ref<TasteMapPlace[]>([])
 const tasteControl = ref<InstanceType<typeof MapTasteControl> | null>(null)
 function selectNearbyMapPlace(provider: string, placeId: string) {
   if (!tasteControl.value?.select(provider, placeId)) void selectPlace(placeId, provider as PlaceProvider)
+}
+function closeTasteControl() {
+  tasteControl.value?.close()
 }
 const discoveryBbox = computed(() => {
   if (mapStops.value.length > 0) {
@@ -2308,6 +2316,10 @@ function prepareMapTourSection(section: string) {
 
 function closeResponsivePanels() {
   if (!isRouteOverlayLayout.value) return
+  if (isDetailbarOpen.value) {
+    closeDetailbar()
+    return
+  }
   isLeftSidebarOpen.value = false
   isRouteUtilityCollapsed.value = true
 }
@@ -2324,6 +2336,44 @@ const aiMessages = ref<RouteAiChatMessage[]>([])
 const chatMessages = ref<TripChatMessage[]>([])
 const conversationLoading = ref(false)
 const conversationError = ref('')
+const aiMessagesContainerRef = ref<HTMLElement | null>(null)
+const tripChatMessagesContainerRef = ref<HTMLElement | null>(null)
+const aiChatPinnedToBottom = ref(true)
+const tripChatPinnedToBottom = ref(true)
+
+function isConversationAtBottom(container: HTMLElement) {
+  return container.scrollHeight - container.scrollTop - container.clientHeight <= 40
+}
+
+function updateConversationScrollState(kind: 'ai' | 'chat') {
+  const container = kind === 'ai' ? aiMessagesContainerRef.value : tripChatMessagesContainerRef.value
+  if (!container) return
+  if (kind === 'ai') aiChatPinnedToBottom.value = isConversationAtBottom(container)
+  else tripChatPinnedToBottom.value = isConversationAtBottom(container)
+}
+
+function keepConversationAtBottom(kind: 'ai' | 'chat') {
+  const shouldFollow = kind === 'ai' ? aiChatPinnedToBottom.value : tripChatPinnedToBottom.value
+  if (!shouldFollow) return
+  void nextTick(() => {
+    requestAnimationFrame(() => {
+      const container = kind === 'ai' ? aiMessagesContainerRef.value : tripChatMessagesContainerRef.value
+      if (!container) return
+      container.scrollTop = container.scrollHeight
+    })
+  })
+}
+
+watch(
+  () => aiMessages.value.map((message) => `${message.id}:${message.content?.length ?? 0}`).join('|'),
+  () => keepConversationAtBottom('ai'),
+)
+watch(
+  () => chatMessages.value.map((message) => `${message.id}:${message.content?.length ?? 0}:${message.deletedAt ?? ''}`).join('|'),
+  () => keepConversationAtBottom('chat'),
+)
+watch(isAiChatOpen, (isOpen) => { if (isOpen) keepConversationAtBottom('ai') })
+watch(isTripChatOpen, (isOpen) => { if (isOpen) keepConversationAtBottom('chat') })
 
 function oldestFirst<T extends { createdAt: string }>(messages: T[]) {
   return [...messages].sort((left, right) => (
@@ -2766,6 +2816,11 @@ const routeState = ref<'route' | 'hidden'>('route')
 const cardState = ref<'full' | 'min' | 'hidden'>('full')
 const nearbyOn = ref(false)
 const standardMapView = ref(false)
+const mapIsTilted = ref(false)
+const itineraryMapRef = ref<{
+  resetOrientation: () => void
+  preserveCameraOnNextStopsChange: () => void
+} | null>(null)
 watch([nearbyOn, visibleMapRoutes], async ([isOn]) => {
   if (isOn) {
     await loadRouteNearbyPlaces()
@@ -2926,7 +2981,15 @@ function updateRouteResponsiveLayout() {
 }
 
 function toggleStandardMapView() {
+  if (mapIsTilted.value || standardMapView.value) {
+    standardMapView.value = false
+    mapIsTilted.value = false
+    itineraryMapRef.value?.resetOrientation()
+    return
+  }
+
   standardMapView.value = !standardMapView.value
+  mapIsTilted.value = standardMapView.value
   if (standardMapView.value && activeTool.value === 'route-pen') {
     activeTool.value = 'cursor'
     clearPendingRouteSelection()
@@ -3623,8 +3686,8 @@ async function handleMapObjectPlace(transform: MapObjectTransform) {
     selectedMapObjectId.value = created.id
     if (mediaFileId) {
       pendingImageMediaId.value = null
-      activeTool.value = 'cursor'
     }
+    activeTool.value = 'cursor'
   } catch (cause) {
     console.error('Map object could not be created.', cause)
   }
@@ -4154,6 +4217,29 @@ async function refreshTripRoomAfterDateSync(reloadTripDetail = false) {
 }
 /* ── Detailbar ── */
 const isDetailbarOpen = ref(false)
+let routeUtilityCollapsedBeforeDetail: boolean | null = null
+
+function openDetailbar() {
+  if (!isDetailbarOpen.value) {
+    routeUtilityCollapsedBeforeDetail = isRouteUtilityCollapsed.value
+  }
+  isDetailbarOpen.value = true
+  isRouteUtilityCollapsed.value = false
+  if (isRouteOverlayLayout.value) isLeftSidebarOpen.value = false
+}
+
+function updateMapOrientation({ pitch, bearing }: { pitch: number; bearing: number }) {
+  mapIsTilted.value = Math.abs(pitch) > 0.5 || Math.abs(bearing) > 0.5
+  if (!mapIsTilted.value) standardMapView.value = false
+}
+
+function selectItineraryDay(day: number) {
+  if (day === 0 && activeDay.value !== 0) {
+    itineraryMapRef.value?.preserveCameraOnNextStopsChange()
+  }
+  activeDay.value = day
+}
+
 interface DetailPlace {
   place: Place | null
   id: string
@@ -4185,17 +4271,30 @@ const selectedScheduledItem = computed(() => {
       : false
   )) ?? null
 })
-const selectedPlaceIsSaved = computed(() => {
-  const place = selectedPlace.value?.place
-  return place ? savedPlaceKeys.value.has(placeReferenceKey(place)) : false
-})
-const selectedPlaceIsSaving = computed(() => {
-  const place = selectedPlace.value?.place
-  return place ? savingPlaceKeys.value.has(placeReferenceKey(place)) : false
-})
+const selectedPlaceReaction = ref<SwipeAction | null>(null)
+const placeReactionSubmitting = ref(false)
+const placeReactionAnimating = ref<SwipeAction | null>(null)
+let placeReactionRequest = 0
+let placeReactionAnimationTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(
+  () => selectedPlace.value?.place,
+  async (place) => {
+    const request = ++placeReactionRequest
+    selectedPlaceReaction.value = null
+    descriptionExpanded.value = false
+    if (!place) return
+    try {
+      const reaction = await swipeApi.getReaction(place.provider, place.externalPlaceId)
+      if (request === placeReactionRequest) selectedPlaceReaction.value = reaction
+    } catch {
+      // 반응 조회 실패는 상세 정보 표시를 막지 않는다.
+    }
+  },
+)
 const detailbarMainImg = ref('')
 const descriptionExpanded = ref(false)
-const DESCRIPTION_PREVIEW_LENGTH = 180
+const DESCRIPTION_PREVIEW_LENGTH = 140
 const displayedDescription = computed(() => {
   const text = selectedPlace.value?.description ?? ''
   if (!text) return ''
@@ -4211,7 +4310,6 @@ const accessibilityItems: Array<{ flag: AccessibilityFlag; icon: string; label: 
   { flag: 'PET', icon: 'pets', label: '반려동물' },
   { flag: 'ELDERLY', icon: 'elderly', label: '노약자 편의' },
 ]
-
 function parkingTypeLabel(type?: ParkingType) {
   return ({
     FREE: '무료',
@@ -4258,7 +4356,7 @@ function openStopDetail(item: RouteStop) {
     likedBy: [],
   }
   detailbarMainImg.value = image
-  isDetailbarOpen.value = true
+  openDetailbar()
 }
 
 async function selectPlace(placeId: string | undefined, provider: PlaceProvider = 'KTO', stopId?: string) {
@@ -4341,7 +4439,7 @@ async function selectPlace(placeId: string | undefined, provider: PlaceProvider 
     return
   }
 
-  isDetailbarOpen.value = true
+  openDetailbar()
 }
 
 async function selectDiscoveredPlace(place: Place, recommendation?: PlaceRecommendation) {
@@ -4411,7 +4509,7 @@ async function selectDiscoveredPlace(place: Place, recommendation?: PlaceRecomme
         image,
       }
     : null
-  isDetailbarOpen.value = true
+  openDetailbar()
 }
 
 function closeDetailbar() {
@@ -4419,6 +4517,10 @@ function closeDetailbar() {
   selectedPlace.value = null
   selectedRecommendationMapPlace.value = null
   descriptionExpanded.value = false
+  if (routeUtilityCollapsedBeforeDetail != null) {
+    isRouteUtilityCollapsed.value = routeUtilityCollapsedBeforeDetail
+    routeUtilityCollapsedBeforeDetail = null
+  }
 }
 
 async function addSelectedPlaceToItinerary() {
@@ -4449,31 +4551,58 @@ async function toggleSelectedPlaceItinerary() {
   await addSelectedPlaceToItinerary()
 }
 
-async function toggleSelectedPlaceSaved() {
+function reactionLabel(reaction: SwipeAction) {
+  if (reaction === 'SUPER_LIKE') return '슈퍼라이크'
+  if (reaction === 'LIKE') return '좋아요'
+  return '싫어요'
+}
+
+async function reactToSelectedPlace(reaction: SwipeAction) {
   const place = selectedPlace.value?.place
-  if (!place) return
+  if (!place || placeReactionSubmitting.value) return
   const key = placeReferenceKey(place)
-  if (savingPlaceKeys.value.has(key)) return
-  savingPlaceKeys.value = new Set(savingPlaceKeys.value).add(key)
+  const previousReaction = selectedPlaceReaction.value
+  const wasSaved = savedPlaceKeys.value.has(key)
+  const isRemoving = previousReaction === reaction
+  placeReactionSubmitting.value = true
+  placeReactionAnimating.value = reaction
+  if (placeReactionAnimationTimer) clearTimeout(placeReactionAnimationTimer)
+  placeReactionAnimationTimer = setTimeout(() => {
+    placeReactionAnimating.value = null
+    placeReactionAnimationTimer = null
+  }, 420)
+
+  if (!isRemoving) selectedPlaceReaction.value = reaction
   try {
-    if (savedPlaceKeys.value.has(key)) {
-      await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
+    if (isRemoving) {
+      await swipeApi.removeReaction(place.provider, place.externalPlaceId)
+      if (reaction === 'SUPER_LIKE') {
+        const next = new Set(savedPlaceKeys.value)
+        next.delete(key)
+        savedPlaceKeys.value = next
+      }
+      selectedPlaceReaction.value = null
+      showToast(`${reactionLabel(reaction)}를 제거했습니다.`, 'success')
+      return
+    }
+
+    await swipeApi.react(place.provider, place.externalPlaceId, reaction)
+    if (reaction === 'SUPER_LIKE') {
+      if (!wasSaved) await swipeApi.savePlace(place.provider, place.externalPlaceId)
+      savedPlaceKeys.value = new Set(savedPlaceKeys.value).add(key)
+      showToast('슈퍼라이크로 저장했습니다.', 'success')
+    } else {
+      if (wasSaved) await swipeApi.unsavePlace(place.provider, place.externalPlaceId)
       const next = new Set(savedPlaceKeys.value)
       next.delete(key)
       savedPlaceKeys.value = next
-      showToast('저장한 장소에서 제거했습니다.')
-    } else {
-      await swipeApi.react(place.provider, place.externalPlaceId, 'SUPER_LIKE')
-      await swipeApi.savePlace(place.provider, place.externalPlaceId)
-      savedPlaceKeys.value = new Set(savedPlaceKeys.value).add(key)
-      showToast('장소를 저장했습니다.', 'success')
+      showToast(`${reactionLabel(reaction)}로 저장했습니다.`, 'success')
     }
   } catch {
-    showToast('장소 저장 상태를 변경하지 못했습니다.', 'error')
+    selectedPlaceReaction.value = previousReaction
+    showToast('장소 반응을 변경하지 못했습니다.', 'error')
   } finally {
-    const next = new Set(savingPlaceKeys.value)
-    next.delete(key)
-    savingPlaceKeys.value = next
+    placeReactionSubmitting.value = false
   }
 }
 
@@ -4583,7 +4712,7 @@ function textAvatarStyle(index: unknown) {
                   <div class="avatars-group">
                     <div class="avatars">
                       <span
-                        v-for="m in trip.members.slice(0, 3)"
+                        v-for="m in mapPresenceMembers.slice(0, 4)"
                         :key="m.userId"
                         tabindex="0"
                         :aria-label="`${m.displayName || '멤버'} · ${m.online ? '접속 중' : '오프라인'}`"
@@ -4599,7 +4728,26 @@ function textAvatarStyle(index: unknown) {
                         </div>
                       </span>
                     </div>
-                    <span v-if="trip.members.length > 3" class="members-count">+{{ trip.members.length - 3 }}</span>
+                    <span
+                      v-if="hiddenMapPresenceMembers.length"
+                      class="members-count members-count-with-tooltip"
+                      tabindex="0"
+                      :aria-label="`추가 멤버 ${hiddenMapPresenceMembers.length}명. 접속 상태 확인`"
+                    >
+                      +{{ hiddenMapPresenceMembers.length }}
+                      <span class="members-count-tooltip" role="tooltip">
+                        <strong>추가 멤버</strong>
+                        <span
+                          v-for="member in hiddenMapPresenceMembers"
+                          :key="member.userId"
+                          class="members-count-tooltip__member"
+                        >
+                          <span :class="['members-count-tooltip__dot', { 'is-online': member.online }]" aria-hidden="true"></span>
+                          <span data-no-translate>{{ member.displayName || '멤버' }}</span>
+                          <span class="members-count-tooltip__status">{{ member.online ? '접속 중' : '오프라인' }}</span>
+                        </span>
+                      </span>
+                    </span>
                   </div>
             <div class="trip-map-buttons">
             <button class="map-tour-help-button" type="button" aria-label="지도 화면 안내 다시 보기" title="화면 안내" @click="mapSectionTour?.start()">
@@ -4619,6 +4767,16 @@ function textAvatarStyle(index: unknown) {
                       <strong>투표가 진행 중이에요</strong>
                     </button>
                   </div>
+            <button
+              type="button"
+              :class="['nearby-toggle', { active: nearbyOn }]"
+              :aria-pressed="nearbyOn"
+              :disabled="itinerary.mutating.value"
+              @click="nearbyOn = !nearbyOn"
+            >
+              <span class="material-symbols-rounded" aria-hidden="true">travel_explore</span>
+              주변 여행지
+            </button>
             <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
             <TripSettingsButton label="관리" variant="chip" @click="() => openTripManagement()" />
             <div class="map-theme-control" @keydown.esc.stop.prevent="closeMapTheme" @focusout="onMapThemeFocusOut">
@@ -4669,7 +4827,7 @@ function textAvatarStyle(index: unknown) {
                   @mousemove="onTabsMouseMove"
                   @mouseup="onTabsMouseUp"
                   @mouseleave="onTabsMouseLeave">
-                  <button :class="['day-tab', { active: activeDay === 0 }]" type="button" @click="activeDay = 0">
+                  <button :class="['day-tab', { active: activeDay === 0 }]" type="button" @click="selectItineraryDay(0)">
                     <span class="day-title">전체</span>
                   </button>
                   <button v-for="day in dayPlans" :key="day.id"
@@ -4815,11 +4973,34 @@ function textAvatarStyle(index: unknown) {
                   <span>여기로 끌어서 삭제</span>
                 </div>
 
+                <Transition name="custom-form-slide">
+                  <div class="custom-schedule-form" id="custom-schedule-form" v-if="showCustomForm">
+                    <div class="custom-form-field">
+                      <label class="form-label">
+                        <span class="form-label-text">일정명</span>
+                        <input class="field" type="text" id="inline-custom-title" placeholder="예: 점심 식사, 자유 시간" v-model="customTitle">
+                      </label>
+                    </div>
+                    <div class="custom-form-field">
+                      <label class="form-label">
+                        <span class="form-label-text">방문 일차</span>
+                        <select class="field" id="inline-custom-day" v-model="customDay">
+                          <option v-for="day in dayPlans" :key="day.id" :value="day.day">{{ dayPlanLabel(day) }}</option>
+                        </select>
+                      </label>
+                    </div>
+                    <button type="button" class="btn primary" id="inline-custom-submit" style="width:100%;margin-top:12px;" :disabled="itinerary.mutating.value || !customTitle.trim()" @click="submitCustomSchedule">
+                      <span class="material-symbols-rounded" style="font-size:18px;">add_circle</span>
+                      일정 추가하기
+                    </button>
+                  </div>
+                </Transition>
+
                 <button v-if="!isSearchPanelOpen" class="add-stop-dashed" type="button" :disabled="dayPlans.length === 0 || itinerary.mutating.value" @click="openSearchPanel">
                   <span class="material-symbols-rounded">add_circle</span>
                   <span>일정 추가</span>
                 </button>
-                <button v-else class="add-stop-dashed search-panel-custom-trigger" :aria-expanded="showCustomForm" type="button" @click="showCustomForm = !showCustomForm">
+                <button v-else :class="['add-stop-dashed', 'search-panel-custom-trigger', { 'is-close': showCustomForm }]" :aria-expanded="showCustomForm" type="button" @click="showCustomForm = !showCustomForm">
                   <span class="material-symbols-rounded" aria-hidden="true">edit_note</span>
                   <span>{{ showCustomForm ? '커스텀 일정 입력 닫기' : '커스텀 일정 추가' }}</span>
                 </button>
@@ -4849,28 +5030,6 @@ function textAvatarStyle(index: unknown) {
 
               </div>
               <div class="search-panel-body">
-                <!-- 커스텀 일정 폼 -->
-                <div class="custom-schedule-form" id="custom-schedule-form" v-if="showCustomForm">
-                  <div class="custom-form-field">
-                    <label class="form-label">
-                      <span class="form-label-text">일정명</span>
-                      <input class="field" type="text" id="inline-custom-title" placeholder="예: 점심 식사, 자유 시간" v-model="customTitle">
-                    </label>
-                  </div>
-                  <div class="custom-form-field">
-                    <label class="form-label">
-                      <span class="form-label-text">방문 일차</span>
-                      <select class="field" id="inline-custom-day" v-model="customDay">
-                        <option v-for="day in dayPlans" :key="day.id" :value="day.day">{{ dayPlanLabel(day) }}</option>
-                      </select>
-                    </label>
-                  </div>
-                  <button type="button" class="btn primary" id="inline-custom-submit" style="width:100%;margin-top:12px;" :disabled="itinerary.mutating.value || !customTitle.trim()" @click="submitCustomSchedule">
-                    <span class="material-symbols-rounded" style="font-size:18px;">add_circle</span>
-                    일정 추가하기
-                  </button>
-                </div>
-
                 <PlaceDiscoveryPanel
                   :trip-id="tripId"
                   :bbox="placeDiscoveryBbox"
@@ -4917,6 +5076,7 @@ function textAvatarStyle(index: unknown) {
 				<span class="material-symbols-rounded" aria-hidden="true">chevron_left</span>
 			</button>
 			<MapboxItineraryMap
+				ref="itineraryMapRef"
 				:stops="mapStops"
 				:routes="visibleMapRoutes"
 				:route-display="routeState"
@@ -4945,6 +5105,8 @@ function textAvatarStyle(index: unknown) {
               @select-place="handleSelectPlace"
               @select-nearby-place="selectNearbyMapPlace"
               @viewport-change="mapViewport.updateViewport"
+              @orientation-change="updateMapOrientation"
+              @map-drag-start="closeTasteControl"
               @drawing-create="handleDrawingCreate"
               @drawing-erase="eraseLocalDrawings"
               @drawing-preview="publishDrawingPreview"
@@ -4985,7 +5147,7 @@ function textAvatarStyle(index: unknown) {
                 :aria-pressed="selectedStickerCode === sticker.code"
                 @click="selectedStickerCode = sticker.code"
               >
-                <svg viewBox="0 0 64 64" aria-hidden="true"><use :href="stickerHref(sticker.code) ?? undefined" /></svg>
+                <img :src="stickerHref(sticker.code) ?? undefined" alt="" aria-hidden="true">
               </button>
               <span class="map-sticker-help">지도에서 놓을 위치를 선택하세요</span>
             </div>
@@ -5090,15 +5252,15 @@ function textAvatarStyle(index: unknown) {
               <div class="map-tools">
               <!-- Drawing tools -->
               <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" data-tool="cursor" :aria-pressed="activeTool === 'cursor'" :disabled="itinerary.mutating.value" @click="selectMapTool('cursor')">
-                <span class="material-symbols-rounded">arrow_selector_tool</span>
+                <span class="material-symbols-rounded">near_me</span>
                 <span class="tool-tip">기본 선택</span>
               </button>
               <button ref="routeToolButtonRef" :class="['tool-btn', { active: activeTool === 'route-pen' }]" type="button" data-tool="route-pen" :aria-controls="activeTool === 'route-pen' ? 'route-mode-popover' : undefined" :aria-expanded="activeTool === 'route-pen'" :aria-pressed="activeTool === 'route-pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('route-pen')">
-                <span class="material-symbols-rounded">polyline</span>
+                <span class="material-symbols-rounded">route</span>
                 <span class="tool-tip">경로 연결 펜</span>
               </button>
               <button ref="penToolButtonRef" :class="['tool-btn', { active: activeTool === 'pen' }]" type="button" id="pen-btn" data-tool="pen" aria-controls="pen-popover" :aria-expanded="isPenPopoverOpen" :aria-pressed="activeTool === 'pen'" :disabled="itinerary.mutating.value" @click="selectMapTool('pen')">
-                <span class="material-symbols-rounded">edit</span>
+                <span class="material-symbols-rounded">draw</span>
                 <span class="tool-tip">자유 그리기</span>
               </button>
               <button :class="['tool-btn', { active: activeTool === 'eraser' }]" type="button" data-tool="eraser" :aria-pressed="activeTool === 'eraser'" :disabled="itinerary.mutating.value" @click="selectMapTool('eraser')">
@@ -5106,7 +5268,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="tool-tip">그림 지우개</span>
               </button>
               <button ref="stickerToolButtonRef" :class="['tool-btn', { active: activeTool === 'sticker' }]" type="button" data-tool="sticker" aria-controls="sticker-popover" :aria-expanded="activeTool === 'sticker'" :aria-pressed="activeTool === 'sticker'" :disabled="itinerary.mutating.value" @click="selectMapTool('sticker')">
-                <span class="material-symbols-rounded">emoji_emotions</span>
+                <span class="material-symbols-rounded">add_reaction</span>
                 <span class="tool-tip">스티커 삽입</span>
               </button>
               <button :class="['tool-btn', { active: activeTool === 'image' }]" type="button" data-tool="image" :aria-pressed="activeTool === 'image'" :disabled="itinerary.mutating.value || mapImageUploading" @click="openMapImagePicker">
@@ -5122,7 +5284,7 @@ function textAvatarStyle(index: unknown) {
                 :data-route-state="routeState"
                 :aria-pressed="routeState !== 'hidden'"
                 @click="toggleRouteState">
-                <span class="material-symbols-rounded icon-route">polyline</span>
+                <span class="material-symbols-rounded icon-route">timeline</span>
                 <span class="material-symbols-rounded icon-hidden">visibility_off</span>
                 <span class="tool-tip">{{ routeState === 'route' ? '경로 표시: 실선' : '경로 표시: 숨김' }}</span>
               </button>
@@ -5131,31 +5293,25 @@ function textAvatarStyle(index: unknown) {
                 :data-card-state="cardState"
                 :aria-pressed="cardState !== 'hidden'"
                 @click="toggleCardState">
-                <span class="material-symbols-rounded icon-full">view_sidebar</span>
-                <span class="material-symbols-rounded icon-min">push_pin</span>
-                <span class="material-symbols-rounded icon-hidden-card">block</span>
+                <span class="material-symbols-rounded icon-full">tooltip</span>
+                <span class="material-symbols-rounded icon-min">location_on</span>
+                <span class="material-symbols-rounded icon-hidden-card">visibility_off</span>
                 <span class="tool-tip">{{ cardState === 'full' ? '여행지 카드: 전체 보기' : cardState === 'min' ? '여행지 카드: 최소화 (핀)' : '여행지 카드: 숨김' }}</span>
-              </button>
-              <button :class="['tool-btn', nearbyOn ? 'is-on' : 'is-off']" type="button"
-                data-toggle="nearby" :disabled="itinerary.mutating.value"
-                :aria-pressed="nearbyOn"
-                @click="nearbyOn = !nearbyOn">
-                <span class="material-symbols-rounded">explore</span>
-                <span class="tool-tip">주변 여행지 표시</span>
               </button>
               <button :class="['tool-btn', drawingOn ? 'is-on' : 'is-off']" type="button"
                 data-toggle="drawing" :disabled="itinerary.mutating.value"
                 :aria-pressed="drawingOn"
                 @click="drawingOn = !drawingOn">
-                <span class="material-symbols-rounded">brush</span>
+                <span class="material-symbols-rounded">visibility</span>
                 <span class="tool-tip">지도 그림 표시</span>
               </button>
-              <button :class="['tool-btn', standardMapView ? 'is-on' : 'is-off']" type="button"
+              <button :class="['tool-btn', mapIsTilted ? 'is-on' : 'is-off']" type="button"
                 data-toggle="standard-view" :disabled="itinerary.mutating.value"
-                :aria-pressed="standardMapView"
+                :aria-pressed="mapIsTilted"
+                :aria-label="mapIsTilted ? '지도 틸트 초기화' : '3D 보기'"
                 @click="toggleStandardMapView">
-                <span class="material-symbols-rounded">3d_rotation</span>
-                <span class="tool-tip">3D 보기</span>
+                <span class="material-symbols-rounded">{{ mapIsTilted ? 'restart_alt' : 'terrain' }}</span>
+                <span class="tool-tip">{{ mapIsTilted ? '지도 틸트 초기화' : '3D 보기' }}</span>
               </button>
 
               <span class="tool-divider" aria-hidden="true"></span>
@@ -5181,13 +5337,13 @@ function textAvatarStyle(index: unknown) {
 
           <!-- detailbar -->
           <aside :class="['detailbar', { 'is-hidden': !isDetailbarOpen }]" ref="detailbarRef">
-            <button class="detailbar-close" type="button" aria-label="닫기" @click="closeDetailbar"><span class="material-symbols-rounded">close</span></button>
+            <button class="icon-btn detailbar-close" type="button" aria-label="관광지 상세 닫기" @click="closeDetailbar">
+              <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>
+              <span class="detailbar-close-label">뒤로가기</span>
+            </button>
             <div class="detailbar-scroll" v-if="selectedPlace">
               <!-- Header -->
               <div class="detailbar-header-info" style="padding-bottom: 0px; padding-top: 0px;">
-                <div class="detailbar-category-row">
-                  <span class="detailbar-category-pill">{{ selectedPlace.category || '상세 정보' }}</span>
-                </div>
                 <h2 data-no-translate class="detailbar-main-title">{{ selectedPlace.title }}</h2>
                 <div v-if="selectedPlace.location" class="detailbar-address-row">
                   <span class="material-symbols-rounded">location_on</span>
@@ -5197,6 +5353,7 @@ function textAvatarStyle(index: unknown) {
 
               <!-- Description -->
               <div class="detailbar-desc-section">
+                <h3 class="detailbar-section-title">장소 소개</h3>
                 <p class="detailbar-desc-text" :class="{ 'is-expanded': descriptionExpanded }">
                   <template v-if="selectedPlace.description">{{ displayedDescription }}{{ canExpandDescription && !descriptionExpanded ? '…' : '' }}</template>
                   <template v-else>상세 설명이 제공되지 않았습니다.</template>
@@ -5211,13 +5368,11 @@ function textAvatarStyle(index: unknown) {
                   {{ descriptionExpanded ? '접기' : '더보기' }}
                   <span class="material-symbols-rounded">{{ descriptionExpanded ? 'expand_less' : 'expand_more' }}</span>
                 </button>
-                <div v-if="selectedPlace.tags.length" class="detailbar-tag-row">
-                  <span v-for="tag in selectedPlace.tags" :key="tag" class="detailbar-tag">#{{ tag }}</span>
-                </div>
               </div>
 
               <!-- Gallery -->
               <div class="detailbar-gallery" v-if="selectedPlace.image" style="margin-bottom: 0px;">
+                <h3 class="detailbar-section-title">사진</h3>
                 <div class="detailbar-hero-wrapper">
                   <img class="detailbar-hero" :alt="selectedPlace.title" :src="detailbarMainImg || selectedPlace.image">
                 </div>
@@ -5228,31 +5383,6 @@ function textAvatarStyle(index: unknown) {
                     <img :src="t" :alt="selectedPlace.title">
                   </div>
                 </div>
-              </div>
-
-              <div v-if="selectedPlace.place" class="detailbar-action-row">
-                <button
-                  type="button"
-                  class="detailbar-save-place-btn"
-                  :class="{ 'is-saved': selectedPlaceIsSaved }"
-                  :disabled="selectedPlaceIsSaving"
-                  :aria-label="selectedPlaceIsSaved ? '슈퍼라이크에서 제거' : '슈퍼라이크에 추가'"
-                  @click="toggleSelectedPlaceSaved"
-                >
-                  <span class="material-symbols-rounded">{{ selectedPlaceIsSaved ? 'stars' : 'star_border' }}</span>
-                  {{ selectedPlaceIsSaved ? '슈퍼라이크됨' : '슈퍼라이크에 추가' }}
-                </button>
-                <button
-                  type="button"
-                  class="detailbar-add-plan-btn"
-                  :class="{ 'is-scheduled': selectedPlaceIsScheduled }"
-                  :disabled="itinerary.mutating.value"
-                  :aria-label="selectedPlaceIsScheduled ? '일정에서 삭제' : '일정에 추가'"
-                  @click="toggleSelectedPlaceItinerary"
-                >
-                  <span class="material-symbols-rounded">{{ selectedPlaceIsScheduled ? 'task_alt' : 'add_circle' }}</span>
-                  {{ selectedPlaceIsScheduled ? '일정에 있음' : '일정에 추가' }}
-                </button>
               </div>
 
               <!-- Social Likes -->
@@ -5319,10 +5449,103 @@ function textAvatarStyle(index: unknown) {
                 </div>
               </div>
             </div>
+            <div v-if="selectedPlace?.place" class="detailbar-action-row">
+              <div class="detailbar-reaction-row" :class="{ 'has-active-reaction': selectedPlaceReaction }">
+                <button
+                  v-if="!selectedPlaceReaction || selectedPlaceReaction === 'SUPER_LIKE'"
+                  type="button"
+                  class="detailbar-save-place-btn"
+                  :class="{
+                    'is-saved': selectedPlaceReaction === 'SUPER_LIKE',
+                    'is-animating': placeReactionAnimating === 'SUPER_LIKE',
+                  }"
+                  :disabled="placeReactionSubmitting"
+                  :aria-pressed="selectedPlaceReaction === 'SUPER_LIKE'"
+                  :aria-label="selectedPlaceReaction === 'SUPER_LIKE' ? '슈퍼라이크 제거하기' : '슈퍼라이크'"
+                  @click="reactToSelectedPlace('SUPER_LIKE')"
+                >
+                  <span class="detailbar-reaction-label detailbar-reaction-label--default">
+                    <span class="material-symbols-rounded">{{ selectedPlaceReaction === 'SUPER_LIKE' ? 'stars' : 'star_border' }}</span>
+                    슈퍼라이크
+                  </span>
+                  <span v-if="selectedPlaceReaction === 'SUPER_LIKE'" class="detailbar-reaction-label detailbar-reaction-label--remove">
+                    <span class="material-symbols-rounded">delete</span>
+                    슈퍼라이크 제거하기
+                  </span>
+                </button>
+                <button
+                  v-if="!selectedPlaceReaction || selectedPlaceReaction === 'LIKE'"
+                  type="button"
+                  class="detailbar-like-place-btn"
+                  :class="{
+                    'is-liked': selectedPlaceReaction === 'LIKE',
+                    'is-animating': placeReactionAnimating === 'LIKE',
+                  }"
+                  :disabled="placeReactionSubmitting"
+                  :aria-pressed="selectedPlaceReaction === 'LIKE'"
+                  :aria-label="selectedPlaceReaction === 'LIKE' ? '좋아요 제거하기' : '좋아요'"
+                  @click="reactToSelectedPlace('LIKE')"
+                >
+                  <span class="detailbar-reaction-label detailbar-reaction-label--default">
+                    <span class="material-symbols-rounded">{{ selectedPlaceReaction === 'LIKE' ? 'favorite' : 'favorite_border' }}</span>
+                    좋아요
+                  </span>
+                  <span v-if="selectedPlaceReaction === 'LIKE'" class="detailbar-reaction-label detailbar-reaction-label--remove">
+                    <span class="material-symbols-rounded">heart_minus</span>
+                    좋아요 제거하기
+                  </span>
+                </button>
+                <button
+                  v-if="!selectedPlaceReaction || selectedPlaceReaction === 'NOPE'"
+                  type="button"
+                  class="detailbar-dislike-place-btn"
+                  :class="{
+                    'is-disliked': selectedPlaceReaction === 'NOPE',
+                    'is-animating': placeReactionAnimating === 'NOPE',
+                  }"
+                  :disabled="placeReactionSubmitting"
+                  :aria-pressed="selectedPlaceReaction === 'NOPE'"
+                  :aria-label="selectedPlaceReaction === 'NOPE' ? '싫어요 제거하기' : '싫어요'"
+                  @click="reactToSelectedPlace('NOPE')"
+                >
+                  <span class="detailbar-reaction-label detailbar-reaction-label--default">
+                    <span class="material-symbols-rounded">{{ selectedPlaceReaction === 'NOPE' ? 'thumb_down' : 'thumb_down_off_alt' }}</span>
+                    싫어요
+                  </span>
+                  <span v-if="selectedPlaceReaction === 'NOPE'" class="detailbar-reaction-label detailbar-reaction-label--remove">
+                    <span class="material-symbols-rounded">delete</span>
+                    싫어요 제거하기
+                  </span>
+                </button>
+              </div>
+              <button
+                type="button"
+                class="detailbar-add-plan-btn"
+                :class="{ 'is-scheduled': selectedPlaceIsScheduled }"
+                :disabled="itinerary.mutating.value"
+                :aria-label="selectedPlaceIsScheduled ? '일정에서 삭제' : '일정에 추가'"
+                @click="toggleSelectedPlaceItinerary"
+              >
+                <template v-if="selectedPlaceIsScheduled">
+                  <span class="detailbar-schedule-label detailbar-schedule-label--default">
+                    <span class="material-symbols-rounded">task_alt</span>
+                    일정에 있음
+                  </span>
+                  <span class="detailbar-schedule-label detailbar-schedule-label--remove">
+                    <span class="material-symbols-rounded">delete</span>
+                    일정에서 제거하기
+                  </span>
+                </template>
+                <span v-else class="detailbar-schedule-label">
+                  <span class="material-symbols-rounded">add_circle</span>
+                  일정에 추가
+                </span>
+              </button>
+            </div>
           </aside>
 
           <!-- ═══ ROUTE UTILITY SIDEBAR ═══ -->
-          <aside id="route-utility-sidebar" data-tour-section="collaboration" :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구" :aria-hidden="isRouteUtilityCollapsed">
+          <aside id="route-utility-sidebar" data-tour-section="collaboration" :class="['route-utility-sidebar', `route-utility-sidebar--${activeRoutePanel}`, { 'is-collapsed': isRouteUtilityCollapsed }]" aria-label="여행 협업 도구" :aria-hidden="isRouteUtilityCollapsed || isDetailbarOpen" :inert="isDetailbarOpen">
             <button
               class="route-utility-toggle"
               type="button"
@@ -5390,7 +5613,12 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ AI CHAT PANEL ═══ -->
           <div id="ai-chat-panel" :class="['ai-chat-panel', { show: isAiChatOpen }]">
-            <div class="ai-chat-messages-container" id="ai-chat-messages">
+            <div
+              id="ai-chat-messages"
+              ref="aiMessagesContainerRef"
+              class="ai-chat-messages-container"
+              @scroll.passive="updateConversationScrollState('ai')"
+            >
               <div v-if="conversationError" class="text-sm" style="color:var(--rose);display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span>{{ conversationError }}</span>
                 <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
@@ -5430,7 +5658,12 @@ function textAvatarStyle(index: unknown) {
 
           <!-- ═══ TRIP CHAT PANEL ═══ -->
           <div id="trip-chat-panel" :class="['ai-chat-panel', 'trip-chat-panel', { show: isTripChatOpen }]">
-            <div class="ai-chat-messages-container" id="trip-chat-messages">
+            <div
+              id="trip-chat-messages"
+              ref="tripChatMessagesContainerRef"
+              class="ai-chat-messages-container"
+              @scroll.passive="updateConversationScrollState('chat')"
+            >
               <div v-if="conversationError" class="text-sm" style="color:var(--rose);display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span>{{ conversationError }}</span>
                 <button type="button" class="btn ghost" style="font-size:11px;padding:4px 8px;min-height:0;height:auto" @click="loadConversations">다시 시도</button>
@@ -5610,12 +5843,20 @@ function textAvatarStyle(index: unknown) {
 }
 
 .vote-modal-card {
-  max-height: min(92vh, 1040px);
-  max-width: 1120px;
+  max-height: min(88vh, 860px);
+  max-width: 920px;
   overflow: auto;
-  padding: 8px 16px 20px;
+  padding: 12px 24px 24px;
   position: relative;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   width: 100%;
+}
+
+.vote-modal-card::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .vote-modal-close {
@@ -5630,7 +5871,7 @@ function textAvatarStyle(index: unknown) {
   align-items: center;
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 999px;
   color: var(--ink);
   cursor: pointer;
   display: inline-flex;
@@ -5862,6 +6103,252 @@ function textAvatarStyle(index: unknown) {
     transform var(--route-panel-motion-duration) var(--route-panel-motion-ease),
     opacity 180ms ease-in,
     border-radius 0.22s ease;
+}
+
+.route-page-section .detailbar {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  z-index: 110;
+  width: 380px;
+  border: 0;
+  border-left: 1px solid #dfeaf5;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: -14px 0 32px rgba(15, 23, 42, 0.08);
+  transform: translateX(0);
+}
+.route-page-section .detailbar.is-hidden {
+  transform: translateX(calc(100% + 36px));
+}
+.route-page-section .detailbar-scroll {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 64px 16px 20px;
+  background: #fff;
+  border-radius: 0;
+}
+.route-page-section .detailbar-close {
+  top: 14px;
+  right: auto;
+  left: 16px;
+  z-index: 5;
+  display: inline-flex !important;
+  width: auto !important;
+  min-width: 104px;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 40px;
+  flex-shrink: 0;
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid #dfeaf5;
+  border-radius: 999px;
+  background: #fff;
+  color: #396a9e;
+  box-shadow: none;
+  white-space: nowrap !important;
+}
+.route-page-section .detailbar-close > .material-symbols-rounded { flex: 0 0 auto; }
+.route-page-section .detailbar-close:hover {
+  border-color: #b7cde2;
+  background: #f1f6fb;
+  color: #285d91;
+  box-shadow: none;
+  transform: none;
+}
+.detailbar-close-label {
+  display: inline-block;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.route-page-section .detailbar-header-info { order: 1; padding: 0 0 12px; }
+.route-page-section .detailbar-gallery { order: 2; margin: 0 0 14px !important; }
+.route-page-section .detailbar-desc-section { order: 3; margin: 0 0 14px; padding: 14px; border: 1px solid #dfeaf5; border-radius: 14px; background: #f8fbfd; }
+.route-page-section .detailbar-social-likes { order: 4; margin-bottom: 14px; }
+.route-page-section .detailbar-info-card { order: 5; margin-bottom: 14px; padding: 14px; border: 1px solid #dfeaf5; border-radius: 14px; background: #f8fbfd; }
+.route-page-section .detailbar-sec-info { order: 6; margin-bottom: 0; padding: 13px 14px; border-color: #dfeaf5; border-radius: 14px; }
+.route-page-section .detailbar-main-title { margin-bottom: 6px; font-size: 20px; }
+.route-page-section .detailbar-category-pill { background: #eaf4ff; color: #3579b0; }
+.route-page-section .detailbar-hero-wrapper { margin-bottom: 8px; border-radius: 12px; box-shadow: none; }
+.route-page-section .detailbar-hero { height: 136px !important; }
+.route-page-section .detailbar-thumbs { margin: 6px 0 0; gap: 6px; }
+.route-page-section .detailbar-thumb-item { width: 52px; height: 40px; margin: 0; border-radius: 7px; }
+.route-page-section .detailbar-thumb-item.active { margin: 0; transform: none; }
+.route-page-section .detailbar-section-title {
+  margin: 0 0 10px;
+  color: #38566f;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: -.01em;
+}
+.route-page-section .detailbar-info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.route-page-section .detailbar-info-grid .info-item { min-width: 0; padding: 9px; border: 1px solid #e2ebf3; border-radius: 10px; background: #fff; }
+.route-page-section .detailbar-acc-row { flex-wrap: wrap; gap: 6px; padding-top: 10px; }
+.route-page-section .detailbar-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid #dfeaf5;
+  background: #fff;
+  box-shadow: 0 -10px 24px rgba(46, 92, 128, 0.08);
+}
+.route-page-section .detailbar-reaction-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.route-page-section .detailbar-reaction-row.has-active-reaction { grid-template-columns: minmax(0, 1fr); }
+.route-page-section .detailbar-add-plan-btn,
+.route-page-section .detailbar-save-place-btn,
+.route-page-section .detailbar-like-place-btn,
+.route-page-section .detailbar-dislike-place-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border-radius: 12px;
+  box-shadow: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.route-page-section .detailbar-like-place-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #f1c4ca;
+  background: #fff7f8;
+  color: #cf3f51;
+  cursor: pointer;
+  font-weight: 800;
+}
+.route-page-section .detailbar-dislike-place-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #526276;
+  cursor: pointer;
+  font-weight: 800;
+}
+.route-page-section .detailbar-save-place-btn:hover:not(:disabled),
+.route-page-section .detailbar-save-place-btn.is-saved {
+  border-color: rgba(255, 255, 255, .32);
+  background: linear-gradient(135deg, #f59e0b 0%, #ec4899 48%, #7c3aed 100%);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(236, 72, 153, .24);
+  transform: translateY(-1px);
+}
+.route-page-section .detailbar-like-place-btn:hover:not(:disabled),
+.route-page-section .detailbar-like-place-btn.is-liked {
+  border-color: #e94758;
+  background: #e94758;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(233, 71, 88, .22);
+  transform: translateY(-1px);
+}
+.route-page-section .detailbar-dislike-place-btn:hover:not(:disabled),
+.route-page-section .detailbar-dislike-place-btn.is-disliked {
+  border-color: #64748b;
+  background: #64748b;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(71, 85, 105, .22);
+  transform: translateY(-1px);
+}
+.route-page-section .detailbar-save-place-btn.is-saved:hover:not(:disabled),
+.route-page-section .detailbar-like-place-btn.is-liked:hover:not(:disabled),
+.route-page-section .detailbar-dislike-place-btn.is-disliked:hover:not(:disabled) {
+  border-color: #c93636;
+  background: #d94b4b;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(201, 54, 54, .24);
+}
+.route-page-section .detailbar-reaction-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.route-page-section .detailbar-reaction-label--remove { display: none; }
+.route-page-section .is-saved:hover:not(:disabled) .detailbar-reaction-label--default,
+.route-page-section .is-liked:hover:not(:disabled) .detailbar-reaction-label--default,
+.route-page-section .is-disliked:hover:not(:disabled) .detailbar-reaction-label--default { display: none; }
+.route-page-section .is-saved:hover:not(:disabled) .detailbar-reaction-label--remove,
+.route-page-section .is-liked:hover:not(:disabled) .detailbar-reaction-label--remove,
+.route-page-section .is-disliked:hover:not(:disabled) .detailbar-reaction-label--remove { display: inline-flex; }
+.route-page-section .detailbar-save-place-btn.is-animating,
+.route-page-section .detailbar-like-place-btn.is-animating,
+.route-page-section .detailbar-dislike-place-btn.is-animating {
+  animation: detailbar-reaction-pop .4s cubic-bezier(.2, .8, .2, 1);
+}
+.route-page-section .detailbar-save-place-btn:disabled,
+.route-page-section .detailbar-like-place-btn:disabled,
+.route-page-section .detailbar-dislike-place-btn:disabled { cursor: default; opacity: .72; }
+.route-page-section .detailbar-save-place-btn.is-saved:disabled {
+  border-color: rgba(255, 255, 255, .32);
+  background: linear-gradient(135deg, #f59e0b 0%, #ec4899 48%, #7c3aed 100%);
+  color: #fff;
+}
+.route-page-section .detailbar-like-place-btn.is-liked:disabled {
+  border-color: #e94758;
+  background: #e94758;
+  color: #fff;
+}
+.route-page-section .detailbar-dislike-place-btn.is-disliked:disabled {
+  border-color: #64748b;
+  background: #64748b;
+  color: #fff;
+}
+@keyframes detailbar-reaction-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(.95); }
+  72% { transform: scale(1.035); }
+  100% { transform: scale(1); }
+}
+.route-page-section .detailbar-add-plan-btn { background: #4286bd; }
+.route-page-section .detailbar-add-plan-btn:hover:not(:disabled) { background: #3376ad; box-shadow: none; }
+.route-page-section .detailbar-add-plan-btn.is-scheduled {
+  border-color: #059669;
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(5, 150, 105, .22);
+}
+.route-page-section .detailbar-schedule-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.route-page-section .detailbar-schedule-label--remove { display: none; }
+.route-page-section .detailbar-add-plan-btn.is-scheduled:hover:not(:disabled) {
+  border-color: #c93636;
+  background: #d94b4b;
+  color: #fff;
+  box-shadow: none;
+}
+.route-page-section .detailbar-add-plan-btn.is-scheduled:hover:not(:disabled) .detailbar-schedule-label--default { display: none; }
+.route-page-section .detailbar-add-plan-btn.is-scheduled:hover:not(:disabled) .detailbar-schedule-label--remove { display: inline-flex; }
+@media (prefers-reduced-motion: reduce) {
+  .route-page-section .detailbar-save-place-btn.is-animating,
+  .route-page-section .detailbar-like-place-btn.is-animating,
+  .route-page-section .detailbar-dislike-place-btn.is-animating { animation: none; }
 }
 .route-utility-content {
   display: flex;
@@ -6357,7 +6844,13 @@ function textAvatarStyle(index: unknown) {
 .route-page-section .sidebar-content {
   width: 100%;
   box-sizing: border-box;
+  overflow-x: clip;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.route-page-section .sidebar-content::-webkit-scrollbar { display: none; }
+.route-page-section .sidebar-search-panel,
+.route-page-section .search-panel-body { max-width: 100%; overflow-x: hidden; }
 .route-page-section .sidebar-toggle,
 .route-page-section .route-sidebar-restore,
 .route-page-section .route-utility-toggle,
@@ -6571,6 +7064,7 @@ function textAvatarStyle(index: unknown) {
   right: 0;
   bottom: 0;
   z-index: 320;
+  background: transparent;
   padding-top: 8px !important;
   padding-bottom: 8px !important;
 }
@@ -6700,25 +7194,6 @@ function textAvatarStyle(index: unknown) {
   margin: 0 auto;
   pointer-events: auto;
   transform: none;
-}
-
-.route-page-section .map-canvas.navigation-guide-mode {
-  background: #eef4ff;
-}
-
-.route-page-section .map-canvas.navigation-guide-mode::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-  background:
-    linear-gradient(180deg, rgba(3, 19, 53, 0.16), rgba(3, 19, 53, 0) 26%),
-    linear-gradient(0deg, rgba(37, 99, 235, 0.10), rgba(37, 99, 235, 0) 34%);
-}
-
-.route-page-section .map-canvas.navigation-guide-mode .itinerary-map {
-  filter: saturate(1.08) contrast(1.03);
 }
 
 .route-page-section .map-canvas.navigation-guide-mode .map-tools {
@@ -6940,10 +7415,40 @@ function textAvatarStyle(index: unknown) {
 
 /* Custom schedule form */
 .custom-schedule-form {
-  padding:16px;background:var(--surface);border-radius:16px;border:1px solid var(--line);margin-bottom:16px;
+  position:relative;
+  overflow:hidden;
+  padding:18px 16px 16px;
+  background:linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+  border:1px solid #a9c9e3;
+  border-radius:16px;
+  margin-bottom:12px;
+  box-shadow:0 12px 30px rgba(48, 108, 158, 0.18);
+}
+.custom-schedule-form::before {
+  content:"";
+  position:absolute;
+  inset:0 0 auto;
+  height:4px;
+  background:linear-gradient(90deg, #4286bd, #70b5e8);
 }
 .custom-form-field { margin-bottom:12px; }
 .custom-form-row { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px; }
+.custom-form-slide-enter-active,
+.custom-form-slide-leave-active {
+  transition:opacity .24s ease, transform .28s cubic-bezier(.2,.8,.2,1);
+  transform-origin:bottom center;
+  will-change:opacity,transform;
+}
+.custom-form-slide-enter-from,
+.custom-form-slide-leave-to {
+  opacity:0;
+  transform:translateY(18px) scale(.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .custom-form-slide-enter-active,
+  .custom-form-slide-leave-active { transition:none; }
+}
 
 /* Trip header card theme overrides (matching original CSS) */
 .trip-header-card.theme-violet {
@@ -7468,9 +7973,15 @@ function textAvatarStyle(index: unknown) {
   transform: translateY(-1px);
 }
 
-.map-sticker-option svg {
+.map-sticker-option img {
   width: 31px;
   height: 31px;
+  object-fit: contain;
+}
+
+@media (max-width: 760px) {
+  .vote-modal-overlay { padding: 12px; }
+  .vote-modal-card { max-height: calc(100dvh - 24px); padding: 10px 14px 18px; }
 }
 
 .map-sticker-help {
@@ -7536,7 +8047,7 @@ function textAvatarStyle(index: unknown) {
   }
 
   .route-page-section .detailbar {
-    width: min(420px, calc(100% - var(--sidebar-width, 360px) - 76px));
+    width: min(380px, calc(100% - 64px));
   }
 }
 
@@ -7576,15 +8087,16 @@ function textAvatarStyle(index: unknown) {
   }
 
   .route-page-section .detailbar {
-    top: 12px;
-    bottom: 12px;
-    left: 12px;
-    width: min(440px, calc(100% - 76px));
-    z-index: 50;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: auto;
+    width: min(380px, calc(100% - 64px));
+    z-index: 110;
   }
 
   .route-page-section .detailbar.is-hidden {
-    transform: translateX(calc(-100% - 24px));
+    transform: translateX(calc(100% + 36px));
   }
 }
 
@@ -7727,7 +8239,7 @@ function textAvatarStyle(index: unknown) {
   }
 
   .route-page-section .detailbar-scroll {
-    padding: 22px 18px calc(24px + env(safe-area-inset-bottom));
+    padding: 64px 18px 20px;
   }
 
   .route-page-section .map-tools-viewport {
@@ -7828,7 +8340,24 @@ function textAvatarStyle(index: unknown) {
 .trip-map-actions .avatar { width: 28px; height: 28px; }
 .trip-map-actions .avatar:focus .avatar-tooltip { opacity: 1; visibility: visible; }
 .trip-map-actions .avatar-tooltip { top: calc(100% + 8px); bottom: auto; }
+.trip-map-actions .avatar-tooltip::after {
+  top: auto;
+  bottom: 100%;
+  border-color: transparent transparent var(--ink) transparent;
+}
 .trip-map-actions .members-count { font-size: 11px; color: var(--muted); }
+.trip-map-actions .members-count-with-tooltip { position:relative; display:inline-flex; align-items:center; align-self:stretch; cursor:default; outline:none; }
+.members-count-tooltip { position:absolute; top:calc(100% + 10px); right:-8px; z-index:120; display:grid; gap:7px; min-width:190px; padding:11px 12px; border:1px solid #dce7ef; border-radius:12px; background:#fff; color:#354e65; box-shadow:0 10px 28px rgb(37 76 114 / 18%); font-size:11px; line-height:1.3; pointer-events:none; opacity:0; visibility:hidden; transform:translateY(-4px); transition:opacity .15s ease,transform .15s ease,visibility .15s ease; }
+.members-count-tooltip::before { content:''; position:absolute; right:14px; bottom:100%; width:9px; height:9px; border-top:1px solid #dce7ef; border-left:1px solid #dce7ef; background:#fff; transform:translateY(5px) rotate(45deg); }
+.members-count-tooltip strong { font-size:11px; color:#526b80; }
+.members-count-tooltip__member { display:grid; grid-template-columns:8px minmax(0,1fr) auto; align-items:center; gap:7px; white-space:nowrap; }
+.members-count-tooltip__dot { width:8px; height:8px; border-radius:50%; background:#cbd5df; box-shadow:0 0 0 2px #eef2f6; }
+.members-count-tooltip__dot.is-online { background:#22c55e; box-shadow:0 0 0 2px #dcfce7; }
+.members-count-tooltip__status { color:#8a9bab; font-size:10px; }
+.members-count-tooltip__dot.is-online ~ .members-count-tooltip__status { color:#238749; font-weight:700; }
+.members-count-with-tooltip:hover .members-count-tooltip,
+.members-count-with-tooltip:focus-visible .members-count-tooltip { opacity:1; visibility:visible; transform:translateY(0); }
+.members-count-with-tooltip:focus-visible { border-radius:6px; box-shadow:0 0 0 2px rgb(72 143 196 / 30%); }
 @media(max-width:767px) { .trip-map-actions { top: 58px; right: 12px; } .map-shell.is-route-utility-collapsed .trip-map-actions { right: 12px; } }
 
 .trip-sidebar-back { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; margin-bottom: 8px; color: var(--muted); font-size: 12px; text-decoration: none; }
@@ -7851,6 +8380,13 @@ function textAvatarStyle(index: unknown) {
 .map-tour-help-button { display:grid; place-items:center; width:40px; height:40px; padding:0; border:1px solid var(--line); border-radius:50%; background:var(--surface,#fff); color:#537089; cursor:pointer; }
 .map-tour-help-button:hover { border-color:#8bbbe0; background:#f1f7fc; color:#328be0; }
 .map-tour-help-button .material-symbols-rounded { font-size:20px; }
+.nearby-toggle { display:flex; align-items:center; gap:6px; min-height:40px; padding:8px 14px; border:1px solid #d7e7f3; border-radius:999px; background:#fff; color:#171717; font:inherit; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; transition:background-color .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease,transform .16s ease; }
+.nearby-toggle:hover:not(:disabled) { background:#f3faf5; border-color:#add6b8; color:#287847; transform:translateY(-1px); }
+.nearby-toggle.active { background:#edf8f0; border-color:#9dcfad; color:#257a43; box-shadow:0 5px 14px rgb(55 143 83 / 14%); }
+.nearby-toggle.active:hover:not(:disabled) { background:#e1f3e6; border-color:#78bd8d; color:#1f693a; }
+.nearby-toggle:disabled { opacity:.45; cursor:not-allowed; }
+.nearby-toggle .material-symbols-rounded { font-size:18px; color:#3d965b; font-variation-settings:'FILL' 1; }
+.nearby-toggle:focus-visible { outline:2px solid #488fc4; outline-offset:3px; }
 .map-theme-control { position: relative; }
 .map-theme-button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .map-theme-button .material-symbols-rounded { font-size: 19px; }
@@ -7865,7 +8401,7 @@ function textAvatarStyle(index: unknown) {
 @media(max-width:767px) {
   .trip-map-actions { max-width: calc(100% - 24px); gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
   .trip-map-buttons { gap: 5px; }
-  .map-theme-button, .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { padding: 0 9px; }
+  .nearby-toggle, .map-theme-button, .trip-map-actions .trip-vote-button, .trip-map-actions :deep(.trip-settings-button) { padding: 0 9px; }
 }
 
 /* Keep the planning surface independent of the map tiles underneath it. */
@@ -7895,6 +8431,11 @@ function textAvatarStyle(index: unknown) {
 <style scoped>
 .route-page-section .add-stop-container .search-panel-custom-trigger { width:100%; margin:0; border:1px solid #4286bd; border-radius:999px; background:#4286bd; color:#fff; box-shadow:0 4px 12px #4286bd26; }
 .route-page-section .add-stop-container .search-panel-custom-trigger:hover { background:#3376ad; border-color:#3376ad; }
+.route-page-section .add-stop-container .search-panel-custom-trigger.is-close { background:#d94b4b; border-color:#d94b4b; box-shadow:0 4px 12px rgb(217 75 75 / 20%); }
+.route-page-section .add-stop-container .search-panel-custom-trigger.is-close:hover { background:#bd3838; border-color:#bd3838; }
+.route-page-section .add-stop-container > .add-stop-dashed:not(.search-panel-custom-trigger) { border-color:#9fc4e3; background:#eef6fd; color:#3579b0; box-shadow:0 3px 10px rgb(52 102 145 / 8%); }
+.route-page-section .add-stop-container > .add-stop-dashed:not(.search-panel-custom-trigger):hover:not(:disabled) { border-style:solid; border-color:#6fa8d4; background:#dfeffc; color:#286b9f; box-shadow:0 5px 14px rgb(52 102 145 / 13%); }
+.route-page-section .add-stop-container > .add-stop-dashed:not(.search-panel-custom-trigger):disabled { border-color:#d4e0e9; background:#f2f5f7; color:#9aa9b5; box-shadow:none; cursor:not-allowed; }
 .route-page-section .search-panel-body { overflow-y:auto; padding-bottom:88px; }
 #search-panel-back { border-radius:999px; border:1px solid #dfe7ee; background:#fff; color:#396a9e; box-shadow:none; min-height:40px; padding:8px 16px; }
 #search-panel-back:hover { background:#f1f6fb; border-color:#b7cde2; }

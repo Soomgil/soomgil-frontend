@@ -200,9 +200,16 @@ function cancelEdit(event: PointerEvent) {
     >
       <g :transform="matrix(item.projected.matrix)" @pointerdown="startEdit($event, item.drawing.id, 'drag')">
         <rect class="map-object-hitbox" x="-.5" y="-.5" width="1" height="1" rx=".08" />
-        <svg v-if="item.drawing.drawingType === 'STICKER' && item.drawing.stickerCode" x="-.5" y="-.5" width="1" height="1" viewBox="0 0 64 64" overflow="visible">
-          <use :href="stickerHref(item.drawing.stickerCode) ?? undefined" />
-        </svg>
+        <image
+          v-if="item.drawing.drawingType === 'STICKER' && item.drawing.stickerCode"
+          class="map-object-sticker"
+          x="-.5"
+          y="-.5"
+          width="1"
+          height="1"
+          preserveAspectRatio="xMidYMid meet"
+          :href="stickerHref(item.drawing.stickerCode) ?? undefined"
+        />
         <image
           v-else-if="item.drawing.drawingType === 'IMAGE' && item.drawing.mediaFileId && imageUrls[item.drawing.mediaFileId]"
           class="map-object-image"

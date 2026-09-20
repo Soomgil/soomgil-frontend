@@ -45,7 +45,7 @@ describe('MapObjectOverlay', () => {
     const wrapper = mount(MapObjectOverlay, { props: baseProps })
 
     expect(wrapper.find('.map-object > g').attributes('transform')).toMatch(/^matrix\(/)
-    expect(wrapper.find('use').attributes('href')).toContain('#heart')
+    expect(wrapper.find('.map-object image').attributes('href')).toContain('/stickers/sketch/heart')
   })
 
   it('converts map placement to a meter transform and emits it', async () => {

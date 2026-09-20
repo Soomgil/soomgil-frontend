@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { formatUiText } from '@/i18n/ui-localizer'
 import { computed, ref, watch, nextTick } from 'vue'
 import type { TripVoteSessionDetail, TripVoteSessionResult } from '@/types/voting'
 
@@ -37,38 +36,21 @@ const rows = computed(() => {
 })
 
 const showAll = ref(false)
-const heading = ref<HTMLElement | null>(null)
+const resultList = ref<HTMLElement | null>(null)
 const brokenImages = ref(new Set<string>())
 const displayedRows = computed(() => showAll.value ? rows.value : rows.value.slice(0, 5))
-const addedCount = computed(() => rows.value.filter(row => row.addedToItinerary).length)
-const duplicateCount = computed(() => rows.value.filter(row => row.alreadyInItinerary).length)
 watch(() => props.result?.sessionId ?? props.session?.id, () => { showAll.value = false; brokenImages.value = new Set() })
 async function toggleResults() {
   showAll.value = !showAll.value
   await nextTick()
-  heading.value?.focus({ preventScroll: true })
-  heading.value?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+  resultList.value?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
 }
-const selectedCount = computed(() => rows.value.filter((row) => row.selected).length)
-
-const completionLabel = computed(() =>
-  (props.result?.completionReason ?? props.session?.completionReason) === 'OWNER_EARLY_CLOSE' ? '방장이 마감했어요' : '모두 제출해서 자동으로 마감됐어요',
-)
 </script>
 
 <template>
   <div class="vote-result">
-    <header class="vote-result__header">
-      <p class="vote-result__eyebrow"><span class="material-symbols-rounded" aria-hidden="true">how_to_vote</span> 함께 고른 여행</p>
-      <h1 ref="heading" tabindex="-1" class="vote-result__title">{{ showAll ? '전체 투표 결과' : '우리의 다음 여행지' }}</h1>
-      <p class="vote-result__lead" data-testid="result-summary">
-        {{ completionLabel }}. <strong>{{ formatUiText("{0}곳 선정", "{0} places selected", [selectedCount]) }}</strong>
-      </p>
-      <p v-if="addedCount || duplicateCount" class="vote-result__outcome">{{ formatUiText("일차 미정에 {0}곳 추가", "{0} places added to unscheduled", [addedCount]) }}<span v-if="duplicateCount">{{ formatUiText("· 이미 일정에 {0}곳", "· {0} already scheduled", [duplicateCount]) }}</span>
-      </p>
-    </header>
     <p v-if="!rows.length" class="vote-result__empty">아직 표시할 투표 결과가 없어요.</p>
-    <ul v-else class="vote-result__list" :class="{ 'is-overview': !showAll }" data-testid="result-list" aria-label="득표순 여행지">
+    <ul v-else ref="resultList" class="vote-result__list" :class="{ 'is-overview': !showAll }" data-testid="result-list" aria-label="득표순 여행지">
       <li v-for="(row, index) in displayedRows" :key="row.id" class="vote-result__row"
         :class="{ selected: row.selected, 'is-winner': !showAll && index === 0, 'is-runner-up': !showAll && index > 0 && index < 3 }" data-testid="result-row">
         <span class="vote-result__rank">{{ index + 1 }}<span class="sr-only">위</span></span>
@@ -95,11 +77,6 @@ const completionLabel = computed(() =>
 
 <style scoped>
 .vote-result { display:flex; flex-direction:column; gap:16px; color:#35465a; }
-.vote-result__header { padding:20px 24px; background:#f1f8ff; border:1px solid #dfeaf5; border-radius:18px; }
-.vote-result__eyebrow { display:flex; align-items:center; gap:6px; margin:0 0 8px; color:#328be0; font-size:12px; font-weight:700; }
-.vote-result__eyebrow .material-symbols-rounded { font-size:18px; }
-.vote-result__title { margin:0 0 8px; font-size:clamp(23px,3vw,30px); line-height:1.3; outline:none; }
-.vote-result__lead,.vote-result__outcome { margin:4px 0 0; font-size:13px; line-height:1.6; color:#647c92; }
 .vote-result__list { display:flex; flex-direction:column; gap:10px; list-style:none; padding:0; margin:0; }
 .vote-result__row { position:relative; display:flex; align-items:center; gap:14px; padding:12px 16px; border:1px solid #e4edf5; border-radius:14px; background:#fff; }
 .vote-result__rank { flex:none; width:25px; text-align:center; color:#647c92; font-size:14px; font-weight:800; }
@@ -128,7 +105,6 @@ const completionLabel = computed(() =>
 .vote-result__all:focus-visible { outline:3px solid #9bcdf6; outline-offset:2px; }
 .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 @media(max-width:520px) {
- .vote-result__header { padding:18px; }
  .vote-result__row { gap:8px; padding:10px; }
  .vote-result__media { width:40px; height:40px; }
  .is-winner { padding:0 0 16px; gap:14px; }

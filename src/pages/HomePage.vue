@@ -17,12 +17,22 @@ const photos = ref<AwardPhoto[]>([])
 const currentIndex = ref(0)
 const loading = ref(false)
 const failed = ref(false)
+const autoPlaying = ref(true)
+const AUTO_PLAY_DELAY_MS = 7000
+let autoPlayTimer: number | undefined
 const currentPhoto = computed(() => photos.value[currentIndex.value])
 const photoTitle = computed(() => currentPhoto.value?.placeName || currentPhoto.value?.title || '대한민국의 풍경')
 const photoCredit = computed(() => [currentPhoto.value?.photographer, currentPhoto.value?.awardDivision, '한국관광공사 관광사진 공모전'].filter(Boolean).join(' · '))
 const exploreQuery = computed(() => currentPhoto.value?.placeName?.trim() || currentPhoto.value?.regionName?.trim())
 function explorePhoto() {
-  if (exploreQuery.value) void router.push({ path: '/search', query: { q: exploreQuery.value, tab: '장소' } })
+  if (exploreQuery.value) void router.push({ path: '/search', query: { q: exploreQuery.value, tab: '전체' } })
+}
+function planPhotoTrip() {
+  const photo = currentPhoto.value
+  const destination = photo?.regionName?.trim()
+  if (!photo || !destination) return
+  const title = photo.title?.trim() || photoTitle.value
+  void router.push({ path: '/my-trips', query: { create: '1', title, destination } })
 }
 const galleryStage = ref<HTMLElement | null>(null)
 const stageSize = ref({ width: 0, height: 0 })
@@ -58,8 +68,29 @@ function clearHistory() {
 function handleFocusOut(event: FocusEvent) {
   if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) searchFocused.value = false
 }
-function changePhoto(direction: number) {
+function stopAutoPlayTimer() {
+  if (autoPlayTimer !== undefined) window.clearTimeout(autoPlayTimer)
+  autoPlayTimer = undefined
+}
+function scheduleAutoPlay() {
+  stopAutoPlayTimer()
+  if (!autoPlaying.value || photos.value.length < 2 || document.hidden) return
+  autoPlayTimer = window.setTimeout(() => {
+    changePhoto(1, false)
+    scheduleAutoPlay()
+  }, AUTO_PLAY_DELAY_MS)
+}
+function changePhoto(direction: number, resetAutoPlay = true) {
   if (photos.value.length > 1) currentIndex.value = (currentIndex.value + direction + photos.value.length) % photos.value.length
+  if (resetAutoPlay) scheduleAutoPlay()
+}
+function toggleAutoPlay() {
+  autoPlaying.value = !autoPlaying.value
+  scheduleAutoPlay()
+}
+function handleVisibilityChange() {
+  if (document.hidden) stopAutoPlayTimer()
+  else scheduleAutoPlay()
 }
 function handleImageError(event: Event) {
   const imageUrl = (event.target as HTMLImageElement).getAttribute('src')
@@ -75,8 +106,9 @@ async function loadPhotos() {
   loading.value = true
   failed.value = false
   try {
-    photos.value = (await awardApi.getAwardPhotos({ limit: 5 })).filter((photo) => Boolean(photo.imageUrl))
+    photos.value = (await awardApi.getAwardPhotos({ limit: 10 })).filter((photo) => Boolean(photo.imageUrl))
     currentIndex.value = 0
+    scheduleAutoPlay()
   } catch { failed.value = true } finally { loading.value = false }
 }
 onMounted(() => {
@@ -89,9 +121,15 @@ onMounted(() => {
     const stored: unknown = JSON.parse(localStorage.getItem(historyKey) || '[]')
     if (Array.isArray(stored)) recentSearches.value = stored.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).slice(0, 5)
   } catch { /* 손상되거나 접근할 수 없는 검색 기록은 무시한다. */ }
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) autoPlaying.value = false
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   void loadPhotos()
 })
-onUnmounted(() => resizeObserver?.disconnect())
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  stopAutoPlayTimer()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+})
 </script>
 
 
@@ -132,7 +170,7 @@ onUnmounted(() => resizeObserver?.disconnect())
           </div>
         </div>
         <div v-if="currentPhoto" class="home-artwork-footer">
-          <div class="home-artwork-info" aria-live="polite" aria-atomic="true">
+          <div class="home-artwork-info" :aria-live="autoPlaying ? 'off' : 'polite'" aria-atomic="true">
             <p data-no-translate v-if="currentPhoto.title && currentPhoto.title !== photoTitle" class="home-artwork-caption">{{ currentPhoto.title }}</p>
             <h2 class="home-artwork-title">{{ photoTitle }}</h2>
             <p class="home-artwork-label">{{ currentPhoto.regionName || currentPhoto.filmLocation || '대한민국' }}</p>
@@ -142,14 +180,21 @@ onUnmounted(() => resizeObserver?.disconnect())
             </p>
           </div>
           <div class="home-artwork-actions">
-            <button v-if="exploreQuery" class="home-explore-link" type="button" @click="explorePhoto">
-              {{ currentPhoto.placeName?.trim() ? '이 여행지 둘러보기' : '이 지역 둘러보기' }}
-              <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-            </button>
+            <div class="home-artwork-cta-row">
+              <button v-if="currentPhoto.regionName?.trim()" class="home-plan-link" type="button" @click="planPhotoTrip">
+                <span class="material-symbols-rounded" aria-hidden="true">edit_calendar</span>여행계획 세우기
+              </button>
+              <button v-if="exploreQuery" class="home-explore-link" type="button" @click="explorePhoto">
+                <span class="material-symbols-rounded" aria-hidden="true">travel_explore</span>여행지 둘러보기
+              </button>
+            </div>
           <div v-if="photos.length > 1" class="home-photo-controls" role="group" aria-label="수상작 사진 전환">
             <span class="home-photo-count"><strong>{{ String(currentIndex + 1).padStart(2, '0') }}</strong><span aria-hidden="true"> / </span><span class="home-sr-only">전체</span>{{ String(photos.length).padStart(2, '0') }}</span>
             <button type="button" aria-label="이전 사진" @click="changePhoto(-1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_back</span></button>
             <button type="button" aria-label="다음 사진" @click="changePhoto(1)"><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></button>
+            <button type="button" :aria-label="autoPlaying ? '수상작 자동재생 일시정지' : '수상작 자동재생 시작'" :aria-pressed="autoPlaying" @click="toggleAutoPlay">
+              <span class="material-symbols-rounded" aria-hidden="true">{{ autoPlaying ? 'pause' : 'play_arrow' }}</span>
+            </button>
           </div>
           </div>
         </div>
@@ -179,13 +224,17 @@ onUnmounted(() => resizeObserver?.disconnect())
 .home-ink-underlay { grid-area: 1 / 1; width: 80%; height: 90%; max-width: 100%; max-height: 100%; background: #647C92; opacity: .12; transform: scale(1.06) rotate(-2deg); mask-image: var(--ink-mask); mask-mode: luminance; mask-size: 100% 100%; mask-repeat: no-repeat; pointer-events: none; }
 .home-artwork-footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 680px; max-width: 100%; margin: 24px auto 0; }
 .home-artwork-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0; }
+.home-artwork-cta-row { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
 .home-artwork-info { min-width: 0; }
 .home-artwork-label { margin: 0 0 8px; font-size: 11px; font-weight: 400; letter-spacing: .08em; color: #647C92; }
 .home-artwork-title { margin: 0 0 8px; font-family: 'Noto Serif KR', 'Batang', '바탕', serif; font-size: clamp(23px, 2vw, 30px); font-weight: 500; line-height: 1.35; letter-spacing: -.02em; color: #35465A; overflow-wrap: anywhere; }
 .home-artwork-caption { font-size: 12px; font-weight: 400; margin: 0 0 5px; color: #647C92; }
-.home-explore-link { display: inline-flex; align-items: center; gap: 10px; margin: 2px 0 10px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #427EAD; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
-.home-explore-link:hover { color: #35465A; text-decoration: underline; text-underline-offset: 5px; }
-.home-explore-link .material-symbols-rounded { font-size: 19px; }
+.home-explore-link { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:0 13px; border:1px solid #c8deed; border-radius:999px; background:#edf6fc; color:#3f7399; font:inherit; font-size:12px; font-weight:650; cursor:pointer; transition:background .2s,border-color .2s,color .2s; }
+.home-explore-link:hover { background:#e2f0f9; border-color:#9fc7e2; color:#315f82; }
+.home-explore-link .material-symbols-rounded { font-size:17px; }
+.home-plan-link { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:0 12px; border:1px solid #d8e5ee; border-radius:999px; background:#fff; color:#607b90; font:inherit; font-size:12px; font-weight:650; cursor:pointer; transition:background .2s,border-color .2s,color .2s; }
+.home-plan-link:hover { background:#f5f9fc; border-color:#b9d1e1; color:#426f90; }
+.home-plan-link .material-symbols-rounded { font-size:17px; }
 .home-artwork-credit a { display: inline-block; color: inherit; text-decoration: underline; text-underline-offset: 3px; margin-left: 10px; padding-block: 6px; }
 .home-artwork-credit { margin: 0; font-size: 11px; font-weight: 400; line-height: 1.7; color: #647C92; overflow-wrap: anywhere; }
 .home-photo-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -220,6 +269,8 @@ button:focus-visible { outline: 3px solid #a9d2ff; outline-offset: 3px; }
   .home-backdrop { height: clamp(300px, calc(100svh - 480px), 520px); }
   .home-artwork-footer { flex-wrap: wrap; gap: 12px; margin-top: 20px; }
   .home-artwork-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0; }
+.home-artwork-cta-row { justify-content:flex-start; width:100%; }
+.home-plan-link,.home-explore-link { flex:0 1 auto; padding-inline:11px; }
 .home-artwork-info { flex-basis: 100%; }
   .home-photo-controls { margin-left: 0; }
   .home-search-history { max-height: 240px; overflow-y: auto; }

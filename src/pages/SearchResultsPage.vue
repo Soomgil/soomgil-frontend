@@ -46,6 +46,8 @@ async function togglePlaceInfo() {
   if (detailDescriptionExpanded.value && detailScroller.value && expandedInfo.value) {
     const offset = expandedInfo.value.getBoundingClientRect().top - detailScroller.value.getBoundingClientRect().top
     detailScroller.value.scrollBy?.({ top: Math.min(180, Math.max(0, offset - 100)), behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })
+  } else if (detailScroller.value) {
+    detailScroller.value.scrollTo?.({ top: 0, behavior: 'auto' })
   }
 }
 
@@ -280,12 +282,7 @@ async function reactToSelectedPlace(reaction: SwipeAction) {
     swipeStore.applyExternalReaction(place.provider, place.externalPlaceId, result.reaction)
     if (request !== detailRequest) return
     selectedPlaceReaction.value = result.reaction
-    const labels: Record<SwipeAction, string> = {
-      NOPE: '관심 없음으로 저장했어요.',
-      LIKE: '좋아요로 저장했어요.',
-      SUPER_LIKE: '슈퍼라이크로 저장했어요.',
-    }
-    placeReactionMessage.value = labels[result.reaction]
+    placeReactionMessage.value = null
   } catch (err) {
     if (request !== detailRequest) return
     selectedPlaceReaction.value = previous
@@ -613,7 +610,7 @@ watch(
         @keydown.esc="closePlaceDetail"
       >
         <div class="place-detail-backdrop" @click="closePlaceDetail"></div>
-        <article ref="detailScroller" class="place-detail-dialog" :style="{ '--photo-ratio': detailPhotoRatio }">
+        <article ref="detailScroller" class="place-detail-dialog" :class="{ 'is-expanded': detailDescriptionExpanded }" :style="{ '--photo-ratio': detailPhotoRatio }">
           <button class="place-detail-close" type="button" aria-label="닫기" @click="closePlaceDetail">
             <span class="material-symbols-rounded">close</span>
           </button>
@@ -647,8 +644,10 @@ watch(
             <div class="place-detail-heading">
               <button class="place-detail-summary-toggle" type="button" :aria-expanded="detailDescriptionExpanded" aria-controls="place-detail-expanded" @click="togglePlaceInfo">
                 <span class="place-detail-summary-copy"><span data-no-translate class="place-detail-name">{{ selectedPlace.placeName }}</span><span data-no-translate v-if="selectedPlace.address" class="place-detail-address">{{ selectedPlace.address }}</span></span>
-                <span class="material-symbols-rounded" aria-hidden="true">{{ detailDescriptionExpanded ? 'expand_less' : 'info' }}</span>
-                <span class="place-detail-toggle-label">{{ detailDescriptionExpanded ? '정보 접기' : '장소 정보' }}</span>
+                <span class="place-detail-toggle-label">
+                  {{ detailDescriptionExpanded ? '정보 접기' : '장소 정보 더 보기' }}
+                  <span class="material-symbols-rounded" aria-hidden="true">{{ detailDescriptionExpanded ? 'expand_less' : 'expand_more' }}</span>
+                </span>
               </button>
               <div class="place-detail-media-reactions" aria-label="장소 취향 반응">
                 <button
@@ -1785,9 +1784,13 @@ watch(
 .place-detail-thumbnail { flex:0 0 56px; width:56px; height:40px; }
 .place-detail-content { max-height:none; overflow:visible; padding:20px 28px; }
 .place-detail-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:0; margin:0; border:0; }
-.place-detail-summary-toggle { display:flex; align-items:center; gap:12px; min-width:0; padding:4px 0; text-align:left; color:#427ead; background:transparent; border:0; cursor:pointer; }
+.place-detail-summary-toggle { display:flex; align-items:center; gap:12px; min-width:0; padding:4px 0; border:0; border-radius:12px; text-align:left; color:#427ead; background:transparent; cursor:pointer; }
+.place-detail-summary-toggle:focus-visible { outline:2px solid #79b5e0; outline-offset:5px; }
 .place-detail-summary-copy { display:grid; gap:6px; min-width:0; }.place-detail-name { font-family:'Noto Serif KR',Batang,serif; color:#35465a; font-size:25px; line-height:1.4; overflow-wrap:anywhere; }.place-detail-address { color:#71869a; font-size:12px; line-height:1.5; }
-.place-detail-toggle-label { font-size:11px; white-space:nowrap; }
+.place-detail-toggle-label { display:inline-flex; align-items:center; gap:4px; min-height:34px; padding:0 11px 0 13px; border:1px solid #c8dfef; border-radius:999px; background:#f0f8fe; color:#3978a7; font-size:11px; font-weight:700; white-space:nowrap; box-shadow:0 2px 7px #345e7d12; transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.place-detail-toggle-label .material-symbols-rounded { font-size:18px; transition:transform .18s ease; }
+.place-detail-summary-toggle:hover .place-detail-toggle-label { background:#e2f2fd; border-color:#8fc0e2; box-shadow:0 4px 12px #345e7d1f; transform:translateY(-1px); }
+.place-detail-summary-toggle:active .place-detail-toggle-label { transform:translateY(0); box-shadow:0 1px 4px #345e7d18; }
 .place-detail-media-reactions { width:auto; margin:0; flex-wrap:nowrap; flex-shrink:0; }
 .place-detail-expanded { border-top:1px solid #e6eff6; margin-top:22px; padding-top:24px; }
 @media(max-width:760px) {
@@ -1809,15 +1812,14 @@ watch(
 .place-detail-content { padding:18px 24px; }
 .place-detail-summary-toggle { flex-wrap:wrap; gap:6px 10px; }
 .place-detail-summary-copy { flex-basis:100%; }
-.place-detail-summary-toggle > .material-symbols-rounded { font-size:16px; }
-.place-detail-toggle-label { display:inline; color:#427ead; }
+.place-detail-toggle-label { display:inline-flex; color:#427ead; }
 .place-detail-name { font-size:22px; }.place-detail-address { font-size:11px; }
 .place-reaction-feedback { margin:8px 0 0; color:#617d94; font-size:12px; }
 @media(max-width:760px) {
  .place-detail-dialog { height:calc(100dvh - 24px); }
  .place-detail-media { height:calc(100dvh - 210px); min-height:220px; }
  .place-detail-content { padding:14px 16px; }.place-detail-heading { gap:12px; }
- .place-detail-summary-toggle { display:grid; grid-template-columns:minmax(0,1fr) auto auto; }.place-detail-summary-copy { grid-column:1; }.place-detail-toggle-label { display:inline; }
+ .place-detail-summary-toggle { display:grid; grid-template-columns:minmax(0,1fr) auto; }.place-detail-summary-copy { grid-column:1; }.place-detail-toggle-label { display:inline-flex; }
 }
 @media(prefers-reduced-motion:reduce) { .place-detail-dialog { scroll-behavior:auto; } }
 
@@ -1852,6 +1854,8 @@ watch(
 
 /* 사진 바로 아래에 필요한 행만 배치한다. 비어 있는 썸네일 공간은 만들지 않는다. */
 .place-detail-dialog { height:calc(var(--photo-height) + 132px); }
+.place-detail-dialog { overflow-y:hidden; }
+.place-detail-dialog.is-expanded { overflow-y:auto; overscroll-behavior:contain; }
 .place-detail-dialog:has(.place-detail-thumbnail) { height:calc(var(--photo-height) + 190px); }
 .place-detail-media { display:block; height:auto; padding:0; min-height:0; }
 .place-detail-media > img,.place-detail-media-placeholder { display:block; height:var(--photo-height); min-height:0; }
