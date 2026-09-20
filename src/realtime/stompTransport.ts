@@ -50,6 +50,9 @@ export class StompTransport implements RealtimeTransport {
           body: frame.body,
           headers: frame.headers,
         })
+        // A broker ERROR closes the current protocol session. Reconnecting with the
+        // same rejected frame every second only creates an endless error loop.
+        void this.client.deactivate()
       },
       onWebSocketError: (event) => {
         console.error('WebSocket connection error', event)
