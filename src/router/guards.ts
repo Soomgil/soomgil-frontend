@@ -15,6 +15,11 @@ export function applyGuards(router: Router) {
       return
     }
 
+    if (to.name === 'UserProfile' && auth.user?.id === to.params.userId) {
+      next({ name: 'MyPage', replace: true })
+      return
+    }
+
     if (auth.isAuthenticated && auth.user?.status === 'ACTIVE') {
       const onboardingCompleted = await useOnboardingStore().ensureStatus(auth.user.id)
       if (onboardingCompleted !== true && to.name !== 'OnboardingPreferences') {

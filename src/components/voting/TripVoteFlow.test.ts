@@ -229,6 +229,45 @@ describe('여행 방 투표 화면', () => {
     expect(wrapper.find('[data-testid="vote-deck"]').exists()).toBe(false)
   })
 
+	it('마지막 투표 제출로 세션이 종료되면 새 투표가 아니라 결과 화면을 보여준다', async () => {
+		mocks.votingApi.submit.mockResolvedValue(state({
+			nextScreen: 'MAP',
+			session: session({ status: 'COMPLETED', completionReason: 'ALL_SUBMITTED' }),
+			myParticipation: participation({ status: 'SUBMITTED' }),
+		}))
+		mocks.votingApi.getResult.mockResolvedValue({
+			sessionId: 'session-1', tripId: 'trip-1', status: 'COMPLETED',
+			completionReason: 'ALL_SUBMITTED', completedAt: '2026-08-24T10:05:00Z', selectionCount: 2,
+			results: [], unscheduledDayId: null, itineraryVersion: 2,
+		})
+		const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
+		await flushPromises()
+
+		await wrapper.findAll('[data-testid="candidate-place"]')[0].trigger('click')
+		await wrapper.find('[data-testid="vote-submit"]').trigger('click')
+		await flushPromises()
+
+		expect(wrapper.find('[data-testid="vote-result"]').exists()).toBe(true)
+		expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(false)
+		expect(mocks.votingApi.getResult).toHaveBeenCalledWith('trip-1', 'session-1')
+	})
+
+	it('제출 직후 세션 응답이 비어도 새 투표 대신 진행 중 화면을 유지한다', async () => {
+		mocks.votingApi.submit.mockResolvedValue({
+			hasSession: false, nextScreen: 'MAP', session: null, myParticipation: null,
+		})
+		mocks.votingApi.getResult.mockRejectedValue(new Error('result is not ready'))
+		const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
+		await flushPromises()
+
+		await wrapper.findAll('[data-testid="candidate-place"]')[0].trigger('click')
+		await wrapper.find('[data-testid="vote-submit"]').trigger('click')
+		await flushPromises()
+
+		expect(wrapper.find('[data-testid="vote-waiting"]').exists()).toBe(true)
+		expect(wrapper.find('[data-testid="vote-setup"]').exists()).toBe(false)
+	})
+
   it('제출한 참여자는 처음부터 대기 화면을 본다', async () => {
     mocks.votingApi.getCurrentSession.mockResolvedValue(
       state({ nextScreen: 'WAITING', myParticipation: participation({ status: 'SUBMITTED' }) }),
@@ -237,18 +276,40 @@ describe('여행 방 투표 화면', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="vote-waiting"]').exists()).toBe(true)
+    expect(wrapper.find('[role="progressbar"]').attributes('aria-valuenow')).toBe('1')
+    expect(wrapper.find('.trip-vote__status-pill').exists()).toBe(false)
+    expect(wrapper.text()).toContain('내 투표를 제출했어요')
+    expect(wrapper.text()).toContain('남은 인원')
+    expect(wrapper.text()).toContain('일정 자동 반영')
   })
 
-  it('미투표자가 있으면 확인 전에는 마감 버튼이 비활성이다', async () => {
+  it('투표 참여 대상이 아닌 멤버에게 큰 안내와 제출 현황을 보여준다', async () => {
+    mocks.votingApi.getCurrentSession.mockResolvedValue(
+      state({ nextScreen: 'WAITING', myParticipation: null }),
+    )
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="vote-observer"]').classes()).toContain('trip-vote__observer-card')
+    expect(wrapper.find('.trip-vote__status-pill').exists()).toBe(false)
+    expect(wrapper.get('.trip-vote__observer-copy').text()).toContain('시작 시점의 여행 메이트')
+    expect(wrapper.get('[data-testid="vote-observer"] [role="progressbar"]').attributes('aria-valuenow')).toBe('1')
+    expect(wrapper.get('.trip-vote__observer-cta').text()).toContain('지도로 돌아가기')
+  })
+
+  it('미투표자가 있으면 인원을 안내하고 바로 마감할 수 있다', async () => {
     const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()
 
     await wrapper.find('[data-testid="vote-close-open"]').trigger('click')
 
     expect(wrapper.find('[data-testid="vote-close-warning"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="vote-close-confirm"]').attributes('disabled')).toBeDefined()
-
-    await wrapper.find('[data-testid="vote-close-ack"]').setValue(true)
+    expect(wrapper.get('[data-testid="vote-close-modal"]').attributes('role')).toBe('dialog')
+    expect(wrapper.get('.trip-vote__modal-summary').text()).toContain('제출 완료')
+    expect(wrapper.get('.trip-vote__modal-summary').text()).toContain('미제출')
+    expect(wrapper.get('[data-testid="vote-close-cancel"]').text()).toContain('투표 계속하기')
+    expect(wrapper.get('[data-testid="vote-close-warning"] p').text()).toBe('아직 제출하지 않은 멤버가 2명 있어요.')
+    expect(wrapper.find('[data-testid="vote-close-ack"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="vote-close-confirm"]').attributes('disabled')).toBeUndefined()
   })
 
@@ -265,7 +326,6 @@ describe('여행 방 투표 화면', () => {
     await flushPromises()
 
     await wrapper.find('[data-testid="vote-close-open"]').trigger('click')
-    await wrapper.find('[data-testid="vote-close-ack"]').setValue(true)
     await wrapper.find('[data-testid="vote-close-confirm"]').trigger('click')
     await flushPromises()
 

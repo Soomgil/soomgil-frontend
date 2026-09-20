@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   deleteNotification: vi.fn(),
   getNearestTrip: vi.fn(),
   getItinerary: vi.fn(),
+  realtimeConnect: vi.fn(),
+  realtimeDisconnect: vi.fn(),
+  realtimeUnsubscribe: vi.fn(),
+  realtimeHandler: null as null | ((event: { eventType?: string }) => void),
 }))
 
 vi.mock('vue-router', () => ({
@@ -33,6 +37,17 @@ vi.mock('@/api/notification.api', () => ({
 }))
 vi.mock('@/api/trip.api', () => ({ tripApi: { getNearestTrip: mocks.getNearestTrip } }))
 vi.mock('@/api/itinerary.api', () => ({ itineraryApi: { getItinerary: mocks.getItinerary } }))
+vi.mock('@/realtime/stompTransport', () => ({
+  resolveWebSocketUrl: () => 'ws://localhost/ws',
+  StompTransport: class {
+    connect = mocks.realtimeConnect
+    disconnect = mocks.realtimeDisconnect
+    subscribe(_destination: string, handler: (event: { eventType?: string }) => void) {
+      mocks.realtimeHandler = handler
+      return mocks.realtimeUnsubscribe
+    }
+  },
+}))
 
 import AppHeader from './AppHeader.vue'
 
@@ -54,6 +69,7 @@ describe('AppHeader 알림 API 연동', () => {
     vi.clearAllMocks()
     mocks.route.path = '/home'
     mocks.route.name = 'Home'
+    mocks.realtimeHandler = null
     mocks.getNotifications.mockImplementation(async (params) => params?.unreadOnly ? { ...page([]), page: { ...page([]).page, totalElements: 32 } } : page([]))
     mocks.getNearestTrip.mockResolvedValue({ id: 'trip-1', title: '부산 여행' })
     mocks.getItinerary.mockResolvedValue({

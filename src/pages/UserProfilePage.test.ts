@@ -60,6 +60,8 @@ describe('UserProfilePage', () => {
       followStatus: null,
       followerCount: 0,
       followingCount: 0,
+	  superLikedPlaces: [],
+	  preferences: null,
     })
     userApi.getFollowers.mockResolvedValue([])
     userApi.getFollowing.mockResolvedValue([])
@@ -79,6 +81,39 @@ describe('UserProfilePage', () => {
     expect(wrapper.text()).not.toContain('좋아요한 장소')
     expect(wrapper.text()).not.toContain('아직 좋아요한 장소가 없어요')
   })
+
+	it('shows public super-liked places and travel preferences from the profile response', async () => {
+		userApi.getUserProfile.mockResolvedValueOnce({
+			id: route.params.userId,
+			displayName: '여행자',
+			bio: '느긋한 여행을 좋아해요.',
+			profileImageUrl: null,
+			profileVisibility: 'PUBLIC',
+			followedByMe: false,
+			followStatus: null,
+			followerCount: 0,
+			followingCount: 0,
+			superLikedPlaces: [{
+				provider: 'KTO', externalPlaceId: '126508', placeName: '성산일출봉',
+				address: '제주 서귀포시', lat: 33.45, lng: 126.94,
+				thumbnailUrl: 'https://img.example/seongsan.jpg',
+			}],
+			preferences: {
+				topCategories: [{ category: '자연/경관', groupCode: 'nature', percentage: 82 }],
+				preferredTags: ['오름', '바다'],
+				travelStyle: '자연을 천천히 즐기는 여행을 선호해요.',
+			},
+		})
+
+		const wrapper = mountPage()
+		await flushPromises()
+
+		expect(wrapper.text()).toContain('성산일출봉')
+		expect(wrapper.text()).toContain('#오름')
+		expect(wrapper.text()).toContain('자연/경관')
+		expect(wrapper.text()).toContain('82%')
+		expect(wrapper.text()).toContain('자연을 천천히 즐기는 여행을 선호해요.')
+	})
 
   it('uses the same paper hero and profile surface classes as my page', async () => {
     const wrapper = mountPage()

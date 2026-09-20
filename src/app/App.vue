@@ -13,7 +13,7 @@ import { useUiLocalizer } from '@/i18n/ui-localizer'
 const route = useRoute()
 const isPreferenceOnboarding = computed(() => route.name === 'OnboardingPreferences')
 const hasServiceBackground = computed(() => !route.meta.hideLayout &&
-  /^\/(home|login|register|reset-password|auth\/reset-password|my-trips|swipe|community|search|mypage|settings)(\/|$)/.test(route.path))
+  /^\/(home|login|register|reset-password|auth\/reset-password|my-trips|trip-invites|swipe|community|search|mypage|settings)(\/|$)/.test(route.path))
 const showServiceFooter = computed(() => {
   if (route.meta.hideLayout || route.path === '/') return false
   return !/^\/(login|register|verify-email|reset-password|auth\/oauth)(\/|$)/.test(route.path)
@@ -54,6 +54,7 @@ body:has(> #app) { padding-top:0; }
 .app-layout.has-service-background .community-paper,
 .app-layout.has-service-background .home-canvas,
 .app-layout.has-service-background .auth-modern-page,
+.app-layout.has-service-background .invite-shell,
 .app-layout.has-service-background .search-page { background: transparent; }
 .app-layout > .service-footer { margin-top: clamp(72px, 8vw, 112px); }
 </style>

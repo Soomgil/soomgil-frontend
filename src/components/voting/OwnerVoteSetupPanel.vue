@@ -117,13 +117,11 @@ async function open() {
 
 <template>
   <div class="vote-setup" data-testid="vote-setup">
-    <h1 class="vote-setup__title">
-      새 투표를 시작할까요?
-    </h1>
-    <p v-if="tripTitle" class="vote-setup__trip">{{ tripTitle }} · {{ knowsDays ? `${days}일` : '날짜 미정' }}</p>
-    <p class="vote-setup__lead">
-      투표할 지역과 하루에 방문할 장소 수를 정해 주세요.
-    </p>
+    <header class="vote-setup__header">
+      <p class="vote-setup__eyebrow">START A VOTE</p>
+      <h1 class="vote-setup__title">새 투표를 시작할까요?</h1>
+      <p class="vote-setup__lead">투표할 지역과 하루에 방문할 장소 수를 정해 주세요.</p>
+    </header>
 
     <div class="vote-setup__panel">
       <div class="vote-setup__row vote-setup__row--regions">
@@ -214,18 +212,22 @@ async function open() {
 
 .vote-setup__title {
   color: var(--ink);
-  font-size: clamp(28px, 3.6vw, 40px);
-  font-weight: 900;
-  line-height: 1.2;
+  font-family: 'Noto Serif KR', Batang, serif;
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1.4;
   margin: 0;
   word-break: keep-all;
 }
 
+.vote-setup__header { display:grid; gap:5px; padding:2px 2px 4px; }
+.vote-setup__eyebrow { color:#5d89aa; font-size:10px; font-weight:800; letter-spacing:.14em; line-height:1.4; margin:0; }
 .vote-setup__lead {
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1.7;
-  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 0;
 }
 
 .vote-setup__panel {
@@ -445,9 +447,8 @@ async function open() {
 }
 
 .vote-setup { width:min(100%,720px); margin:0 auto; gap:7px; padding:4px 2px 2px; color:#35465a; }
-.vote-setup__title { font-size:clamp(22px,2.7vw,27px); line-height:1.35; font-weight:750; }
-.vote-setup__trip { max-width:100%; margin:0; color:#427ead; font-size:12px; font-weight:750; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.vote-setup__lead { max-width:62ch; margin:2px 0 8px; font-size:13px; line-height:1.6; }
+.vote-setup__title { font-size:23px; line-height:1.4; font-weight:600; }
+.vote-setup__lead { max-width:62ch; margin:0; font-size:12px; line-height:1.65; }
 .vote-setup__panel { gap:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
 .vote-setup__row { border:0; border-bottom:1px solid #e5edf3; border-radius:0; padding:20px 2px; background:transparent; }
 .vote-setup__row--question { background:transparent; }

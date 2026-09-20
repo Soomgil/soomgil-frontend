@@ -67,4 +67,37 @@ describe('userApi social contract', () => {
       expect.objectContaining({ externalPlaceId: '20001', placeName: '국립중앙과학관' }),
     ])
   })
+
+	it('maps public profile super-liked place wrappers for another user', async () => {
+		vi.mocked(http.get).mockResolvedValue({
+			data: {
+				id: 'user-2',
+				displayName: 'Traveler',
+				profileImageUrl: null,
+				bio: null,
+				followerCount: 0,
+				followingCount: 0,
+				followedByMe: false,
+				followStatus: null,
+				profileVisibility: 'PUBLIC',
+				superLikedPlaces: [{
+					id: 'saved-1',
+					place: {
+						provider: 'KTO', externalPlaceId: '126508', name: '성산일출봉',
+						address: '제주 서귀포시', lat: 33.45, lng: 126.94,
+						thumbnailUrl: null, category: '자연', sourceStatus: 'AVAILABLE',
+					},
+					createdAt: '2026-09-20T00:00:00Z',
+				}],
+				preferences: { topCategories: [], travelStyle: '', preferredTags: [] },
+			},
+		})
+
+		const profile = await userApi.getUserProfile('user-2')
+
+		expect(http.get).toHaveBeenCalledWith('/users/user-2')
+		expect(profile.superLikedPlaces).toEqual([
+			expect.objectContaining({ externalPlaceId: '126508', placeName: '성산일출봉' }),
+		])
+	})
 })

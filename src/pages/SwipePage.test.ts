@@ -66,7 +66,7 @@ describe('SwipePage', () => {
     getFeed.mockResolvedValue({ items: [feedItem], nextSeed: null })
     react.mockResolvedValue({ reaction: 'LIKE', savedPlaceEligible: true })
     const wrapper = mount(SwipePage, {
-      global: { stubs: { AppHeader: true } },
+      global: { stubs: { AppHeader: true, SwipeIntroTour: true } },
     })
 
     await flushPromises()
@@ -109,7 +109,7 @@ describe('SwipePage', () => {
 
   it('removes region selection and followee reactions', async () => {
     getFeed.mockResolvedValue({ items: [feedItem], nextSeed: null })
-    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true } } })
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true, SwipeIntroTour: true } } })
     await flushPromises()
     expect(wrapper.find('select[aria-label="지역 필터"]').exists()).toBe(false)
     expect(wrapper.find('.detail-reaction-card').exists()).toBe(false)
@@ -135,7 +135,7 @@ describe('SwipePage', () => {
       nextSeed: null,
     })
     const wrapper = mount(SwipePage, {
-      global: { stubs: { AppHeader: true } },
+      global: { stubs: { AppHeader: true, SwipeIntroTour: true } },
     })
 
     await flushPromises()
@@ -166,7 +166,7 @@ describe('SwipePage', () => {
       nextSeed: null,
     })
     const wrapper = mount(SwipePage, {
-      global: { stubs: { AppHeader: true } },
+      global: { stubs: { AppHeader: true, SwipeIntroTour: true } },
     })
 
     await flushPromises()
@@ -190,7 +190,7 @@ describe('SwipePage', () => {
     vi.useFakeTimers()
     getFeed.mockResolvedValue({ items: [feedItem, { ...feedItem, place: { ...feedItem.place, externalPlaceId: 'next', description: '짧은 설명' } }], nextSeed: null })
     react.mockResolvedValue({ reaction: 'LIKE', savedPlaceEligible: true })
-    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true } } })
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true, SwipeIntroTour: true } } })
     await flushPromises()
     await wrapper.get('.place-description-toggle').trigger('click')
     const card = wrapper.get('.swipe-card')
@@ -208,7 +208,7 @@ describe('SwipePage', () => {
   it('shows a retry action when feed loading fails', async () => {
     getFeed.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ items: [], nextSeed: null })
     const wrapper = mount(SwipePage, {
-      global: { stubs: { AppHeader: true } },
+      global: { stubs: { AppHeader: true, SwipeIntroTour: true } },
     })
 
     await flushPromises()
@@ -229,7 +229,7 @@ describe('SwipePage', () => {
       nextSeed: null,
     })
     const wrapper = mount(SwipePage, {
-      global: { stubs: { AppHeader: true } },
+      global: { stubs: { AppHeader: true, SwipeIntroTour: true } },
     })
 
     await flushPromises()
@@ -282,7 +282,7 @@ describe('SwipePage', () => {
       completedAt: '2026-09-20T00:01:00Z',
     })
 
-    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true } } })
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true, SwipeIntroTour: true } } })
     await flushPromises()
 
     expect(wrapper.text()).toContain('첫 여행 취향 찾기')
@@ -306,5 +306,44 @@ describe('SwipePage', () => {
     expect(replace).toHaveBeenCalledWith('/home')
     wrapper.unmount()
     vi.useRealTimers()
+  })
+
+  it('reacts via clickable direction arrows', async () => {
+    getFeed.mockResolvedValue({ items: [feedItem], nextSeed: null })
+    react.mockResolvedValue({ reaction: 'LIKE', savedPlaceEligible: true })
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true, SwipeIntroTour: true } } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="swipe-like"]').trigger('click')
+    await flushPromises()
+    expect(react).toHaveBeenLastCalledWith('KTO', '126508', 'LIKE')
+    wrapper.unmount()
+  })
+
+  it('reacts via keyboard arrow keys', async () => {
+    getFeed.mockResolvedValue({ items: [feedItem], nextSeed: null })
+    react.mockResolvedValue({ reaction: 'SUPER_LIKE', savedPlaceEligible: true })
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true, SwipeIntroTour: true } }, attachTo: document.body })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }))
+    await flushPromises()
+    expect(react).toHaveBeenLastCalledWith('KTO', '126508', 'SUPER_LIKE')
+    wrapper.unmount()
+  })
+
+  it('exposes the interaction-guide targets and a help trigger', async () => {
+    getFeed.mockResolvedValue({ items: [feedItem], nextSeed: null })
+    const wrapper = mount(SwipePage, { global: { stubs: { AppHeader: true, SwipeIntroTour: true } } })
+    await flushPromises()
+
+    // 스포트라이트 투어가 비출 실제 요소들.
+    expect(wrapper.find('[data-swipe-tour="card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-swipe-tour="like"]').exists()).toBe(true)
+    expect(wrapper.find('[data-swipe-tour="superlike"]').exists()).toBe(true)
+    expect(wrapper.find('[data-swipe-tour="nope"]').exists()).toBe(true)
+    // 다시 열 수 있는 '사용법 보기' 버튼.
+    expect(wrapper.find('[data-testid="swipe-help"]').exists()).toBe(true)
+    wrapper.unmount()
   })
 })

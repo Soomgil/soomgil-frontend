@@ -117,6 +117,22 @@ interface DrawingHistoryState {
 type RouteHistoryState = ItineraryHistoryState | RouteLinksHistoryState | DrawingHistoryState
 type RouteHistoryDomain = RouteHistoryState['domain']
 type RouteAiChatMessage = AiChatMessage & { pending?: boolean; pendingForMessageId?: string | null }
+type AiGuideCategoryId = 'schedule' | 'places' | 'editing' | 'organize' | 'prepare' | 'route'
+
+interface AiGuideCategory {
+  id: AiGuideCategoryId
+  icon: string
+  label: string
+  description: string
+  note?: string
+  examples: string[]
+}
+
+interface AiQuickSuggestion {
+  icon: string
+  label: string
+  prompt: string
+}
 
 /* ── Data ── */
 const route = useRoute()
@@ -1743,7 +1759,6 @@ function onPointerDown(e: PointerEvent) {
   const stopRect = stop.getBoundingClientRect()
   const offsetY = e.clientY - stopRect.top
   void containerRect
-  let latestClientY = e.clientY
   let autoScrollFrame: number | null = null
   let movedDuringDrag = false
   let dragStarted = false
@@ -1852,7 +1867,21 @@ function onPointerDown(e: PointerEvent) {
     })
   }
 
-  function updateAutoScroll(clientY: number) {
+  function isPointerOverTrash(clientX: number, clientY: number) {
+    const trashZone = document.getElementById('trash-drop-zone')
+    if (!trashZone) return false
+    const trashRect = trashZone.getBoundingClientRect()
+    return clientX >= trashRect.left && clientX <= trashRect.right
+      && clientY >= trashRect.top
+  }
+
+  function updateAutoScroll(clientX: number, clientY: number) {
+    if (isPointerOverTrash(clientX, clientY)) {
+      if (autoScrollFrame !== null) cancelAnimationFrame(autoScrollFrame)
+      autoScrollFrame = null
+      return
+    }
+
     const currentContainerRect = dragContainer.getBoundingClientRect()
     const edgeSize = Math.min(96, Math.max(48, currentContainerRect.height * 0.18))
     const distanceToBottom = currentContainerRect.bottom - clientY
@@ -1861,9 +1890,11 @@ function onPointerDown(e: PointerEvent) {
     let scrollDelta = 0
 
     if (distanceToBottom < edgeSize && dragContainer.scrollTop < maxScrollTop) {
-      scrollDelta = Math.ceil(((edgeSize - distanceToBottom) / edgeSize) * 18)
+      const intensity = Math.min(1, Math.max(0, (edgeSize - distanceToBottom) / edgeSize))
+      scrollDelta = Math.ceil(intensity * 18)
     } else if (distanceToTop < edgeSize && dragContainer.scrollTop > 0) {
-      scrollDelta = -Math.ceil(((edgeSize - distanceToTop) / edgeSize) * 18)
+      const intensity = Math.min(1, Math.max(0, (edgeSize - distanceToTop) / edgeSize))
+      scrollDelta = -Math.ceil(intensity * 18)
     }
 
     if (scrollDelta === 0) {
@@ -1875,19 +1906,17 @@ function onPointerDown(e: PointerEvent) {
     }
 
     if (autoScrollFrame !== null) return
+    const scrollClientY = clientY
     const step = () => {
       const before = dragContainer.scrollTop
       dragContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, dragContainer.scrollTop + scrollDelta))
-      if (dragContainer.scrollTop !== before) applyDragPosition(latestClientY)
+      if (dragContainer.scrollTop !== before) applyDragPosition(scrollClientY)
       autoScrollFrame = null
-      updateAutoScroll(latestClientY)
     }
     autoScrollFrame = requestAnimationFrame(step)
   }
 
   function onPointerMove(ev: PointerEvent) {
-    latestClientY = ev.clientY
-
     const dx = ev.clientX - e.clientX
     const dy = ev.clientY - e.clientY
     if (!dragStarted && Math.abs(dx) <= 4 && Math.abs(dy) <= 4) return
@@ -1898,7 +1927,7 @@ function onPointerDown(e: PointerEvent) {
     ev.preventDefault()
     movedDuringDrag = true
     applyDragPosition(ev.clientY)
-    updateAutoScroll(ev.clientY)
+    updateAutoScroll(ev.clientX, ev.clientY)
 
     const trashZone = document.getElementById('trash-drop-zone')
     const dragCenter = ev.clientY - offsetY + stopRect.height / 2
@@ -1914,10 +1943,7 @@ function onPointerDown(e: PointerEvent) {
     const targetIdx = normalizeDragTargetIndex(source!, rawTargetIdx)
 
     if (trashZone) {
-      const trashRect = trashZone.getBoundingClientRect()
-      const dragRect = stop.getBoundingClientRect()
-      if (dragRect.bottom >= trashRect.top && dragRect.top <= trashRect.bottom &&
-          dragRect.right >= trashRect.left && dragRect.left <= trashRect.right) {
+      if (isPointerOverTrash(ev.clientX, ev.clientY)) {
         trashZone.classList.add('is-drag-over-trash')
       } else {
         trashZone.classList.remove('is-drag-over-trash')
@@ -1969,17 +1995,19 @@ function onPointerDown(e: PointerEvent) {
     const targetIdx = normalizeDragTargetIndex(source!, rawTargetIdx)
 
     const trashZone = document.getElementById('trash-drop-zone')
-    if (trashZone && trashZone.classList.contains('is-drag-over-trash')) {
+    if (trashZone && isPointerOverTrash(ev.clientX, ev.clientY)) {
       trashZone.classList.remove('is-drag-over-trash')
       cleanupDragState()
 
       if (source!.type === 'separator') {
         const day = dayPlans.value[source!.dayIdx]
-        if (day) removeDay(day)
+        if (day) await removeDay(day)
       } else {
         const item = dayPlans.value[source!.dayIdx]?.items[source!.itemIdx]
-        if (item) removeItineraryItem(item)
+        if (item) await removeItineraryItem(item)
       }
+      await nextTick()
+      restoreItineraryScroll(initialScrollTop)
       releasePendingItineraryScroll(initialScrollTop)
       return
     }
@@ -2394,6 +2422,146 @@ function closeResponsivePanels() {
 
 /* ── AI / trip chat ── */
 const aiMessage = ref('')
+const aiChatInputRef = ref<HTMLInputElement | null>(null)
+const aiGuideOpen = ref(false)
+const activeAiGuideCategory = ref<AiGuideCategoryId>('schedule')
+const aiGuideCategories: AiGuideCategory[] = [
+  {
+    id: 'schedule', icon: 'calendar_month', label: '일정 보기',
+    description: '전체 또는 일차별 일정을 조회하고 여행의 장단점과 강도를 분석해요.',
+    examples: ['현재 전체 여행 일정을 요약하고 분석해줘', '1일차 일정 알려줘', '전체 일정이 너무 빡빡한지 분석해줘'],
+  },
+  {
+    id: 'places', icon: 'travel_explore', label: '장소 찾기',
+    description: '관광지를 검색하거나 지도 범위와 여행방 취향에 맞는 장소를 추천해요.',
+    note: '검색과 추천만으로는 일정이 변경되지 않아요.',
+    examples: ['경복궁 검색해줘', '현재 지도 범위에서 갈 만한 여행지를 추천해줘', '비 오는 날 가기 좋은 장소를 추천해줘'],
+  },
+  {
+    id: 'editing', icon: 'edit_calendar', label: '일정 편집',
+    description: '일차를 만들거나 이름과 날짜를 바꾸고, 원하는 장소를 일정에 추가해요.',
+    note: '장소와 일차를 함께 말하면 더 정확해요.',
+    examples: ['하루 더 추가해줘', '2일차 이름을 서울 동부 코스로 바꿔줘', '경복궁을 1일차 일정에 추가해줘'],
+  },
+  {
+    id: 'organize', icon: 'playlist_remove', label: '장소 정리',
+    description: '장소를 다른 일차로 옮기거나 삭제하고 접근성·요금 조건에 맞춰 정리해요.',
+    note: '정보가 확실한 장소만 안전하게 정리해요.',
+    examples: ['경복궁을 2일차로 옮겨줘', '해운대해수욕장을 일정에서 삭제해줘', '휠체어 이용 불가 장소를 일정에서 제거해줘'],
+  },
+  {
+    id: 'prepare', icon: 'checklist', label: '여행 준비',
+    description: '공동·일차별 메모와 체크리스트를 작성하고 일정에 맞는 준비물을 만들어요.',
+    examples: ['공동 메모에 숙소 체크인 3시라고 저장해줘', '체크리스트에 보조배터리 추가해줘', '현재 여행 계획을 보고 준비물 체크리스트를 자동으로 만들어줘'],
+  },
+  {
+    id: 'route', icon: 'route', label: '이동 계획',
+    description: '가까운 장소끼리 순서를 정리하고 도보·자전거·자동차 경로로 연결해요.',
+    note: '실제 경로 연결에는 좌표가 있는 장소가 2개 이상 필요해요.',
+    examples: ['전체 동선을 최적화해줘', '1일차 장소들을 도보 경로로 연결해줘', '장소 위치를 기준으로 일차별 이동 순서를 최적화해줘'],
+  },
+]
+const activeAiGuide = computed(() => (
+  aiGuideCategories.find((category) => category.id === activeAiGuideCategory.value) ?? aiGuideCategories[0]
+))
+const scheduledAiDays = computed(() => dayPlans.value.filter((day) => day.groupType === 'DAY'))
+const aiScheduledPlaceCount = computed(() => scheduledAiDays.value.reduce((count, day) => count + day.items.length, 0))
+const aiCoordinatePlaceCount = computed(() => scheduledAiDays.value.reduce((count, day) => (
+  count + day.items.filter((item) => item.lat != null && item.lng != null).length
+), 0))
+const aiSuggestionDay = computed(() => {
+  if (activeDay.value > 0 && scheduledAiDays.value.some((day) => day.day === activeDay.value)) return activeDay.value
+  return scheduledAiDays.value[0]?.day ?? 1
+})
+const aiQuickSuggestions = computed<AiQuickSuggestion[]>(() => {
+  if (scheduledAiDays.value.length === 0) return [
+    { icon: 'add', label: '1일차 만들기', prompt: '1일차 만들어줘' },
+    { icon: 'search', label: '장소 검색', prompt: '경복궁 검색해줘' },
+    { icon: 'help', label: '사용법', prompt: '사용법 알려줘' },
+  ]
+
+  const day = aiSuggestionDay.value
+  if (aiScheduledPlaceCount.value === 0) return [
+    { icon: 'recommend', label: '장소 추천', prompt: `${day}일차에 추천 여행지 3개 추가해줘` },
+    { icon: 'search', label: '장소 검색', prompt: '여행지 주변 관광지를 검색해줘' },
+    { icon: 'checklist', label: '준비물 만들기', prompt: '현재 일정 기준으로 여행 준비물 체크리스트를 만들어줘' },
+  ]
+
+  if (aiCoordinatePlaceCount.value >= 2) return [
+    { icon: 'summarize', label: '일정 요약', prompt: '현재 전체 여행 일정을 요약하고 분석해줘' },
+    { icon: 'route', label: '동선 최적화', prompt: '이동 거리가 줄어들도록 일정 순서를 재구성해줘' },
+    { icon: 'directions_walk', label: '도보 경로', prompt: `${day}일차 장소들을 도보 경로로 연결해줘` },
+  ]
+
+  return [
+    { icon: 'summarize', label: '일정 요약', prompt: '현재 전체 여행 일정을 요약하고 분석해줘' },
+    { icon: 'recommend', label: '장소 추천', prompt: '우리 여행방 취향에 맞는 장소를 추천해줘' },
+    { icon: 'checklist', label: '준비물 만들기', prompt: '현재 여행 계획을 보고 준비물 체크리스트를 자동으로 만들어줘' },
+  ]
+})
+
+function openAiGuide(category: AiGuideCategoryId = activeAiGuideCategory.value) {
+  activeAiGuideCategory.value = category
+  aiGuideOpen.value = true
+}
+
+function toggleAiGuide() {
+  aiGuideOpen.value = !aiGuideOpen.value
+}
+
+function selectAiPrompt(prompt: string) {
+  aiMessage.value = prompt
+  aiGuideOpen.value = false
+  void nextTick(() => aiChatInputRef.value?.focus())
+}
+
+let horizontalDragState: {
+  container: HTMLElement
+  pointerId: number
+  startX: number
+  scrollLeft: number
+  moved: boolean
+} | null = null
+const suppressHorizontalClick = new WeakSet<HTMLElement>()
+
+function startHorizontalDrag(event: PointerEvent) {
+  if (event.button !== 0) return
+  const container = event.currentTarget as HTMLElement
+  if (container.scrollWidth <= container.clientWidth) return
+  horizontalDragState = { container, pointerId: event.pointerId, startX: event.clientX, scrollLeft: container.scrollLeft, moved: false }
+}
+
+function moveHorizontalDrag(event: PointerEvent) {
+  const state = horizontalDragState
+  if (!state || state.pointerId !== event.pointerId || state.container !== event.currentTarget) return
+  const distance = event.clientX - state.startX
+  if (Math.abs(distance) > 4 && !state.moved) {
+    state.moved = true
+    state.container.setPointerCapture(event.pointerId)
+    state.container.classList.add('is-dragging')
+  }
+  if (!state.moved) return
+  event.preventDefault()
+  state.container.scrollLeft = state.scrollLeft - distance
+}
+
+function finishHorizontalDrag(event: PointerEvent) {
+  const state = horizontalDragState
+  if (!state || state.pointerId !== event.pointerId || state.container !== event.currentTarget) return
+  if (state.container.hasPointerCapture(event.pointerId)) state.container.releasePointerCapture(event.pointerId)
+  state.container.classList.remove('is-dragging')
+  if (state.moved) {
+    suppressHorizontalClick.add(state.container)
+    window.setTimeout(() => suppressHorizontalClick.delete(state.container), 0)
+  }
+  horizontalDragState = null
+}
+
+function guardHorizontalDragClick(event: MouseEvent) {
+  if (!suppressHorizontalClick.has(event.currentTarget as HTMLElement)) return
+  event.preventDefault()
+  event.stopPropagation()
+}
 // 다른 화면에서 ?panel=ai(&aiPrompt=...)로 들어오면 AI 패널을 열고 프롬프트를 채워 둔다.
 if (route.query?.panel === 'ai') {
   const prompt = typeof route.query.aiPrompt === 'string' ? route.query.aiPrompt : ''
@@ -2556,6 +2724,7 @@ async function loadConversations() {
 async function sendAiMessage() {
   const content = aiMessage.value.trim()
   if (!content || conversationLoading.value) return
+  aiGuideOpen.value = false
   aiMessage.value = ''
   conversationLoading.value = true
   conversationError.value = ''
@@ -2809,10 +2978,6 @@ const currentTodos = computed(() => (activeChecklist.value?.items ?? []).map((it
 		.filter((status) => status.isCompleted)
 		.map((status) => status.user),
 })))
-const completedCount = computed(() => currentTodos.value.filter(t => t.done).length)
-const totalCount = computed(() => currentTodos.value.length)
-const progressPercent = computed(() => totalCount.value === 0 ? 0 : Math.round((completedCount.value / totalCount.value) * 100))
-
 async function loadChecklists() {
   if (!tripId) return
   todoLoading.value = true
@@ -3125,7 +3290,10 @@ const collaborationTransport = new StompTransport({
 			serverUndoAvailable.value = false
 			serverRedoAvailable.value = false
 		}
-    if (reconnected) void itinerary.fetchItinerary()
+    if (reconnected) {
+      void itinerary.fetchItinerary()
+      void votingStore.load(tripId)
+    }
     if (drawingRetryIds.value.length > 0) retryDrawingSimplification()
   },
   onDisconnected: () => {
@@ -3162,7 +3330,7 @@ let conversationRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let planningRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let cursorPruneTimer: number | null = null
 
-function tripRealtimeTopic(topic: 'collaboration' | 'presence' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai') {
+function tripRealtimeTopic(topic: 'collaboration' | 'presence' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai' | 'voting') {
   return `/topic/trips/${encodeURIComponent(tripId)}/${topic}`
 }
 
@@ -3634,6 +3802,13 @@ function receivePlanningEvent(message: unknown) {
   scheduleItineraryRefresh(message)
 }
 
+function receiveVotingEvent(message: unknown) {
+  if (!isTripRealtimeEvent(message)) return
+  const event = message as { eventType?: unknown }
+  if (event.eventType !== 'vote.session.updated') return
+  void votingStore.load(tripId)
+}
+
 function receiveAiEvent(message: unknown) {
   if (!isTripRealtimeEvent(message)) return
   const aiChatMessage = extractAiMessage(message)
@@ -3660,6 +3835,7 @@ function connectTripRealtime() {
     collaborationTransport.subscribe(tripRealtimeTopic('chat'), receiveChatEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('planning'), receivePlanningEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('ai'), receiveAiEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('voting'), receiveVotingEvent),
   ]
   collaborationTransport.connect()
 }
@@ -5719,14 +5895,86 @@ function textAvatarStyle(index: unknown) {
                 </div>
                 <div class="ai-message-bubble" style="white-space:pre-wrap">{{ msg.content }}</div>
               </div>
-              <p v-if="!conversationLoading && aiMessages.length === 0" class="text-sm text-muted">AI에게 첫 질문을 보내보세요.</p>
+              <section v-if="!conversationLoading && aiMessages.length === 0" class="ai-welcome" aria-labelledby="ai-welcome-title">
+                <div class="ai-welcome-icon" aria-hidden="true"><span class="material-symbols-rounded">auto_awesome</span></div>
+                <h3 id="ai-welcome-title">여행 계획, 무엇부터 도와드릴까요?</h3>
+                <p>일정을 살펴보고 장소를 찾거나, 준비물과 이동 동선까지 함께 계획할 수 있어요.</p>
+                <div class="ai-welcome-actions" aria-label="AI 주요 기능">
+                  <button v-for="category in aiGuideCategories.slice(0, 4)" :key="category.id" type="button" @click="openAiGuide(category.id)">
+                    <span class="material-symbols-rounded" aria-hidden="true">{{ category.icon }}</span>
+                    <span>{{ category.label }}</span>
+                  </button>
+                </div>
+                <button class="ai-welcome-more" type="button" @click="openAiGuide()">
+                  전체 기능 살펴보기
+                  <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
+                </button>
+              </section>
             </div>
 
+            <section v-if="aiGuideOpen" id="ai-feature-guide" class="ai-feature-guide" aria-label="AI 기능 안내">
+              <div class="ai-feature-guide-header">
+                <strong>AI로 이런 일을 할 수 있어요</strong>
+                <button type="button" aria-label="기능 안내 닫기" @click="aiGuideOpen = false">
+                  <span class="material-symbols-rounded" aria-hidden="true">close</span>
+                </button>
+              </div>
+              <div
+                class="ai-feature-guide-tabs"
+                role="tablist"
+                aria-label="AI 기능 분류"
+                @pointerdown="startHorizontalDrag"
+                @pointermove="moveHorizontalDrag"
+                @pointerup="finishHorizontalDrag"
+                @pointercancel="finishHorizontalDrag"
+                @click.capture="guardHorizontalDragClick"
+              >
+                <button
+                  v-for="category in aiGuideCategories"
+                  :key="category.id"
+                  type="button"
+                  role="tab"
+                  :aria-selected="activeAiGuideCategory === category.id"
+                  :class="{ active: activeAiGuideCategory === category.id }"
+                  @click="activeAiGuideCategory = category.id"
+                >
+                  <span class="material-symbols-rounded" aria-hidden="true">{{ category.icon }}</span>
+                  {{ category.label }}
+                </button>
+              </div>
+              <div class="ai-feature-guide-content">
+                <p>{{ activeAiGuide.description }}</p>
+                <p v-if="activeAiGuide.note" class="ai-feature-guide-note">
+                  <span class="material-symbols-rounded" aria-hidden="true">info</span>
+                  {{ activeAiGuide.note }}
+                </p>
+                <div class="ai-feature-guide-examples">
+                  <button v-for="example in activeAiGuide.examples" :key="example" type="button" @click="selectAiPrompt(example)">
+                    <span>{{ example }}</span>
+                    <span class="material-symbols-rounded" aria-hidden="true">north_west</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
             <!-- Quick Suggestions -->
-            <div class="ai-chat-suggestions">
-              <button class="suggestion-chip" type="button" @click="aiMessage = '현재 일정의 이동 경로를 최적화해줘'">&#9889; 경로 최적화 추천</button>
-              <button class="suggestion-chip" type="button" @click="aiMessage = '현재 지도 주변의 맛집을 추천해줘'">&#127869; 근처 맛집</button>
-              <button class="suggestion-chip" type="button" @click="aiMessage = '일정이 겹치는 부분이 있는지 확인해줘'">&#128197; 일정 겹침 확인</button>
+            <div
+              class="ai-chat-suggestions"
+              aria-label="AI 추천 질문"
+              @pointerdown="startHorizontalDrag"
+              @pointermove="moveHorizontalDrag"
+              @pointerup="finishHorizontalDrag"
+              @pointercancel="finishHorizontalDrag"
+              @click.capture="guardHorizontalDragClick"
+            >
+              <button class="suggestion-chip suggestion-chip--guide" :class="{ active: aiGuideOpen }" type="button" aria-controls="ai-feature-guide" :aria-expanded="aiGuideOpen" @click="toggleAiGuide">
+                <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
+                기능 안내
+              </button>
+              <button v-for="suggestion in aiQuickSuggestions" :key="suggestion.label" class="suggestion-chip" type="button" @click="selectAiPrompt(suggestion.prompt)">
+                <span class="material-symbols-rounded" aria-hidden="true">{{ suggestion.icon }}</span>
+                {{ suggestion.label }}
+              </button>
             </div>
 
             <div class="ai-chat-input-row">
@@ -5740,7 +5988,7 @@ function textAvatarStyle(index: unknown) {
                 <span class="voice-wave-text">듣고 있습니다...</span>
               </div>
               <div class="route-send-box">
-                <input type="text" id="ai-chat-input" aria-label="AI 가이드에게 질문하기" placeholder="AI에게 일정에 관해 물어보세요." v-model="aiMessage" @keydown.enter="sendAiMessage" />
+                <input ref="aiChatInputRef" type="text" id="ai-chat-input" aria-label="AI 가이드에게 질문하기" placeholder="AI에게 일정에 관해 물어보세요." v-model="aiMessage" @keydown.enter="sendAiMessage" @keydown.esc="aiGuideOpen = false" />
                 <button id="ai-chat-send-btn" class="btn primary compact-send-btn" type="button" @click="sendAiMessage">
                   <span class="material-symbols-rounded">send</span>
                 </button>
@@ -5834,11 +6082,6 @@ function textAvatarStyle(index: unknown) {
                 :class="['panel-tab-tag', { 'active-todo': activeTodoDay === tag }]"
                 @click="activeTodoDay = tag">{{ tag }}</button>
             </div>
-            <div class="panel-progress-container">
-              <div class="panel-progress-bar" id="todo-progress-bar" style="width:0%">
-                <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
-              </div>
-            </div>
             <div class="panel-body todo-body">
               <p v-if="todoError" class="text-sm" style="color:var(--rose)">{{ todoError }}</p>
               <p v-else-if="todoLoading && currentTodos.length === 0" class="text-sm text-muted">불러오는 중…</p>
@@ -5904,7 +6147,7 @@ function textAvatarStyle(index: unknown) {
         <button type="button" class="icon-btn vote-modal-close" aria-label="투표 창 닫기" @click="closeVoteModal">
           <span class="material-symbols-rounded">close</span>
         </button>
-        <TripVoteFlow :key="notificationVoteSessionId ?? 'current'" :trip-id="tripId" :trip-days="voteTripDays" :target-session-id="notificationVoteSessionId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
+        <TripVoteFlow :key="notificationVoteSessionId ?? 'current'" :trip-id="tripId" :trip-days="voteTripDays" :is-owner="isTripOwner" :target-session-id="notificationVoteSessionId" embedded @close="closeVoteModal" @ai-arrange="arrangeSelectedPlacesWithAi" />
       </div>
     </div>
   </AppShell>
@@ -5935,15 +6178,34 @@ function textAvatarStyle(index: unknown) {
 }
 
 .vote-modal-card {
-  height: min(88vh, 860px);
   max-height: min(88vh, 860px);
   max-width: 920px;
   overflow: auto;
-  padding: 12px 24px 24px;
+  padding: 8px 24px 24px;
   position: relative;
   scrollbar-width: none;
   -ms-overflow-style: none;
   width: 100%;
+}
+
+.vote-modal-card:has(.trip-vote--voting) {
+  height: auto;
+  max-height: min(84vh, 720px);
+}
+
+/* 안내·대기 상태는 콘텐츠 높이에 맞춰 불필요한 빈 공간을 남기지 않는다. */
+.vote-modal-card:has([data-testid="vote-observer"]),
+.vote-modal-card:has([data-testid="vote-waiting"]) {
+  height: auto;
+  max-height: min(88vh, 760px);
+  max-width: 760px;
+}
+
+.vote-modal-card:has([data-testid="vote-setup"]) {
+  height: auto;
+  max-height: min(88vh, 720px);
+  max-width: 820px;
+  padding: 14px 28px 28px;
 }
 
 .vote-modal-card::-webkit-scrollbar {
@@ -6584,8 +6846,7 @@ function textAvatarStyle(index: unknown) {
   background: #fff;
 }
 .route-utility-sidebar .ai-chat-suggestions,
-.route-utility-sidebar .memo-toolbar,
-.route-utility-sidebar .panel-progress-container {
+.route-utility-sidebar .memo-toolbar {
   flex: 0 0 auto;
   background: #fff;
 }
@@ -6631,8 +6892,7 @@ function textAvatarStyle(index: unknown) {
   color: var(--route-accent);
 }
 .route-utility-sidebar .ai-chat-suggestions,
-.route-utility-sidebar .memo-toolbar,
-.route-utility-sidebar .panel-progress-container {
+.route-utility-sidebar .memo-toolbar {
   padding: 12px 16px;
   border-top: 1px solid rgba(15, 23, 42, 0.06);
   background: rgba(255, 255, 255, 0.62);
@@ -6643,7 +6903,210 @@ function textAvatarStyle(index: unknown) {
   gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+  cursor: grab;
+  touch-action: pan-y;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.route-utility-sidebar .ai-chat-suggestions::-webkit-scrollbar { display: none; }
+.route-utility-sidebar .ai-chat-suggestions.is-dragging,
+.route-utility-sidebar .ai-feature-guide-tabs.is-dragging {
+  cursor: grabbing;
+  scroll-snap-type: none;
+  user-select: none;
+}
+.route-utility-sidebar .ai-welcome {
+  width: min(100%, 360px);
+  margin: auto;
+  padding: 24px 18px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07);
+  text-align: center;
+}
+.route-utility-sidebar .ai-welcome-icon {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  background: rgba(var(--route-accent-rgb), 0.11);
+  color: var(--route-accent);
+}
+.route-utility-sidebar .ai-welcome-icon .material-symbols-rounded { font-size: 23px; }
+.route-utility-sidebar .ai-welcome h3 {
+  margin: 0;
+  color: #1e293b;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.4;
+}
+.route-utility-sidebar .ai-welcome > p {
+  margin: 7px auto 16px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+.route-utility-sidebar .ai-welcome-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+.route-utility-sidebar .ai-welcome-actions button {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 11px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #475569;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+}
+.route-utility-sidebar .ai-welcome-actions button:hover {
+  border-color: rgba(var(--route-accent-rgb), 0.24);
+  background: rgba(var(--route-accent-rgb), 0.07);
+  color: var(--route-accent);
+}
+.route-utility-sidebar .ai-welcome-actions .material-symbols-rounded { font-size: 18px; }
+.route-utility-sidebar .ai-welcome-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 14px;
+  border: 0;
+  background: transparent;
+  color: var(--route-accent);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+.route-utility-sidebar .ai-welcome-more .material-symbols-rounded { font-size: 16px; }
+.route-utility-sidebar .ai-feature-guide {
+  flex: 0 0 auto;
+  max-height: min(360px, 48vh);
+  overflow-y: auto;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 -16px 36px rgba(15, 23, 42, 0.08);
+}
+.route-utility-sidebar .ai-feature-guide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+}
+.route-utility-sidebar .ai-feature-guide-header strong {
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 850;
+}
+.route-utility-sidebar .ai-feature-guide-header button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+}
+.route-utility-sidebar .ai-feature-guide-header button .material-symbols-rounded { font-size: 18px; }
+.route-utility-sidebar .ai-feature-guide-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 34px 10px 26px;
+  overflow-x: auto;
+  cursor: grab;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  touch-action: pan-y;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  scroll-padding-inline-start: 26px;
+}
+.route-utility-sidebar .ai-feature-guide-tabs::-webkit-scrollbar { display: none; }
+.route-utility-sidebar .ai-feature-guide-tabs button {
+  display: inline-flex;
+  flex: 0 0 calc((100% - 18px) / 3.35);
+  min-width: 88px;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+  scroll-snap-align: start;
+  white-space: nowrap;
+}
+.route-utility-sidebar .ai-feature-guide-tabs button.active {
+  border-color: rgba(var(--route-accent-rgb), 0.22);
+  background: rgba(var(--route-accent-rgb), 0.09);
+  color: var(--route-accent);
+}
+.route-utility-sidebar .ai-feature-guide-tabs .material-symbols-rounded { font-size: 16px; }
+.route-utility-sidebar .ai-feature-guide-content {
+  padding: 12px 16px 14px;
+  border-top: 1px solid rgba(15, 23, 42, 0.05);
+  background: #f8fafc;
+}
+.route-utility-sidebar .ai-feature-guide-content > p {
+  margin: 0 0 9px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+.route-utility-sidebar .ai-feature-guide-content .ai-feature-guide-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  color: #64748b;
+  font-size: 11px;
+}
+.route-utility-sidebar .ai-feature-guide-note .material-symbols-rounded { margin-top: 1px; font-size: 15px; }
+.route-utility-sidebar .ai-feature-guide-examples { display: grid; gap: 6px; }
+.route-utility-sidebar .ai-feature-guide-examples button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+}
+.route-utility-sidebar .ai-feature-guide-examples button:hover {
+  border-color: rgba(var(--route-accent-rgb), 0.24);
+  color: var(--route-accent);
+}
+.route-utility-sidebar .ai-feature-guide-examples .material-symbols-rounded {
+  flex: 0 0 auto;
+  color: #94a3b8;
+  font-size: 15px;
 }
 .route-utility-sidebar .suggestion-chip,
 .route-utility-sidebar .toolbar-btn {
@@ -6665,6 +7128,12 @@ function textAvatarStyle(index: unknown) {
   line-height: 1;
   white-space: nowrap;
 }
+.route-utility-sidebar .suggestion-chip .material-symbols-rounded { margin-right: 5px; font-size: 17px; }
+.route-utility-sidebar .suggestion-chip--guide {
+  border-color: rgba(var(--route-accent-rgb), 0.20);
+  color: var(--route-accent);
+}
+.route-utility-sidebar .suggestion-chip--guide.active { background: rgba(var(--route-accent-rgb), 0.11); }
 .route-utility-sidebar .toolbar-btn {
   width: 34px;
   height: 34px;
@@ -7568,10 +8037,6 @@ function textAvatarStyle(index: unknown) {
 .memo-footer-left { display:flex;align-items:center;gap:12px; }
 .memo-char-count { font-size:12px;color:var(--muted); }
 .text-danger-btn { color:var(--rose)!important;background:transparent!important;border:none!important;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;padding:0; }
-.panel-progress-bar { height:6px;background:var(--line);border-radius:3px;overflow:hidden; }
-.panel-progress-bar .progress-fill { height:100%;background:linear-gradient(90deg,var(--violet),var(--blue,#00d1ff));border-radius:3px;transition:width .3s; }
-.panel-progress-container { padding:0 20px 16px; }
-
 /* Modals */
 .modal-tab-content { display:none; }
 .modal-tab-content.active { display:block; }
@@ -8074,7 +8539,7 @@ function textAvatarStyle(index: unknown) {
 
 @media (max-width: 760px) {
   .vote-modal-overlay { padding: 12px; }
-  .vote-modal-card { height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); padding: 10px 14px 18px; }
+  .vote-modal-card { height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); padding: 8px 14px 18px; }
 }
 
 .map-sticker-help {

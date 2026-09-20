@@ -40,6 +40,11 @@ function jump(target: number) {
 const dragX = ref(0)
 let dragging = false
 let startX = 0
+const thumbsDragging = ref(false)
+let thumbsPointerId: number | null = null
+let thumbsStartX = 0
+let thumbsScrollLeft = 0
+let thumbsMoved = false
 
 function onPointerDown(event: PointerEvent) {
   dragging = true
@@ -58,6 +63,42 @@ function onPointerUp() {
   if (dragX.value <= -60) go(1)
   else if (dragX.value >= 60) go(-1)
   dragX.value = 0
+}
+
+function onThumbsPointerDown(event: PointerEvent) {
+  const container = event.currentTarget as HTMLElement
+  thumbsPointerId = event.pointerId
+  thumbsStartX = event.clientX
+  thumbsScrollLeft = container.scrollLeft
+  thumbsMoved = false
+  container.setPointerCapture?.(event.pointerId)
+}
+
+function onThumbsPointerMove(event: PointerEvent) {
+  if (thumbsPointerId !== event.pointerId) return
+  const container = event.currentTarget as HTMLElement
+  const distance = event.clientX - thumbsStartX
+  if (Math.abs(distance) > 4) {
+    thumbsMoved = true
+    thumbsDragging.value = true
+  }
+  if (thumbsMoved) container.scrollLeft = thumbsScrollLeft - distance
+}
+
+function onThumbsPointerUp(event: PointerEvent) {
+  if (thumbsPointerId !== event.pointerId) return
+  const container = event.currentTarget as HTMLElement
+  container.releasePointerCapture?.(event.pointerId)
+  thumbsPointerId = null
+  thumbsDragging.value = false
+}
+
+function selectThumb(target: number) {
+  if (thumbsMoved) {
+    thumbsMoved = false
+    return
+  }
+  jump(target)
 }
 
 function imageUrl(candidate: TripVoteCandidate | null) {
@@ -174,7 +215,16 @@ function imageUrl(candidate: TripVoteCandidate | null) {
       </button>
     </div>
 
-    <div class="vote-deck__thumbs" role="tablist" aria-label="후보 목록">
+    <div
+      class="vote-deck__thumbs"
+      :class="{ 'is-dragging': thumbsDragging }"
+      role="tablist"
+      aria-label="후보 목록"
+      @pointerdown="onThumbsPointerDown"
+      @pointermove="onThumbsPointerMove"
+      @pointerup="onThumbsPointerUp"
+      @pointercancel="onThumbsPointerUp"
+    >
       <button
         v-for="(candidate, thumbIndex) in candidates"
         :key="candidate.id"
@@ -185,7 +235,7 @@ function imageUrl(candidate: TripVoteCandidate | null) {
         role="tab"
         :aria-selected="thumbIndex === index"
         :aria-label="candidate.name ?? `후보 ${thumbIndex + 1}`"
-        @click="jump(thumbIndex)"
+        @click="selectThumb(thumbIndex)"
       >
         <img
           v-if="imageUrl(candidate)"
@@ -221,7 +271,7 @@ function imageUrl(candidate: TripVoteCandidate | null) {
 
 .vote-deck__stage {
   position: relative;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
   border-radius: 24px;
   overflow: hidden;
   background: var(--surface-2);
@@ -427,7 +477,14 @@ function imageUrl(candidate: TripVoteCandidate | null) {
   gap: 10px;
   overflow-x: auto;
   padding: 4px;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
   scrollbar-width: thin;
+}
+
+.vote-deck__thumbs.is-dragging {
+  cursor: grabbing;
 }
 
 .vote-deck__thumb {

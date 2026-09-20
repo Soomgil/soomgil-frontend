@@ -2,6 +2,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
+import { ensureStoredAccessToken } from '@/auth/accessToken'
 import { notificationApi } from '@/api/notification.api'
 import { tripApi } from '@/api/trip.api'
 import { itineraryApi } from '@/api/itinerary.api'
@@ -10,6 +11,7 @@ import type { PageMeta } from '@/types/api'
 import type { Notification } from '@/types/notification'
 import logoUrl from '@/assets/images/soomgil_text_logo.png'
 import { useLocale } from '@/i18n'
+import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 
 const route = useRoute()
 defineProps<{ immersive?: boolean; paper?: boolean }>()
@@ -115,6 +117,8 @@ const unreadCount = ref(0)
 const notificationBusy = ref(false)
 let sessionVersion = 0
 let countRequest = 0
+let notificationRealtimeUnsubscribe: (() => void) | null = null
+let notificationRealtimeTimer: ReturnType<typeof setTimeout> | undefined
 const hasMoreNotifications = computed(() => {
   const page = notificationPage.value
   return page ? page.page + 1 < page.totalPages : false
@@ -333,6 +337,44 @@ function refreshInbox() {
   void refreshUnreadCount()
   if (showNotif.value && (!notificationPage.value || notificationPage.value.page === 0)) void loadNotifications(0)
 }
+
+const notificationTransport = new StompTransport({
+  brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
+  accessToken: ensureStoredAccessToken,
+  onConnected: (reconnected) => {
+    if (reconnected) refreshInbox()
+  },
+})
+
+function scheduleRealtimeInboxRefresh(delay = 80) {
+  clearTimeout(notificationRealtimeTimer)
+  notificationRealtimeTimer = setTimeout(() => {
+    if (notificationBusy.value || notificationsLoading.value) {
+      scheduleRealtimeInboxRefresh(200)
+      return
+    }
+    refreshInbox()
+  }, delay)
+}
+
+function connectNotificationRealtime() {
+  if (!notificationRealtimeUnsubscribe) {
+    notificationRealtimeUnsubscribe = notificationTransport.subscribe<{ eventType?: string }>(
+      '/user/queue/notifications',
+      (event) => {
+        if (event?.eventType === 'notification.changed') scheduleRealtimeInboxRefresh()
+      },
+    )
+  }
+  notificationTransport.connect()
+}
+
+function disconnectNotificationRealtime() {
+  clearTimeout(notificationRealtimeTimer)
+  notificationRealtimeUnsubscribe?.()
+  notificationRealtimeUnsubscribe = null
+  void notificationTransport.disconnect()
+}
 function handleEscape(event: KeyboardEvent) {
   if (event.key !== 'Escape') return
   const target = showBriefing.value ? 'header-briefing-btn' : showNotif.value ? 'header-notif-btn' : 'header-profile-btn'
@@ -350,7 +392,12 @@ watch(() => [auth.isAuthenticated, auth.user?.id], () => {
   briefingLoading.value = false
   briefingItems.value = []
   closeAllDropdowns()
-  if (auth.isAuthenticated) void Promise.all([refreshUnreadCount(), loadBriefing()])
+  if (auth.isAuthenticated) {
+    connectNotificationRealtime()
+    void Promise.all([refreshUnreadCount(), loadBriefing()])
+  } else {
+    disconnectNotificationRealtime()
+  }
 }, { immediate: true })
 watch(() => route.fullPath, () => {
   closeAllDropdowns()
@@ -384,6 +431,7 @@ onUnmounted(() => {
   navObserver?.disconnect()
   sessionVersion++
   clearInterval(notificationTimer)
+  disconnectNotificationRealtime()
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleEscape)
   document.removeEventListener('visibilitychange', refreshInbox)
