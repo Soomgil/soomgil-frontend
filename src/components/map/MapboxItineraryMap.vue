@@ -161,6 +161,16 @@ function applyMapStyle(style: string) {
   map.setStyle(cachedMapStyle(style, import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ?? '') ?? style)
 }
 
+// 지도 라벨을 한국어로 표시한다. 스타일이 로드될 때마다(테마 전환 포함) 다시 적용해야 한다.
+// mapbox-gl v3의 setLanguage는 Standard/클래식 스타일 모두 라벨을 현지화한다.
+function applyMapLanguage(instance: MapboxMap) {
+  try {
+    ;(instance as unknown as { setLanguage?: (lang: string) => void }).setLanguage?.('ko')
+  } catch {
+    // 스타일에 따라 지원되지 않을 수 있으나 지도 동작에는 영향 없음.
+  }
+}
+
 watch(mapStyle, applyMapStyle)
 
 function syncStandardViewCamera(isStandardView: boolean) {
@@ -779,6 +789,7 @@ async function initializeMap() {
       styleReady = true
       mapError.value = ''
       canRetry.value = false
+      applyMapLanguage(createdMap)
       lineLayerIds = []
       renderStops()
       renderTasteMarkers()
