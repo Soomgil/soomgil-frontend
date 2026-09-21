@@ -83,6 +83,37 @@ describe('media API', () => {
     expect(post).toHaveBeenCalledTimes(1)
   })
 
+  it('uses the image signature when the file extension and MIME type are incorrect', async () => {
+    const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46])
+    const mislabeledFile = new File([jpegBytes], 'travel.png', { type: 'image/png' })
+    const upload = {
+      uploadUrl: 'https://storage.example.com/signed-upload',
+      method: 'PUT',
+      objectKey: 'media/users/user-1/community-post/upload.jpg',
+      headers: { 'Content-Type': 'image/jpeg' },
+      expiresAt: '2026-09-21T01:00:00Z',
+    }
+    const storageUpload = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    vi.stubGlobal('fetch', storageUpload)
+    post.mockResolvedValueOnce({ data: upload }).mockResolvedValueOnce({ data: { id: 'media-2' } })
+
+    await mediaApi.uploadFile(mislabeledFile, 'COMMUNITY_POST')
+
+    expect(post).toHaveBeenNthCalledWith(1, '/media/upload-urls', {
+      fileName: 'travel.jpg',
+      mimeType: 'image/jpeg',
+      byteSize: mislabeledFile.size,
+      purpose: 'COMMUNITY_POST',
+    })
+    const uploadedFile = storageUpload.mock.calls[0][1].body as File
+    expect(uploadedFile).toEqual(expect.objectContaining({ name: 'travel.jpg', type: 'image/jpeg' }))
+    expect(post).toHaveBeenNthCalledWith(2, '/media/files', {
+      objectKey: upload.objectKey,
+      mimeType: 'image/jpeg',
+      byteSize: mislabeledFile.size,
+    })
+  })
+
   it('deletes registered media through the contract path', async () => {
     del.mockResolvedValue({ status: 204 })
 
