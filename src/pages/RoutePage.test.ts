@@ -86,6 +86,7 @@ vi.mock('@/realtime/stompTransport', () => ({
   resolveWebSocketUrl: () => 'ws://localhost/ws',
   StompTransport: class FakeStompTransport {
     connected = false
+    sessionId: string | null = 'session-1'
     published: Array<{ destination: string; payload: unknown }> = []
     subscriptions = new Map<string, (payload: unknown) => void>()
     subscriptionLists = new Map<string, Array<(payload: unknown) => void>>()
@@ -99,10 +100,12 @@ vi.mock('@/realtime/stompTransport', () => ({
 
 		connect() {
 			this.connected = true
+			this.sessionId = 'session-1'
 			this.options.onConnected?.(false)
 		}
 		async disconnect() {
 			this.connected = false
+			this.sessionId = null
 			this.options.onDisconnected?.()
 		}
     publish(destination: string, payload: unknown) {
@@ -2562,6 +2565,7 @@ describe('RoutePage itinerary integration', () => {
     const transport = realtime.instances[0]
     clearCollaborationSessionIds()
     transport.connected = false
+    transport.sessionId = null
 
     map.vm.$emit('drawingCreate', {
       coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
@@ -2577,7 +2581,6 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.get('.map-drawing-status').text()).toContain('그림 저장을 완료하지 못했습니다.')
     expect(geo.simplifyCoordinates).not.toHaveBeenCalled()
 
-    registerCollaborationSessionId('session-2')
     transport.connect()
     await flushPromises()
 
@@ -2677,6 +2680,7 @@ describe('RoutePage itinerary integration', () => {
     await flushPromises()
     const map = wrapper.getComponent(MapboxItineraryMap)
     const transport = realtime.instances[0]
+    holder.state.fetchItinerary.mockClear()
     const transform = {
       centerLng: 127.1, centerLat: 37.5, widthMeters: 1200, heightMeters: 800, rotationDeg: 15,
     }
@@ -2689,6 +2693,23 @@ describe('RoutePage itinerary integration', () => {
     await nextTick()
 
     expect(map.props('mapObjectPreviewTransforms')).toEqual({ 'drawing-remote': transform })
+
+    transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
+      eventType: 'map.object.transform.preview',
+      tripId: 'trip-1', drawingId: 'drawing-remote', userId: 'user-2', clientId: 'session-2',
+      sequence: 2, phase: 'END', transform,
+    })
+    transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
+      eventType: 'map.object.lock', tripId: 'trip-1', drawingId: 'drawing-remote', locked: false,
+      userId: null, clientId: null, expiresAt: null,
+    })
+    await nextTick()
+
+    expect(map.props('mapObjectPreviewTransforms')).toEqual({ 'drawing-remote': transform })
+    await new Promise((resolve) => setTimeout(resolve, 70))
+    await flushPromises()
+    expect(holder.state.fetchItinerary).toHaveBeenCalledOnce()
+    expect(map.props('mapObjectPreviewTransforms')).toEqual({})
 
     map.vm.$emit('mapObjectEditStart', 'drawing-remote')
     transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.({
@@ -2703,6 +2724,53 @@ describe('RoutePage itinerary integration', () => {
       destination: '/app/trips/trip-1/map-object-transform-preview',
       payload: expect.objectContaining({ drawingId: 'drawing-remote', phase: 'UPDATE', transform }),
     })
+  })
+
+  it('일정 갱신 중 도착한 지도 오브젝트 변경도 후속 조회로 반영한다', async () => {
+    let finishFirstRefresh: (() => void) | undefined
+    const wrapper = mount(RoutePage, {
+      global: {
+        stubs: {
+          AppShell: { template: '<div><slot /></div>' },
+          LoadingState: true,
+          ErrorState: true,
+          EmptyState: true,
+        },
+      },
+    })
+    await flushPromises()
+    holder.state.fetchItinerary.mockClear()
+    holder.state.fetchItinerary
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishFirstRefresh = resolve }))
+      .mockResolvedValue(undefined)
+    const transport = realtime.instances[0]
+    const event = (commandEventId: number) => ({
+      commandEventId,
+      tripId: 'trip-1',
+      actorUserId: 'user-2',
+      websocketSessionId: 'session-2',
+      source: 'USER',
+      commandType: 'UPDATE_MAP_DRAWING',
+      aggregateType: 'MAP_DRAWING',
+      aggregateId: 'drawing-remote',
+      versionBefore: commandEventId + 2,
+      versionAfter: commandEventId + 3,
+      payload: '{}',
+      createdAt: '2026-09-21T00:00:00Z',
+    })
+
+    transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.(event(1))
+    await new Promise((resolve) => setTimeout(resolve, 70))
+    expect(holder.state.fetchItinerary).toHaveBeenCalledOnce()
+
+    transport.subscriptions.get('/topic/trips/trip-1/map-drawings')?.(event(2))
+    finishFirstRefresh?.()
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 70))
+    await flushPromises()
+
+    expect(holder.state.fetchItinerary).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
   })
 
   it('지도 이미지 업로드 직후 원본 파일 URL을 미리보기에 재사용한다', async () => {

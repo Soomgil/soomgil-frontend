@@ -17,6 +17,7 @@ export interface StompTransportOptions {
   brokerUrl: string
   accessToken: () => string | null | Promise<string | null>
   reconnectDelayMs?: number
+  registerCollaborationSession?: boolean
   onConnected?: (reconnected: boolean) => void
   onDisconnected?: () => void
 }
@@ -30,10 +31,12 @@ interface PendingSubscription {
 export class StompTransport implements RealtimeTransport {
   private readonly client: Client
   private readonly subscriptions = new Set<PendingSubscription>()
+  private readonly registerCollaborationSession: boolean
   private collaborationSessionId: string | null = null
   private hasConnected = false
 
   constructor(options: StompTransportOptions) {
+    this.registerCollaborationSession = options.registerCollaborationSession ?? true
     this.client = new Client({
       brokerURL: options.brokerUrl,
       reconnectDelay: options.reconnectDelayMs ?? 1000,
@@ -76,6 +79,10 @@ export class StompTransport implements RealtimeTransport {
 
   get connected() {
     return this.client.connected
+  }
+
+  get sessionId() {
+    return this.collaborationSessionId
   }
 
   connect() {
@@ -134,11 +141,13 @@ export class StompTransport implements RealtimeTransport {
 
   private updateCollaborationSession(sessionId: string | undefined) {
     this.clearCollaborationSession()
-    this.collaborationSessionId = registerCollaborationSessionId(sessionId)
+    const normalized = sessionId?.trim() || null
+    this.collaborationSessionId = normalized
+    if (this.registerCollaborationSession) registerCollaborationSessionId(normalized)
   }
 
   private clearCollaborationSession() {
-    unregisterCollaborationSessionId(this.collaborationSessionId)
+    if (this.registerCollaborationSession) unregisterCollaborationSessionId(this.collaborationSessionId)
     this.collaborationSessionId = null
   }
 }
