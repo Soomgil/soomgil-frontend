@@ -35,7 +35,6 @@ import { useItinerary } from '@/composables/useItinerary'
 import { useMapViewport } from '@/composables/useMapViewport'
 import { placeApi } from '@/api/place.api'
 import { useDrawingPreviewChannel } from '@/realtime/drawingPreview'
-import { getCollaborationSessionId } from '@/realtime/collaborationSession'
 import { resolveWebSocketUrl, StompTransport } from '@/realtime/stompTransport'
 import { useTripStore } from '@/stores/trip.store'
 import { useVotingStore } from '@/stores/voting.store'
@@ -3304,6 +3303,9 @@ const collaborationTransport = new StompTransport({
     selectedMapObjectId.value = null
     mapObjectLocks.value = {}
     remoteMapObjectPreviews.value = {}
+    mapObjectPreviewsAwaitingRefresh.clear()
+    mapObjectPreviewsRefreshing.clear()
+    itineraryRefreshQueued = false
     pendingMapObjectPreviewTransforms.clear()
     mapObjectLeaseResolvers.forEach((resolve) => resolve(false))
     mapObjectLeaseResolvers.clear()
@@ -3316,7 +3318,7 @@ const drawingPreviewChannel = useDrawingPreviewChannel({
   tripId,
   clientId: globalThis.crypto?.randomUUID?.() ?? `drawing-client-${Date.now()}`,
   transport: collaborationTransport,
-  currentSessionId: getCollaborationSessionId,
+  currentSessionId: () => collaborationTransport.sessionId,
 })
 const mapDrawings = computed(() => [
   ...localDrawings.value,
@@ -3326,6 +3328,9 @@ let localDrawingSequence = 0
 let tripRealtimeUnsubscribers: Array<() => void> = []
 let itineraryRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let itineraryRefreshInFlight: Promise<unknown> | null = null
+let itineraryRefreshQueued = false
+const mapObjectPreviewsAwaitingRefresh = new Set<string>()
+let mapObjectPreviewsRefreshing = new Set<string>()
 let conversationRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let planningRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let cursorPruneTimer: number | null = null
@@ -3407,9 +3412,12 @@ function receiveMapObjectLock(event: MapObjectLockEvent) {
   const next = { ...mapObjectLocks.value }
   if (!event.locked || !event.userId || !event.clientId || !event.expiresAt) {
     delete next[event.drawingId]
-    const previews = { ...remoteMapObjectPreviews.value }
-    delete previews[event.drawingId]
-    remoteMapObjectPreviews.value = previews
+    if (!mapObjectPreviewsAwaitingRefresh.has(event.drawingId)
+      && !mapObjectPreviewsRefreshing.has(event.drawingId)) {
+      const previews = { ...remoteMapObjectPreviews.value }
+      delete previews[event.drawingId]
+      remoteMapObjectPreviews.value = previews
+    }
   } else {
     next[event.drawingId] = {
       drawingId: event.drawingId,
@@ -3419,18 +3427,19 @@ function receiveMapObjectLock(event: MapObjectLockEvent) {
     }
   }
   mapObjectLocks.value = next
-  if (event.locked && event.clientId === getCollaborationSessionId()) {
+  if (event.locked && event.clientId === collaborationTransport.sessionId) {
     mapObjectLeaseResolvers.get(event.drawingId)?.(true)
     mapObjectLeaseResolvers.delete(event.drawingId)
   }
 }
 
 function receiveMapObjectTransformPreview(event: MapObjectTransformPreviewEvent) {
-  if (event.clientId === getCollaborationSessionId()) return
+  if (event.clientId === collaborationTransport.sessionId) return
   const next = { ...remoteMapObjectPreviews.value }
   const current = next[event.drawingId]
-  if (event.phase !== 'UPDATE') {
+  if (event.phase === 'CANCEL') {
     delete next[event.drawingId]
+    mapObjectPreviewsAwaitingRefresh.delete(event.drawingId)
   } else if (!current || current.clientId !== event.clientId || event.sequence > current.sequence) {
     next[event.drawingId] = {
       clientId: event.clientId,
@@ -3439,6 +3448,10 @@ function receiveMapObjectTransformPreview(event: MapObjectTransformPreviewEvent)
     }
   }
   remoteMapObjectPreviews.value = next
+  if (event.phase === 'END') {
+    mapObjectPreviewsAwaitingRefresh.add(event.drawingId)
+    scheduleItineraryRefresh()
+  }
 }
 
 function publishMapObjectLock(drawingId: string, action: 'ACQUIRE' | 'RENEW' | 'RELEASE') {
@@ -3446,7 +3459,7 @@ function publishMapObjectLock(drawingId: string, action: 'ACQUIRE' | 'RENEW' | '
 }
 
 function acquireMapObjectLease(drawingId: string) {
-  const sessionId = getCollaborationSessionId()
+  const sessionId = collaborationTransport.sessionId
   if (!collaborationConnected.value || !sessionId) {
     itineraryActionError.value = '실시간 협업 연결 후 다시 시도해 주세요.'
     return Promise.resolve(false)
@@ -3503,7 +3516,7 @@ function publishMapObjectTransformPreview(
   force = false,
 ) {
   pendingMapObjectPreviewTransforms.set(drawingId, transform)
-  const sessionId = getCollaborationSessionId()
+  const sessionId = collaborationTransport.sessionId
   if (!sessionId || mapObjectLocks.value[drawingId]?.clientId !== sessionId) return false
   const now = Date.now()
   if (!force && phase === 'UPDATE' && now - (mapObjectPreviewSentAt.get(drawingId) ?? 0) < 50) return false
@@ -3707,15 +3720,34 @@ function scheduleItineraryRefresh(event?: unknown) {
     ? (event as TripRealtimeEvent).itineraryVersion as number
     : null
   if (eventVersion !== null && eventVersion <= itinerary.itineraryVersion.value) return
+  if (itineraryRefreshInFlight) {
+    itineraryRefreshQueued = true
+    return
+  }
   if (itineraryRefreshTimer) return
   itineraryRefreshTimer = setTimeout(() => {
     itineraryRefreshTimer = null
-    itineraryRefreshInFlight = (itineraryRefreshInFlight ?? itinerary.fetchItinerary())
+    mapObjectPreviewsRefreshing = new Set(mapObjectPreviewsAwaitingRefresh)
+    mapObjectPreviewsAwaitingRefresh.clear()
+    const refresh = itinerary.fetchItinerary()
+    itineraryRefreshInFlight = refresh
+    refresh
+      .then(() => {
+        if (mapObjectPreviewsRefreshing.size === 0) return
+        const previews = { ...remoteMapObjectPreviews.value }
+        mapObjectPreviewsRefreshing.forEach((drawingId) => delete previews[drawingId])
+        remoteMapObjectPreviews.value = previews
+      })
       .catch((cause) => {
         console.error('Realtime itinerary refresh failed', cause)
       })
       .finally(() => {
         itineraryRefreshInFlight = null
+        mapObjectPreviewsRefreshing.clear()
+        if (itineraryRefreshQueued || mapObjectPreviewsAwaitingRefresh.size > 0) {
+          itineraryRefreshQueued = false
+          scheduleItineraryRefresh()
+        }
       })
   }, 50)
 }
@@ -3747,9 +3779,16 @@ function receiveItineraryEvent(message: unknown) {
     receiveMapObjectLock(message)
     return
   }
-  if (message && typeof message === 'object' && typeof (message as { drawingId?: unknown }).drawingId === 'string') {
+  const drawingId = message && typeof message === 'object'
+    ? (typeof (message as { drawingId?: unknown }).drawingId === 'string'
+        ? (message as { drawingId: string }).drawingId
+        : isCollaborationCommandEvent(message) && message.aggregateType === 'MAP_DRAWING'
+          ? message.aggregateId
+          : null)
+    : null
+  if (drawingId && (!isCollaborationCommandEvent(message) || message.commandType !== 'UPDATE_MAP_DRAWING')) {
     const previews = { ...remoteMapObjectPreviews.value }
-    delete previews[(message as { drawingId: string }).drawingId]
+    delete previews[drawingId]
     remoteMapObjectPreviews.value = previews
   }
   scheduleItineraryRefresh(message)
@@ -3757,7 +3796,7 @@ function receiveItineraryEvent(message: unknown) {
 
 function receiveCollaborationEvent(message: unknown) {
   if (isCollaborationCommandEvent(message)) {
-    if (message.websocketSessionId === getCollaborationSessionId() && message.source === 'USER') {
+    if (message.websocketSessionId === collaborationTransport.sessionId && message.source === 'USER') {
       serverUndoAvailable.value = true
       serverRedoAvailable.value = false
     }
@@ -3919,7 +3958,7 @@ watch(itinerary.mapDrawings, (drawings) => {
 
 async function handleMapObjectPlace(transform: MapObjectTransform) {
   if (itinerary.mutating.value) return
-  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+  if (!collaborationConnected.value || !collaborationTransport.sessionId) {
     itineraryActionError.value = '실시간 협업 연결 후 지도 오브젝트를 추가해 주세요.'
     return
   }
@@ -3949,7 +3988,7 @@ async function handleMapObjectPlace(transform: MapObjectTransform) {
 }
 
 function openMapImagePicker() {
-  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+  if (!collaborationConnected.value || !collaborationTransport.sessionId) {
     itineraryActionError.value = '실시간 협업 연결 후 이미지를 업로드해 주세요.'
     return
   }
@@ -3961,7 +4000,7 @@ async function handleMapImageSelected(event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+  if (!collaborationConnected.value || !collaborationTransport.sessionId) {
     itineraryActionError.value = '실시간 협업 연결 후 이미지를 업로드해 주세요.'
     return
   }
@@ -4102,7 +4141,7 @@ onUnmounted(() => {
 async function simplifyLocalDrawing(drawingId: string) {
   const drawing = localDrawings.value.find((candidate) => candidate.id === drawingId)
   if (!drawing || pendingDrawingIds.value.includes(drawingId)) return
-  if (drawingId.startsWith('local-drawing-') && (!collaborationConnected.value || !getCollaborationSessionId())) {
+  if (drawingId.startsWith('local-drawing-') && (!collaborationConnected.value || !collaborationTransport.sessionId)) {
     queueDrawingRetry(drawingId)
     return
   }
@@ -4163,7 +4202,7 @@ function createLocalDrawing(draft: MapDrawingDraft) {
     ...draft,
   }
   localDrawings.value = [...localDrawings.value, drawing]
-  if (!collaborationConnected.value || !getCollaborationSessionId()) {
+  if (!collaborationConnected.value || !collaborationTransport.sessionId) {
     itineraryActionError.value = '실시간 연결이 복구되면 그린 선을 자동으로 저장합니다.'
   }
   void simplifyLocalDrawing(drawing.id)
@@ -5360,7 +5399,7 @@ function textAvatarStyle(index: unknown) {
               :map-object-locks="mapObjectLocks"
               :map-object-preview-transforms="mapObjectPreviewTransforms"
               :map-cursors="visibleMapCursors"
-              :current-client-id="getCollaborationSessionId()"
+              :current-client-id="collaborationTransport.sessionId"
               :selected-map-object-id="selectedMapObjectId"
               :map-object-placement="mapObjectPlacement"
               :map-object-epoch="mapObjectEpoch"

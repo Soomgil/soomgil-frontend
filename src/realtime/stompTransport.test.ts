@@ -56,13 +56,34 @@ describe('StompTransport', () => {
     client.connected = true
     client.config.onConnect({ headers: { 'X-Soomgil-WebSocket-Session-Id': 'session-1' } })
     expect(client.subscribe).toHaveBeenCalledWith('/topic/trips/trip-1/map-drawings', expect.any(Function))
+    expect(transport.sessionId).toBe('session-1')
     expect(getCollaborationSessionId()).toBe('session-1')
     const callback = client.subscribe.mock.results[0].value.callback
     callback({ body: JSON.stringify({ previewId: 'stroke-1' }) })
     expect(handler).toHaveBeenCalledWith({ previewId: 'stroke-1' })
 
     await transport.disconnect()
+    expect(transport.sessionId).toBeNull()
     expect(getCollaborationSessionId()).toBeNull()
+  })
+
+  it('알림 연결은 지도 편집용 협업 세션을 덮어쓰지 않는다', () => {
+    const collaborationTransport = new StompTransport({
+      brokerUrl: 'ws://localhost/ws',
+      accessToken: () => 'token-1',
+    })
+    const notificationTransport = new StompTransport({
+      brokerUrl: 'ws://localhost/ws',
+      accessToken: () => 'token-1',
+      registerCollaborationSession: false,
+    })
+
+    stomp.clients[0].config.onConnect({ headers: { 'X-Soomgil-WebSocket-Session-Id': 'trip-session' } })
+    stomp.clients[1].config.onConnect({ headers: { 'X-Soomgil-WebSocket-Session-Id': 'notification-session' } })
+
+    expect(collaborationTransport.sessionId).toBe('trip-session')
+    expect(notificationTransport.sessionId).toBe('notification-session')
+    expect(getCollaborationSessionId()).toBe('trip-session')
   })
 
   it('재연결 전에 비동기로 갱신한 bearer token을 기다린다', async () => {

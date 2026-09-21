@@ -341,6 +341,7 @@ function refreshInbox() {
 const notificationTransport = new StompTransport({
   brokerUrl: resolveWebSocketUrl(import.meta.env.VITE_WS_URL),
   accessToken: ensureStoredAccessToken,
+  registerCollaborationSession: false,
   onConnected: (reconnected) => {
     if (reconnected) refreshInbox()
   },

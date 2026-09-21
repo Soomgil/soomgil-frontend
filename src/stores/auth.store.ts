@@ -12,6 +12,7 @@ import { clearCollaborationSessionIds } from '@/realtime/collaborationSession'
 import { setLocale } from '@/i18n'
 import { ensureStoredAccessToken } from '@/auth/accessToken'
 import { useOnboardingStore } from '@/stores/onboarding.store'
+import { resolveOAuthRedirectUri } from '@/auth/oauthRedirect'
 
 /* ── OAuth 진행 중 상태 (CSRF state 검증용) ──
  * 리다이렉트 전 sessionStorage에 저장, 콜백 페이지에서 state 일치 여부 검증.
@@ -83,7 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
   /** OAuth 로그인 시작 — 인증 URL 받아 Kakao/Google로 리다이렉트.
    *  실제 토큰 저장은 completeOAuthLogin에서. */
   async function loginWithOAuth(provider: OAuthProvider, next = '/home') {
-    const redirectUri = `${window.location.origin}/auth/oauth/${provider}/callback`
+    const redirectUri = resolveOAuthRedirectUri(provider)
     const { authorizationUrl, state } = await authApi.getOAuthAuthorizationUrl(provider, redirectUri)
 
     const pending: PendingOAuth = { provider, state, redirectUri, next }
