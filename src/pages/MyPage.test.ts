@@ -29,6 +29,7 @@ const userApi = vi.hoisted(() => ({
 const swipeApi = vi.hoisted(() => ({ react: vi.fn(), savePlace: vi.fn(), unsavePlace: vi.fn() }))
 const communityApi = vi.hoisted(() => ({ getPosts: vi.fn() }))
 const tripApi = vi.hoisted(() => ({ getTrips: vi.fn() }))
+const mediaApi = vi.hoisted(() => ({ uploadFile: vi.fn() }))
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 
 vi.mock('vue-router', () => ({ useRouter: () => router }))
@@ -37,7 +38,7 @@ vi.mock('@/api/user.api', () => ({ userApi }))
 vi.mock('@/api/swipe.api', () => ({ swipeApi }))
 vi.mock('@/api/community.api', () => ({ communityApi }))
 vi.mock('@/api/trip.api', () => ({ tripApi }))
-vi.mock('@/api/media.api', () => ({ mediaApi: { uploadFile: vi.fn() } }))
+vi.mock('@/api/media.api', () => ({ mediaApi }))
 vi.mock('@/composables/useToast', () => ({ useToast: () => toast }))
 
 const place = {
@@ -75,6 +76,8 @@ describe('MyPage super likes', () => {
     })
     auth.isAuthenticated = true
     auth.fetchUser.mockResolvedValue(undefined)
+    userApi.updateMe.mockResolvedValue(undefined)
+    mediaApi.uploadFile.mockResolvedValue({ id: 'media-1' })
     userApi.getSavedPlaces.mockResolvedValue([place])
     userApi.getFollowers.mockResolvedValue([])
     userApi.getFollowing.mockResolvedValue([])
@@ -149,5 +152,40 @@ describe('MyPage super likes', () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(`${window.location.origin}/mypage/user-1`)
     expect(toast.success).toHaveBeenCalledWith('프로필 링크를 복사했습니다.')
     expect(wrapper.text()).not.toContain('프로필 링크를 복사했습니다.')
+  })
+
+  it('registers a supported profile photo and saves its media ID', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:profile-preview')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const wrapper = mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('프로필 수정'))!.trigger('click')
+
+    const input = wrapper.get('input[type="file"]')
+    expect(input.attributes('accept')).toContain('image/heic')
+    const file = new File(['photo'], 'avatar.jpg', { type: 'image/jpeg' })
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+    await wrapper.findAll('.story-overlay button').find((button) => button.text().includes('저장'))!.trigger('click')
+    await flushPromises()
+
+    expect(mediaApi.uploadFile).toHaveBeenCalledWith(file, 'PROFILE_IMAGE')
+    expect(userApi.updateMe).toHaveBeenCalledWith(expect.objectContaining({ profileMediaFileId: 'media-1' }))
+    expect(auth.fetchUser).toHaveBeenCalled()
+    vi.restoreAllMocks()
+  })
+
+  it('rejects unsupported profile formats before upload', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('프로필 수정'))!.trigger('click')
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', {
+      value: [new File(['svg'], 'avatar.svg', { type: 'image/svg+xml' })], configurable: true,
+    })
+    await input.trigger('change')
+
+    expect(wrapper.text()).toContain('JPG, PNG, WebP, GIF, HEIC 또는 HEIF 이미지를 선택해 주세요.')
+    expect(mediaApi.uploadFile).not.toHaveBeenCalled()
   })
 })

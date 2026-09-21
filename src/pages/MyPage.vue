@@ -7,6 +7,7 @@ import { useModal } from '@/composables/useModal'
 import { useAuthStore } from '@/stores/auth.store'
 import { userApi } from '@/api/user.api'
 import { mediaApi } from '@/api/media.api'
+import { IMAGE_UPLOAD_ACCEPT, prepareImageUpload } from '@/utils/imageUpload'
 import { communityApi } from '@/api/community.api'
 import { tripApi } from '@/api/trip.api'
 import { swipeApi } from '@/api/swipe.api'
@@ -193,6 +194,8 @@ const photoInput = ref<HTMLInputElement | null>(null)
 const photoNotice = ref<string | null>(null)
 const pendingProfilePhoto = ref<File | null>(null)
 const pendingProfilePhotoUrl = ref<string | null>(null)
+const photoPreparing = ref(false)
+let photoSelectionId = 0
 function triggerPhotoPicker() {
   photoNotice.value = null
   photoInput.value?.click()
@@ -201,17 +204,24 @@ async function onPhotoSelected(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-
-  if (!file.type.startsWith('image/')) {
-    photoNotice.value = '이미지 파일만 선택할 수 있습니다.'
-    input.value = ''
-    return
-  }
-  if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
-  pendingProfilePhoto.value = file
-  pendingProfilePhotoUrl.value = URL.createObjectURL(file)
-  photoNotice.value = '저장 버튼을 누르면 사진이 변경됩니다.'
   input.value = ''
+  const selectionId = ++photoSelectionId
+  photoPreparing.value = true
+  photoNotice.value = '이미지를 준비하고 있습니다.'
+  if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
+  pendingProfilePhoto.value = null
+  pendingProfilePhotoUrl.value = null
+  try {
+    const prepared = await prepareImageUpload(file, 'PROFILE_IMAGE')
+    if (selectionId !== photoSelectionId) return
+    pendingProfilePhoto.value = prepared
+    pendingProfilePhotoUrl.value = URL.createObjectURL(prepared)
+    photoNotice.value = '저장 버튼을 누르면 사진이 변경됩니다.'
+  } catch (error) {
+    if (selectionId === photoSelectionId) photoNotice.value = error instanceof Error ? error.message : '이미지를 준비하지 못했습니다.'
+  } finally {
+    if (selectionId === photoSelectionId) photoPreparing.value = false
+  }
 }
 
 function syncProfileForm() {
@@ -223,6 +233,8 @@ function syncProfileForm() {
 // 모달이 열릴 때만 폼 초기값 동기화.
 // watchEffect를 쓰면 fetchUser() 지연 해결 시 사용자가 입력한 값을 덮어쓴다.
 function openProfileEdit() {
+  photoSelectionId++
+  photoPreparing.value = false
   if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
   pendingProfilePhoto.value = null
   pendingProfilePhotoUrl.value = null
@@ -232,6 +244,8 @@ function openProfileEdit() {
 }
 
 function closeProfileEdit() {
+  photoSelectionId++
+  photoPreparing.value = false
   if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
   pendingProfilePhoto.value = null
   pendingProfilePhotoUrl.value = null
@@ -243,6 +257,7 @@ const profileSaving = ref(false)
 const profileError = ref<string | null>(null)
 
 async function saveProfile() {
+  if (photoPreparing.value) return
   profileSaving.value = true
   profileError.value = null
   try {
@@ -621,7 +636,7 @@ function handleUserClick(userId: string) {
               <button type="button" style="padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;" @click="triggerPhotoPicker">
                 <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">photo_camera</span>사진 변경
               </button>
-              <input ref="photoInput" type="file" accept="image/*" style="display: none;" @change="onPhotoSelected" />
+              <input ref="photoInput" type="file" :accept="IMAGE_UPLOAD_ACCEPT" style="display: none;" @change="onPhotoSelected" />
               <p v-if="photoNotice" style="margin: 8px 0 0; font-size: 12px; color: var(--muted); font-weight: 600;">{{ photoNotice }}</p>
             </div>
           </div>
@@ -677,8 +692,8 @@ function handleUserClick(userId: string) {
           <!-- 저장 버튼 -->
           <div style="display: flex; gap: 12px; justify-content: flex-end;">
             <button type="button" style="padding: 12px 24px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;" @click="closeProfileEdit">취소</button>
-            <button type="button" :disabled="profileSaving" style="padding: 12px 28px; border-radius: 999px; border: none; background: linear-gradient(135deg, var(--violet), var(--blue)); color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 18px rgba(0, 102, 255, 0.25); opacity: 1;" @click="saveProfile">
-              <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">save</span>{{ profileSaving ? '저장 중...' : '저장' }}
+            <button type="button" :disabled="profileSaving || photoPreparing" style="padding: 12px 28px; border-radius: 999px; border: none; background: linear-gradient(135deg, var(--violet), var(--blue)); color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 18px rgba(0, 102, 255, 0.25); opacity: 1;" @click="saveProfile">
+              <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">save</span>{{ photoPreparing ? '이미지 준비 중...' : profileSaving ? '저장 중...' : '저장' }}
             </button>
           </div>
         </div>

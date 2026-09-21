@@ -15,6 +15,7 @@ import { aiApi } from '@/api/ai.api'
 import { chatApi } from '@/api/chat.api'
 import { planningApi } from '@/api/planning.api'
 import { mediaApi } from '@/api/media.api'
+import { IMAGE_UPLOAD_ACCEPT, ImageUploadError, prepareImageUpload } from '@/utils/imageUpload'
 import { collaborationApi } from '@/api/collaboration.api'
 import { ensureStoredAccessToken, getStoredAccessToken } from '@/auth/accessToken'
 import { tripApi } from '@/api/trip.api'
@@ -4004,14 +4005,12 @@ async function handleMapImageSelected(event: Event) {
     itineraryActionError.value = '실시간 협업 연결 후 이미지를 업로드해 주세요.'
     return
   }
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-    window.alert(translateUiText('JPG, PNG, WebP 이미지를 10MB 이하로 선택해 주세요.'))
-    return
-  }
   mapImageUploading.value = true
-  const previewUrl = URL.createObjectURL(file)
+  let previewUrl: string | null = null
   try {
-    const media = await mediaApi.uploadFile(file, 'MAP_OVERLAY', {
+    const prepared = await prepareImageUpload(file, 'MAP_OVERLAY')
+    previewUrl = URL.createObjectURL(prepared)
+    const media = await mediaApi.uploadFile(prepared, 'MAP_OVERLAY', {
       linkedResourceType: 'TRIP',
       linkedResourceId: tripId,
     })
@@ -4027,9 +4026,9 @@ async function handleMapImageSelected(event: Event) {
     activeTool.value = 'image'
     selectedMapObjectId.value = null
   } catch (cause) {
-    URL.revokeObjectURL(previewUrl)
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
     console.error('Map overlay image upload failed.', cause)
-    window.alert(translateUiText('지도 이미지를 업로드하지 못했습니다.'))
+    window.alert(translateUiText(cause instanceof ImageUploadError ? cause.message : '지도 이미지를 업로드하지 못했습니다.'))
   } finally {
     mapImageUploading.value = false
   }
@@ -5430,7 +5429,7 @@ function textAvatarStyle(index: unknown) {
               ref="mapImageInput"
               class="map-object-file-input"
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              :accept="IMAGE_UPLOAD_ACCEPT"
               @change="handleMapImageSelected"
             >
 
