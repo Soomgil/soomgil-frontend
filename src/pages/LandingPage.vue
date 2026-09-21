@@ -38,7 +38,7 @@ onUnmounted(() => revealObserver?.disconnect())
           <h1>함께 그리는 설렘,<br /><em>여행의 모든 순간</em></h1>
           <p class="landing-classic-lead">각자의 취향을 모아 가고 싶은 장소를 고르고,<br />실시간으로 하나의 여행 일정을 완성해보세요.</p>
           <div class="landing-classic-actions">
-            <button class="landing-button landing-button--classic" type="button" @click="router.push('/register')">함께 여행 만들기 <span class="material-symbols-rounded">arrow_forward</span></button>
+            <button class="landing-button landing-button--classic" type="button" @click="router.push('/login')">함께 여행 만들기 <span class="material-symbols-rounded">arrow_forward</span></button>
             <a class="landing-button landing-button--classic-ghost" href="#how">기능 둘러보기 <span class="material-symbols-rounded">south</span></a>
           </div>
         </div>
@@ -58,7 +58,7 @@ onUnmounted(() => revealObserver?.disconnect())
         <div class="landing-story-grid"><article v-for="journey in journeys" :key="journey.title"><img :src="journey.image" :alt="journey.title" /><div><span>{{ journey.region }}</span><h3>{{ journey.title }}</h3><p><span class="material-symbols-rounded">library_add</span> 일정 가져오기</p></div></article></div>
       </section>
 
-      <section class="landing-final landing-reveal" :style="{ '--final-image': `url(${daejeonImg})` }"><div><p>설레는 여행은 함께 계획하는 순간부터 시작돼요</p><h2>다음 여행을 숨길에서 함께 만들어 볼까요?</h2><button class="landing-button landing-button--light landing-button--large" type="button" @click="router.push('/register')">첫 여행 만들기 <span class="material-symbols-rounded">arrow_forward</span></button></div></section>
+      <section class="landing-final landing-reveal" :style="{ '--final-image': `url(${daejeonImg})` }"><div><p>설레는 여행은 함께 계획하는 순간부터 시작돼요</p><h2>다음 여행을 숨길에서 함께 만들어 볼까요?</h2><button class="landing-button landing-button--light landing-button--large" type="button" @click="router.push('/login')">첫 여행 만들기 <span class="material-symbols-rounded">arrow_forward</span></button></div></section>
     </main>
 
     <AppFooter />
