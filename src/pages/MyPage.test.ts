@@ -75,8 +75,12 @@ describe('MyPage super likes', () => {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     })
     auth.isAuthenticated = true
+    auth.user = {
+      id: 'user-1', email: 'demo01@soomgil.local', displayName: '민경철',
+      profileImageUrl: null, bio: '', profileVisibility: 'PUBLIC',
+    }
     auth.fetchUser.mockResolvedValue(undefined)
-    userApi.updateMe.mockResolvedValue(undefined)
+    userApi.updateMe.mockImplementation(async () => auth.user)
     mediaApi.uploadFile.mockResolvedValue({ id: 'media-1' })
     userApi.getSavedPlaces.mockResolvedValue([place])
     userApi.getFollowers.mockResolvedValue([])
@@ -159,6 +163,8 @@ describe('MyPage super likes', () => {
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     const wrapper = mountPage()
     await flushPromises()
+    const fetchesBeforeSave = auth.fetchUser.mock.calls.length
+    userApi.updateMe.mockResolvedValue({ ...auth.user, profileImageUrl: '/api/v1/media/files/media-1/content' })
     await wrapper.findAll('button').find((button) => button.text().includes('프로필 수정'))!.trigger('click')
 
     const input = wrapper.get('input[type="file"]')
@@ -171,7 +177,30 @@ describe('MyPage super likes', () => {
 
     expect(mediaApi.uploadFile).toHaveBeenCalledWith(file, 'PROFILE_IMAGE')
     expect(userApi.updateMe).toHaveBeenCalledWith(expect.objectContaining({ profileMediaFileId: 'media-1' }))
-    expect(auth.fetchUser).toHaveBeenCalled()
+    expect(auth.fetchUser).toHaveBeenCalledTimes(fetchesBeforeSave)
+    expect(auth.user.profileImageUrl).toBe('/api/v1/media/files/media-1/content')
+    vi.restoreAllMocks()
+  })
+
+  it('keeps the editor open and separates the buttons from a photo upload error', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:profile-preview')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    mediaApi.uploadFile.mockRejectedValue(new Error('파일 저장소 업로드에 실패했습니다.'))
+    const wrapper = mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('프로필 수정'))!.trigger('click')
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', {
+      value: [new File(['photo'], 'avatar.jpg', { type: 'image/jpeg' })], configurable: true,
+    })
+    await input.trigger('change')
+    await wrapper.findAll('.story-overlay button').find((button) => button.text().includes('저장'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('사진 저장에 실패했습니다.')
+    expect(wrapper.get('[role="alert"]').attributes('style')).toContain('margin: 16px 0px')
+    expect(wrapper.find('.story-overlay').exists()).toBe(true)
+    expect(userApi.updateMe).not.toHaveBeenCalled()
     vi.restoreAllMocks()
   })
 

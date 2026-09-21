@@ -260,6 +260,7 @@ async function saveProfile() {
   if (photoPreparing.value) return
   profileSaving.value = true
   profileError.value = null
+  let savingPhoto = false
   try {
     const payload: UpdateMeRequest = {
       displayName: profileForm.value.displayName,
@@ -267,24 +268,32 @@ async function saveProfile() {
       profileVisibility: profileForm.value.visibility === 'followers' ? 'PRIVATE' : 'PUBLIC',
     }
     if (pendingProfilePhoto.value) {
+      savingPhoto = true
       const mediaFile = await mediaApi.uploadFile(pendingProfilePhoto.value, 'PROFILE_IMAGE')
       payload.profileMediaFileId = mediaFile.id
     }
-    await userApi.updateMe(payload)
-    await auth.fetchUser()
+    const updatedUser = await userApi.updateMe(payload)
+    auth.user = updatedUser
     if (pendingProfilePhotoUrl.value) URL.revokeObjectURL(pendingProfilePhotoUrl.value)
     pendingProfilePhoto.value = null
     pendingProfilePhotoUrl.value = null
     profileEditModal.close()
   } catch (e: unknown) {
     // 인터셉터가 콘솔엔 찍어주지만 사용자에게도 피드백 필요
-    const status = (e as { response?: { status?: number } })?.response?.status
-    profileError.value =
-      status === 401
-        ? '로그인이 만료되었습니다. 다시 로그인해주세요.'
-        : status === 400
-          ? '입력값이 올바르지 않습니다.'
-          : '저장에 실패했습니다. 잠시 후 다시 시도해주세요.'
+    const response = (e as { response?: { status?: number; data?: { code?: string } } })?.response
+    if (response?.status === 401) {
+      profileError.value = '로그인이 만료되었습니다. 다시 로그인해주세요.'
+    } else if (savingPhoto && response?.data?.code === 'MEDIA_SIZE_LIMIT_EXCEEDED') {
+      profileError.value = '사진 크기가 너무 큽니다. 5MB 이하의 사진을 선택해 주세요.'
+    } else if (savingPhoto && response?.data?.code === 'UNSUPPORTED_MEDIA_TYPE') {
+      profileError.value = '지원하지 않는 사진 형식입니다. JPG 또는 PNG 사진을 선택해 주세요.'
+    } else if (savingPhoto) {
+      profileError.value = '사진 저장에 실패했습니다. 다시 시도해주세요.'
+    } else if (response?.status === 400 || response?.status === 422) {
+      profileError.value = '입력값이 올바르지 않습니다.'
+    } else {
+      profileError.value = '저장에 실패했습니다. 잠시 후 다시 시도해주세요.'
+    }
     console.error('[saveProfile] failed:', e)
   } finally {
     profileSaving.value = false
@@ -685,12 +694,12 @@ function handleUserClick(userId: string) {
           </div>
 
           <!-- 에러 메시지 -->
-          <div v-if="profileError" style="margin-top: 12px; padding: 10px 14px; border-radius: 10px; background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.2); color: #dc2626; font-size: 13px; font-weight: 600;">
+          <div v-if="profileError" role="alert" style="margin: 16px 0; padding: 10px 14px; border-radius: 10px; background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.2); color: #dc2626; font-size: 13px; font-weight: 600;">
             {{ profileError }}
           </div>
 
           <!-- 저장 버튼 -->
-          <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <div :style="{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: profileError ? '0' : '16px' }">
             <button type="button" style="padding: 12px 24px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; color: var(--ink); transition: all 0.2s;" @click="closeProfileEdit">취소</button>
             <button type="button" :disabled="profileSaving || photoPreparing" style="padding: 12px 28px; border-radius: 999px; border: none; background: linear-gradient(135deg, var(--violet), var(--blue)); color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 18px rgba(0, 102, 255, 0.25); opacity: 1;" @click="saveProfile">
               <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">save</span>{{ photoPreparing ? '이미지 준비 중...' : profileSaving ? '저장 중...' : '저장' }}
