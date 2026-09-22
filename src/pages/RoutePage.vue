@@ -128,12 +128,6 @@ interface AiGuideCategory {
   examples: string[]
 }
 
-interface AiQuickSuggestion {
-  icon: string
-  label: string
-  prompt: string
-}
-
 /* ── Data ── */
 const route = useRoute()
 const router = useRouter()
@@ -2428,85 +2422,53 @@ const activeAiGuideCategory = ref<AiGuideCategoryId>('schedule')
 const aiGuideCategories: AiGuideCategory[] = [
   {
     id: 'schedule', icon: 'calendar_month', label: '일정 보기',
-    description: '전체 또는 일차별 일정을 조회하고 여행의 장단점과 강도를 분석해요.',
-    examples: ['현재 전체 여행 일정을 요약하고 분석해줘', '1일차 일정 알려줘', '전체 일정이 너무 빡빡한지 분석해줘'],
+    description: '전체 또는 일차별 일정을 조회하고 장소 수와 방문 순서를 살펴봐요.',
+    examples: ['현재 전체 여행 일정을 일차별로 요약해줘', '1일차에 등록된 장소와 순서를 알려줘', '일차별 장소 수와 방문 순서를 분석해줘'],
   },
   {
     id: 'places', icon: 'travel_explore', label: '장소 찾기',
     description: '관광지를 검색하거나 지도 범위와 여행방 취향에 맞는 장소를 추천해요.',
     note: '검색과 추천만으로는 일정이 변경되지 않아요.',
-    examples: ['경복궁 검색해줘', '현재 지도 범위에서 갈 만한 여행지를 추천해줘', '비 오는 날 가기 좋은 장소를 추천해줘'],
+    examples: ['경복궁 검색해줘', '현재 지도 범위에서 우리 여행방 취향에 맞는 장소를 추천해줘', '실내 관광지 검색해줘'],
   },
   {
     id: 'editing', icon: 'edit_calendar', label: '일정 편집',
     description: '일차를 만들거나 이름과 날짜를 바꾸고, 원하는 장소를 일정에 추가해요.',
     note: '장소와 일차를 함께 말하면 더 정확해요.',
-    examples: ['하루 더 추가해줘', '2일차 이름을 서울 동부 코스로 바꿔줘', '경복궁을 1일차 일정에 추가해줘'],
+    examples: ['현재 일정에 하루 더 추가해줘', '2일차 이름을 도심 산책 코스로 바꿔줘', '경복궁을 1일차 일정에 추가해줘'],
   },
   {
     id: 'organize', icon: 'playlist_remove', label: '장소 정리',
     description: '장소를 다른 일차로 옮기거나 삭제하고 접근성·요금 조건에 맞춰 정리해요.',
     note: '정보가 확실한 장소만 안전하게 정리해요.',
-    examples: ['경복궁을 2일차로 옮겨줘', '해운대해수욕장을 일정에서 삭제해줘', '휠체어 이용 불가 장소를 일정에서 제거해줘'],
+    examples: ['현재 일정의 경복궁을 2일차로 옮겨줘', '현재 일정의 해운대해수욕장을 삭제해줘', '휠체어 이용 불가로 확인된 일정 장소만 제거해줘'],
   },
   {
     id: 'prepare', icon: 'checklist', label: '여행 준비',
     description: '공동·일차별 메모와 체크리스트를 작성하고 일정에 맞는 준비물을 만들어요.',
-    examples: ['공동 메모에 숙소 체크인 3시라고 저장해줘', '체크리스트에 보조배터리 추가해줘', '현재 여행 계획을 보고 준비물 체크리스트를 자동으로 만들어줘'],
+    examples: ['공동 메모에 숙소 체크인 시간 확인하기라고 저장해줘', '공동 체크리스트에 보조배터리 항목을 추가해줘', '현재 여행 계획을 보고 준비물 체크리스트를 자동으로 만들어줘'],
   },
   {
     id: 'route', icon: 'route', label: '이동 계획',
     description: '가까운 장소끼리 순서를 정리하고 도보·자전거·자동차 경로로 연결해요.',
     note: '실제 경로 연결에는 좌표가 있는 장소가 2개 이상 필요해요.',
-    examples: ['전체 동선을 최적화해줘', '1일차 장소들을 도보 경로로 연결해줘', '장소 위치를 기준으로 일차별 이동 순서를 최적화해줘'],
+    examples: ['가까운 관광지끼리 같은 일차로 묶어 동선을 정리해줘', '1일차 장소들을 도보 경로로 연결해줘', '현재 일차 배치는 유지하고 일차별 이동순서만 위치 기준으로 정리해줘'],
   },
 ]
 const activeAiGuide = computed(() => (
   aiGuideCategories.find((category) => category.id === activeAiGuideCategory.value) ?? aiGuideCategories[0]
 ))
-const scheduledAiDays = computed(() => dayPlans.value.filter((day) => day.groupType === 'DAY'))
-const aiScheduledPlaceCount = computed(() => scheduledAiDays.value.reduce((count, day) => count + day.items.length, 0))
-const aiCoordinatePlaceCount = computed(() => scheduledAiDays.value.reduce((count, day) => (
-  count + day.items.filter((item) => item.lat != null && item.lng != null).length
-), 0))
-const aiSuggestionDay = computed(() => {
-  if (activeDay.value > 0 && scheduledAiDays.value.some((day) => day.day === activeDay.value)) return activeDay.value
-  return scheduledAiDays.value[0]?.day ?? 1
-})
-const aiQuickSuggestions = computed<AiQuickSuggestion[]>(() => {
-  if (scheduledAiDays.value.length === 0) return [
-    { icon: 'add', label: '1일차 만들기', prompt: '1일차 만들어줘' },
-    { icon: 'search', label: '장소 검색', prompt: '경복궁 검색해줘' },
-    { icon: 'help', label: '사용법', prompt: '사용법 알려줘' },
-  ]
-
-  const day = aiSuggestionDay.value
-  if (aiScheduledPlaceCount.value === 0) return [
-    { icon: 'recommend', label: '장소 추천', prompt: `${day}일차에 추천 여행지 3개 추가해줘` },
-    { icon: 'search', label: '장소 검색', prompt: '여행지 주변 관광지를 검색해줘' },
-    { icon: 'checklist', label: '준비물 만들기', prompt: '현재 일정 기준으로 여행 준비물 체크리스트를 만들어줘' },
-  ]
-
-  if (aiCoordinatePlaceCount.value >= 2) return [
-    { icon: 'summarize', label: '일정 요약', prompt: '현재 전체 여행 일정을 요약하고 분석해줘' },
-    { icon: 'route', label: '동선 최적화', prompt: '이동 거리가 줄어들도록 일정 순서를 재구성해줘' },
-    { icon: 'directions_walk', label: '도보 경로', prompt: `${day}일차 장소들을 도보 경로로 연결해줘` },
-  ]
-
-  return [
-    { icon: 'summarize', label: '일정 요약', prompt: '현재 전체 여행 일정을 요약하고 분석해줘' },
-    { icon: 'recommend', label: '장소 추천', prompt: '우리 여행방 취향에 맞는 장소를 추천해줘' },
-    { icon: 'checklist', label: '준비물 만들기', prompt: '현재 여행 계획을 보고 준비물 체크리스트를 자동으로 만들어줘' },
-  ]
-})
-
 function openAiGuide(category: AiGuideCategoryId = activeAiGuideCategory.value) {
   activeAiGuideCategory.value = category
   aiGuideOpen.value = true
 }
 
-function toggleAiGuide() {
-  aiGuideOpen.value = !aiGuideOpen.value
+function toggleAiGuideCategory(category: AiGuideCategoryId) {
+  if (aiGuideOpen.value && activeAiGuideCategory.value === category) {
+    aiGuideOpen.value = false
+    return
+  }
+  openAiGuide(category)
 }
 
 function selectAiPrompt(prompt: string) {
@@ -5957,29 +5919,6 @@ function textAvatarStyle(index: unknown) {
                   <span class="material-symbols-rounded" aria-hidden="true">close</span>
                 </button>
               </div>
-              <div
-                class="ai-feature-guide-tabs"
-                role="tablist"
-                aria-label="AI 기능 분류"
-                @pointerdown="startHorizontalDrag"
-                @pointermove="moveHorizontalDrag"
-                @pointerup="finishHorizontalDrag"
-                @pointercancel="finishHorizontalDrag"
-                @click.capture="guardHorizontalDragClick"
-              >
-                <button
-                  v-for="category in aiGuideCategories"
-                  :key="category.id"
-                  type="button"
-                  role="tab"
-                  :aria-selected="activeAiGuideCategory === category.id"
-                  :class="{ active: activeAiGuideCategory === category.id }"
-                  @click="activeAiGuideCategory = category.id"
-                >
-                  <span class="material-symbols-rounded" aria-hidden="true">{{ category.icon }}</span>
-                  {{ category.label }}
-                </button>
-              </div>
               <div class="ai-feature-guide-content">
                 <p>{{ activeAiGuide.description }}</p>
                 <p v-if="activeAiGuide.note" class="ai-feature-guide-note">
@@ -5995,23 +5934,27 @@ function textAvatarStyle(index: unknown) {
               </div>
             </section>
 
-            <!-- Quick Suggestions -->
             <div
-              class="ai-chat-suggestions"
-              aria-label="AI 추천 질문"
+              class="ai-feature-guide-tabs"
+              role="group"
+              aria-label="AI 기능 분류"
               @pointerdown="startHorizontalDrag"
               @pointermove="moveHorizontalDrag"
               @pointerup="finishHorizontalDrag"
               @pointercancel="finishHorizontalDrag"
               @click.capture="guardHorizontalDragClick"
             >
-              <button class="suggestion-chip suggestion-chip--guide" :class="{ active: aiGuideOpen }" type="button" aria-controls="ai-feature-guide" :aria-expanded="aiGuideOpen" @click="toggleAiGuide">
-                <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
-                기능 안내
-              </button>
-              <button v-for="suggestion in aiQuickSuggestions" :key="suggestion.label" class="suggestion-chip" type="button" @click="selectAiPrompt(suggestion.prompt)">
-                <span class="material-symbols-rounded" aria-hidden="true">{{ suggestion.icon }}</span>
-                {{ suggestion.label }}
+              <button
+                v-for="category in aiGuideCategories"
+                :key="category.id"
+                type="button"
+                aria-controls="ai-feature-guide"
+                :aria-expanded="aiGuideOpen && activeAiGuideCategory === category.id"
+                :class="{ active: aiGuideOpen && activeAiGuideCategory === category.id }"
+                @click="toggleAiGuideCategory(category.id)"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">{{ category.icon }}</span>
+                {{ category.label }}
               </button>
             </div>
 
@@ -6883,7 +6826,7 @@ function textAvatarStyle(index: unknown) {
   border-top: 1px solid rgba(15, 23, 42, 0.08);
   background: #fff;
 }
-.route-utility-sidebar .ai-chat-suggestions,
+.route-utility-sidebar .ai-feature-guide-tabs,
 .route-utility-sidebar .memo-toolbar {
   flex: 0 0 auto;
   background: #fff;
@@ -6929,13 +6872,13 @@ function textAvatarStyle(index: unknown) {
   background: rgba(var(--route-accent-rgb), 0.10);
   color: var(--route-accent);
 }
-.route-utility-sidebar .ai-chat-suggestions,
+.route-utility-sidebar .ai-feature-guide-tabs,
 .route-utility-sidebar .memo-toolbar {
   padding: 12px 16px;
   border-top: 1px solid rgba(15, 23, 42, 0.06);
   background: rgba(255, 255, 255, 0.62);
 }
-.route-utility-sidebar .ai-chat-suggestions {
+.route-utility-sidebar .ai-feature-guide-tabs {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -6946,8 +6889,7 @@ function textAvatarStyle(index: unknown) {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-.route-utility-sidebar .ai-chat-suggestions::-webkit-scrollbar { display: none; }
-.route-utility-sidebar .ai-chat-suggestions.is-dragging,
+.route-utility-sidebar .ai-feature-guide-tabs::-webkit-scrollbar { display: none; }
 .route-utility-sidebar .ai-feature-guide-tabs.is-dragging {
   cursor: grabbing;
   scroll-snap-type: none;
@@ -7062,24 +7004,14 @@ function textAvatarStyle(index: unknown) {
 }
 .route-utility-sidebar .ai-feature-guide-header button .material-symbols-rounded { font-size: 18px; }
 .route-utility-sidebar .ai-feature-guide-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 0 34px 10px 26px;
-  overflow-x: auto;
-  cursor: grab;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
-  touch-action: pan-y;
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-  scroll-padding-inline-start: 26px;
+  scroll-padding-inline-start: 16px;
 }
-.route-utility-sidebar .ai-feature-guide-tabs::-webkit-scrollbar { display: none; }
 .route-utility-sidebar .ai-feature-guide-tabs button {
   display: inline-flex;
-  flex: 0 0 calc((100% - 18px) / 3.35);
-  min-width: 88px;
-  min-height: 32px;
+  flex: 0 0 auto;
+  min-height: 36px;
   align-items: center;
   gap: 5px;
   padding: 0 10px;
@@ -7096,6 +7028,11 @@ function textAvatarStyle(index: unknown) {
 .route-utility-sidebar .ai-feature-guide-tabs button.active {
   border-color: rgba(var(--route-accent-rgb), 0.22);
   background: rgba(var(--route-accent-rgb), 0.09);
+  color: var(--route-accent);
+}
+.route-utility-sidebar .ai-feature-guide-tabs button:hover,
+.route-utility-sidebar .ai-feature-guide-tabs button:focus-visible {
+  border-color: rgba(var(--route-accent-rgb), 0.3);
   color: var(--route-accent);
 }
 .route-utility-sidebar .ai-feature-guide-tabs .material-symbols-rounded { font-size: 16px; }
@@ -7146,7 +7083,6 @@ function textAvatarStyle(index: unknown) {
   color: #94a3b8;
   font-size: 15px;
 }
-.route-utility-sidebar .suggestion-chip,
 .route-utility-sidebar .toolbar-btn {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 12px;
@@ -7154,29 +7090,10 @@ function textAvatarStyle(index: unknown) {
   color: #475569;
   box-shadow: none;
 }
-.route-utility-sidebar .suggestion-chip {
-  display: inline-flex;
-  flex: 0 0 auto;
-  min-height: 36px;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 0 12px;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
-  white-space: nowrap;
-}
-.route-utility-sidebar .suggestion-chip .material-symbols-rounded { margin-right: 5px; font-size: 17px; }
-.route-utility-sidebar .suggestion-chip--guide {
-  border-color: rgba(var(--route-accent-rgb), 0.20);
-  color: var(--route-accent);
-}
-.route-utility-sidebar .suggestion-chip--guide.active { background: rgba(var(--route-accent-rgb), 0.11); }
 .route-utility-sidebar .toolbar-btn {
   width: 34px;
   height: 34px;
 }
-.route-utility-sidebar .suggestion-chip:hover,
 .route-utility-sidebar .toolbar-btn:hover {
   border-color: rgba(var(--route-accent-rgb), 0.26);
   background: rgba(var(--route-accent-rgb), 0.08);
