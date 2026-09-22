@@ -27,7 +27,10 @@ export function getAiRefreshTargets(
     ),
     note: successfulTools.includes('upsertNote'),
     checklist: successfulTools.some((name) => (
-      name === 'upsertChecklist' || name === 'addChecklistItem'
+      name === 'upsertChecklist'
+      || name === 'addChecklistItem'
+      || name === 'generateChecklistItems'
+      || name === 'generateChecklistItemsByDay'
     )),
   }
 }

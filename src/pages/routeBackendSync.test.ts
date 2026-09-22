@@ -43,4 +43,20 @@ describe('AI tool 결과 화면 동기화', () => {
 			}, 4).itinerary).toBe(true)
 		}
 	})
+
+	it('자동 생성된 전체·일차별 체크리스트를 성공 응답 직후 갱신한다', () => {
+		for (const toolName of ['generateChecklistItems', 'generateChecklistItemsByDay']) {
+			expect(getAiRefreshTargets({
+				message: {
+					id: 'assistant-1', role: 'ASSISTANT', requester: null, content: '준비물을 추가했어요.',
+					toolCallId: null, createdAt: '2026-06-22T00:00:00Z',
+				},
+				toolCalls: [{
+					id: 'tool-1', toolName, executionPolicy: 'REVERSIBLE_WRITE', status: 'SUCCEEDED',
+					versionBefore: null, versionAfter: null, undoRedoAvailable: false, errorCode: null,
+				}],
+				itineraryVersion: 4, undoAvailable: false, redoAvailable: false,
+			}, 4).checklist).toBe(true)
+		}
+	})
 })
