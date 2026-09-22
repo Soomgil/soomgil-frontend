@@ -116,6 +116,28 @@ describe('여행 방 투표 화면', () => {
     expect(wrapper.find('[data-testid="vote-remaining"]').text()).toContain('3 / 3')
   })
 
+  it('썸네일을 클릭하면 해당 관광지의 사진으로 바뀐다', async () => {
+    const candidates = session().candidates.map((candidate, index) => ({
+      ...candidate,
+      thumbnailUrl: `https://example.com/place-${index + 1}.jpg`,
+    }))
+    mocks.votingApi.getCurrentSession.mockResolvedValue(state({ session: session({ candidates }) }))
+    const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
+    await flushPromises()
+
+    const thumbStrip = wrapper.find('.vote-deck__thumbs')
+    const capturePointer = vi.fn()
+    Object.defineProperty(thumbStrip.element, 'setPointerCapture', { value: capturePointer })
+    const pointerDown = new MouseEvent('pointerdown', { bubbles: true, clientX: 100 })
+    Object.defineProperty(pointerDown, 'pointerId', { value: 1 })
+    wrapper.findAll('[data-testid="deck-thumb"]')[1].element.dispatchEvent(pointerDown)
+    expect(capturePointer).not.toHaveBeenCalled()
+
+    await wrapper.findAll('[data-testid="deck-thumb"]')[1].trigger('click')
+    expect(wrapper.find('[data-testid="candidate-name"]').text()).toBe('우도')
+    expect(wrapper.find('[data-testid="deck-slide"] .vote-deck__photo').attributes('src')).toBe('https://example.com/place-2.jpg')
+  })
+
   it('한 후보에 스티커를 몰아 붙일 수 있다', async () => {
     const wrapper = mount(TripVoteFlow, { props: { tripId: 'trip-1', embedded: true }, global: { stubs } })
     await flushPromises()

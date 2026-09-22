@@ -6227,7 +6227,7 @@ function textAvatarStyle(index: unknown) {
 }
 
 .vote-modal-card:has(.trip-vote--voting) {
-  height: auto;
+  height: min(84dvh, 720px);
   max-height: min(84vh, 720px);
 }
 
@@ -8578,6 +8578,7 @@ function textAvatarStyle(index: unknown) {
 @media (max-width: 760px) {
   .vote-modal-overlay { padding: 12px; }
   .vote-modal-card { height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); padding: 8px 14px 18px; }
+  .vote-modal-card:has(.trip-vote--voting) { height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); }
 }
 
 .map-sticker-help {
