@@ -12562,8 +12562,10 @@ button,
 .map-taste-marker, .map-taste-cluster > summary { display:flex; align-items:center; gap:7px; min-height:42px; padding:6px 13px 6px 7px; border:2px solid #e94758; border-radius:999px; background:#fff; color:#202a35; box-shadow:0 0 0 3px #ffffffed,0 5px 16px #25344738; cursor:pointer; font:700 13px var(--font-sans); }
 .map-taste-marker, .map-taste-cluster { z-index:2; }
 .map-taste-marker .material-symbols-rounded, .map-taste-cluster > summary .material-symbols-rounded { display:grid; place-items:center; width:28px; height:28px; border-radius:50%; background:#fff0f2; font-size:21px; color:#e53945; font-variation-settings:'FILL' 1; }
-.map-taste-marker.is-super { border-color:#d69a22; }
-.map-taste-marker.is-super .material-symbols-rounded { background:#fff5d9; color:#b7790b; }
+.map-taste-marker.is-star,.map-taste-marker.is-both { border-color:#d69a22; }
+.map-taste-marker.is-star > .material-symbols-rounded:first-child,.map-taste-marker.is-both > .material-symbols-rounded:first-child { background:#fff5d9; color:#b7790b; }
+.map-taste-marker.is-both { gap:4px; }
+.map-taste-marker.is-both .map-taste-secondary-icon { width:20px; height:20px; margin-left:-8px; background:#fff0f2; color:#e53945; font-size:15px; }
 .map-taste-marker:hover, .map-taste-cluster > summary:hover { background:#fff6f7; box-shadow:0 0 0 3px #fff,0 6px 20px #25344750; }
 .map-taste-cluster > summary { list-style:none; }
 .map-taste-cluster > summary::-webkit-details-marker { display:none; }
@@ -12575,6 +12577,22 @@ button,
 .map-taste-cluster-count { display:inline-flex; align-items:center; gap:5px; }
 .map-taste-cluster > summary .is-star .material-symbols-rounded { color:#c58a15; background:#fff5d9; }
 .map-taste-cluster-count + .map-taste-cluster-count { border-left:1px solid #e6edf3; padding-left:8px; margin-left:2px; }
+.mapboxgl-marker.map-taste-marker[aria-expanded=true],.mapboxgl-marker.map-taste-cluster:has(.map-taste-marker[aria-expanded=true]) { z-index:11 !important; }
+.map-taste-cluster-list .map-taste-marker { position:relative; }
+.map-taste-cluster-list:has(.map-taste-marker[aria-expanded=true]) { max-height:none; overflow:visible; }
+.map-taste-preview { position:absolute; bottom:calc(100% + 10px); left:50%; display:grid; gap:8px; width:238px; padding:9px; transform:translateX(-50%); border:1px solid #dce7ef; border-radius:14px; background:#fff; color:#35465a; box-shadow:0 14px 34px #25344738; text-align:left; white-space:normal; pointer-events:none; }
+.map-taste-preview[hidden] { display:none; }
+.map-taste-preview-photo { display:grid; place-items:center; width:100%; height:124px; overflow:hidden; border-radius:9px; background:#edf5fa; color:#7798b2; }
+.map-taste-preview-photo img { width:100%; height:100%; object-fit:cover; }
+.map-taste-preview-photo > .material-symbols-rounded { width:auto; height:auto; background:none; color:#7798b2; font-size:28px; }
+.map-taste-preview-title { overflow:hidden; font-size:13px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.map-taste-preview-reaction { display:flex; align-items:center; gap:5px; min-height:25px; font-size:10px; font-weight:700; }
+.map-taste-preview-reaction > .material-symbols-rounded { width:auto; height:auto; background:none; font-size:15px; }
+.map-taste-preview-reaction.is-super_like > .material-symbols-rounded { color:#b7790b; }
+.map-taste-preview-reaction.is-like > .material-symbols-rounded { color:#e53945; }
+.map-taste-preview-avatars { display:flex; margin-left:auto; padding-left:5px; }
+.map-taste-preview-avatar { display:grid; place-items:center; width:23px; height:23px; margin-left:-5px; overflow:hidden; border:2px solid #fff; border-radius:50%; background:#deecf7; color:#4a7394; font-size:9px; font-weight:800; box-shadow:0 1px 4px #25344726; }
+.map-taste-preview-avatar img { width:100%; height:100%; object-fit:cover; }
 
 /* 로그인과 회원가입은 같은 프레임 크기를 사용한다. */
 @media (min-width: 901px) {

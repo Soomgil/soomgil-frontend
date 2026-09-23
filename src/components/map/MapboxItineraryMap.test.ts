@@ -92,6 +92,32 @@ const routes = [{
 }]
 
 describe('MapboxItineraryMap', () => {
+  it('opens a taste marker with its photo and separate like and super-like member avatars', async () => {
+    vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
+    const wrapper = mount(MapboxItineraryMap, { props: { stops: [] } })
+    await flushPromises(); mapbox.handlers.get('style.load')?.()
+    mapbox.Marker.mockClear()
+    await wrapper.setProps({ tastePlaces: [{
+      id: 'taste:KTO:1', provider: 'KTO', externalPlaceId: '1', title: '오설록 티뮤지엄',
+      category: '문화시설', lat: 33.3, lng: 126.3, taste: 'both', image: 'https://cdn.example.com/place.jpg',
+      reactions: [
+        { userId: 'a', displayName: '민지', profileImageUrl: 'https://cdn.example.com/minji.jpg', reaction: 'LIKE' },
+        { userId: 'b', displayName: '도윤', profileImageUrl: null, reaction: 'SUPER_LIKE' },
+      ],
+    }] })
+    const marker = (mapbox.Marker.mock.calls.at(-1)?.[0] as { element: HTMLButtonElement }).element
+    expect(marker.classList.contains('is-both')).toBe(true)
+    expect(marker.querySelector('.map-taste-preview')?.hasAttribute('hidden')).toBe(true)
+    marker.click()
+    expect(marker.getAttribute('aria-expanded')).toBe('true')
+    expect(marker.querySelector('.map-taste-preview')?.hasAttribute('hidden')).toBe(false)
+    expect((marker.querySelector('.map-taste-preview-photo img') as HTMLImageElement).src).toBe('https://cdn.example.com/place.jpg')
+    expect(marker.querySelector('.map-taste-preview-reaction.is-like img')?.getAttribute('alt')).toBe('민지')
+    expect(marker.querySelector('.map-taste-preview-reaction.is-super_like .map-taste-preview-avatar')?.textContent).toBe('도')
+    expect(wrapper.emitted('selectNearbyPlace')?.at(-1)).toEqual(['KTO', '1'])
+    expect(mapbox.Marker.mock.calls.some(call => (call[0] as { element: HTMLElement }).element.classList.contains('map-preview-place-card'))).toBe(false)
+    wrapper.unmount()
+  })
   it('renders clustered taste markers without moving the camera', async () => {
     vi.stubEnv('VITE_MAPBOX_ACCESS_TOKEN', 'test-token')
     const wrapper = mount(MapboxItineraryMap, { props: { stops } })

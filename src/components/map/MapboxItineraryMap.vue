@@ -21,8 +21,14 @@ export interface ItineraryMapNearbyPlace {
   lat: number
   lng: number
   dayIndex?: number
-  taste?: 'favorite' | 'star'
+  taste?: 'favorite' | 'star' | 'both'
   image?: string | null
+  reactions?: Array<{
+    userId: string
+    displayName: string
+    profileImageUrl: string | null
+    reaction: 'LIKE' | 'SUPER_LIKE'
+  }>
   accessibility?: PlaceAccessibility
 }
 
@@ -326,13 +332,20 @@ function createMarkerElement(stop: ItineraryMapStop) {
 function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement {
   const el = document.createElement('button')
   el.type = 'button'
-  el.className = place.taste ? `map-taste-marker${place.taste === 'star' ? ' is-super' : ''}` : `map-nearby-place-marker ${dayClass(place.dayIndex ?? 1)}`
-  el.setAttribute('aria-label', place.taste ? place.title : `${place.title} 주변 관광지`)
+  el.className = place.taste ? `map-taste-marker is-${place.taste}` : `map-nearby-place-marker ${dayClass(place.dayIndex ?? 1)}`
+  el.setAttribute('aria-label', place.taste ? `${place.title} 취향 장소 자세히 보기` : `${place.title} 주변 관광지`)
 
   const icon = document.createElement('span')
   icon.className = 'material-symbols-rounded'
-  icon.textContent = place.taste ?? 'explore'
+  icon.textContent = place.taste === 'star' || place.taste === 'both' ? 'star' : place.taste ?? 'explore'
   el.appendChild(icon)
+  if (place.taste === 'both') {
+    const likeIcon = document.createElement('span')
+    likeIcon.className = 'material-symbols-rounded map-taste-secondary-icon'
+    likeIcon.textContent = 'favorite'
+    likeIcon.setAttribute('aria-hidden', 'true')
+    el.appendChild(likeIcon)
+  }
 
   const label = document.createElement('span')
   label.className = 'map-nearby-place-label'
@@ -342,9 +355,22 @@ function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement 
   if (accessibility) {
     el.appendChild(accessibility)
   }
+  if (place.taste) {
+    const preview = createTastePreviewElement(place)
+    const key = `${place.provider}:${place.externalPlaceId}`
+    el.setAttribute('aria-expanded', String(activeTastePlaceKey === key))
+    preview.hidden = activeTastePlaceKey !== key
+    el.appendChild(preview)
+    tastePreviewElements.push({ key, marker: el, preview })
+  }
 
   el.addEventListener('click', (event) => {
     event.stopPropagation()
+    if (place.taste) {
+      const key = `${place.provider}:${place.externalPlaceId}`
+      activeTastePlaceKey = activeTastePlaceKey === key ? null : key
+      syncTastePreviews()
+    }
     emit('selectNearbyPlace', place.provider, place.externalPlaceId)
   })
 
@@ -352,10 +378,77 @@ function createNearbyMarkerElement(place: ItineraryMapNearbyPlace): HTMLElement 
 }
 
 let tasteMarkers: MapboxMarker[] = []
-function clearTasteMarkers() { tasteMarkers.forEach(marker => marker.remove()); tasteMarkers = [] }
+let activeTastePlaceKey: string | null = null
+let tastePreviewElements: Array<{ key: string; marker: HTMLElement; preview: HTMLElement }> = []
+function syncTastePreviews() {
+  tastePreviewElements.forEach(({ key, marker, preview }) => {
+    const open = key === activeTastePlaceKey
+    preview.hidden = !open
+    marker.setAttribute('aria-expanded', String(open))
+  })
+}
+function closeTastePreviews() { activeTastePlaceKey = null; syncTastePreviews() }
+function clearTasteMarkers() { tasteMarkers.forEach(marker => marker.remove()); tasteMarkers = []; tastePreviewElements = [] }
+function createTastePreviewElement(place: ItineraryMapNearbyPlace): HTMLElement {
+  const preview = document.createElement('span')
+  preview.className = 'map-taste-preview'
+  const photo = document.createElement('span')
+  photo.className = 'map-taste-preview-photo'
+  if (place.image) {
+    const image = document.createElement('img')
+    image.src = place.image
+    image.alt = `${place.title} 사진`
+    photo.appendChild(image)
+  } else {
+    const placeholder = document.createElement('span')
+    placeholder.className = 'material-symbols-rounded'
+    placeholder.textContent = 'photo_camera'
+    photo.appendChild(placeholder)
+  }
+  const title = document.createElement('strong')
+  title.className = 'map-taste-preview-title'
+  title.textContent = place.title
+  preview.append(photo, title)
+  for (const [reaction, iconName, label] of [
+    ['SUPER_LIKE', 'star', '슈퍼라이크'],
+    ['LIKE', 'favorite', '좋아요'],
+  ] as const) {
+    const members = place.reactions?.filter(member => member.reaction === reaction) ?? []
+    if (!members.length) continue
+    const row = document.createElement('span')
+    row.className = `map-taste-preview-reaction is-${reaction.toLowerCase()}`
+    const icon = document.createElement('span')
+    icon.className = 'material-symbols-rounded'
+    icon.textContent = iconName
+    icon.setAttribute('aria-hidden', 'true')
+    const text = document.createElement('span')
+    text.textContent = `${label} ${members.length}명`
+    const avatars = document.createElement('span')
+    avatars.className = 'map-taste-preview-avatars'
+    for (const member of members) {
+      const avatar = document.createElement('span')
+      avatar.className = 'map-taste-preview-avatar'
+      avatar.title = `${member.displayName} · ${label}`
+      if (member.profileImageUrl) {
+        const image = document.createElement('img')
+        image.src = member.profileImageUrl
+        image.alt = member.displayName
+        avatar.appendChild(image)
+      } else {
+        avatar.textContent = member.displayName.slice(0, 1) || '?'
+        avatar.setAttribute('aria-label', member.displayName)
+      }
+      avatars.appendChild(avatar)
+    }
+    row.append(icon, text, avatars)
+    preview.appendChild(row)
+  }
+  return preview
+}
 function renderTasteMarkers() {
   clearTasteMarkers()
   if (!map || !mapboxgl || !styleReady) return
+  if (activeTastePlaceKey && !props.tastePlaces.some(place => `${place.provider}:${place.externalPlaceId}` === activeTastePlaceKey)) activeTastePlaceKey = null
   const groups: { x: number; y: number; places: ItineraryMapNearbyPlace[] }[] = []
   for (const place of props.tastePlaces) {
     const point = map.project([place.lng, place.lat])
@@ -371,8 +464,8 @@ function renderTasteMarkers() {
       const details = document.createElement('details')
       details.className = 'map-taste-cluster'
       const summary = document.createElement('summary')
-      const stars = group.places.filter(place => place.taste === 'star').length
-      const favorites = group.places.length - stars
+      const stars = group.places.filter(place => place.taste === 'star' || place.taste === 'both').length
+      const favorites = group.places.filter(place => place.taste === 'favorite' || place.taste === 'both').length
       for (const [symbol, total] of [['favorite', favorites], ['star', stars]] as const) {
         if (!total) continue
         const badge = document.createElement('span')
@@ -809,6 +902,7 @@ async function initializeMap() {
     createdMap.on('mousemove', (event) => emit('cursorMove', { lng: event.lngLat.lng, lat: event.lngLat.lat }))
     createdMap.on('mouseleave', () => emit('cursorLeave'))
     createdMap.on('click', () => {
+      closeTastePreviews()
       if (!props.mapObjectPlacement) emit('mapObjectSelect', null)
     })
     if (typeof ResizeObserver !== 'undefined') {

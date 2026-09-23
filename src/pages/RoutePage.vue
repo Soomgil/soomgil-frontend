@@ -524,6 +524,19 @@ const tasteControl = ref<InstanceType<typeof MapTasteControl> | null>(null)
 function selectNearbyMapPlace(provider: string, placeId: string) {
   if (!tasteControl.value?.select(provider, placeId)) void selectPlace(placeId, provider as PlaceProvider)
 }
+async function selectTastePlace(place: Place, recommendation: PlaceRecommendation) {
+  selectedRecommendationMapPlace.value = null
+  await selectDiscoveredPlace(place, recommendation, false)
+  const selected = selectedPlace.value?.place
+  if (selected?.provider !== place.provider || selected.externalPlaceId !== place.externalPlaceId) return
+  const image = selectedPlace.value?.image
+  if (!image) return
+  tastePlaces.value = tastePlaces.value.map((candidate) => (
+    candidate.provider === place.provider && candidate.externalPlaceId === place.externalPlaceId
+      ? { ...candidate, image }
+      : candidate
+  ))
+}
 function closeTasteControl() {
   tasteControl.value?.close()
 }
@@ -3255,6 +3268,7 @@ const collaborationTransport = new StompTransport({
     if (reconnected) {
       void itinerary.fetchItinerary()
       void votingStore.load(tripId)
+      tasteControl.value?.refresh()
     }
     if (drawingRetryIds.value.length > 0) retryDrawingSimplification()
   },
@@ -3298,7 +3312,7 @@ let conversationRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let planningRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let cursorPruneTimer: number | null = null
 
-function tripRealtimeTopic(topic: 'collaboration' | 'presence' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai' | 'voting') {
+function tripRealtimeTopic(topic: 'collaboration' | 'presence' | 'itinerary' | 'map-drawings' | 'route-matching' | 'chat' | 'planning' | 'ai' | 'voting' | 'preferences') {
   return `/topic/trips/${encodeURIComponent(tripId)}/${topic}`
 }
 
@@ -3811,6 +3825,13 @@ function receiveVotingEvent(message: unknown) {
   void votingStore.load(tripId)
 }
 
+function receivePreferenceEvent(message: unknown) {
+  if (!isTripRealtimeEvent(message)) return
+  if ((message as { eventType?: unknown }).eventType === 'preference.reaction.updated') {
+    tasteControl.value?.refresh()
+  }
+}
+
 function receiveAiEvent(message: unknown) {
   if (!isTripRealtimeEvent(message)) return
   const aiChatMessage = extractAiMessage(message)
@@ -3838,6 +3859,7 @@ function connectTripRealtime() {
     collaborationTransport.subscribe(tripRealtimeTopic('planning'), receivePlanningEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('ai'), receiveAiEvent),
     collaborationTransport.subscribe(tripRealtimeTopic('voting'), receiveVotingEvent),
+    collaborationTransport.subscribe(tripRealtimeTopic('preferences'), receivePreferenceEvent),
   ]
   collaborationTransport.connect()
 }
@@ -4479,7 +4501,6 @@ function openDetailbar() {
     routeUtilityCollapsedBeforeDetail = isRouteUtilityCollapsed.value
   }
   isDetailbarOpen.value = true
-  isRouteUtilityCollapsed.value = false
   if (isRouteOverlayLayout.value) isLeftSidebarOpen.value = false
 }
 
@@ -4697,7 +4718,7 @@ async function selectPlace(placeId: string | undefined, provider: PlaceProvider 
   openDetailbar()
 }
 
-async function selectDiscoveredPlace(place: Place, recommendation?: PlaceRecommendation) {
+async function selectDiscoveredPlace(place: Place, recommendation?: PlaceRecommendation, showMapPreview = true) {
   let detailed: Place = place
   try {
     detailed = await placeApi.getPlace(place.provider, place.externalPlaceId)
@@ -4751,7 +4772,7 @@ async function selectDiscoveredPlace(place: Place, recommendation?: PlaceRecomme
   detailbarMainImg.value = image
   const previewLat = detailed.lat ?? place.lat
   const previewLng = detailed.lng ?? place.lng
-  selectedRecommendationMapPlace.value = previewLat != null && previewLng != null
+  selectedRecommendationMapPlace.value = showMapPreview && previewLat != null && previewLng != null
     ? {
         id: `recommendation:${detailed.provider}:${detailed.externalPlaceId}`,
         provider: detailed.provider,
@@ -4858,6 +4879,7 @@ async function reactToSelectedPlace(reaction: SwipeAction) {
     showToast('장소 반응을 변경하지 못했습니다.', 'error')
   } finally {
     placeReactionSubmitting.value = false
+    tasteControl.value?.refresh()
   }
 }
 
@@ -5008,7 +5030,7 @@ function textAvatarStyle(index: unknown) {
             <button class="map-tour-help-button" type="button" aria-label="지도 화면 안내 다시 보기" title="화면 안내" @click="mapSectionTour?.start()">
               <span class="material-symbols-rounded" aria-hidden="true">help</span>
             </button>
-            <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectDiscoveredPlace" />
+            <MapTasteControl ref="tasteControl" :trip-id="tripId" :bbox="placeDiscoveryBbox" :user-id="currentUserId" @places="tastePlaces = $event" @select="selectTastePlace" />
             <button
               type="button"
               :class="['nearby-toggle', { active: nearbyOn }]"
@@ -5661,8 +5683,8 @@ function textAvatarStyle(index: unknown) {
                   </template>
                 </div>
                 <span class="detailbar-likes-text">
-                  <template v-if="selectedPlace.likedBy.length > 1"><strong>{{ formatUiText("{0}명", "{0} people", [selectedPlace.likedBy.length]) }}</strong>이 저장한 장소</template>
-                  <template v-else><strong>{{ selectedPlace.likedBy[0].name || '멤버' }}</strong>님이 저장한 장소</template>
+                  <template v-if="selectedPlace.likedBy.length > 1"><strong>{{ formatUiText("{0}명", "{0} people", [selectedPlace.likedBy.length]) }}</strong>이 좋아한 장소</template>
+                  <template v-else><strong>{{ selectedPlace.likedBy[0].name || '멤버' }}</strong>님이 좋아한 장소</template>
                 </span>
               </div>
 
