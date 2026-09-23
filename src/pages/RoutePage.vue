@@ -5514,8 +5514,8 @@ function textAvatarStyle(index: unknown) {
             </div>
 
             <!-- ===== Toolbox ===== -->
-            <div class="map-tools-viewport" data-tour-section="map-tools" @scroll.passive="updateToolPopoverPositions">
-              <div class="map-tools">
+            <div class="map-tools-viewport" @scroll.passive="updateToolPopoverPositions">
+              <div class="map-tools" data-tour-section="map-tools">
               <!-- Drawing tools -->
               <button :class="['tool-btn', { active: activeTool === 'cursor' }]" type="button" data-tool="cursor" :aria-pressed="activeTool === 'cursor'" :disabled="itinerary.mutating.value" @click="selectMapTool('cursor')">
                 <span class="material-symbols-rounded">near_me</span>

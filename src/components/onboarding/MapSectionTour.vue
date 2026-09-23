@@ -41,7 +41,7 @@ const steps: TourStep[] = [
     selector: '[data-tour-section="trip-management"]',
     eyebrow: '여행방 관리',
     title: '멤버와 투표를 관리해요',
-    description: '접속 중인 멤버를 확인하고 취향 장소, 투표, 여행방 설정을 열 수 있어요.',
+    description: '접속 중인 멤버를 확인하고 취향 보기로 추천 장소를 살펴보세요. 주변 여행지를 표시하거나 지도 테마를 바꾸고, 투표와 여행방 설정도 열 수 있어요.',
   },
   {
     section: 'collaboration',
@@ -64,11 +64,15 @@ const spotlightStyle = computed(() => {
   const rect = targetRect.value
   if (!rect) return { opacity: '0' }
   const gap = step.value.section === 'map' ? 4 : 8
+  const top = Math.max(8, rect.top - gap)
+  const left = Math.max(8, rect.left - gap)
+  const right = Math.min(window.innerWidth - 8, rect.right + gap)
+  const bottom = Math.min(window.innerHeight - 8, rect.bottom + gap)
   return {
-    top: `${Math.max(8, rect.top - gap)}px`,
-    left: `${Math.max(8, rect.left - gap)}px`,
-    width: `${Math.min(window.innerWidth - 16, rect.width + gap * 2)}px`,
-    height: `${Math.min(window.innerHeight - 16, rect.height + gap * 2)}px`,
+    top: `${top}px`,
+    left: `${left}px`,
+    width: `${Math.max(0, right - left)}px`,
+    height: `${Math.max(0, bottom - top)}px`,
   }
 })
 const cardStyle = computed(() => {
@@ -93,7 +97,20 @@ async function measureTarget(attempt = 0) {
     if (attempt < 4) window.setTimeout(() => void measureTarget(attempt + 1), 80)
     return
   }
-  targetRect.value = target.getBoundingClientRect()
+  const rect = target.getBoundingClientRect()
+  if (step.value.section === 'map-tools') {
+    const viewport = target.closest<HTMLElement>('.map-tools-viewport')
+    if (viewport) {
+      const visible = viewport.getBoundingClientRect()
+      const left = Math.max(rect.left, visible.left)
+      const top = Math.max(rect.top, visible.top)
+      targetRect.value = new DOMRect(left, top, Math.max(0, Math.min(rect.right, visible.right) - left), Math.max(0, Math.min(rect.bottom, visible.bottom) - top))
+    } else {
+      targetRect.value = rect
+    }
+  } else {
+    targetRect.value = rect
+  }
   dialog.value?.focus()
 }
 
