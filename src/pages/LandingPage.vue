@@ -47,15 +47,51 @@ onUnmounted(() => revealObserver?.disconnect())
       <section id="how" class="landing-process landing-reveal">
         <div class="landing-section-heading"><p>ONE TRIP, TOGETHER</p><h2>여행 계획, 이제 함께 한곳에서</h2><span>메신저에 흩어진 의견을 찾지 않아도 돼요. 장소 선택부터 일정과 동선까지 하나의 여행 공간에서 이어집니다.</span></div>
         <div class="landing-process-grid">
-          <article><span class="landing-step-number">01</span><div class="landing-step-icon landing-step-icon--rose"><span class="material-symbols-rounded">favorite</span></div><h3>가고 싶은 곳을 함께 골라요</h3><p>좋아요와 슈퍼라이크로 각자의 취향을 표현하고, 모두가 기대하는 장소를 찾아보세요.</p><div class="landing-taste-demo"><span>한라산</span><b><i class="material-symbols-rounded">favorite</i> 4</b></div></article>
-          <article><span class="landing-step-number">02</span><div class="landing-step-icon"><span class="material-symbols-rounded">edit_location_alt</span></div><h3>한눈에 일정을 정리해요</h3><p>친구들과 같은 지도를 보며 장소를 배치하고, 날짜별 일정과 방문 순서를 함께 정해요.</p><div class="landing-day-demo"><span>1일차</span><i></i><span>2일차</span><i></i><span>3일차</span></div></article>
-          <article><span class="landing-step-number">03</span><div class="landing-step-icon landing-step-icon--green"><span class="material-symbols-rounded">route</span></div><h3>이동하기 좋은 순서로 완성해요</h3><p>AI가 장소 사이의 거리와 이동 시간을 살펴보고 더 자연스러운 여행 동선을 제안해요.</p><div class="landing-route-demo"><span>A</span><i></i><span>B</span><i></i><span>C</span></div></article>
+          <article>
+            <span class="landing-step-number">01</span>
+            <div class="landing-step-icon landing-step-icon--rose"><span class="material-symbols-rounded">favorite</span></div>
+            <h3>가고 싶은 곳을 함께 골라요</h3>
+            <p>팀원들의 좋아요와 슈퍼라이크를 모아 우리 취향에 잘 맞는 관광지를 제안해요.</p>
+            <div class="landing-match-demo" aria-label="팀 취향 추천 화면 예시">
+              <img src="/images/한밭수목원/한밭수목원_1_공공3유형.jpg" alt="한밭수목원 풍경" loading="lazy" />
+              <div class="landing-match-demo__copy">
+                <span class="landing-match-demo__score"><span class="material-symbols-rounded" aria-hidden="true">favorite</span> 75% 일치</span>
+                <strong>한밭수목원</strong>
+                <small>대전광역시 서구 둔산대로</small>
+                <div class="landing-match-demo__members"><span class="landing-match-demo__avatars" aria-hidden="true"><i>지</i><i>민</i><i>수</i></span><b>3명의 취향과 잘 맞아요</b></div>
+              </div>
+            </div>
+          </article>
+          <article>
+            <span class="landing-step-number">02</span>
+            <div class="landing-step-icon"><span class="material-symbols-rounded">edit_location_alt</span></div>
+            <h3>한 지도에서 일정을 함께 그려요</h3>
+            <p>여행방에서 장소 카드를 일차별로 옮기고, 친구들과 방문 순서를 실시간으로 맞춰요.</p>
+            <div class="landing-itinerary-demo" aria-label="여행방 일정 화면 예시">
+              <div class="landing-itinerary-demo__heading"><strong>1일차 · 대전</strong><span>함께 편집 중 <i></i></span></div>
+              <div class="landing-itinerary-demo__place"><b>1</b><span>한밭수목원</span><span class="material-symbols-rounded" aria-hidden="true">drag_indicator</span></div>
+              <div class="landing-itinerary-demo__place"><b>2</b><span>국립중앙과학관</span><span class="material-symbols-rounded" aria-hidden="true">drag_indicator</span></div>
+            </div>
+          </article>
+          <article>
+            <span class="landing-step-number">03</span>
+            <div class="landing-step-icon landing-step-icon--green"><span class="material-symbols-rounded">route</span></div>
+            <h3>AI와 함께 동선을 다듬어요</h3>
+            <p>함께 고른 장소의 이동 순서를 AI에게 제안받고, 지도에서 경로를 직접 이어 우리만의 코스를 완성해요.</p>
+            <div class="landing-ai-demo" aria-label="AI 동선 제안 화면 예시">
+              <span class="landing-ai-demo__badge"><span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span> AI 동선 제안</span>
+              <div class="landing-ai-demo__route"><span>한밭수목원</span><i></i><span>과학관</span><i></i><span>성심당문화원</span></div>
+            </div>
+          </article>
         </div>
       </section>
 
       <section id="stories" class="landing-stories landing-reveal">
-        <div class="landing-stories-copy"><p>TRAVEL INSPIRATION</p><h2>마음에 드는 여행을<br />내 일정으로 시작해 보세요.</h2><span>다른 여행자의 코스를 둘러보고 ‘일정 가져오기’를 누르면 나만의 새 여행으로 이어집니다.</span><button class="landing-button landing-button--outline" type="button" @click="router.push('/login')">여행 이야기 둘러보기 <span class="material-symbols-rounded">arrow_forward</span></button></div>
-        <div class="landing-story-grid"><article v-for="journey in journeys" :key="journey.title"><img :src="journey.image" :alt="journey.title" /><div><span>{{ journey.region }}</span><h3>{{ journey.title }}</h3><p><span class="material-symbols-rounded">library_add</span> 일정 가져오기</p></div></article></div>
+        <div class="landing-stories-copy"><p>TRAVEL INSPIRATION</p><h2>피드 속 코스를<br />내 일정으로 가져오세요.</h2><span>여행 이야기 피드에서 마음에 드는 코스를 발견했다면 ‘일정 가져오기’를 눌러 새 여행방에서 이어가세요.</span><button class="landing-button landing-button--outline" type="button" @click="router.push('/community')">여행 이야기 피드 둘러보기 <span class="material-symbols-rounded">arrow_forward</span></button></div>
+        <div class="landing-feed-preview" aria-label="여행 이야기 피드 화면 예시">
+          <div class="landing-feed-preview__header"><strong>여행 이야기</strong><span>피드</span><span class="material-symbols-rounded" aria-hidden="true">more_horiz</span></div>
+          <div class="landing-story-grid"><article v-for="journey in journeys" :key="journey.title"><div class="landing-story-author"><span class="material-symbols-rounded" aria-hidden="true">account_circle</span><strong>여행자</strong><small>{{ journey.region }}</small></div><img :src="journey.image" :alt="journey.title" /><div class="landing-story-content"><span>{{ journey.region }} 여행</span><h3>{{ journey.title }}</h3><p><span class="material-symbols-rounded" aria-hidden="true">content_copy</span> 일정 가져오기</p></div></article></div>
+        </div>
       </section>
 
       <section class="landing-final landing-reveal" :style="{ '--final-image': `url(${daejeonImg})` }"><div><p>설레는 여행은 함께 계획하는 순간부터 시작돼요</p><h2>다음 여행을 숨길에서 함께 만들어 볼까요?</h2><button class="landing-button landing-button--light landing-button--large" type="button" @click="router.push('/login')">첫 여행 만들기 <span class="material-symbols-rounded">arrow_forward</span></button></div></section>
@@ -77,4 +113,24 @@ onUnmounted(() => revealObserver?.disconnect())
 .landing-hero-background{filter:none}
 @media(max-width:720px){.landing-hero--classic{width:100%;min-height:calc(100svh - 72px);padding:54px 20px 64px}.landing-classic-logo{width:180px}.landing-hero--classic h1{font-size:clamp(40px,12vw,56px)}.landing-classic-lead{font-size:14px}.landing-classic-lead br{display:none}.landing-classic-actions{width:min(330px,100%);flex-direction:column}.landing-button--classic,.landing-button--classic-ghost{width:100%}}
 @media(max-width:720px){.landing-nav .landing-brand span{display:inline}.landing-brand{font-size:18px}}
+
+.landing-process-grid article{min-height:408px}
+.landing-match-demo,.landing-itinerary-demo,.landing-ai-demo{position:absolute;right:24px;bottom:24px;left:24px;min-width:0;border:1px solid #e1eaf0;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgb(54 87 116/7%)}
+.landing-match-demo{display:grid;grid-template-columns:82px minmax(0,1fr);gap:12px;min-height:126px;padding:9px}
+.landing-match-demo>img{width:82px;height:106px;border-radius:11px;object-fit:cover}
+.landing-match-demo__copy{display:flex;min-width:0;flex-direction:column;align-items:flex-start;justify-content:center}
+.landing-match-demo__score{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:999px;background:linear-gradient(110deg,#5876bf,#59aaa2);color:#fff;font-size:10px;font-weight:800;white-space:nowrap}
+.landing-match-demo__score .material-symbols-rounded{color:#ff6974;font-size:13px;font-variation-settings:'FILL' 1}
+.landing-match-demo__copy>strong{max-width:100%;margin-top:6px;overflow:hidden;color:#35465a;font-size:14px;text-overflow:ellipsis;white-space:nowrap}
+.landing-match-demo__copy>small{max-width:100%;overflow:hidden;color:#8292a1;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.landing-match-demo__members{display:flex;align-items:center;gap:6px;max-width:100%;margin-top:8px;white-space:nowrap}
+.landing-match-demo__members>b{overflow:hidden;color:#5175ad;font-size:10px;text-overflow:ellipsis}
+.landing-match-demo__avatars{display:flex;padding-left:5px}
+.landing-match-demo__avatars i{display:grid;width:19px;height:19px;margin-left:-5px;place-items:center;border:2px solid #fff;border-radius:50%;background:#788fb4;color:#fff;font-size:8px;font-style:normal;font-weight:800}
+.landing-match-demo__avatars i:nth-child(2){background:#a9849b}.landing-match-demo__avatars i:nth-child(3){background:#76a49a}
+.landing-itinerary-demo{padding:12px 14px}.landing-itinerary-demo__heading{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px;font-size:11px}.landing-itinerary-demo__heading strong{color:#4972a0}.landing-itinerary-demo__heading>span{display:flex;align-items:center;gap:4px;color:#7991a2;font-size:9px;white-space:nowrap}.landing-itinerary-demo__heading i{width:6px;height:6px;border-radius:50%;background:#5bb88b}.landing-itinerary-demo__place{display:flex;align-items:center;gap:8px;min-height:27px;color:#52677b;font-size:11px}.landing-itinerary-demo__place+.landing-itinerary-demo__place{border-top:1px solid #edf2f6}.landing-itinerary-demo__place b{display:grid;width:18px;height:18px;place-items:center;border-radius:6px;background:#eaf3fa;color:#4972a0;font-size:9px}.landing-itinerary-demo__place>.material-symbols-rounded{margin-left:auto;color:#a3b4c2;font-size:17px}
+.landing-ai-demo{padding:15px 14px}.landing-ai-demo__badge{display:inline-flex;align-items:center;gap:4px;color:#4f9273;font-size:11px;font-weight:800}.landing-ai-demo__badge .material-symbols-rounded{font-size:16px}.landing-ai-demo__route{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-top:15px}.landing-ai-demo__route span{min-width:0;max-width:33%;overflow:hidden;padding:6px 7px;border-radius:999px;background:#eaf5ef;color:#4c8069;font-size:9px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}.landing-ai-demo__route i{flex:1;min-width:6px;border-top:2px dashed #9ec8b0}
+.landing-feed-preview{min-width:0;overflow:hidden;border:1px solid #dce7ef;border-radius:22px;background:#fff;box-shadow:0 22px 52px rgb(63 93 116/10%)}.landing-feed-preview__header{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid #e5edf3;color:#536f86;font-size:12px}.landing-feed-preview__header strong{font-size:14px}.landing-feed-preview__header>span:nth-child(2){padding:5px 10px;border-radius:999px;background:#edf5fb;color:#4979a7;font-weight:800}.landing-feed-preview__header>.material-symbols-rounded{margin-left:auto;font-size:18px}.landing-feed-preview .landing-story-grid{gap:10px;padding:14px}.landing-feed-preview .landing-story-grid article{border-radius:13px;box-shadow:none}.landing-feed-preview .landing-story-grid article:nth-child(2){margin-top:0}.landing-feed-preview .landing-story-grid img{height:145px}.landing-feed-preview .landing-story-author{display:flex;align-items:center;gap:5px;padding:9px 10px}.landing-story-author .material-symbols-rounded{color:#86a3bb;font-size:19px}.landing-story-author strong{color:#516b82;font-size:10px}.landing-story-author small{margin-left:auto;color:#93a5b3;font-size:9px}.landing-feed-preview .landing-story-content{padding:12px}.landing-feed-preview .landing-story-content>span{font-size:9px}.landing-feed-preview .landing-story-content h3{min-height:42px;margin:5px 0 10px;font-size:14px}.landing-feed-preview .landing-story-content p{padding-top:10px;border-top:1px solid #edf2f6;font-size:10px}.landing-feed-preview .landing-story-content p .material-symbols-rounded{font-size:14px}
+@media(max-width:1050px){.landing-process-grid article{min-height:345px}.landing-stories{gap:36px}}
+@media(max-width:720px){.landing-process-grid article{min-height:360px}.landing-match-demo,.landing-itinerary-demo,.landing-ai-demo{right:26px;left:26px}.landing-feed-preview .landing-story-grid{display:grid;grid-auto-columns:minmax(220px,78vw);grid-auto-flow:column;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory}.landing-feed-preview .landing-story-grid article{scroll-snap-align:start}}
 </style>
