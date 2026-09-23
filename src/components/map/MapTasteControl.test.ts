@@ -18,6 +18,17 @@ it('starts enabled, filters actual reactions and keeps markers after closing', a
   await w.get('[data-testid="taste-toggle"]').trigger('click')
   expect(w.find('[data-testid="taste-place"]').exists()).toBe(false)
   expect(w.emitted('places')?.at(-1)?.[0]).toHaveLength(2)
+  expect(w.emitted('places')?.at(-1)?.[0]).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      externalPlaceId: '1',
+      taste: 'both',
+      reactions: expect.arrayContaining([
+        expect.objectContaining({ userId: 'me', reaction: 'LIKE' }),
+        expect.objectContaining({ userId: 'friend', reaction: 'SUPER_LIKE' }),
+      ]),
+    }),
+    expect.objectContaining({ externalPlaceId: '2', taste: 'favorite' }),
+  ]))
   await w.get('[data-testid="taste-together"]').trigger('click')
   expect(w.emitted('places')?.at(-1)?.[0]).toHaveLength(1)
   await w.get('[data-testid="taste-colleagues"]').trigger('click')
@@ -28,6 +39,32 @@ it('starts enabled, filters actual reactions and keeps markers after closing', a
   await w.get('[data-testid="taste-super"]').trigger('click')
   expect(w.emitted('places')?.at(-1)?.[0]).toHaveLength(0)
   await w.get('[data-testid="taste-toggle"]').trigger('click')
+  expect(w.emitted('places')?.at(-1)?.[0]).toEqual([])
+  w.unmount()
+})
+it('distinguishes like, super-like, and mixed reactions on map places', async () => {
+  vi.mocked(swipeApi.getTripPreferencePlaces).mockResolvedValue([
+    { ...items[2], externalPlaceId: 'like' },
+    { ...items[1], externalPlaceId: 'super', userId: 'me' },
+    { ...items[0], externalPlaceId: 'both' },
+    { ...items[1], externalPlaceId: 'both' },
+  ] as any)
+  const w = mount(MapTasteControl, { props: { tripId: 'trip', bbox: '126,33,127,34', userId: 'me' } })
+  await flushPromises()
+  const places = w.emitted('places')?.at(-1)?.[0] as Array<{ externalPlaceId: string; taste: string }>
+  expect(Object.fromEntries(places.map(place => [place.externalPlaceId, place.taste]))).toEqual({
+    like: 'favorite', super: 'star', both: 'both',
+  })
+  w.unmount()
+})
+it('refreshes changed reactions without moving the map and clears removed markers', async () => {
+  vi.mocked(swipeApi.getTripPreferencePlaces).mockResolvedValueOnce(items as any).mockResolvedValueOnce([])
+  const w = mount(MapTasteControl, { props: { tripId: 'trip', bbox: '126,33,127,34', userId: 'me' } })
+  await flushPromises()
+  expect(w.emitted('places')?.at(-1)?.[0]).toHaveLength(2)
+  w.vm.refresh()
+  await flushPromises()
+  expect(swipeApi.getTripPreferencePlaces).toHaveBeenCalledTimes(2)
   expect(w.emitted('places')?.at(-1)?.[0]).toEqual([])
   w.unmount()
 })

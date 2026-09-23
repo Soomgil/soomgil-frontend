@@ -38,7 +38,12 @@ watch([places, enabled], () => emit('places', enabled.value ? places.value.map((
   id: `taste:${first.provider}:${first.externalPlaceId}`, provider: first.provider,
   externalPlaceId: first.externalPlaceId, title: first.name, category: first.category,
   lat: first.lat, lng: first.lng, image: first.thumbnailUrl,
-  taste: members.some(m => m.reaction === 'SUPER_LIKE') ? 'star' : 'favorite',
+  taste: members.some(m => m.reaction === 'SUPER_LIKE')
+    ? members.some(m => m.reaction === 'LIKE') ? 'both' : 'star'
+    : 'favorite',
+  reactions: members.map(({ userId, displayName, profileImageUrl, reaction }) => ({
+    userId, displayName, profileImageUrl, reaction,
+  })),
 })) : []), { immediate: true })
 async function load() {
   const request = ++revision
@@ -84,7 +89,11 @@ function select(provider: string, id: string) {
 function close() {
   open.value = false
 }
-defineExpose({ select, close })
+function refresh() {
+  clearTimeout(refreshTimer)
+  if (enabled.value) void load()
+}
+defineExpose({ select, close, refresh })
 </script>
 
 <template>

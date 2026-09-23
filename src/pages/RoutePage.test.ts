@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MapboxItineraryMap from '@/components/map/MapboxItineraryMap.vue'
+import MapTasteControl from '@/components/map/MapTasteControl.vue'
 import PlaceDiscoveryPanel from '@/components/place/PlaceDiscoveryPanel.vue'
 import TripDateRangeDialog from '@/components/trip/TripDateRangeDialog.vue'
 import { clearCollaborationSessionIds, registerCollaborationSessionId } from '@/realtime/collaborationSession'
@@ -45,6 +46,7 @@ const connectedApis = vi.hoisted(() => ({
     getAccessibilityBatch: vi.fn(),
   },
   swipe: {
+    getTripPreferencePlaces: vi.fn(),
     getRecommendations: vi.fn(),
     listSaved: vi.fn(),
     getReaction: vi.fn(),
@@ -307,6 +309,7 @@ describe('RoutePage itinerary integration', () => {
     holder.state.mapDrawings.value = []
     holder.state.error.value = null
     holder.viewportState.loading.value = false
+    holder.viewportState.viewport.value = null
     holder.viewportState.error.value = null
     geo.simplifyCoordinates.mockResolvedValue({
       coordinates: [{ lng: 127, lat: 36 }, { lng: 128, lat: 37 }],
@@ -2420,6 +2423,58 @@ describe('RoutePage itinerary integration', () => {
     expect(wrapper.getComponent(MapboxItineraryMap).props('previewPlace')).toBeNull()
   })
 
+  it('취향 마커를 선택하면 별도 추천 카드를 만들지 않고 사진을 마커에 전달한다', async () => {
+    connectedApis.place.getPlace.mockResolvedValueOnce({
+      provider: 'KTO', externalPlaceId: 'taste-1', placeName: '오설록 티뮤지엄',
+      address: '제주', lat: 33.3, lng: 126.3, thumbnailUrl: 'https://cdn.example.com/tea.jpg',
+      photos: [], category: '문화시설',
+    })
+    connectedApis.swipe.getTripPreferencePlaces.mockResolvedValue([])
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    const taste = wrapper.getComponent(MapTasteControl)
+    taste.vm.$emit('places', [{
+      id: 'taste:KTO:taste-1', provider: 'KTO', externalPlaceId: 'taste-1', title: '오설록 티뮤지엄',
+      category: '문화시설', lat: 33.3, lng: 126.3, image: null, taste: 'star',
+      reactions: [{ userId: 'friend', displayName: '민지', profileImageUrl: null, reaction: 'SUPER_LIKE' }],
+    }])
+    taste.vm.$emit('select', {
+      provider: 'KTO', externalPlaceId: 'taste-1', placeName: '오설록 티뮤지엄',
+      address: '제주', lat: 33.3, lng: 126.3, thumbnailUrl: null,
+    }, {
+      place: { provider: 'KTO', externalPlaceId: 'taste-1', placeName: '오설록 티뮤지엄' },
+      matchedMembers: [{ id: 'friend', displayName: '민지', profileImageUrl: null }],
+    })
+    await flushPromises()
+    const map = wrapper.getComponent(MapboxItineraryMap)
+    expect(map.props('previewPlace')).toBeNull()
+    expect(map.props('tastePlaces')).toEqual([expect.objectContaining({ image: 'https://cdn.example.com/tea.jpg' })])
+    expect(wrapper.get('.detailbar-social-likes').text()).toContain('민지')
+  })
+
+  it('닫힌 우측 협업 패널을 열지 않고 관광지 상세 패널로 바로 전환한다', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1200 })
+    connectedApis.place.getPlace.mockResolvedValueOnce({
+      provider: 'KTO', externalPlaceId: 'nearby-1', placeName: '주변 명소',
+      address: '대전', lat: 36.3, lng: 127.3, thumbnailUrl: null, photos: [],
+    })
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    expect(wrapper.get('#route-utility-sidebar').classes()).toContain('is-collapsed')
+    wrapper.getComponent(PlaceDiscoveryPanel).vm.$emit('select', {
+      provider: 'KTO', externalPlaceId: 'nearby-1', placeName: '주변 명소',
+      address: '대전', lat: 36.3, lng: 127.3, thumbnailUrl: null,
+    })
+    await flushPromises()
+    expect(wrapper.get('.detailbar').classes()).not.toContain('is-hidden')
+    expect(wrapper.get('#route-utility-sidebar').classes()).toContain('is-collapsed')
+    wrapper.unmount()
+  })
+
   it('지도 범위 동기화 실패를 표시하고 재시도한다', async () => {
     holder.viewportState.error.value = '지도 범위를 동기화하지 못했습니다.'
     const wrapper = mount(RoutePage, {
@@ -2915,6 +2970,24 @@ describe('RoutePage itinerary integration', () => {
 
     expect(holder.votingStore.load).toHaveBeenCalledWith('trip-1')
     wrapper.unmount()
+  })
+
+  it('여행방 취향 이벤트를 받으면 지도 범위의 반응을 다시 불러온다', async () => {
+    holder.viewportState.viewport.value = { minLng: 126, minLat: 33, maxLng: 127, maxLat: 34 }
+    const wrapper = mount(RoutePage, {
+      global: { stubs: { AppShell: { template: '<div><slot /></div>' }, LoadingState: true, ErrorState: true, EmptyState: true } },
+    })
+    await flushPromises()
+    const transport = realtime.instances[0]
+    expect(transport.subscriptions.has('/topic/trips/trip-1/preferences')).toBe(true)
+    const before = connectedApis.swipe.getTripPreferencePlaces.mock.calls.length
+    transport.subscriptions.get('/topic/trips/trip-1/preferences')?.({
+      tripId: 'trip-1', eventType: 'preference.reaction.updated',
+    })
+    await flushPromises()
+    expect(connectedApis.swipe.getTripPreferencePlaces.mock.calls.length).toBeGreaterThan(before)
+    wrapper.unmount()
+    holder.viewportState.viewport.value = null
   })
 
   it('planning topic의 체크리스트 이벤트를 즉시 화면에 병합한다', async () => {
