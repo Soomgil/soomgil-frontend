@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import logoImg from '@/assets/images/soomgil_logo_extract.png'
+import aiProfileImg from '@/assets/images/ai-profile.png'
 import AppFooter from '@/components/layout/AppFooter.vue'
 
 const router = useRouter()
@@ -11,9 +12,9 @@ const daejeonImg = '/images/랜딩페이지/daejeon.png'
 const jeonjuImg = '/images/랜딩페이지/jeonju.png'
 const gyeongjuImg = '/images/랜딩페이지/gyeongju.png'
 const journeys = [
-  { image: jejuImg, region: '제주', title: '바다를 따라 걷는 동쪽 제주' },
-  { image: jeonjuImg, region: '전주', title: '느리게 머무는 한옥마을의 하루' },
-  { image: gyeongjuImg, region: '경주', title: '오래된 도시에서 만난 새로운 취향' },
+  { image: jejuImg, region: '제주', author: '해솔', avatar: '해', title: '바다를 따라 걷는 동쪽 제주', summary: '성산에서 세화까지, 파도 소리를 따라 천천히 걸었어요.', tags: ['제주', '바다'], likes: 128, comments: 16 },
+  { image: jeonjuImg, region: '전주', author: '도윤', avatar: '도', title: '느리게 머무는 한옥마을의 하루', summary: '골목과 찻집 사이에서 발견한 전주의 조용한 순간들.', tags: ['한옥', '산책'], likes: 94, comments: 11 },
+  { image: gyeongjuImg, region: '경주', author: '지우', avatar: '지', title: '오래된 도시에서 만난 새로운 취향', summary: '노을 진 고분과 황리단길을 잇는 하루 코스를 담았어요.', tags: ['경주', '역사'], likes: 76, comments: 8 },
 ]
 let revealObserver: IntersectionObserver | null = null
 onMounted(() => {
@@ -67,9 +68,19 @@ onUnmounted(() => revealObserver?.disconnect())
             <h3>한 지도에서 일정을 함께 그려요</h3>
             <p>여행방에서 장소 카드를 일차별로 옮기고, 친구들과 방문 순서를 실시간으로 맞춰요.</p>
             <div class="landing-itinerary-demo" aria-label="여행방 일정 화면 예시">
-              <div class="landing-itinerary-demo__heading"><strong>1일차 · 대전</strong><span>함께 편집 중 <i></i></span></div>
-              <div class="landing-itinerary-demo__place"><b>1</b><span>한밭수목원</span><span class="material-symbols-rounded" aria-hidden="true">drag_indicator</span></div>
-              <div class="landing-itinerary-demo__place"><b>2</b><span>국립중앙과학관</span><span class="material-symbols-rounded" aria-hidden="true">drag_indicator</span></div>
+              <div class="landing-itinerary-demo__trip">
+                <div><span class="material-symbols-rounded" aria-hidden="true">location_on</span><strong>대전 감성 여행</strong></div>
+                <span class="landing-itinerary-demo__presence"><i></i> 3명 함께 편집 중</span>
+              </div>
+              <div class="landing-itinerary-demo__tabs" aria-hidden="true"><b>전체</b><b class="is-active">1일차</b><b>2일차</b></div>
+              <div class="landing-itinerary-demo__day"><span>1일차</span><small>3곳</small><i></i></div>
+              <div class="landing-itinerary-demo__place">
+                <b>1</b><img src="/images/한밭수목원/한밭수목원_1_공공3유형.jpg" alt="" /><span><strong>한밭수목원</strong><small>10:00</small></span><span class="material-symbols-rounded" aria-hidden="true">drag_indicator</span>
+              </div>
+              <div class="landing-itinerary-demo__connector"><span class="material-symbols-rounded" aria-hidden="true">directions_walk</span><b>도보 12분</b><i></i></div>
+              <div class="landing-itinerary-demo__place">
+                <b>2</b><img src="/images/국립중앙과학관/국립중앙과학관_1_공공1유형.jpg" alt="" /><span><strong>국립중앙과학관</strong><small>11:30</small></span><span class="material-symbols-rounded" aria-hidden="true">drag_indicator</span>
+              </div>
             </div>
           </article>
           <article>
@@ -78,8 +89,13 @@ onUnmounted(() => revealObserver?.disconnect())
             <h3>AI와 함께 동선을 다듬어요</h3>
             <p>함께 고른 장소의 이동 순서를 AI에게 제안받고, 지도에서 경로를 직접 이어 우리만의 코스를 완성해요.</p>
             <div class="landing-ai-demo" aria-label="AI 동선 제안 화면 예시">
-              <span class="landing-ai-demo__badge"><span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span> AI 동선 제안</span>
-              <div class="landing-ai-demo__route"><span>한밭수목원</span><i></i><span>과학관</span><i></i><span>성심당문화원</span></div>
+              <div class="landing-ai-demo__header"><span class="landing-ai-demo__avatar"><img :src="aiProfileImg" alt="" /></span><span><strong>AI 여행 가이드</strong><small><i></i> 여행 일정을 함께 보고 있어요</small></span><span class="material-symbols-rounded" aria-hidden="true">close</span></div>
+              <div class="landing-ai-demo__message landing-ai-demo__message--user">이 장소들로 걷기 좋은 동선을 짜줘</div>
+              <div class="landing-ai-demo__answer">
+                <span class="landing-ai-demo__spark"><span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span></span>
+                <div><strong>이 순서가 가장 자연스러워요</strong><p>수목원에서 시작해 과학관을 둘러본 뒤, 성심당문화원에서 마무리해 보세요.</p><div class="landing-ai-demo__route"><span>한밭수목원</span><i></i><span>과학관</span><i></i><span>성심당문화원</span></div></div>
+              </div>
+              <div class="landing-ai-demo__input"><span>AI에게 일정에 관해 물어보세요.</span><b class="material-symbols-rounded" aria-hidden="true">arrow_upward</b></div>
             </div>
           </article>
         </div>
@@ -88,8 +104,8 @@ onUnmounted(() => revealObserver?.disconnect())
       <section id="stories" class="landing-stories landing-reveal">
         <div class="landing-stories-copy"><p>TRAVEL INSPIRATION</p><h2>피드 속 코스를<br />내 일정으로 가져오세요.</h2><span>여행 이야기 피드에서 마음에 드는 코스를 발견했다면 ‘일정 가져오기’를 눌러 새 여행방에서 이어가세요.</span><button class="landing-button landing-button--outline" type="button" @click="router.push('/community')">여행 이야기 피드 둘러보기 <span class="material-symbols-rounded">arrow_forward</span></button></div>
         <div class="landing-feed-preview" aria-label="여행 이야기 피드 화면 예시">
-          <div class="landing-feed-preview__header"><strong>여행 이야기</strong><span>피드</span><span class="material-symbols-rounded" aria-hidden="true">more_horiz</span></div>
-          <div class="landing-story-grid"><article v-for="journey in journeys" :key="journey.title"><div class="landing-story-author"><span class="material-symbols-rounded" aria-hidden="true">account_circle</span><strong>여행자</strong><small>{{ journey.region }}</small></div><img :src="journey.image" :alt="journey.title" /><div class="landing-story-content"><span>{{ journey.region }} 여행</span><h3>{{ journey.title }}</h3><p><span class="material-symbols-rounded" aria-hidden="true">content_copy</span> 일정 가져오기</p></div></article></div>
+          <div class="landing-feed-preview__header"><div><span>Latest</span><strong>방금 도착한 여행 이야기</strong></div><span class="landing-feed-preview__write"><span class="material-symbols-rounded" aria-hidden="true">add_road</span> 여행기 작성</span></div>
+          <div class="landing-story-grid"><article v-for="journey in journeys" :key="journey.title"><div class="landing-story-photo"><img :src="journey.image" :alt="journey.title" /><span class="material-symbols-rounded" aria-hidden="true">favorite</span></div><div class="landing-story-content"><h3>{{ journey.title }}</h3><p>{{ journey.summary }}</p><div class="landing-story-tags"><span v-for="tag in journey.tags" :key="tag">#{{ tag }}</span></div><div class="landing-story-author"><b>{{ journey.avatar }}</b><strong>{{ journey.author }}</strong><small>{{ journey.region }}</small></div><div class="landing-story-stats"><span><span class="material-symbols-rounded" aria-hidden="true">favorite</span>{{ journey.likes }}</span><span><span class="material-symbols-rounded" aria-hidden="true">chat_bubble</span>{{ journey.comments }}</span></div></div></article></div>
         </div>
       </section>
 
@@ -132,4 +148,82 @@ onUnmounted(() => revealObserver?.disconnect())
 .landing-feed-preview{min-width:0;overflow:hidden;border:1px solid #dce7ef;border-radius:22px;background:#fff;box-shadow:0 22px 52px rgb(63 93 116/10%)}.landing-feed-preview__header{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid #e5edf3;color:#536f86;font-size:12px}.landing-feed-preview__header strong{font-size:14px}.landing-feed-preview__header>span:nth-child(2){padding:5px 10px;border-radius:999px;background:#edf5fb;color:#4979a7;font-weight:800}.landing-feed-preview__header>.material-symbols-rounded{margin-left:auto;font-size:18px}.landing-feed-preview .landing-story-grid{gap:10px;padding:14px}.landing-feed-preview .landing-story-grid article{border-radius:13px;box-shadow:none}.landing-feed-preview .landing-story-grid article:nth-child(2){margin-top:0}.landing-feed-preview .landing-story-grid img{height:145px}.landing-feed-preview .landing-story-author{display:flex;align-items:center;gap:5px;padding:9px 10px}.landing-story-author .material-symbols-rounded{color:#86a3bb;font-size:19px}.landing-story-author strong{color:#516b82;font-size:10px}.landing-story-author small{margin-left:auto;color:#93a5b3;font-size:9px}.landing-feed-preview .landing-story-content{padding:12px}.landing-feed-preview .landing-story-content>span{font-size:9px}.landing-feed-preview .landing-story-content h3{min-height:42px;margin:5px 0 10px;font-size:14px}.landing-feed-preview .landing-story-content p{padding-top:10px;border-top:1px solid #edf2f6;font-size:10px}.landing-feed-preview .landing-story-content p .material-symbols-rounded{font-size:14px}
 @media(max-width:1050px){.landing-process-grid article{min-height:345px}.landing-stories{gap:36px}}
 @media(max-width:720px){.landing-process-grid article{min-height:360px}.landing-match-demo,.landing-itinerary-demo,.landing-ai-demo{right:26px;left:26px}.landing-feed-preview .landing-story-grid{display:grid;grid-auto-columns:minmax(220px,78vw);grid-auto-flow:column;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory}.landing-feed-preview .landing-story-grid article{scroll-snap-align:start}}
+
+/* The landing previews mirror the trip workspace, AI guide, and community feed. */
+.landing-process-grid article{min-height:490px}
+.landing-itinerary-demo{padding:12px;background:#f9fcff}
+.landing-itinerary-demo__trip{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 2px 10px}
+.landing-itinerary-demo__trip>div{display:flex;align-items:center;gap:4px;min-width:0;color:#35465a;font-size:11px}
+.landing-itinerary-demo__trip .material-symbols-rounded{color:#328be0;font-size:14px}
+.landing-itinerary-demo__trip strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.landing-itinerary-demo__presence{display:flex;align-items:center;gap:4px;color:#71899b;font-size:8px;white-space:nowrap}
+.landing-itinerary-demo__presence i,.landing-ai-demo__header small i{width:6px;height:6px;border-radius:50%;background:#22b573}
+.landing-itinerary-demo__tabs{display:flex;gap:5px;margin-bottom:8px;padding:4px;border-radius:9px;background:#edf5fb}
+.landing-itinerary-demo__tabs b{padding:5px 10px;border-radius:7px;color:#71899b;font-size:9px;font-weight:700}
+.landing-itinerary-demo__tabs .is-active{background:#4286bd;color:#fff;box-shadow:0 2px 5px #4286bd33}
+.landing-itinerary-demo__day{display:flex;align-items:center;gap:7px;margin:2px 2px 6px;color:#328be0;font-size:10px;font-weight:800}
+.landing-itinerary-demo__day span{padding:4px 8px;border-radius:6px;background:#eaf4ff}
+.landing-itinerary-demo__day small{color:#71899b;font-size:9px}
+.landing-itinerary-demo__day i{flex:1;border-top:1px solid #d8e9f7}
+.landing-itinerary-demo__place{min-height:43px;gap:7px;padding:4px 7px;border:1px solid #e1ebf4;border-radius:9px;background:#fff;box-shadow:0 2px 5px #3665910a}
+.landing-itinerary-demo__place+.landing-itinerary-demo__place{border-top:1px solid #e1ebf4}
+.landing-itinerary-demo__place b{flex:none;width:17px;height:17px;border-radius:50%;background:#4286bd;color:#fff}
+.landing-itinerary-demo__place img{width:33px;height:33px;border-radius:6px;object-fit:cover}
+.landing-itinerary-demo__place>span:not(.material-symbols-rounded){display:flex;flex:1;min-width:0;flex-direction:column;gap:1px}
+.landing-itinerary-demo__place strong{overflow:hidden;color:#35465a;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.landing-itinerary-demo__place small{color:#8ba0b1;font-size:8px}
+.landing-itinerary-demo__place>.material-symbols-rounded{font-size:15px}
+.landing-itinerary-demo__connector{display:flex;align-items:center;gap:4px;height:22px;margin-left:16px;color:#5c8fb6;font-size:8px}
+.landing-itinerary-demo__connector .material-symbols-rounded{font-size:12px}
+.landing-itinerary-demo__connector b{font-weight:700}
+.landing-itinerary-demo__connector i{height:12px;margin-left:2px;border-left:1px dashed #9fc9e8}
+
+.landing-ai-demo{padding:0;overflow:hidden;background:#f8fbfe}
+.landing-ai-demo__header{display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid #e6eef5;background:#fff}
+.landing-ai-demo__avatar{display:grid;flex:none;width:27px;height:27px;place-items:center;overflow:hidden;border-radius:50%;background:#eaf3fb}
+.landing-ai-demo__avatar img{width:100%;height:100%;object-fit:cover}
+.landing-ai-demo__header>span:nth-child(2){display:flex;flex:1;min-width:0;flex-direction:column;gap:1px}
+.landing-ai-demo__header strong{color:#35465a;font-size:10px}
+.landing-ai-demo__header small{display:flex;align-items:center;gap:4px;color:#8da1ae;font-size:8px}
+.landing-ai-demo__header>.material-symbols-rounded{color:#a6b8c5;font-size:15px}
+.landing-ai-demo__message{width:max-content;max-width:82%;margin:10px 10px 8px auto;padding:7px 9px;border-radius:10px 10px 3px 10px;background:#4286bd;color:#fff;font-size:9px}
+.landing-ai-demo__answer{display:flex;gap:6px;margin:0 10px 9px}
+.landing-ai-demo__spark{display:grid;flex:none;width:19px;height:19px;place-items:center;border-radius:50%;background:#e8f1fb;color:#4286bd}
+.landing-ai-demo__spark .material-symbols-rounded{font-size:12px}
+.landing-ai-demo__answer>div{min-width:0;padding:8px;border:1px solid #e1eaf3;border-radius:3px 10px 10px;background:#fff}
+.landing-ai-demo__answer strong{color:#35465a;font-size:9px}
+.landing-process-grid .landing-ai-demo__answer p{margin:4px 0 0;color:#6d8091;font-size:8px;line-height:1.35}
+.landing-ai-demo__route{margin-top:7px;gap:3px}
+.landing-ai-demo__route span{max-width:35%;padding:4px 5px;border-radius:5px;background:#eaf4ff;color:#427eae;font-size:7px}
+.landing-ai-demo__route i{border-color:#9bc7e8}
+.landing-ai-demo__input{display:flex;align-items:center;justify-content:space-between;gap:5px;margin:0 10px 9px;padding:4px 5px 4px 9px;border:1px solid #dce8f2;border-radius:999px;background:#fff;color:#9aabb8;font-size:8px}
+.landing-ai-demo__input b{display:grid;width:20px;height:20px;place-items:center;border-radius:50%;background:#4286bd;color:#fff;font-size:13px}
+
+.landing-feed-preview{padding:15px;background:#f8fbff}
+.landing-feed-preview__header{justify-content:space-between;padding:1px 2px 13px;border:0}
+.landing-feed-preview__header>div{display:flex;flex-direction:column;gap:2px}
+.landing-feed-preview__header>div span{color:#647c92;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.landing-feed-preview__header strong{color:#427ead;font-family:'Noto Serif KR','Batang',serif;font-size:17px;font-weight:600}
+.landing-feed-preview__write{display:flex;align-items:center;gap:3px;padding:6px 9px;border-radius:999px;background:#328be0;color:#fff;font-size:9px;font-weight:700;white-space:nowrap}
+.landing-feed-preview__write .material-symbols-rounded{font-size:12px}
+.landing-feed-preview .landing-story-grid{gap:10px;padding:3px}
+.landing-feed-preview .landing-story-grid article{padding:6px 6px 0;border-color:#e1e9f0;border-radius:3px;box-shadow:0 3px 8px #35465a0c,0 10px 18px #35465a0a;transform:rotate(-.5deg)}
+.landing-feed-preview .landing-story-grid article:nth-child(2){transform:rotate(.5deg)}
+.landing-feed-preview .landing-story-photo{position:relative;padding:0;overflow:hidden;border-radius:2px}
+.landing-feed-preview .landing-story-photo img{width:100%;height:137px;object-fit:cover}
+.landing-feed-preview .landing-story-photo>.material-symbols-rounded{position:absolute;top:6px;right:6px;display:grid;width:21px;height:21px;place-items:center;border-radius:50%;background:#fff;color:#bd7b8b;font-size:12px}
+.landing-feed-preview .landing-story-content{display:flex;flex-direction:column;gap:5px;padding:10px 5px 9px}
+.landing-feed-preview .landing-story-content h3{min-height:36px;margin:0;color:#35465a;font-size:12px;font-weight:650;line-height:1.4}
+.landing-feed-preview .landing-story-content p{display:-webkit-box;min-height:30px;overflow:hidden;padding:0;border:0;color:#71899b;font-size:8px;font-weight:400;line-height:1.5;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.landing-story-tags{display:flex;gap:3px;flex-wrap:wrap}
+.landing-story-tags span{padding:3px 5px;border:1px solid #d7e6f0;border-radius:4px;background:#edf5fa;color:#4f718a;font-size:8px}
+.landing-feed-preview .landing-story-author{display:flex;align-items:center;gap:5px;margin-top:3px;padding:0}
+.landing-story-author b{display:grid;width:19px;height:19px;place-items:center;border-radius:50%;background:#dfeefb;color:#5787a9;font-size:8px}
+.landing-story-author strong{color:#516b82;font-size:9px}
+.landing-story-author small{display:none}
+.landing-story-stats{display:flex;gap:9px;padding-top:5px;border-top:1px solid #eaf0f5;color:#71899b}
+.landing-story-stats>span{display:flex;align-items:center;gap:2px;font-size:8px}
+.landing-story-stats .material-symbols-rounded{font-size:11px}
+@media(max-width:1050px){.landing-process-grid article{min-height:440px}}
+@media(max-width:720px){.landing-process-grid article{min-height:430px}.landing-feed-preview{padding:12px}.landing-feed-preview .landing-story-grid{padding:4px 2px 12px}.landing-feed-preview .landing-story-grid article{scroll-snap-align:start}}
 </style>
