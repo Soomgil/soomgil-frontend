@@ -71,16 +71,16 @@ function onThumbsPointerDown(event: PointerEvent) {
   thumbsStartX = event.clientX
   thumbsScrollLeft = container.scrollLeft
   thumbsMoved = false
-  container.setPointerCapture?.(event.pointerId)
 }
 
 function onThumbsPointerMove(event: PointerEvent) {
   if (thumbsPointerId !== event.pointerId) return
   const container = event.currentTarget as HTMLElement
   const distance = event.clientX - thumbsStartX
-  if (Math.abs(distance) > 4) {
+  if (!thumbsMoved && Math.abs(distance) > 4) {
     thumbsMoved = true
     thumbsDragging.value = true
+    container.setPointerCapture?.(event.pointerId)
   }
   if (thumbsMoved) container.scrollLeft = thumbsScrollLeft - distance
 }
@@ -88,7 +88,9 @@ function onThumbsPointerMove(event: PointerEvent) {
 function onThumbsPointerUp(event: PointerEvent) {
   if (thumbsPointerId !== event.pointerId) return
   const container = event.currentTarget as HTMLElement
-  container.releasePointerCapture?.(event.pointerId)
+  if (container.hasPointerCapture?.(event.pointerId)) {
+    container.releasePointerCapture(event.pointerId)
+  }
   thumbsPointerId = null
   thumbsDragging.value = false
 }
