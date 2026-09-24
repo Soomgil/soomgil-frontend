@@ -15,6 +15,7 @@ import { placeApi } from '@/api/place.api'
 import { searchApi } from '@/api/search.api'
 import { useSwipeStore } from '@/stores/swipe.store'
 import { swipeApi } from '@/api/swipe.api'
+import { useToast } from '@/composables/useToast'
 import { communityPostToStory } from '@/utils/community'
 import type { UnifiedSearchResponse } from '@/types/search'
 import type { CommunityPostSummary } from '@/types/community'
@@ -26,6 +27,7 @@ import type { TripSummary } from '@/types/trip'
 const route = useRoute()
 const router = useRouter()
 const swipeStore = useSwipeStore()
+const toast = useToast()
 const detailScroller = ref<HTMLElement | null>(null)
 const expandedInfo = ref<HTMLElement | null>(null)
 let detailRequest = 0
@@ -283,6 +285,7 @@ async function reactToSelectedPlace(reaction: SwipeAction) {
     if (request !== detailRequest) return
     selectedPlaceReaction.value = result.reaction
     placeReactionMessage.value = null
+    if (reaction === 'SUPER_LIKE') toast.success('내 취향에 반영됐어요')
   } catch (err) {
     if (request !== detailRequest) return
     selectedPlaceReaction.value = previous
@@ -656,11 +659,11 @@ watch(
                   :class="{ active: selectedPlaceReaction === 'SUPER_LIKE' }"
                   :aria-pressed="selectedPlaceReaction === 'SUPER_LIKE'"
                   :disabled="placeReactionSubmitting || placeDetailLoading"
-                  aria-label="슈퍼라이크"
-                  title="슈퍼라이크"
+                  aria-label="가고 싶어요"
+                  title="가고 싶어요"
                   @click="reactToSelectedPlace('SUPER_LIKE')"
                 >
-                  <span class="material-symbols-rounded" aria-hidden="true">star</span><span>슈퍼라이크</span>
+                  <span class="material-symbols-rounded" aria-hidden="true">star</span><span>가고 싶어요</span>
                 </button>                <button
                   type="button"
                   class="place-detail-reaction-btn place-detail-reaction-btn--like"

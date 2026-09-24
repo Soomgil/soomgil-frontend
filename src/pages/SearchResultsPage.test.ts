@@ -6,6 +6,7 @@ import { searchApi } from '@/api/search.api'
 import { createPinia } from 'pinia'
 import { swipeApi } from '@/api/swipe.api'
 import { placeApi } from '@/api/place.api'
+import { useUiStore } from '@/stores/ui.store'
 import type { UnifiedSearchResponse } from '@/types/search'
 
 vi.mock('@/api/search.api', () => ({ searchApi: { unified: vi.fn() } }))
@@ -84,21 +85,22 @@ describe('화이트 검색 결과 탐색', () => {
     expect(wrapper.get('[aria-label="좋아요"]').attributes('aria-pressed')).toBe('true')
     let rejectSave!: (reason: Error) => void
     vi.mocked(swipeApi.react).mockReturnValue(new Promise((_, reject) => { rejectSave = reject }))
-    await wrapper.get('[aria-label="슈퍼라이크"]').trigger('click')
-    expect(wrapper.get('[aria-label="슈퍼라이크"]').attributes('aria-pressed')).toBe('true')
+    await wrapper.get('[aria-label="가고 싶어요"]').trigger('click')
+    expect(wrapper.get('[aria-label="가고 싶어요"]').attributes('aria-pressed')).toBe('true')
     rejectSave(new Error('offline'))
     await flushPromises()
     expect(wrapper.get('[aria-label="좋아요"]').attributes('aria-pressed')).toBe('true')
     vi.mocked(swipeApi.react).mockResolvedValue({ place: { provider: 'KTO', externalPlaceId: '1' }, reaction: 'SUPER_LIKE', savedPlaceEligible: true, updatedAt: null })
-    await wrapper.get('[aria-label="슈퍼라이크"]').trigger('click')
+    await wrapper.get('[aria-label="가고 싶어요"]').trigger('click')
     await flushPromises()
     expect(swipeApi.react).toHaveBeenLastCalledWith('KTO', '1', 'SUPER_LIKE')
+    expect(useUiStore().toasts.at(-1)?.message).toBe('내 취향에 반영됐어요')
     expect(wrapper.find('.place-reaction-feedback').exists()).toBe(false)
     await wrapper.get('.place-detail-close').trigger('click')
     vi.mocked(swipeApi.getReaction).mockResolvedValue('SUPER_LIKE')
     await wrapper.get('.search-card--place').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[aria-label="슈퍼라이크"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[aria-label="가고 싶어요"]').attributes('aria-pressed')).toBe('true')
     wrapper.unmount()
   })
 
